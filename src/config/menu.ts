@@ -85,6 +85,7 @@ export const menuConfig: MenuSection[] = [
   {
     title: 'Admin',
     items: [
+      { label: 'User Management', href: '/admin/users', icon: Users, roles: ['owner', 'admin'] },
       { label: 'Branches', href: '/branches', icon: Building2, roles: ['owner', 'admin'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
