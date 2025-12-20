@@ -2253,6 +2253,7 @@ export type Database = {
           gender: Database["public"]["Enums"]["gender_type"] | null
           id: string
           is_active: boolean | null
+          must_set_password: boolean | null
           phone: string | null
           postal_code: string | null
           state: string | null
@@ -2272,6 +2273,7 @@ export type Database = {
           gender?: Database["public"]["Enums"]["gender_type"] | null
           id: string
           is_active?: boolean | null
+          must_set_password?: boolean | null
           phone?: string | null
           postal_code?: string | null
           state?: string | null
@@ -2291,6 +2293,7 @@ export type Database = {
           gender?: Database["public"]["Enums"]["gender_type"] | null
           id?: string
           is_active?: boolean | null
+          must_set_password?: boolean | null
           phone?: string | null
           postal_code?: string | null
           state?: string | null
