@@ -3043,6 +3043,15 @@ export type Database = {
         Args: { _branch_id: string; _user_id: string }
         Returns: boolean
       }
+      member_check_in: {
+        Args: { _branch_id: string; _member_id: string; _method?: string }
+        Returns: Json
+      }
+      member_check_out: { Args: { _member_id: string }; Returns: Json }
+      validate_member_checkin: {
+        Args: { _branch_id: string; _member_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "owner" | "admin" | "manager" | "trainer" | "staff" | "member"
