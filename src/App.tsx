@@ -5,12 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import SetupPage from "./pages/Setup";
 import AuthPage from "./pages/Auth";
 import SetPasswordPage from "./pages/SetPassword";
 import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import DashboardPage from "./pages/Dashboard";
 import PlansPage from "./pages/Plans";
+import AdminUsersPage from "./pages/AdminUsers";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -26,6 +28,7 @@ const App = () => (
           <Routes>
             {/* Public routes */}
             <Route path="/" element={<Navigate to="/auth" replace />} />
+            <Route path="/setup" element={<SetupPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/auth/set-password" element={<SetPasswordPage />} />
             <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
@@ -41,6 +44,11 @@ const App = () => (
             <Route path="/plans" element={
               <ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}>
                 <PlansPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/users" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin']}>
+                <AdminUsersPage />
               </ProtectedRoute>
             } />
 
