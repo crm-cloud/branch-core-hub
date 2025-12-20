@@ -10,6 +10,7 @@ import SetPasswordPage from "./pages/SetPassword";
 import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import DashboardPage from "./pages/Dashboard";
+import PlansPage from "./pages/Plans";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -35,6 +36,11 @@ const App = () => (
             <Route path="/dashboard" element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/plans" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}>
+                <PlansPage />
               </ProtectedRoute>
             } />
 
