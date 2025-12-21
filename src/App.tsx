@@ -38,6 +38,7 @@ import SettingsPage from "./pages/Settings";
 import StorePage from "./pages/Store";
 import POSPage from "./pages/POS";
 import ReferralsPage from "./pages/Referrals";
+import FeedbackPage from "./pages/Feedback";
 import PublicWebsite from "./pages/PublicWebsite";
 import WebsiteCMSPage from "./pages/WebsiteCMS";
 import IntegrationsPage from "./pages/Integrations";
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/leads" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LeadsPage /></ProtectedRoute>} />
             <Route path="/plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PlansPage /></ProtectedRoute>} />
             <Route path="/attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><AttendancePage /></ProtectedRoute>} />
+            <Route path="/feedback" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><FeedbackPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><InvoicesPage /></ProtectedRoute>} />
             <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PaymentsPage /></ProtectedRoute>} />
             <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
