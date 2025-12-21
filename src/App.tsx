@@ -18,6 +18,8 @@ import LockersPage from "./pages/Lockers";
 import StaffAttendancePage from "./pages/StaffAttendance";
 import ClassesPage from "./pages/Classes";
 import TrainersPage from "./pages/Trainers";
+import PTSessionsPage from "./pages/PTSessions";
+import AIFitnessPage from "./pages/AIFitness";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -79,6 +81,16 @@ const App = () => (
             <Route path="/trainers" element={
               <ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}>
                 <TrainersPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/pt-sessions" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}>
+                <PTSessionsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/ai-fitness" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}>
+                <AIFitnessPage />
               </ProtectedRoute>
             } />
 

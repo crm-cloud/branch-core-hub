@@ -15,6 +15,7 @@ import {
   Wallet,
   Clock,
   Lock,
+  Sparkles,
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -59,6 +60,7 @@ export const menuConfig: MenuSection[] = [
     items: [
       { label: 'Classes', href: '/classes', icon: Calendar, roles: ['owner', 'admin', 'manager', 'staff', 'trainer'] },
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['owner', 'admin', 'manager', 'trainer'] },
+      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin', 'manager', 'trainer'] },
     ],
   },
   {
