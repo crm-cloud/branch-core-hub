@@ -194,7 +194,9 @@ export async function fetchPOSSales(branchId: string, date?: string) {
   return data;
 }
 
-export async function fetchEcommerceOrders(branchId: string, status?: string) {
+type OrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned';
+
+export async function fetchEcommerceOrders(branchId: string, status?: OrderStatus) {
   let query = supabase
     .from('ecommerce_orders')
     .select(`
