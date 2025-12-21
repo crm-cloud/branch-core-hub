@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranches } from '@/hooks/useBranches';
-import { Lock, Plus, User, Key, DollarSign, Receipt, Search } from 'lucide-react';
+import { Lock, Plus, User, Key, DollarSign, Receipt, Search, Package } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { lockerService } from '@/services/lockerService';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { BulkCreateLockersDialog } from '@/components/lockers/BulkCreateLockersDialog';
 
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),
@@ -31,6 +32,7 @@ export default function LockersPage() {
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isBulkCreateOpen, setIsBulkCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedLocker, setSelectedLocker] = useState<any>(null);
   const [memberSearch, setMemberSearch] = useState('');
@@ -182,6 +184,11 @@ export default function LockersPage() {
                 ))}
               </select>
             )}
+
+            <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}>
+              <Package className="w-4 h-4 mr-2" />
+              Bulk Create
+            </Button>
 
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
@@ -471,6 +478,13 @@ export default function LockersPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Bulk Create Dialog */}
+        <BulkCreateLockersDialog
+          open={isBulkCreateOpen}
+          onOpenChange={setIsBulkCreateOpen}
+          branchId={branchId || ''}
+        />
       </div>
     </AppLayout>
   );
