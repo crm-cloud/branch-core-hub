@@ -1931,6 +1931,7 @@ export type Database = {
         Row: {
           branch_id: string
           created_at: string
+          created_by: string | null
           fitness_goals: string | null
           health_conditions: string | null
           id: string
@@ -1947,6 +1948,7 @@ export type Database = {
         Insert: {
           branch_id: string
           created_at?: string
+          created_by?: string | null
           fitness_goals?: string | null
           health_conditions?: string | null
           id?: string
@@ -1963,6 +1965,7 @@ export type Database = {
         Update: {
           branch_id?: string
           created_at?: string
+          created_by?: string | null
           fitness_goals?: string | null
           health_conditions?: string | null
           id?: string
@@ -1982,6 +1985,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "members_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {

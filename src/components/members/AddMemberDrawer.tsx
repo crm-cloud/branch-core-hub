@@ -7,8 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Gift } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface AddMemberDrawerProps {
 }
 
 export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawerProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -79,6 +81,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           fitnessGoals: data.fitnessGoals || null,
           healthConditions: data.healthConditions || null,
           referredBy: referrerInfo?.id || null,
+          createdBy: user?.id || null,
         },
       });
 
