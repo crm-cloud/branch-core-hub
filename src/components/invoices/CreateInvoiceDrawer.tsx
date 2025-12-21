@@ -1,0 +1,337 @@
+import { useState } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { Plus, Trash2, FileText, IndianRupee } from 'lucide-react';
+
+interface CreateInvoiceDrawerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  branchId: string;
+}
+
+interface LineItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+}
+
+export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvoiceDrawerProps) {
+  const queryClient = useQueryClient();
+  const [memberId, setMemberId] = useState<string>('');
+  const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [notes, setNotes] = useState('');
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [gstRate, setGstRate] = useState(18);
+  const [includeGst, setIncludeGst] = useState(true);
+  const [items, setItems] = useState<LineItem[]>([
+    { description: '', quantity: 1, unit_price: 0 },
+  ]);
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['members-for-invoice', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, member_code, profiles:user_id(full_name)')
+        .eq('branch_id', branchId)
+        .eq('status', 'active')
+        .limit(100);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!branchId,
+  });
+
+  const addItem = () => {
+    setItems([...items, { description: '', quantity: 1, unit_price: 0 }]);
+  };
+
+  const removeItem = (index: number) => {
+    if (items.length > 1) {
+      setItems(items.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateItem = (index: number, field: keyof LineItem, value: any) => {
+    const updated = [...items];
+    updated[index] = { ...updated[index], [field]: value };
+    setItems(updated);
+  };
+
+  const calculateSubtotal = () => {
+    return items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+  };
+
+  const calculateTax = () => {
+    if (!includeGst) return 0;
+    const subtotal = calculateSubtotal() - discountAmount;
+    return Math.round(subtotal * (gstRate / 100));
+  };
+
+  const calculateTotal = () => {
+    return calculateSubtotal() - discountAmount + calculateTax();
+  };
+
+  const createInvoice = useMutation({
+    mutationFn: async () => {
+      const validItems = items.filter(item => item.description && item.unit_price > 0);
+      if (validItems.length === 0) {
+        throw new Error('Please add at least one valid line item');
+      }
+
+      const subtotal = calculateSubtotal();
+      const taxAmount = calculateTax();
+      const total = calculateTotal();
+
+      // Create invoice
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          branch_id: branchId,
+          member_id: memberId || null,
+          invoice_number: '', // Auto-generated
+          subtotal,
+          discount_amount: discountAmount,
+          tax_amount: taxAmount,
+          total_amount: total,
+          status: 'pending',
+          due_date: dueDate,
+          notes: notes || null,
+        })
+        .select()
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      // Create invoice items
+      const invoiceItems = validItems.map(item => ({
+        invoice_id: invoice.id,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_amount: item.quantity * item.unit_price,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(invoiceItems);
+
+      if (itemsError) throw itemsError;
+
+      return invoice;
+    },
+    onSuccess: () => {
+      toast.success('Invoice created successfully');
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      onOpenChange(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to create invoice');
+    },
+  });
+
+  const resetForm = () => {
+    setMemberId('');
+    setDueDate(format(new Date(), 'yyyy-MM-dd'));
+    setNotes('');
+    setDiscountAmount(0);
+    setItems([{ description: '', quantity: 1, unit_price: 0 }]);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Create Invoice
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-6">
+          {/* Member Selection */}
+          <div className="space-y-2">
+            <Label>Member (optional)</Label>
+            <Select value={memberId} onValueChange={setMemberId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select member or leave for walk-in" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Walk-in Customer</SelectItem>
+                {members.map((member: any) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.profiles?.full_name || member.member_code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Due Date */}
+          <div className="space-y-2">
+            <Label>Due Date</Label>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+
+          {/* Line Items */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <Label>Line Items</Label>
+              <Button variant="outline" size="sm" onClick={addItem}>
+                <Plus className="h-4 w-4 mr-1" /> Add Item
+              </Button>
+            </div>
+
+            {items.map((item, index) => (
+              <Card key={index}>
+                <CardContent className="pt-4 space-y-3">
+                  <Input
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => updateItem(index, 'description', e.target.value)}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">Qty</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) => updateItem(index, 'quantity', Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Rate (₹)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={item.unit_price}
+                        onChange={(e) => updateItem(index, 'unit_price', Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="flex-1">
+                        <Label className="text-xs">Amount</Label>
+                        <div className="h-10 flex items-center font-medium">
+                          ₹{(item.quantity * item.unit_price).toLocaleString()}
+                        </div>
+                      </div>
+                      {items.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItem(index)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* GST & Discount */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Discount (₹)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={discountAmount}
+                onChange={(e) => setDiscountAmount(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>GST Rate (%)</Label>
+              <Select value={includeGst ? gstRate.toString() : '0'} onValueChange={(v) => {
+                if (v === '0') {
+                  setIncludeGst(false);
+                } else {
+                  setIncludeGst(true);
+                  setGstRate(Number(v));
+                }
+              }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">No GST</SelectItem>
+                  <SelectItem value="5">5%</SelectItem>
+                  <SelectItem value="12">12%</SelectItem>
+                  <SelectItem value="18">18%</SelectItem>
+                  <SelectItem value="28">28%</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Additional notes..."
+              rows={2}
+            />
+          </div>
+
+          {/* Summary */}
+          <Card className="bg-muted/50">
+            <CardContent className="pt-4 space-y-2">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>₹{calculateSubtotal().toLocaleString()}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Discount</span>
+                  <span>-₹{discountAmount.toLocaleString()}</span>
+                </div>
+              )}
+              {includeGst && (
+                <div className="flex justify-between">
+                  <span>GST ({gstRate}%)</span>
+                  <span>₹{calculateTax().toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-lg border-t pt-2">
+                <span>Total</span>
+                <span className="flex items-center">
+                  <IndianRupee className="h-4 w-4" />
+                  {calculateTotal().toLocaleString()}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <SheetFooter className="mt-6">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => createInvoice.mutate()} disabled={createInvoice.isPending}>
+            {createInvoice.isPending ? 'Creating...' : 'Create Invoice'}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}

@@ -1929,6 +1929,7 @@ export type Database = {
       }
       members: {
         Row: {
+          assigned_trainer_id: string | null
           branch_id: string
           created_at: string
           created_by: string | null
@@ -1946,6 +1947,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          assigned_trainer_id?: string | null
           branch_id: string
           created_at?: string
           created_by?: string | null
@@ -1963,6 +1965,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          assigned_trainer_id?: string | null
           branch_id?: string
           created_at?: string
           created_by?: string | null
@@ -1980,6 +1983,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "members_assigned_trainer_id_fkey"
+            columns: ["assigned_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "members_branch_id_fkey"
             columns: ["branch_id"]
@@ -2114,8 +2124,10 @@ export type Database = {
           discounted_price: number | null
           display_order: number | null
           duration_days: number
+          gst_rate: number | null
           id: string
           is_active: boolean | null
+          is_gst_inclusive: boolean | null
           is_transferable: boolean | null
           max_freeze_days: number | null
           name: string
@@ -2130,8 +2142,10 @@ export type Database = {
           discounted_price?: number | null
           display_order?: number | null
           duration_days: number
+          gst_rate?: number | null
           id?: string
           is_active?: boolean | null
+          is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
           max_freeze_days?: number | null
           name: string
@@ -2146,8 +2160,10 @@ export type Database = {
           discounted_price?: number | null
           display_order?: number | null
           duration_days?: number
+          gst_rate?: number | null
           id?: string
           is_active?: boolean | null
+          is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
           max_freeze_days?: number | null
           name?: string
@@ -3369,6 +3385,70 @@ export type Database = {
           {
             foreignKeyName: "trainer_availability_trainer_id_fkey"
             columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trainer_change_requests: {
+        Row: {
+          created_at: string
+          current_trainer_id: string | null
+          id: string
+          member_id: string
+          reason: string | null
+          requested_at: string
+          requested_trainer_id: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          current_trainer_id?: string | null
+          id?: string
+          member_id: string
+          reason?: string | null
+          requested_at?: string
+          requested_trainer_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          current_trainer_id?: string | null
+          id?: string
+          member_id?: string
+          reason?: string | null
+          requested_at?: string
+          requested_trainer_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_change_requests_current_trainer_id_fkey"
+            columns: ["current_trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_change_requests_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_change_requests_requested_trainer_id_fkey"
+            columns: ["requested_trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers"
             referencedColumns: ["id"]
