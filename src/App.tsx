@@ -99,6 +99,8 @@ const App = () => (
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
             <Route path="/finance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><FinancePage /></ProtectedRoute>} />
             <Route path="/my-plans" element={<ProtectedRoute><MemberPlansPage /></ProtectedRoute>} />
+            <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
+            <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
             {/* Redirects for old routes - now consolidated in Settings */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />

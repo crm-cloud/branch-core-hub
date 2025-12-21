@@ -5,7 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePlan } from '@/hooks/usePlans';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 
@@ -15,8 +20,31 @@ interface EditPlanDrawerProps {
   plan: MembershipPlanWithBenefits | null;
 }
 
+const BENEFIT_OPTIONS = [
+  { id: 'gym_access', label: 'Gym Access', icon: '🏋️' },
+  { id: 'pool_access', label: 'Pool Access', icon: '🏊' },
+  { id: 'steam_sauna', label: 'Steam & Sauna', icon: '🧖' },
+  { id: 'group_classes', label: 'Group Classes', icon: '👥' },
+  { id: 'personal_training', label: 'Personal Training Sessions', icon: '💪' },
+  { id: 'locker', label: 'Locker Facility', icon: '🔐' },
+  { id: 'parking', label: 'Free Parking', icon: '🅿️' },
+  { id: 'towel_service', label: 'Towel Service', icon: '🧴' },
+  { id: 'nutrition_consult', label: 'Nutrition Consultation', icon: '🥗' },
+  { id: 'body_composition', label: 'Body Composition Analysis', icon: '📊' },
+  { id: 'guest_passes', label: 'Guest Passes', icon: '🎫' },
+  { id: 'smoothie_bar', label: 'Smoothie Bar Discount', icon: '🥤' },
+];
+
+type BenefitConfig = {
+  enabled: boolean;
+  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly' | 'total';
+  limit: number;
+};
+
 export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps) {
   const updatePlan = useUpdatePlan();
+  const queryClient = useQueryClient();
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -29,6 +57,10 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     is_transferable: false,
     is_active: true,
   });
+
+  const [benefits, setBenefits] = useState<Record<string, BenefitConfig>>(
+    Object.fromEntries(BENEFIT_OPTIONS.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0 }]))
+  );
 
   useEffect(() => {
     if (plan) {
@@ -43,8 +75,40 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         is_transferable: plan.is_transferable || false,
         is_active: plan.is_active ?? true,
       });
+
+      // Load existing benefits
+      const benefitMap = Object.fromEntries(
+        BENEFIT_OPTIONS.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0 }])
+      );
+      
+      if (plan.plan_benefits) {
+        plan.plan_benefits.forEach((benefit: any) => {
+          if (benefitMap[benefit.benefit_type]) {
+            benefitMap[benefit.benefit_type] = {
+              enabled: true,
+              frequency: benefit.frequency || 'unlimited',
+              limit: benefit.limit_count || 0,
+            };
+          }
+        });
+      }
+      setBenefits(benefitMap);
     }
   }, [plan]);
+
+  const toggleBenefit = (id: string) => {
+    setBenefits(prev => ({
+      ...prev,
+      [id]: { ...prev[id], enabled: !prev[id].enabled }
+    }));
+  };
+
+  const updateBenefitConfig = (id: string, field: 'frequency' | 'limit', value: any) => {
+    setBenefits(prev => ({
+      ...prev,
+      [id]: { ...prev[id], [field]: value }
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +117,9 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
       return;
     }
 
+    setIsSaving(true);
     try {
+      // Update the plan
       await updatePlan.mutateAsync({
         planId: plan.id,
         data: {
@@ -69,20 +135,44 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         },
       });
 
+      // Delete existing benefits and re-insert
+      await supabase.from('plan_benefits').delete().eq('plan_id', plan.id);
+
+      const enabledBenefits = Object.entries(benefits)
+        .filter(([_, config]) => config.enabled)
+        .map(([benefitType, config]) => ({
+          plan_id: plan.id,
+          benefit_type: benefitType as any,
+          frequency: config.frequency,
+          limit_count: config.frequency === 'unlimited' ? null : config.limit,
+          is_active: true,
+        }));
+
+      if (enabledBenefits.length > 0) {
+        const { error: benefitsError } = await supabase
+          .from('plan_benefits')
+          .insert(enabledBenefits);
+        
+        if (benefitsError) throw benefitsError;
+      }
+
       toast.success('Plan updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error updating plan:', error);
       toast.error(error.message || 'Failed to update plan');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Edit Membership Plan</SheetTitle>
-          <SheetDescription>Update plan details and settings</SheetDescription>
+          <SheetDescription>Update plan details and benefits</SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
@@ -175,12 +265,74 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
             />
           </div>
 
+          <Separator className="my-4" />
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-base font-semibold">Plan Benefits</Label>
+              <p className="text-sm text-muted-foreground">Select the benefits included in this plan</p>
+            </div>
+
+            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+              {BENEFIT_OPTIONS.map((benefit) => (
+                <div key={benefit.id} className="border rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id={`edit-${benefit.id}`}
+                      checked={benefits[benefit.id].enabled}
+                      onCheckedChange={() => toggleBenefit(benefit.id)}
+                    />
+                    <label htmlFor={`edit-${benefit.id}`} className="flex-1 cursor-pointer">
+                      <span className="mr-2">{benefit.icon}</span>
+                      {benefit.label}
+                    </label>
+                  </div>
+                  
+                  {benefits[benefit.id].enabled && (
+                    <div className="mt-3 ml-6 grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Frequency</Label>
+                        <Select
+                          value={benefits[benefit.id].frequency}
+                          onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unlimited">Unlimited</SelectItem>
+                            <SelectItem value="daily">Per Day</SelectItem>
+                            <SelectItem value="weekly">Per Week</SelectItem>
+                            <SelectItem value="monthly">Per Month</SelectItem>
+                            <SelectItem value="total">Total (Plan Duration)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {benefits[benefit.id].frequency !== 'unlimited' && (
+                        <div>
+                          <Label className="text-xs">Limit</Label>
+                          <Input
+                            type="number"
+                            className="h-8"
+                            value={benefits[benefit.id].limit}
+                            onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
+                            min={1}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={updatePlan.isPending}>
-              {updatePlan.isPending ? 'Saving...' : 'Save Changes'}
+            <Button type="submit" disabled={isSaving || updatePlan.isPending}>
+              {isSaving || updatePlan.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </SheetFooter>
         </form>
