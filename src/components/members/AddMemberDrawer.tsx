@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { UserPlus, Gift } from 'lucide-react';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -29,8 +29,37 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     fitnessGoals: '',
     healthConditions: '',
     source: 'walk-in',
+    referralCode: '',
   });
+  const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
+
+  // Validate referral code
+  const validateReferralCode = async (code: string) => {
+    if (!code.trim()) {
+      setReferrerInfo(null);
+      return;
+    }
+    
+    // Look up member by member_code
+    const { data: member, error } = await supabase
+      .from('members')
+      .select('id, member_code, user_id, profiles:user_id(full_name)')
+      .eq('member_code', code.toUpperCase())
+      .single();
+    
+    if (error || !member) {
+      setReferrerInfo(null);
+      toast.error('Invalid referral code');
+      return;
+    }
+    
+    setReferrerInfo({
+      id: member.id,
+      name: (member as any).profiles?.full_name || member.member_code,
+    });
+    toast.success(`Referrer found: ${(member as any).profiles?.full_name || member.member_code}`);
+  };
 
   const createMember = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -64,7 +93,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
 
       if (profileError) console.error('Profile update error:', profileError);
 
-      // Create member record
+      // Create member record with referral info
       const { data: member, error: memberError } = await supabase
         .from('members')
         .insert({
@@ -75,11 +104,26 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           source: data.source,
           fitness_goals: data.fitnessGoals || null,
           health_conditions: data.healthConditions || null,
+          referred_by: referrerInfo?.id || null,
         })
         .select()
         .single();
 
       if (memberError) throw memberError;
+
+      // Create referral record if referred
+      if (referrerInfo?.id) {
+        await supabase.from('referrals').insert([{
+          referrer_member_id: referrerInfo.id,
+          referred_member_id: member.id,
+          referred_name: data.fullName,
+          referred_phone: data.phone,
+          referred_email: data.email,
+          referral_code: data.referralCode.toUpperCase(),
+          status: 'new' as const,
+        }]);
+      }
+
       return member;
     },
     onSuccess: () => {
@@ -106,7 +150,9 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       fitnessGoals: '',
       healthConditions: '',
       source: 'walk-in',
+      referralCode: '',
     });
+    setReferrerInfo(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -199,6 +245,36 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Referral Code */}
+          <div className="space-y-2">
+            <Label htmlFor="referralCode" className="flex items-center gap-2">
+              <Gift className="h-4 w-4 text-primary" />
+              Referral Code (Member Code)
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="referralCode"
+                placeholder="Enter referrer's member code"
+                value={formData.referralCode}
+                onChange={(e) => setFormData({ ...formData, referralCode: e.target.value.toUpperCase() })}
+              />
+              <Button 
+                type="button" 
+                variant="outline"
+                onClick={() => validateReferralCode(formData.referralCode)}
+                disabled={!formData.referralCode}
+              >
+                Verify
+              </Button>
+            </div>
+            {referrerInfo && (
+              <p className="text-sm text-green-600 flex items-center gap-1">
+                <Gift className="h-3 w-3" />
+                Referred by: {referrerInfo.name}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

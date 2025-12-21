@@ -2637,11 +2637,59 @@ export type Database = {
           },
         ]
       }
+      referral_settings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          min_membership_value: number | null
+          referred_reward_type: string
+          referred_reward_value: number
+          referrer_reward_type: string
+          referrer_reward_value: number
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          min_membership_value?: number | null
+          referred_reward_type?: string
+          referred_reward_value?: number
+          referrer_reward_type?: string
+          referrer_reward_value?: number
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          min_membership_value?: number | null
+          referred_reward_type?: string
+          referred_reward_value?: number
+          referrer_reward_type?: string
+          referrer_reward_value?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referrals: {
         Row: {
           converted_at: string | null
           created_at: string
           id: string
+          referral_code: string | null
           referred_email: string | null
           referred_member_id: string | null
           referred_name: string
@@ -2653,6 +2701,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string
           id?: string
+          referral_code?: string | null
           referred_email?: string | null
           referred_member_id?: string | null
           referred_name: string
@@ -2664,6 +2713,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string
           id?: string
+          referral_code?: string | null
           referred_email?: string | null
           referred_member_id?: string | null
           referred_name?: string

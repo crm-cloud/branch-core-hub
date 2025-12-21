@@ -22,8 +22,8 @@ export default function ReferralsPage() {
         .from('referrals')
         .select(`
           *,
-          referrer:referrer_id(member_code, profiles:user_id(full_name)),
-          referred:referred_id(member_code, profiles:user_id(full_name))
+          referrer:referrer_member_id(member_code, user_id, profiles:user_id(full_name)),
+          referred:referred_member_id(member_code, user_id, profiles:user_id(full_name))
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
