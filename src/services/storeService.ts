@@ -1,0 +1,226 @@
+import { supabase } from '@/integrations/supabase/client';
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  cost_price: number | null;
+  category: string | null;
+  sku: string | null;
+  image_url: string | null;
+  tax_rate: number | null;
+  is_active: boolean | null;
+  branch_id: string | null;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+}
+
+export async function fetchProducts(branchId?: string) {
+  let query = supabase
+    .from('products')
+    .select('*')
+    .eq('is_active', true)
+    .order('name');
+
+  if (branchId) {
+    query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as Product[];
+}
+
+export async function fetchProductsByCategory(category: string, branchId?: string) {
+  let query = supabase
+    .from('products')
+    .select('*')
+    .eq('is_active', true)
+    .eq('category', category)
+    .order('name');
+
+  if (branchId) {
+    query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as Product[];
+}
+
+export async function createProduct(product: Omit<Product, 'id'>) {
+  const { data, error } = await supabase
+    .from('products')
+    .insert(product)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as Product;
+}
+
+export async function updateProduct(id: string, product: Partial<Product>) {
+  const { data, error } = await supabase
+    .from('products')
+    .update(product)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as Product;
+}
+
+export async function createPOSSale(sale: {
+  branchId: string;
+  memberId?: string;
+  items: CartItem[];
+  paymentMethod: string;
+  soldBy?: string;
+}) {
+  const totalAmount = sale.items.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  );
+
+  const saleItems = sale.items.map((item) => ({
+    product_id: item.product.id,
+    name: item.product.name,
+    quantity: item.quantity,
+    unit_price: item.product.price,
+    total: item.product.price * item.quantity,
+  }));
+
+  // Create POS sale
+  const { data: posSale, error: saleError } = await supabase
+    .from('pos_sales')
+    .insert({
+      branch_id: sale.branchId,
+      member_id: sale.memberId,
+      items: saleItems,
+      total_amount: totalAmount,
+      payment_method: sale.paymentMethod as any,
+      sold_by: sale.soldBy,
+    })
+    .select()
+    .single();
+
+  if (saleError) throw saleError;
+
+  // Update inventory
+  for (const item of sale.items) {
+    const { data: inventory } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('product_id', item.product.id)
+      .eq('branch_id', sale.branchId)
+      .single();
+
+    if (inventory) {
+      await supabase
+        .from('inventory')
+        .update({ quantity: (inventory.quantity || 0) - item.quantity })
+        .eq('id', inventory.id);
+    }
+  }
+
+  return posSale;
+}
+
+export async function createEcommerceOrder(order: {
+  branchId: string;
+  memberId: string;
+  items: CartItem[];
+  shippingAddress?: any;
+}) {
+  const subtotal = order.items.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  );
+  const taxAmount = subtotal * 0.18; // 18% GST
+  const totalAmount = subtotal + taxAmount;
+
+  const orderItems = order.items.map((item) => ({
+    product_id: item.product.id,
+    name: item.product.name,
+    quantity: item.quantity,
+    unit_price: item.product.price,
+    total: item.product.price * item.quantity,
+  }));
+
+  // Generate order number
+  const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`;
+
+  const { data, error } = await supabase
+    .from('ecommerce_orders')
+    .insert({
+      branch_id: order.branchId,
+      member_id: order.memberId,
+      order_number: orderNumber,
+      items: orderItems,
+      subtotal,
+      tax_amount: taxAmount,
+      total_amount: totalAmount,
+      shipping_address: order.shippingAddress,
+      status: 'pending',
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchPOSSales(branchId: string, date?: string) {
+  let query = supabase
+    .from('pos_sales')
+    .select(`
+      *,
+      members(member_code, profiles:user_id(full_name))
+    `)
+    .eq('branch_id', branchId)
+    .order('sale_date', { ascending: false });
+
+  if (date) {
+    query = query.gte('sale_date', `${date}T00:00:00`).lte('sale_date', `${date}T23:59:59`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchEcommerceOrders(branchId: string, status?: string) {
+  let query = supabase
+    .from('ecommerce_orders')
+    .select(`
+      *,
+      members(member_code, profiles:user_id(full_name))
+    `)
+    .eq('branch_id', branchId)
+    .order('created_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function updateOrderStatus(orderId: string, status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned') {
+  const { data, error } = await supabase
+    .from('ecommerce_orders')
+    .update({ status })
+    .eq('id', orderId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
