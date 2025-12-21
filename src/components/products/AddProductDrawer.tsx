@@ -284,14 +284,14 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
             <div className="space-y-2">
               <Label htmlFor="branch">Branch</Label>
               <Select
-                value={formData.branch_id}
-                onValueChange={(v) => setFormData({ ...formData, branch_id: v })}
+                value={formData.branch_id || '__all__'}
+                onValueChange={(v) => setFormData({ ...formData, branch_id: v === '__all__' ? '' : v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All branches" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Branches</SelectItem>
+                  <SelectItem value="__all__">All Branches</SelectItem>
                   {branches.map((branch: any) => (
                     <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
                   ))}

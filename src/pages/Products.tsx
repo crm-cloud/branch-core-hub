@@ -113,12 +113,15 @@ export default function ProductsPage() {
                   className="pl-9"
                 />
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select
+                value={categoryFilter || '__all__'}
+                onValueChange={(v) => setCategoryFilter(v === '__all__' ? '' : v)}
+              >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="__all__">All Categories</SelectItem>
                   {categories.map((cat: any) => (
                     <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                   ))}
