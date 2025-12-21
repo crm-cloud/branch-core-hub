@@ -23,7 +23,7 @@ export default function MemberPlansPage() {
         .from('members')
         .select('id, member_code')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       if (error) return null;
       return data;
     },

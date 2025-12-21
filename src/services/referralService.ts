@@ -1,7 +1,15 @@
 import { supabase } from '@/integrations/supabase/client';
 import { creditWallet } from './walletService';
 
+async function checkAuth() {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
 export async function fetchMemberReferrals(memberId: string) {
+  const user = await checkAuth();
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from('referrals')
     .select('*')
@@ -13,6 +21,9 @@ export async function fetchMemberReferrals(memberId: string) {
 }
 
 export async function fetchAllReferrals() {
+  const user = await checkAuth();
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from('referrals')
     .select('*')
@@ -23,6 +34,9 @@ export async function fetchAllReferrals() {
 }
 
 export async function fetchMemberRewards(memberId: string) {
+  const user = await checkAuth();
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from('referral_rewards')
     .select('*')
@@ -34,13 +48,16 @@ export async function fetchMemberRewards(memberId: string) {
 }
 
 export async function claimReward(rewardId: string, memberId: string) {
+  const user = await checkAuth();
+  if (!user) throw new Error('Not authenticated');
+
   const { data: reward, error: rewardError } = await supabase
     .from('referral_rewards')
     .select('*')
     .eq('id', rewardId)
     .eq('member_id', memberId)
     .eq('is_claimed', false)
-    .single();
+    .maybeSingle();
 
   if (rewardError) throw rewardError;
   if (!reward) throw new Error('Reward not found or already claimed');
