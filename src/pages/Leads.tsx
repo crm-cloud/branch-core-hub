@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ import { FollowupDrawer } from '@/components/leads/FollowupDrawer';
 import { ConvertMemberDrawer } from '@/components/leads/ConvertMemberDrawer';
 
 export default function LeadsPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
@@ -27,11 +29,13 @@ export default function LeadsPage() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads'],
     queryFn: () => leadService.fetchLeads(),
+    enabled: !!user,
   });
 
   const { data: stats } = useQuery({
     queryKey: ['lead-stats'],
     queryFn: () => leadService.getLeadStats(),
+    enabled: !!user,
   });
 
   const { data: followups = [] } = useQuery({

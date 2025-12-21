@@ -24,7 +24,7 @@ import {
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 
 export default function DashboardPage() {
-  const { profile, roles } = useAuth();
+  const { profile, roles, user } = useAuth();
   const { data: branches = [] } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
@@ -33,6 +33,7 @@ export default function DashboardPage() {
   // Fetch dashboard statistics
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', branchFilter],
+    enabled: !!user,
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       const monthStart = startOfMonth(new Date()).toISOString();
@@ -109,6 +110,7 @@ export default function DashboardPage() {
   // Revenue chart data (last 6 months)
   const { data: revenueData = [] } = useQuery({
     queryKey: ['revenue-chart', branchFilter],
+    enabled: !!user,
     queryFn: async () => {
       const months = [];
       for (let i = 5; i >= 0; i--) {
@@ -132,6 +134,7 @@ export default function DashboardPage() {
   // Attendance chart data (last 7 days)
   const { data: attendanceData = [] } = useQuery({
     queryKey: ['attendance-chart', branchFilter],
+    enabled: !!user,
     queryFn: async () => {
       const days = [];
       for (let i = 6; i >= 0; i--) {
@@ -155,6 +158,7 @@ export default function DashboardPage() {
   // Membership distribution
   const { data: membershipData = [] } = useQuery({
     queryKey: ['membership-distribution', branchFilter],
+    enabled: !!user,
     queryFn: async () => {
       let query = supabase.from('memberships').select('membership_plans(name)').eq('status', 'active');
       if (branchFilter) query = query.eq('branch_id', branchFilter);
@@ -173,6 +177,7 @@ export default function DashboardPage() {
   // Recent activities
   const { data: recentActivities = [] } = useQuery({
     queryKey: ['recent-activities', branchFilter],
+    enabled: !!user,
     queryFn: async () => {
       const activities: any[] = [];
       

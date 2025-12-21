@@ -1,4 +1,5 @@
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,11 +13,13 @@ import { toast } from 'sonner';
 import { claimReward } from '@/services/referralService';
 
 export default function ReferralsPage() {
+  const { user } = useAuth();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: referrals = [], isLoading: referralsLoading } = useQuery({
     queryKey: ['all-referrals'],
+    enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('referrals')
@@ -33,6 +36,7 @@ export default function ReferralsPage() {
 
   const { data: rewards = [], isLoading: rewardsLoading } = useQuery({
     queryKey: ['all-rewards'],
+    enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('referral_rewards')

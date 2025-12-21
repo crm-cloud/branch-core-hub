@@ -4,10 +4,17 @@ import type { Database } from '@/integrations/supabase/types';
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadInsert = Database['public']['Tables']['leads']['Insert'];
 type LeadStatus = Database['public']['Enums']['lead_status'];
-type LeadFollowup = Database['public']['Tables']['lead_followups']['Row'];
+
+async function checkAuth() {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
 
 export const leadService = {
   async fetchLeads(branchId?: string) {
+    const user = await checkAuth();
+    if (!user) return [];
+
     let query = supabase
       .from('leads')
       .select('*')
@@ -23,16 +30,22 @@ export const leadService = {
   },
 
   async fetchLeadById(leadId: string) {
+    const user = await checkAuth();
+    if (!user) return null;
+
     const { data, error } = await supabase
       .from('leads')
       .select('*')
       .eq('id', leadId)
-      .single();
+      .maybeSingle();
     if (error) throw error;
     return data;
   },
 
   async createLead(lead: LeadInsert) {
+    const user = await checkAuth();
+    if (!user) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('leads')
       .insert(lead)
@@ -43,6 +56,9 @@ export const leadService = {
   },
 
   async updateLead(leadId: string, updates: Partial<Lead>) {
+    const user = await checkAuth();
+    if (!user) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('leads')
       .update(updates)
@@ -58,6 +74,9 @@ export const leadService = {
   },
 
   async fetchFollowups(leadId: string) {
+    const user = await checkAuth();
+    if (!user) return [];
+
     const { data, error } = await supabase
       .from('lead_followups')
       .select('*')
@@ -74,6 +93,9 @@ export const leadService = {
     outcome?: string;
     next_followup_date?: string;
   }) {
+    const user = await checkAuth();
+    if (!user) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('lead_followups')
       .insert(followup)
@@ -84,8 +106,12 @@ export const leadService = {
   },
 
   async convertToMember(leadId: string, branchId: string) {
+    const user = await checkAuth();
+    if (!user) throw new Error('Not authenticated');
+
     // Fetch the lead first
     const lead = await this.fetchLeadById(leadId);
+    if (!lead) throw new Error('Lead not found');
     
     // Generate member code
     const memberCode = `MEM${Date.now().toString(36).toUpperCase()}`;
@@ -119,6 +145,9 @@ export const leadService = {
   },
 
   async getLeadStats(branchId?: string) {
+    const user = await checkAuth();
+    if (!user) return { total: 0, new: 0, contacted: 0, interested: 0, converted: 0, lost: 0 };
+
     let query = supabase.from('leads').select('status');
     if (branchId) query = query.eq('branch_id', branchId);
     
