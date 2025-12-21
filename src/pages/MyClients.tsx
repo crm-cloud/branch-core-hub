@@ -1,0 +1,211 @@
+import { useQuery } from '@tanstack/react-query';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { supabase } from '@/integrations/supabase/client';
+import { useTrainerData } from '@/hooks/useMemberData';
+import { Users, Phone, Calendar, Dumbbell, AlertCircle, Loader2, TrendingUp } from 'lucide-react';
+import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
+
+export default function MyClients() {
+  const { trainer, clients, isLoading: trainerLoading } = useTrainerData();
+
+  // Get session history for each client
+  const { data: sessionStats = {} } = useQuery({
+    queryKey: ['client-session-stats', trainer?.id],
+    enabled: !!trainer && clients.length > 0,
+    queryFn: async () => {
+      const clientIds = clients.map((c) => c.member_id);
+      
+      const { data, error } = await supabase
+        .from('pt_sessions')
+        .select('member_id, status')
+        .eq('trainer_id', trainer!.id)
+        .in('member_id', clientIds);
+
+      if (error) throw error;
+
+      const stats: Record<string, { completed: number; total: number }> = {};
+      data?.forEach((session: any) => {
+        if (!stats[session.member_id]) {
+          stats[session.member_id] = { completed: 0, total: 0 };
+        }
+        stats[session.member_id].total++;
+        if (session.status === 'completed') {
+          stats[session.member_id].completed++;
+        }
+      });
+
+      return stats;
+    },
+  });
+
+  if (trainerLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (!trainer) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+          <AlertCircle className="h-12 w-12 text-warning" />
+          <h2 className="text-xl font-semibold">No Trainer Profile Found</h2>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">My Clients</h1>
+          <p className="text-muted-foreground">Manage your personal training clients</p>
+        </div>
+
+        {/* Summary Stats */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="border-border/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-full bg-accent/10">
+                  <Users className="h-6 w-6 text-accent" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Active Clients</p>
+                  <p className="text-2xl font-bold">{clients.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-full bg-success/10">
+                  <Dumbbell className="h-6 w-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Sessions Remaining</p>
+                  <p className="text-2xl font-bold">
+                    {clients.reduce((sum: number, c: any) => sum + (c.sessions_remaining || 0), 0)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-full bg-warning/10">
+                  <Calendar className="h-6 w-6 text-warning" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Expiring This Week</p>
+                  <p className="text-2xl font-bold">
+                    {clients.filter((c: any) => {
+                      const daysLeft = Math.ceil((new Date(c.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                      return daysLeft <= 7 && daysLeft > 0;
+                    }).length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Clients List */}
+        {clients.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No active PT clients assigned</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {clients.map((client: any) => {
+              const daysLeft = Math.ceil((new Date(client.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              const stats = sessionStats[client.member_id] || { completed: 0, total: 0 };
+              
+              return (
+                <Card key={client.id} className="border-border/50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-14 w-14">
+                        <AvatarImage src={client.member?.profiles?.avatar_url} />
+                        <AvatarFallback>
+                          {client.member?.profiles?.full_name?.charAt(0) || client.member?.member_code?.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-semibold">{client.member?.profiles?.full_name || 'Unknown'}</h3>
+                            <p className="text-sm text-muted-foreground">{client.member?.member_code}</p>
+                          </div>
+                          <Badge variant={daysLeft <= 7 ? 'destructive' : 'default'}>
+                            {daysLeft > 0 ? `${daysLeft} days left` : 'Expired'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 mt-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Package</p>
+                            <p className="font-medium">{client.package?.name}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Sessions</p>
+                            <p className="font-medium">{client.sessions_remaining} of {client.sessions_total}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Completed</p>
+                            <p className="font-medium">{stats.completed} sessions</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Expires</p>
+                            <p className="font-medium">{format(new Date(client.expiry_date), 'dd MMM yyyy')}</p>
+                          </div>
+                        </div>
+
+                        {client.member?.profiles?.phone && (
+                          <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+                            <Phone className="h-4 w-4" />
+                            <span>{client.member.profiles.phone}</span>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 mt-4">
+                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                            <Link to={`/pt-sessions?member=${client.member_id}`}>
+                              <Calendar className="h-4 w-4 mr-2" />
+                              Sessions
+                            </Link>
+                          </Button>
+                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                            <Link to={`/ai-fitness?member=${client.member_id}`}>
+                              <TrendingUp className="h-4 w-4 mr-2" />
+                              Create Plan
+                            </Link>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </AppLayout>
+  );
+}
