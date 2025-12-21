@@ -35,7 +35,7 @@ const BENEFIT_OPTIONS = [
 
 type BenefitConfig = {
   enabled: boolean;
-  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly' | 'total';
+  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
   limit: number;
 };
 
@@ -104,7 +104,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         .map(([benefitType, config]) => ({
           plan_id: planData.id,
           benefit_type: benefitType as any,
-          frequency: config.frequency,
+          frequency: config.frequency as any,
           limit_count: config.frequency === 'unlimited' ? null : config.limit,
           is_active: true,
         }));
@@ -279,7 +279,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                             <SelectItem value="daily">Per Day</SelectItem>
                             <SelectItem value="weekly">Per Week</SelectItem>
                             <SelectItem value="monthly">Per Month</SelectItem>
-                            <SelectItem value="total">Total (Plan Duration)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
