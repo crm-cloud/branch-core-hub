@@ -5,15 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranches } from '@/hooks/useBranches';
-import { Lock, Plus, User, Key, DollarSign } from 'lucide-react';
+import { Lock, Plus, User, Key, DollarSign, Receipt, Search } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { supabase } from '@/integrations/supabase/client';
+import { lockerService } from '@/services/lockerService';
+import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),
@@ -28,10 +31,17 @@ export default function LockersPage() {
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [selectedLocker, setSelectedLocker] = useState<any>(null);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [assignMonths, setAssignMonths] = useState(1);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const branchId = selectedBranch || branches?.[0]?.id;
 
-  const { lockers, availableLockers, createLocker, releaseLocker, isCreating } = useLockers(branchId);
+  const { lockers, createLocker, releaseLocker, isCreating } = useLockers(branchId);
 
   const form = useForm<CreateLockerData>({
     resolver: zodResolver(createLockerSchema),
@@ -42,6 +52,67 @@ export default function LockersPage() {
       notes: '',
     },
   });
+
+  const handleMemberSearch = async () => {
+    if (!memberSearch.trim() || !branchId) return;
+    const { data } = await supabase
+      .from('members')
+      .select(`
+        id,
+        member_code,
+        user_id,
+        profiles:user_id (full_name)
+      `)
+      .eq('branch_id', branchId)
+      .or(`member_code.ilike.%${memberSearch}%`)
+      .limit(10);
+    setSearchResults(data || []);
+  };
+
+  const handleAssignLocker = async () => {
+    if (!selectedMember || !selectedLocker || !branchId) return;
+    
+    setIsAssigning(true);
+    try {
+      const startDate = new Date().toISOString().split('T')[0];
+      const endDate = new Date(Date.now() + assignMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const feeAmount = (selectedLocker.monthly_fee || 0) * assignMonths;
+
+      // Assign locker
+      await lockerService.assignLocker({
+        locker_id: selectedLocker.id,
+        member_id: selectedMember.id,
+        start_date: startDate,
+        end_date: endDate,
+        fee_amount: feeAmount,
+      });
+
+      // Create invoice if fee > 0
+      if (feeAmount > 0) {
+        await lockerService.createLockerInvoice(
+          selectedMember.id,
+          branchId,
+          selectedLocker.id,
+          selectedLocker.locker_number,
+          feeAmount,
+          assignMonths
+        );
+        toast.success(`Locker assigned and invoice of ₹${feeAmount} created`);
+      } else {
+        toast.success('Locker assigned (free)');
+      }
+
+      setIsAssignOpen(false);
+      setSelectedLocker(null);
+      setSelectedMember(null);
+      setSearchResults([]);
+      setMemberSearch('');
+    } catch (error) {
+      toast.error('Failed to assign locker');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const onCreateSubmit = (data: CreateLockerData) => {
     if (!branchId) return;
@@ -59,13 +130,13 @@ export default function LockersPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'available':
-        return 'bg-green-500/20 text-green-500 border-green-500/30';
+        return 'bg-success/20 text-success border-success/30';
       case 'occupied':
         return 'bg-accent/20 text-accent border-accent/30';
       case 'maintenance':
-        return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30';
+        return 'bg-warning/20 text-warning border-warning/30';
       case 'reserved':
-        return 'bg-blue-500/20 text-blue-500 border-blue-500/30';
+        return 'bg-info/20 text-info border-info/30';
       default:
         return 'bg-muted text-muted-foreground';
     }
@@ -74,8 +145,15 @@ export default function LockersPage() {
   const stats = {
     total: lockers.data?.length || 0,
     available: lockers.data?.filter(l => l.status === 'available').length || 0,
-    assigned: lockers.data?.filter(l => l.status === 'assigned').length || 0,
+    occupied: lockers.data?.filter(l => l.status === 'assigned').length || 0,
     maintenance: lockers.data?.filter(l => l.status === 'maintenance').length || 0,
+  };
+
+  const openAssignDialog = (locker: any) => {
+    if (locker.status === 'available') {
+      setSelectedLocker(locker);
+      setIsAssignOpen(true);
+    }
   };
 
   return (
@@ -159,7 +237,7 @@ export default function LockersPage() {
                       name="monthly_fee"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Monthly Fee (0 for free)</FormLabel>
+                          <FormLabel>Monthly Fee (₹0 for free)</FormLabel>
                           <FormControl>
                             <Input type="number" placeholder="0" {...field} />
                           </FormControl>
@@ -204,28 +282,28 @@ export default function LockersPage() {
           <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Available</CardTitle>
-              <Key className="h-4 w-4 text-green-500" />
+              <Key className="h-4 w-4 text-success" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-500">{stats.available}</div>
+              <div className="text-2xl font-bold text-success">{stats.available}</div>
             </CardContent>
           </Card>
           <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Assigned</CardTitle>
+              <CardTitle className="text-sm font-medium">Occupied</CardTitle>
               <User className="h-4 w-4 text-accent" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-accent">{stats.assigned}</div>
+              <div className="text-2xl font-bold text-accent">{stats.occupied}</div>
             </CardContent>
           </Card>
           <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Maintenance</CardTitle>
-              <Lock className="h-4 w-4 text-yellow-500" />
+              <Lock className="h-4 w-4 text-warning" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-500">{stats.maintenance}</div>
+              <div className="text-2xl font-bold text-warning">{stats.maintenance}</div>
             </CardContent>
           </Card>
         </div>
@@ -234,7 +312,7 @@ export default function LockersPage() {
         <Card className="border-border/50">
           <CardHeader>
             <CardTitle>Locker Overview</CardTitle>
-            <CardDescription>Click on a locker to manage assignment</CardDescription>
+            <CardDescription>Click on an available locker to assign it</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
@@ -243,19 +321,19 @@ export default function LockersPage() {
                 return (
                   <div
                     key={locker.id}
+                    onClick={() => openAssignDialog(locker)}
                     className={`
                       relative p-3 rounded-lg border-2 text-center cursor-pointer
                       transition-all hover:scale-105
                       ${getStatusColor(locker.status)}
                     `}
-                    title={activeAssignment ? `Assigned to: ${activeAssignment.members?.member_code}` : locker.status}
+                    title={activeAssignment ? `Assigned to: ${activeAssignment.members?.member_code}` : 'Click to assign'}
                   >
                     <div className="font-bold text-sm">{locker.locker_number}</div>
                     <div className="text-xs opacity-70 capitalize">{locker.size || 'M'}</div>
                     {locker.monthly_fee && locker.monthly_fee > 0 && (
                       <div className="text-xs mt-1 flex items-center justify-center gap-0.5">
-                        <DollarSign className="w-3 h-3" />
-                        {locker.monthly_fee}
+                        ₹{locker.monthly_fee}
                       </div>
                     )}
                     {activeAssignment && (
@@ -284,7 +362,7 @@ export default function LockersPage() {
             {/* Legend */}
             <div className="flex gap-4 mt-6 text-sm">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-green-500/20 border border-green-500/30" />
+                <div className="w-4 h-4 rounded bg-success/20 border border-success/30" />
                 <span className="text-muted-foreground">Available</span>
               </div>
               <div className="flex items-center gap-2">
@@ -292,12 +370,107 @@ export default function LockersPage() {
                 <span className="text-muted-foreground">Occupied</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-yellow-500/20 border border-yellow-500/30" />
+                <div className="w-4 h-4 rounded bg-warning/20 border border-warning/30" />
                 <span className="text-muted-foreground">Maintenance</span>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Assign Locker Dialog */}
+        <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Locker {selectedLocker?.locker_number}</DialogTitle>
+              <DialogDescription>
+                Assign this locker to a member
+                {selectedLocker?.monthly_fee > 0 && ` (₹${selectedLocker.monthly_fee}/month)`}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Member Search */}
+              <div>
+                <label className="text-sm font-medium">Search Member</label>
+                <div className="flex gap-2 mt-1">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Enter member code"
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleMemberSearch()}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Button variant="outline" onClick={handleMemberSearch}>Search</Button>
+                </div>
+              </div>
+
+              {/* Search Results */}
+              {searchResults.length > 0 && (
+                <div className="space-y-2">
+                  {searchResults.map((member) => (
+                    <div
+                      key={member.id}
+                      onClick={() => setSelectedMember(member)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedMember?.id === member.id ? 'border-accent bg-accent/10' : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <p className="font-medium">{member.profiles?.full_name || 'Unknown'}</p>
+                      <p className="text-sm text-muted-foreground">{member.member_code}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Selected Member */}
+              {selectedMember && (
+                <div className="p-4 rounded-lg bg-accent/10 border border-accent/30">
+                  <p className="font-medium">Selected: {selectedMember.profiles?.full_name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedMember.member_code}</p>
+                </div>
+              )}
+
+              {/* Duration */}
+              <div>
+                <label className="text-sm font-medium">Duration (Months)</label>
+                <Select value={String(assignMonths)} onValueChange={(v) => setAssignMonths(Number(v))}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 3, 6, 12].map((m) => (
+                      <SelectItem key={m} value={String(m)}>{m} Month{m > 1 ? 's' : ''}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Total Amount */}
+              {selectedLocker?.monthly_fee > 0 && (
+                <div className="p-4 rounded-lg bg-muted">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Total Amount:</span>
+                    <span className="text-xl font-bold">₹{selectedLocker.monthly_fee * assignMonths}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <Receipt className="w-3 h-3 inline mr-1" />
+                    An invoice will be generated automatically
+                  </p>
+                </div>
+              )}
+
+              <Button 
+                onClick={handleAssignLocker} 
+                className="w-full" 
+                disabled={!selectedMember || isAssigning}
+              >
+                {isAssigning ? 'Assigning...' : 'Assign Locker'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

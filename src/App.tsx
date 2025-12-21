@@ -38,6 +38,8 @@ import SettingsPage from "./pages/Settings";
 import StorePage from "./pages/Store";
 import POSPage from "./pages/POS";
 import ReferralsPage from "./pages/Referrals";
+import PublicWebsite from "./pages/PublicWebsite";
+import WebsiteCMSPage from "./pages/WebsiteCMS";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -51,7 +53,8 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/auth" replace />} />
+            {/* Public Website */}
+            <Route path="/" element={<PublicWebsite />} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/auth/set-password" element={<SetPasswordPage />} />
@@ -87,6 +90,7 @@ const App = () => (
             <Route path="/store" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><StorePage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
+            <Route path="/website-cms" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><WebsiteCMSPage /></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
