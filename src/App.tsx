@@ -13,6 +13,11 @@ import ResetPasswordPage from "./pages/ResetPassword";
 import DashboardPage from "./pages/Dashboard";
 import PlansPage from "./pages/Plans";
 import AdminUsersPage from "./pages/AdminUsers";
+import AttendancePage from "./pages/Attendance";
+import LockersPage from "./pages/Lockers";
+import StaffAttendancePage from "./pages/StaffAttendance";
+import ClassesPage from "./pages/Classes";
+import TrainersPage from "./pages/Trainers";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -49,6 +54,31 @@ const App = () => (
             <Route path="/admin/users" element={
               <ProtectedRoute requiredRoles={['owner', 'admin']}>
                 <AdminUsersPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/attendance" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}>
+                <AttendancePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/lockers" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}>
+                <LockersPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/staff-attendance" element={
+              <ProtectedRoute>
+                <StaffAttendancePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/classes" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}>
+                <ClassesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/trainers" element={
+              <ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}>
+                <TrainersPage />
               </ProtectedRoute>
             } />
 
