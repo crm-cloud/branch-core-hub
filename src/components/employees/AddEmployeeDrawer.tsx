@@ -27,6 +27,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
     hire_date: new Date().toISOString().split('T')[0],
     salary: '',
     salary_type: 'monthly',
+    role: 'staff' as 'staff' | 'manager',
   });
 
   const { data: availableUsers = [] } = useQuery({
@@ -79,6 +80,34 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
       if (error) throw error;
 
+      // Assign role to user
+      const { error: roleError } = await supabase.from('user_roles').insert({
+        user_id: formData.user_id,
+        role: formData.role,
+      });
+
+      if (roleError && !roleError.message.includes('duplicate')) {
+        console.error('Role assignment error:', roleError);
+      }
+
+      // Add to staff_branches for branch access
+      const { error: branchError } = await supabase.from('staff_branches').insert({
+        user_id: formData.user_id,
+        branch_id: formData.branch_id,
+      });
+
+      if (branchError && !branchError.message.includes('duplicate')) {
+        console.error('Branch assignment error:', branchError);
+      }
+
+      // If manager, also add to branch_managers
+      if (formData.role === 'manager') {
+        await supabase.from('branch_managers').insert({
+          user_id: formData.user_id,
+          branch_id: formData.branch_id,
+        });
+      }
+
       toast.success('Employee added successfully');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       onOpenChange(false);
@@ -90,6 +119,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
         hire_date: new Date().toISOString().split('T')[0],
         salary: '',
         salary_type: 'monthly',
+        role: 'staff',
       });
     } catch (error: any) {
       console.error('Error adding employee:', error);
@@ -142,6 +172,22 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
                     {branch.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Role *</Label>
+            <Select
+              value={formData.role}
+              onValueChange={(value: 'staff' | 'manager') => setFormData({ ...formData, role: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="staff">Staff</SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
               </SelectContent>
             </Select>
           </div>

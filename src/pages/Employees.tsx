@@ -1,13 +1,19 @@
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Users } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Plus, Users, UserMinus, UserCheck } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
+import { toast } from 'sonner';
 
 export default function EmployeesPage() {
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ['employees'],
     queryFn: async () => {
@@ -23,12 +29,27 @@ export default function EmployeesPage() {
     },
   });
 
+  const toggleActive = async (employeeId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ is_active: !currentStatus })
+        .eq('id', employeeId);
+      
+      if (error) throw error;
+      toast.success(currentStatus ? 'Employee deactivated' : 'Employee activated');
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    } catch (error) {
+      toast.error('Failed to update employee status');
+    }
+  };
+
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Employees</h1>
-          <Button>
+          <Button onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Employee
           </Button>
@@ -48,7 +69,7 @@ export default function EmployeesPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-500">
+              <div className="text-2xl font-bold text-success">
                 {employees.filter((e: any) => e.is_active).length}
               </div>
             </CardContent>
@@ -84,6 +105,7 @@ export default function EmployeesPage() {
                     <TableHead>Position</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Hire Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -104,16 +126,29 @@ export default function EmployeesPage() {
                       <TableCell>{employee.department || '-'}</TableCell>
                       <TableCell>{employee.position || '-'}</TableCell>
                       <TableCell>
-                        <Badge className={employee.is_active ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}>
+                        <Badge className={employee.is_active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}>
                           {employee.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
                       <TableCell>{new Date(employee.hire_date).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleActive(employee.id, employee.is_active)}
+                        >
+                          {employee.is_active ? (
+                            <><UserMinus className="h-4 w-4 mr-1" /> Deactivate</>
+                          ) : (
+                            <><UserCheck className="h-4 w-4 mr-1" /> Activate</>
+                          )}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {employees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         No employees found
                       </TableCell>
                     </TableRow>
@@ -123,6 +158,8 @@ export default function EmployeesPage() {
             )}
           </CardContent>
         </Card>
+
+        <AddEmployeeDrawer open={addOpen} onOpenChange={setAddOpen} />
       </div>
     </AppLayout>
   );

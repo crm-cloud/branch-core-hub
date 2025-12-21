@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { AppSidebar, MobileNav } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -26,12 +27,15 @@ export function AppLayout({ children }: AppLayoutProps) {
           <h1 className="text-xl font-bold">
             <span className="text-accent">Incline</span>
           </h1>
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={profile?.avatar_url ?? undefined} />
-            <AvatarFallback className="bg-accent text-accent-foreground text-xs">
-              {getInitials(profile?.full_name)}
-            </AvatarFallback>
-          </Avatar>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url ?? undefined} />
+              <AvatarFallback className="bg-accent text-accent-foreground text-xs">
+                {getInitials(profile?.full_name)}
+              </AvatarFallback>
+            </Avatar>
+          </div>
         </header>
 
         {/* Main content */}
