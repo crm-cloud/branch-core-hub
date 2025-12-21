@@ -4,16 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Plus, User } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
+import { BranchSelector } from '@/components/dashboard/BranchSelector';
+import { Search, Plus, User, Users, UserCheck, UserX, TrendingUp } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useBranches } from '@/hooks/useBranches';
 import { useState } from 'react';
 
 export default function MembersPage() {
   const [search, setSearch] = useState('');
+  const { data: branches = [] } = useBranches();
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+
+  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
 
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ['members', search],
+    queryKey: ['members', search, branchFilter],
     queryFn: async () => {
       let query = supabase
         .from('members')
@@ -25,6 +32,10 @@ export default function MembersPage() {
         .order('created_at', { ascending: false })
         .limit(50);
 
+      if (branchFilter) {
+        query = query.eq('branch_id', branchFilter);
+      }
+
       if (search) {
         query = query.or(`member_code.ilike.%${search}%`);
       }
@@ -35,9 +46,16 @@ export default function MembersPage() {
     },
   });
 
+  const stats = {
+    total: members.length,
+    active: members.filter((m: any) => m.status === 'active').length,
+    inactive: members.filter((m: any) => m.status === 'inactive').length,
+    suspended: members.filter((m: any) => m.status === 'suspended').length,
+  };
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      active: 'bg-green-500/10 text-green-500',
+      active: 'bg-success/10 text-success',
       inactive: 'bg-muted text-muted-foreground',
       suspended: 'bg-destructive/10 text-destructive',
     };
@@ -47,12 +65,48 @@ export default function MembersPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h1 className="text-2xl font-bold">Members</h1>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Member
-          </Button>
+          <div className="flex items-center gap-3">
+            <BranchSelector
+              branches={branches}
+              selectedBranch={selectedBranch}
+              onBranchChange={setSelectedBranch}
+              showAllOption={true}
+            />
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Member
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          <StatCard
+            title="Total Members"
+            value={stats.total}
+            icon={Users}
+            variant="default"
+          />
+          <StatCard
+            title="Active"
+            value={stats.active}
+            icon={UserCheck}
+            variant="success"
+          />
+          <StatCard
+            title="Inactive"
+            value={stats.inactive}
+            icon={UserX}
+            variant="default"
+          />
+          <StatCard
+            title="Suspended"
+            value={stats.suspended}
+            icon={UserX}
+            variant="destructive"
+          />
         </div>
 
         <Card>

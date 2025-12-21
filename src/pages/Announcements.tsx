@@ -4,15 +4,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Megaphone, MessageSquare, Mail, Phone, Send, Trash2, Edit } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
+import { Plus, Megaphone, MessageSquare, Mail, Phone, Send, Trash2, Edit, FileText, Copy } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { communicationService } from '@/services/communicationService';
+import { messageTemplates, getTemplatesByType, type MessageTemplate } from '@/data/messageTemplates';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -30,8 +33,11 @@ export default function AnnouncementsPage() {
     is_active: true,
   });
   
+  const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
+  const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
+  
   const [broadcastData, setBroadcastData] = useState({
-    type: 'whatsapp',
+    type: 'whatsapp' as 'sms' | 'email' | 'whatsapp',
     message: '',
     audience: 'all',
   });
@@ -89,15 +95,117 @@ export default function AnnouncementsPage() {
     // This would send to all members - for now just log
     toast.success(`Broadcast initiated via ${broadcastData.type}`);
     setShowBroadcastDialog(false);
-    setBroadcastData({ type: 'whatsapp', message: '', audience: 'all' });
+    setBroadcastData({ type: 'whatsapp' as const, message: '', audience: 'all' });
   };
 
   return (
     <AppLayout>
       <div className="space-y-6">
+        {/* Stats Row */}
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          <StatCard
+            title="Total Announcements"
+            value={announcements.length}
+            icon={Megaphone}
+            variant="default"
+          />
+          <StatCard
+            title="Active"
+            value={announcements.filter((a: any) => a.is_active).length}
+            icon={Megaphone}
+            variant="success"
+          />
+          <StatCard
+            title="Messages Sent"
+            value={commLogs.length}
+            icon={Send}
+            variant="info"
+          />
+          <StatCard
+            title="Templates"
+            value={messageTemplates.length}
+            icon={FileText}
+            variant="accent"
+          />
+        </div>
+
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Communication Hub</h1>
           <div className="flex gap-2">
+            {/* Templates Sheet */}
+            <Sheet open={templateSheetOpen} onOpenChange={setTemplateSheetOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Templates
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[500px] sm:max-w-[500px]">
+                <SheetHeader>
+                  <SheetTitle>Message Templates</SheetTitle>
+                </SheetHeader>
+                <div className="mt-6 space-y-4">
+                  <Tabs defaultValue="whatsapp">
+                    <TabsList className="w-full">
+                      <TabsTrigger value="whatsapp" className="flex-1">
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        WhatsApp
+                      </TabsTrigger>
+                      <TabsTrigger value="sms" className="flex-1">
+                        <Phone className="h-4 w-4 mr-1" />
+                        SMS
+                      </TabsTrigger>
+                      <TabsTrigger value="email" className="flex-1">
+                        <Mail className="h-4 w-4 mr-1" />
+                        Email
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    {(['whatsapp', 'sms', 'email'] as const).map((type) => (
+                      <TabsContent key={type} value={type} className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                        {getTemplatesByType(type).map((template) => (
+                          <Card 
+                            key={template.id} 
+                            className="cursor-pointer hover:border-accent transition-colors"
+                            onClick={() => {
+                              setBroadcastData({ ...broadcastData, type, message: template.content });
+                              setTemplateSheetOpen(false);
+                              setShowBroadcastDialog(true);
+                            }}
+                          >
+                            <CardHeader className="pb-2">
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-sm font-medium">{template.name}</CardTitle>
+                                <Badge variant="outline" className="text-xs capitalize">{template.category}</Badge>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+                                {template.content.slice(0, 150)}...
+                              </p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="mt-2 w-full"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(template.content);
+                                  toast.success('Template copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3 mr-1" />
+                                Copy
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                </div>
+              </SheetContent>
+            </Sheet>
+
             <Dialog open={showBroadcastDialog} onOpenChange={setShowBroadcastDialog}>
               <DialogTrigger asChild>
                 <Button variant="outline">
@@ -112,7 +220,7 @@ export default function AnnouncementsPage() {
                 <div className="space-y-4">
                   <div>
                     <Label>Channel</Label>
-                    <Select value={broadcastData.type} onValueChange={(v) => setBroadcastData({ ...broadcastData, type: v })}>
+                    <Select value={broadcastData.type} onValueChange={(v: 'sms' | 'email' | 'whatsapp') => setBroadcastData({ ...broadcastData, type: v })}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
