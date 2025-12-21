@@ -13,7 +13,7 @@ import { format, addDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
 import { CreditCard, IndianRupee, Calendar, User } from 'lucide-react';
 
-interface PurchaseMembershipDialogProps {
+interface PurchaseMembershipDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   memberId: string;
@@ -21,13 +21,13 @@ interface PurchaseMembershipDialogProps {
   branchId: string;
 }
 
-export function PurchaseMembershipDialog({ 
+export function PurchaseMembershipDrawer({ 
   open, 
   onOpenChange, 
   memberId, 
   memberName,
   branchId 
-}: PurchaseMembershipDialogProps) {
+}: PurchaseMembershipDrawerProps) {
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [discountAmount, setDiscountAmount] = useState(0);

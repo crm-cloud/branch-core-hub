@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { StatCard } from '@/components/ui/stat-card';
 import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { AddMemberDialog } from '@/components/members/AddMemberDialog';
-import { PurchaseMembershipDialog } from '@/components/members/PurchaseMembershipDialog';
+import { AddMemberDrawer } from '@/components/members/AddMemberDrawer';
+import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershipDrawer';
 import { Search, Plus, User, Users, UserCheck, UserX, CreditCard } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -84,13 +84,13 @@ export default function MembersPage() {
               Add Member
             </Button>
           </div>
-          <AddMemberDialog 
+          <AddMemberDrawer 
             open={addMemberOpen} 
             onOpenChange={setAddMemberOpen} 
             branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''} 
           />
           {selectedMember && (
-            <PurchaseMembershipDialog
+            <PurchaseMembershipDrawer
               open={purchaseOpen}
               onOpenChange={setPurchaseOpen}
               memberId={selectedMember.id}

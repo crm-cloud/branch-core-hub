@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,14 +8,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { UserPlus } from 'lucide-react';
 
-interface AddMemberDialogProps {
+interface AddMemberDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId: string;
 }
 
-export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialogProps) {
+export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawerProps) {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -85,24 +86,28 @@ export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialo
       toast.success('Member added successfully');
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onOpenChange(false);
-      setFormData({
-        fullName: '',
-        email: '',
-        phone: '',
-        gender: '',
-        dateOfBirth: '',
-        address: '',
-        emergencyContactName: '',
-        emergencyContactPhone: '',
-        fitnessGoals: '',
-        healthConditions: '',
-        source: 'walk-in',
-      });
+      resetForm();
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to add member');
     },
   });
+
+  const resetForm = () => {
+    setFormData({
+      fullName: '',
+      email: '',
+      phone: '',
+      gender: '',
+      dateOfBirth: '',
+      address: '',
+      emergencyContactName: '',
+      emergencyContactPhone: '',
+      fitnessGoals: '',
+      healthConditions: '',
+      source: 'walk-in',
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,12 +123,16 @@ export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialo
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add New Member</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            Add New Member
+          </SheetTitle>
+        </SheetHeader>
+        
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name *</Label>
@@ -203,17 +212,19 @@ export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialo
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="emergencyContactName">Emergency Contact Name</Label>
+              <Label htmlFor="emergencyContactName">Emergency Contact</Label>
               <Input
                 id="emergencyContactName"
+                placeholder="Name"
                 value={formData.emergencyContactName}
                 onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="emergencyContactPhone">Emergency Contact Phone</Label>
+              <Label htmlFor="emergencyContactPhone">Emergency Phone</Label>
               <Input
                 id="emergencyContactPhone"
+                placeholder="Phone"
                 value={formData.emergencyContactPhone}
                 onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
               />
@@ -226,7 +237,8 @@ export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialo
               id="fitnessGoals"
               value={formData.fitnessGoals}
               onChange={(e) => setFormData({ ...formData, fitnessGoals: e.target.value })}
-              placeholder="e.g., Weight loss, muscle building, general fitness..."
+              placeholder="e.g., Weight loss, muscle building..."
+              rows={2}
             />
           </div>
 
@@ -236,20 +248,21 @@ export function AddMemberDialog({ open, onOpenChange, branchId }: AddMemberDialo
               id="healthConditions"
               value={formData.healthConditions}
               onChange={(e) => setFormData({ ...formData, healthConditions: e.target.value })}
-              placeholder="Any medical conditions or injuries..."
+              placeholder="Any medical conditions..."
+              rows={2}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMember.isPending}>
+            <Button type="submit" className="flex-1" disabled={createMember.isPending}>
               {createMember.isPending ? 'Adding...' : 'Add Member'}
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

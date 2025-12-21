@@ -2,7 +2,8 @@ import type { Database } from '@/integrations/supabase/types';
 import {
   LayoutDashboard, Users, UserPlus, CreditCard, Calendar, Dumbbell, Package,
   Settings, Building2, ClipboardList, Megaphone, BarChart3, Wallet, Clock,
-  Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, Briefcase, Globe,
+  Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, 
+  Briefcase, Globe, MessageSquare, Plug,
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -40,6 +41,7 @@ export const menuConfig: MenuSection[] = [
     items: [
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Integrations', href: '/integrations', icon: Plug, roles: ['owner', 'admin'] },
     ],
   },
   {
@@ -89,6 +91,7 @@ export const menuConfig: MenuSection[] = [
       { label: 'User Management', href: '/admin/users', icon: Users, roles: ['owner', 'admin'] },
       { label: 'Branches', href: '/branches', icon: Building2, roles: ['owner', 'admin'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
+      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Website CMS', href: '/website-cms', icon: Globe, roles: ['owner', 'admin'] },
       { label: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
     ],
