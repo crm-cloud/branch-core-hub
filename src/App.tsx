@@ -22,10 +22,13 @@ import PTSessionsPage from "./pages/PTSessions";
 import AIFitnessPage from "./pages/AIFitness";
 import InventoryPage from "./pages/Inventory";
 import EquipmentPage from "./pages/Equipment";
+import EquipmentMaintenancePage from "./pages/EquipmentMaintenance";
 import LockersPage from "./pages/Lockers";
 import EmployeesPage from "./pages/Employees";
+import HRMPage from "./pages/HRM";
 import TrainersPage from "./pages/Trainers";
 import StaffAttendancePage from "./pages/StaffAttendance";
+import TasksPage from "./pages/Tasks";
 import AnalyticsPage from "./pages/Analytics";
 import AuditLogsPage from "./pages/AuditLogs";
 import AdminUsersPage from "./pages/AdminUsers";
@@ -68,7 +71,10 @@ const App = () => (
             <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
             <Route path="/inventory" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><InventoryPage /></ProtectedRoute>} />
             <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
+            <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentMaintenancePage /></ProtectedRoute>} />
             <Route path="/lockers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LockersPage /></ProtectedRoute>} />
+            <Route path="/hrm" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><HRMPage /></ProtectedRoute>} />
+            <Route path="/tasks" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><TasksPage /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EmployeesPage /></ProtectedRoute>} />
             <Route path="/trainers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><TrainersPage /></ProtectedRoute>} />
             <Route path="/staff-attendance" element={<ProtectedRoute><StaffAttendancePage /></ProtectedRoute>} />

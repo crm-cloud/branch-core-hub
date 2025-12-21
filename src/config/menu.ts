@@ -1,21 +1,8 @@
 import type { Database } from '@/integrations/supabase/types';
 import {
-  LayoutDashboard,
-  Users,
-  UserPlus,
-  CreditCard,
-  Calendar,
-  Dumbbell,
-  Package,
-  Settings,
-  Building2,
-  ClipboardList,
-  Megaphone,
-  BarChart3,
-  Wallet,
-  Clock,
-  Lock,
-  Sparkles,
+  LayoutDashboard, Users, UserPlus, CreditCard, Calendar, Dumbbell, Package,
+  Settings, Building2, ClipboardList, Megaphone, BarChart3, Wallet, Clock,
+  Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, Briefcase,
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -51,7 +38,7 @@ export const menuConfig: MenuSection[] = [
   {
     title: 'Billing',
     items: [
-      { label: 'Invoices', href: '/invoices', icon: CreditCard, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
     ],
   },
@@ -64,16 +51,26 @@ export const menuConfig: MenuSection[] = [
     ],
   },
   {
+    title: 'Store',
+    items: [
+      { label: 'E-commerce', href: '/store', icon: ShoppingBag, roles: ['owner', 'admin', 'manager'] },
+      { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
+    ],
+  },
+  {
     title: 'Operations',
     items: [
       { label: 'Inventory', href: '/inventory', icon: Package, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Equipment', href: '/equipment', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
     ],
   },
   {
     title: 'Staff',
     items: [
+      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
       { label: 'Employees', href: '/employees', icon: Users, roles: ['owner', 'admin', 'manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager', 'staff', 'trainer'] },
