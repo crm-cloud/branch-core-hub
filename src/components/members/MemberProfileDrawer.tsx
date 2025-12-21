@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,11 +9,18 @@ import { Separator } from '@/components/ui/separator';
 import { 
   User, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
-  CheckCircle, XCircle, Pause, History
+  CheckCircle, XCircle, Pause, History, Snowflake, 
+  Play, UserCog, IndianRupee, Ruler, IdCard
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
+import { FreezeMembershipDrawer } from './FreezeMembershipDrawer';
+import { UnfreezeMembershipDrawer } from './UnfreezeMembershipDrawer';
+import { AssignTrainerDrawer } from './AssignTrainerDrawer';
+import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
+import { CancelMembershipDrawer } from './CancelMembershipDrawer';
+import { MeasurementProgressView } from './MeasurementProgressView';
 
 interface MemberProfileDrawerProps {
   open: boolean;
@@ -29,6 +37,12 @@ export function MemberProfileDrawer({
   onPurchaseMembership,
   onPurchasePT
 }: MemberProfileDrawerProps) {
+  const [freezeOpen, setFreezeOpen] = useState(false);
+  const [unfreezeOpen, setUnfreezeOpen] = useState(false);
+  const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
+  const [measurementOpen, setMeasurementOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+
   // Fetch full member details with all relations
   const { data: memberDetails } = useQuery({
     queryKey: ['member-details', member?.id],
@@ -210,7 +224,7 @@ export function MemberProfileDrawer({
             </Card>
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - Row 1 */}
           <div className="flex gap-2">
             <Button 
               variant={activeMembership ? 'outline' : 'default'} 
@@ -231,14 +245,40 @@ export function MemberProfileDrawer({
             </Button>
           </div>
 
+          {/* Quick Actions - Row 2 */}
+          <div className="grid grid-cols-4 gap-2">
+            {activeMembership?.status === 'active' && (
+              <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)}>
+                <Snowflake className="h-4 w-4" />
+              </Button>
+            )}
+            {activeMembership?.status === 'frozen' && (
+              <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)}>
+                <Play className="h-4 w-4" />
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)}>
+              <UserCog className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)}>
+              <Ruler className="h-4 w-4" />
+            </Button>
+            {activeMembership && (
+              <Button variant="outline" size="sm" className="text-destructive" onClick={() => setCancelOpen(true)}>
+                <XCircle className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
           <Separator />
 
           {/* Tabs for Details */}
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="membership">Membership</TabsTrigger>
-              <TabsTrigger value="payments">Payments</TabsTrigger>
+              <TabsTrigger value="membership">Plan</TabsTrigger>
+              <TabsTrigger value="measurements">Body</TabsTrigger>
+              <TabsTrigger value="payments">Pay</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
 
@@ -472,6 +512,10 @@ export function MemberProfileDrawer({
               )}
             </TabsContent>
 
+            <TabsContent value="measurements" className="space-y-4 mt-4">
+              <MeasurementProgressView memberId={member.id} />
+            </TabsContent>
+
             <TabsContent value="activity" className="space-y-4 mt-4">
               <Card>
                 <CardHeader className="pb-2">
@@ -507,6 +551,43 @@ export function MemberProfileDrawer({
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Drawer Components */}
+        {activeMembership && (
+          <>
+            <FreezeMembershipDrawer
+              open={freezeOpen}
+              onOpenChange={setFreezeOpen}
+              membershipId={activeMembership.id}
+              memberName={profile?.full_name}
+            />
+            <UnfreezeMembershipDrawer
+              open={unfreezeOpen}
+              onOpenChange={setUnfreezeOpen}
+              membershipId={activeMembership.id}
+              memberName={profile?.full_name}
+            />
+            <CancelMembershipDrawer
+              open={cancelOpen}
+              onOpenChange={setCancelOpen}
+              membership={activeMembership}
+              memberName={profile?.full_name}
+            />
+          </>
+        )}
+        <AssignTrainerDrawer
+          open={assignTrainerOpen}
+          onOpenChange={setAssignTrainerOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+          branchId={member.branch_id}
+        />
+        <RecordMeasurementDrawer
+          open={measurementOpen}
+          onOpenChange={setMeasurementOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+        />
       </SheetContent>
     </Sheet>
   );

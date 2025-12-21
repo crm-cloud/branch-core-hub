@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Gift } from 'lucide-react';
+import { UserPlus, Gift, IdCard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { MemberAvatarUpload } from './MemberAvatarUpload';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -19,6 +20,7 @@ interface AddMemberDrawerProps {
 
 export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawerProps) {
   const { user } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -32,6 +34,8 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     healthConditions: '',
     source: 'walk-in',
     referralCode: '',
+    governmentIdType: '',
+    governmentIdNumber: '',
   });
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
@@ -82,6 +86,9 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           healthConditions: data.healthConditions || null,
           referredBy: referrerInfo?.id || null,
           createdBy: user?.id || null,
+          avatarUrl: avatarUrl || null,
+          governmentIdType: data.governmentIdType || null,
+          governmentIdNumber: data.governmentIdNumber || null,
         },
       });
 
@@ -122,6 +129,7 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
   });
 
   const resetForm = () => {
+    setAvatarUrl('');
     setFormData({
       fullName: '',
       email: '',
@@ -135,6 +143,8 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       healthConditions: '',
       source: 'walk-in',
       referralCode: '',
+      governmentIdType: '',
+      governmentIdNumber: '',
     });
     setReferrerInfo(null);
   };
@@ -163,6 +173,16 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
         </SheetHeader>
         
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          {/* Avatar Upload */}
+          <div className="flex justify-center pb-2">
+            <MemberAvatarUpload
+              avatarUrl={avatarUrl}
+              name={formData.fullName || 'New Member'}
+              onAvatarChange={setAvatarUrl}
+              size="lg"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name *</Label>
@@ -259,6 +279,36 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
                 Referred by: {referrerInfo.name}
               </p>
             )}
+          </div>
+
+          {/* Government ID Section */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <IdCard className="h-4 w-4 text-primary" />
+              Government ID (for verification)
+            </Label>
+            <div className="grid grid-cols-2 gap-4">
+              <Select 
+                value={formData.governmentIdType} 
+                onValueChange={(v) => setFormData({ ...formData, governmentIdType: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="ID Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aadhaar">Aadhaar Card</SelectItem>
+                  <SelectItem value="pan">PAN Card</SelectItem>
+                  <SelectItem value="passport">Passport</SelectItem>
+                  <SelectItem value="driving_license">Driving License</SelectItem>
+                  <SelectItem value="voter_id">Voter ID</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="ID Number"
+                value={formData.governmentIdNumber}
+                onChange={(e) => setFormData({ ...formData, governmentIdNumber: e.target.value })}
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
