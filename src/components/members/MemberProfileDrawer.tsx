@@ -558,13 +558,13 @@ export function MemberProfileDrawer({
             <FreezeMembershipDrawer
               open={freezeOpen}
               onOpenChange={setFreezeOpen}
-              membershipId={activeMembership.id}
+              membership={activeMembership}
               memberName={profile?.full_name}
             />
             <UnfreezeMembershipDrawer
               open={unfreezeOpen}
               onOpenChange={setUnfreezeOpen}
-              membershipId={activeMembership.id}
+              membership={activeMembership}
               memberName={profile?.full_name}
             />
             <CancelMembershipDrawer
