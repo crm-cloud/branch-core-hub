@@ -98,25 +98,37 @@ Deno.serve(async (req) => {
 
       console.log(`Created auth user: ${user.email}`);
 
-      // Create profile
+      // Update profile (profile is auto-created by trigger, just update phone)
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({
-          id: authUser.user.id,
+        .update({
           full_name: user.full_name,
-          email: user.email,
           phone: user.phone,
-          role: user.role === 'member' ? 'member' : user.role,
-        });
+        })
+        .eq('id', authUser.user.id);
 
       if (profileError) {
-        console.error(`Profile error for ${user.email}:`, profileError);
+        console.error(`Profile update error for ${user.email}:`, profileError);
+      }
+
+      // Insert user role into user_roles table
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .upsert({
+          user_id: authUser.user.id,
+          role: user.role,
+        }, { onConflict: 'user_id,role' });
+
+      if (roleError) {
+        console.error(`Role insert error for ${user.email}:`, roleError);
+      } else {
+        console.log(`Assigned role '${user.role}' to ${user.email}`);
       }
 
       createdUsers.push({ ...user, id: authUser.user.id });
     }
 
-    // Create trainers
+    // Create trainers (without experience_years - column doesn't exist)
     const trainers = createdUsers.filter(u => u.role === 'trainer');
     for (const trainer of trainers) {
       const { error: trainerError } = await supabase
@@ -125,8 +137,10 @@ Deno.serve(async (req) => {
           user_id: trainer.id,
           branch_id: branchId,
           specializations: ['Strength Training', 'HIIT', 'Functional Training'],
-          experience_years: Math.floor(Math.random() * 10) + 2,
+          certifications: ['ACE Certified', 'CPR Certified'],
+          bio: `Experienced personal trainer specializing in strength and conditioning.`,
           hourly_rate: 500 + Math.floor(Math.random() * 500),
+          max_clients: 15,
           is_active: true,
         }, { onConflict: 'user_id' });
 
@@ -187,9 +201,41 @@ Deno.serve(async (req) => {
       } else {
         console.log(`Created employee: ${emp.full_name} (${empCode})`);
       }
+
+      // Link staff/manager to branch via staff_branches
+      const { error: staffBranchError } = await supabase
+        .from('staff_branches')
+        .upsert({
+          user_id: emp.id,
+          branch_id: branchId,
+          is_primary: true,
+        }, { onConflict: 'user_id,branch_id' });
+
+      if (staffBranchError) {
+        console.error(`Staff branch link error for ${emp.email}:`, staffBranchError);
+      } else {
+        console.log(`Linked ${emp.full_name} to branch`);
+      }
+
+      // Make manager a branch manager
+      if (emp.role === 'manager') {
+        const { error: branchManagerError } = await supabase
+          .from('branch_managers')
+          .upsert({
+            user_id: emp.id,
+            branch_id: branchId,
+            is_primary: true,
+          }, { onConflict: 'user_id,branch_id' });
+
+        if (branchManagerError) {
+          console.error(`Branch manager link error for ${emp.email}:`, branchManagerError);
+        } else {
+          console.log(`Made ${emp.full_name} a branch manager`);
+        }
+      }
     }
 
-    // Create product categories
+    // Create product categories (without branch_id - column doesn't exist)
     const categories = [
       { name: 'Supplements', description: 'Protein, vitamins, and nutritional supplements' },
       { name: 'Equipment', description: 'Fitness equipment and accessories' },
@@ -213,8 +259,8 @@ Deno.serve(async (req) => {
       const { data: newCat, error: catError } = await supabase
         .from('product_categories')
         .insert({
-          ...cat,
-          branch_id: branchId,
+          name: cat.name,
+          description: cat.description,
           is_active: true,
         })
         .select()
@@ -317,6 +363,40 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Create PT packages
+    const ptPackages = [
+      { name: '5 Sessions Pack', total_sessions: 5, validity_days: 30, price: 2500 },
+      { name: '10 Sessions Pack', total_sessions: 10, validity_days: 60, price: 4500 },
+      { name: '20 Sessions Pack', total_sessions: 20, validity_days: 90, price: 8000 },
+    ];
+
+    for (const pkg of ptPackages) {
+      const { data: existingPkg } = await supabase
+        .from('pt_packages')
+        .select('id')
+        .eq('name', pkg.name)
+        .single();
+
+      if (existingPkg) {
+        console.log(`PT Package ${pkg.name} already exists, skipping...`);
+        continue;
+      }
+
+      const { error: pkgError } = await supabase
+        .from('pt_packages')
+        .insert({
+          ...pkg,
+          branch_id: branchId,
+          is_active: true,
+        });
+
+      if (pkgError) {
+        console.error(`PT Package creation error for ${pkg.name}:`, pkgError);
+      } else {
+        console.log(`Created PT package: ${pkg.name}`);
+      }
+    }
+
     console.log('Seed data creation completed!');
 
     return new Response(
@@ -326,6 +406,9 @@ Deno.serve(async (req) => {
         data: {
           branch: branchId,
           usersCreated: createdUsers.length,
+          trainersCreated: trainers.length,
+          membersCreated: members.length,
+          employeesCreated: employees.length,
           categoriesCreated: createdCategories.length,
           productsSeeded: products.length,
           plansSeeded: plans.length,

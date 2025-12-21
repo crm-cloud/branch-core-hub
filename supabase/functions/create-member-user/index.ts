@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
       source,
       fitnessGoals,
       healthConditions,
-      referredBy
+      referredBy,
+      createdBy
     } = await req.json()
 
     if (!email || !fullName || !branchId) {
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
       throw roleError
     }
 
-    // Create member record with all fields
+    // Create member record with all fields including created_by
     const { data: member, error: memberError } = await supabaseAdmin
       .from('members')
       .insert({
@@ -146,6 +147,7 @@ Deno.serve(async (req) => {
         fitness_goals: fitnessGoals || null,
         health_conditions: healthConditions || null,
         referred_by: referredBy || null,
+        created_by: createdBy || callingUser.id, // Track who created this member
       })
       .select('id, member_code')
       .single()
