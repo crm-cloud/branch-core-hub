@@ -751,6 +751,63 @@ export type Database = {
           },
         ]
       }
+      diet_templates: {
+        Row: {
+          branch_id: string | null
+          calories_target: number | null
+          created_at: string
+          description: string | null
+          diet_type: string | null
+          id: string
+          is_active: boolean | null
+          meal_plan: Json
+          name: string
+          trainer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          calories_target?: number | null
+          created_at?: string
+          description?: string | null
+          diet_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          meal_plan?: Json
+          name: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          calories_target?: number | null
+          created_at?: string
+          description?: string | null
+          diet_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          meal_plan?: Json
+          name?: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diet_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diet_templates_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ecommerce_orders: {
         Row: {
           branch_id: string
@@ -2795,6 +2852,76 @@ export type Database = {
           },
         ]
       }
+      trainer_commissions: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          commission_type: string
+          created_at: string
+          id: string
+          notes: string | null
+          paid_at: string | null
+          percentage: number | null
+          pt_package_id: string | null
+          session_id: string | null
+          status: string
+          trainer_id: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          approved_by?: string | null
+          commission_type: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          percentage?: number | null
+          pt_package_id?: string | null
+          session_id?: string | null
+          status?: string
+          trainer_id: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          commission_type?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          percentage?: number | null
+          pt_package_id?: string | null
+          session_id?: string | null
+          status?: string
+          trainer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_commissions_pt_package_id_fkey"
+            columns: ["pt_package_id"]
+            isOneToOne: false
+            referencedRelation: "member_pt_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_commissions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "pt_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_commissions_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers: {
         Row: {
           bio: string | null
@@ -3011,6 +3138,66 @@ export type Database = {
           },
         ]
       }
+      workout_templates: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          description: string | null
+          difficulty_level: string | null
+          duration_weeks: number | null
+          exercises: Json
+          goal: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          trainer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          description?: string | null
+          difficulty_level?: string | null
+          duration_weeks?: number | null
+          exercises?: Json
+          goal?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          description?: string | null
+          difficulty_level?: string | null
+          duration_weeks?: number | null
+          exercises?: Json
+          goal?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          trainer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_templates_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -3026,6 +3213,18 @@ export type Database = {
       }
       cancel_class_booking: {
         Args: { _booking_id: string; _reason?: string }
+        Returns: Json
+      }
+      check_trainer_slot_available: {
+        Args: {
+          _duration_minutes?: number
+          _scheduled_at: string
+          _trainer_id: string
+        }
+        Returns: boolean
+      }
+      complete_pt_session: {
+        Args: { _notes?: string; _session_id: string }
         Returns: Json
       }
       get_member_id: { Args: { _user_id: string }; Returns: string }
@@ -3064,6 +3263,16 @@ export type Database = {
         Returns: Json
       }
       member_check_out: { Args: { _member_id: string }; Returns: Json }
+      purchase_pt_package: {
+        Args: {
+          _branch_id: string
+          _member_id: string
+          _package_id: string
+          _price_paid: number
+          _trainer_id: string
+        }
+        Returns: Json
+      }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
