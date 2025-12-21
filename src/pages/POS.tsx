@@ -245,12 +245,12 @@ export default function POSPage() {
                   className="pl-9"
                 />
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select value={categoryFilter || "all"} onValueChange={(val) => setCategoryFilter(val === "all" ? "" : val)}>
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   {categories.map((cat: any) => (
                     <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                   ))}
