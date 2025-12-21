@@ -6,13 +6,18 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { StatCard } from '@/components/ui/stat-card';
 import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { Search, Plus, User, Users, UserCheck, UserX, TrendingUp } from 'lucide-react';
+import { AddMemberDialog } from '@/components/members/AddMemberDialog';
+import { PurchaseMembershipDialog } from '@/components/members/PurchaseMembershipDialog';
+import { Search, Plus, User, Users, UserCheck, UserX, CreditCard } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
 import { useState } from 'react';
 
 export default function MembersPage() {
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
   const [search, setSearch] = useState('');
   const { data: branches = [] } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
@@ -74,11 +79,25 @@ export default function MembersPage() {
               onBranchChange={setSelectedBranch}
               showAllOption={true}
             />
-            <Button>
+            <Button onClick={() => setAddMemberOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Member
             </Button>
           </div>
+          <AddMemberDialog 
+            open={addMemberOpen} 
+            onOpenChange={setAddMemberOpen} 
+            branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''} 
+          />
+          {selectedMember && (
+            <PurchaseMembershipDialog
+              open={purchaseOpen}
+              onOpenChange={setPurchaseOpen}
+              memberId={selectedMember.id}
+              memberName={selectedMember.profiles?.full_name || 'Member'}
+              branchId={selectedMember.branch_id}
+            />
+          )}
         </div>
 
         {/* Stats Row */}
@@ -160,7 +179,16 @@ export default function MembersPage() {
                           <Badge className={getStatusColor(member.status)}>{member.status}</Badge>
                         </TableCell>
                         <TableCell>
-                          {activeMembership ? activeMembership.membership_plans?.name : 'No active plan'}
+                          {activeMembership ? activeMembership.membership_plans?.name : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => { setSelectedMember(member); setPurchaseOpen(true); }}
+                            >
+                              <CreditCard className="h-3 w-3 mr-1" />
+                              Add Plan
+                            </Button>
+                          )}
                         </TableCell>
                         <TableCell>{new Date(member.joined_at).toLocaleDateString()}</TableCell>
                       </TableRow>

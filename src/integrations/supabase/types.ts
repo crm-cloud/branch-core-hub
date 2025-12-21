@@ -1142,6 +1142,50 @@ export type Database = {
           },
         ]
       }
+      integration_settings: {
+        Row: {
+          branch_id: string | null
+          config: Json | null
+          created_at: string | null
+          credentials: Json | null
+          id: string
+          integration_type: string
+          is_active: boolean | null
+          provider: string
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          config?: Json | null
+          created_at?: string | null
+          credentials?: Json | null
+          id?: string
+          integration_type: string
+          is_active?: boolean | null
+          provider: string
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          config?: Json | null
+          created_at?: string | null
+          credentials?: Json | null
+          id?: string
+          integration_type?: string
+          is_active?: boolean | null
+          provider?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory: {
         Row: {
           branch_id: string
@@ -2001,6 +2045,79 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "membership_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_transactions: {
+        Row: {
+          amount: number
+          branch_id: string
+          created_at: string | null
+          currency: string | null
+          gateway: string
+          gateway_order_id: string | null
+          gateway_payment_id: string | null
+          gateway_signature: string | null
+          id: string
+          invoice_id: string | null
+          member_id: string | null
+          status: string
+          updated_at: string | null
+          webhook_data: Json | null
+        }
+        Insert: {
+          amount: number
+          branch_id: string
+          created_at?: string | null
+          currency?: string | null
+          gateway: string
+          gateway_order_id?: string | null
+          gateway_payment_id?: string | null
+          gateway_signature?: string | null
+          id?: string
+          invoice_id?: string | null
+          member_id?: string | null
+          status?: string
+          updated_at?: string | null
+          webhook_data?: Json | null
+        }
+        Update: {
+          amount?: number
+          branch_id?: string
+          created_at?: string | null
+          currency?: string | null
+          gateway?: string
+          gateway_order_id?: string | null
+          gateway_payment_id?: string | null
+          gateway_signature?: string | null
+          id?: string
+          invoice_id?: string | null
+          member_id?: string | null
+          status?: string
+          updated_at?: string | null
+          webhook_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_transactions_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_transactions_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_transactions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -3073,6 +3190,72 @@ export type Database = {
             foreignKeyName: "wallets_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          branch_id: string
+          contact_name: string | null
+          content: string | null
+          created_at: string | null
+          direction: string
+          id: string
+          media_url: string | null
+          member_id: string | null
+          message_type: string
+          phone_number: string
+          sent_by: string | null
+          status: string | null
+          updated_at: string | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          branch_id: string
+          contact_name?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction: string
+          id?: string
+          media_url?: string | null
+          member_id?: string | null
+          message_type?: string
+          phone_number: string
+          sent_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          branch_id?: string
+          contact_name?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction?: string
+          id?: string
+          media_url?: string | null
+          member_id?: string | null
+          message_type?: string
+          phone_number?: string
+          sent_by?: string | null
+          status?: string | null
+          updated_at?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
             referencedRelation: "members"
             referencedColumns: ["id"]
           },

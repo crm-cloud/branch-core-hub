@@ -5,8 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Building2 } from 'lucide-react';
 import { useBranches } from '@/hooks/useBranches';
+import { AddBranchDialog } from '@/components/branches/AddBranchDialog';
+import { useState } from 'react';
 
 export default function BranchesPage() {
+  const [addBranchOpen, setAddBranchOpen] = useState(false);
   const { data: branches = [], isLoading } = useBranches();
 
   return (
@@ -14,10 +17,11 @@ export default function BranchesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Branches</h1>
-          <Button>
+          <Button onClick={() => setAddBranchOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Branch
           </Button>
+          <AddBranchDialog open={addBranchOpen} onOpenChange={setAddBranchOpen} />
         </div>
 
         <Card>
