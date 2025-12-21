@@ -6,6 +6,9 @@ verify_jwt = true
 [functions.check-setup]
 verify_jwt = false
 
+[functions.create-member-user]
+verify_jwt = true
+
 [functions.create-owner]
 verify_jwt = false
 
