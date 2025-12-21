@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, addDays } from 'date-fns';
+import { format, addDays, differenceInDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
-import { CreditCard, IndianRupee, Calendar, User, Gift } from 'lucide-react';
+import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -37,6 +37,30 @@ export function PurchaseMembershipDrawer({
 
   const { data: plans = [] } = usePlans(branchId);
   const selectedPlan = plans.find((p: any) => p.id === selectedPlanId);
+
+  // Check if member has active membership
+  const { data: activeMembership } = useQuery({
+    queryKey: ['active-membership-check', memberId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('*, membership_plans(name)')
+        .eq('member_id', memberId)
+        .eq('status', 'active')
+        .gte('end_date', format(new Date(), 'yyyy-MM-dd'))
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!memberId && open,
+  });
+
+  // Calculate if renewal is allowed (only 7 days before expiry or after expiry)
+  const daysUntilExpiry = activeMembership 
+    ? differenceInDays(new Date(activeMembership.end_date), new Date())
+    : null;
+  
+  const canRenew = !activeMembership || (daysUntilExpiry !== null && daysUntilExpiry <= 7);
 
   // Check if member has a pending referral
   const { data: pendingReferral } = useQuery({
@@ -248,6 +272,31 @@ export function PurchaseMembershipDrawer({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {/* Active Membership Warning */}
+          {activeMembership && !canRenew && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Member already has an active membership ({activeMembership.membership_plans?.name}) 
+                expiring on {format(new Date(activeMembership.end_date), 'dd MMM yyyy')}. 
+                Renewal is allowed only 7 days before expiry.
+                <br />
+                <span className="font-medium">Days remaining: {daysUntilExpiry}</span>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Renewal Notice */}
+          {activeMembership && canRenew && (
+            <Alert className="border-success/50 bg-success/5">
+              <CheckCircle className="h-4 w-4 text-success" />
+              <AlertDescription className="text-success">
+                Current membership expires in {daysUntilExpiry} days. 
+                New membership will start after current one ends.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Member Info */}
           <Card>
             <CardContent className="pt-4">
@@ -398,9 +447,9 @@ export function PurchaseMembershipDrawer({
             <Button 
               className="flex-1" 
               onClick={() => purchaseMembership.mutate()}
-              disabled={!selectedPlanId || purchaseMembership.isPending}
+              disabled={!selectedPlanId || purchaseMembership.isPending || !canRenew}
             >
-              {purchaseMembership.isPending ? 'Processing...' : 'Complete Purchase'}
+              {purchaseMembership.isPending ? 'Processing...' : canRenew ? 'Complete Purchase' : 'Cannot Purchase Yet'}
             </Button>
           </div>
         </div>

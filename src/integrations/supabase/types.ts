@@ -1401,6 +1401,10 @@ export type Database = {
           member_id: string | null
           notes: string | null
           pos_sale_id: string | null
+          refund_amount: number | null
+          refund_reason: string | null
+          refunded_at: string | null
+          refunded_by: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount: number | null
@@ -1419,6 +1423,10 @@ export type Database = {
           member_id?: string | null
           notes?: string | null
           pos_sale_id?: string | null
+          refund_amount?: number | null
+          refund_reason?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount?: number | null
@@ -1437,6 +1445,10 @@ export type Database = {
           member_id?: string | null
           notes?: string | null
           pos_sale_id?: string | null
+          refund_amount?: number | null
+          refund_reason?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
           tax_amount?: number | null
@@ -1463,6 +1475,13 @@ export type Database = {
             columns: ["pos_sale_id"]
             isOneToOne: false
             referencedRelation: "pos_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1847,6 +1866,84 @@ export type Database = {
           },
         ]
       }
+      member_measurements: {
+        Row: {
+          biceps_left_cm: number | null
+          biceps_right_cm: number | null
+          body_fat_percentage: number | null
+          calves_cm: number | null
+          chest_cm: number | null
+          created_at: string
+          height_cm: number | null
+          hips_cm: number | null
+          id: string
+          member_id: string
+          notes: string | null
+          photos: Json | null
+          recorded_at: string
+          recorded_by: string | null
+          thighs_left_cm: number | null
+          thighs_right_cm: number | null
+          waist_cm: number | null
+          weight_kg: number | null
+        }
+        Insert: {
+          biceps_left_cm?: number | null
+          biceps_right_cm?: number | null
+          body_fat_percentage?: number | null
+          calves_cm?: number | null
+          chest_cm?: number | null
+          created_at?: string
+          height_cm?: number | null
+          hips_cm?: number | null
+          id?: string
+          member_id: string
+          notes?: string | null
+          photos?: Json | null
+          recorded_at?: string
+          recorded_by?: string | null
+          thighs_left_cm?: number | null
+          thighs_right_cm?: number | null
+          waist_cm?: number | null
+          weight_kg?: number | null
+        }
+        Update: {
+          biceps_left_cm?: number | null
+          biceps_right_cm?: number | null
+          body_fat_percentage?: number | null
+          calves_cm?: number | null
+          chest_cm?: number | null
+          created_at?: string
+          height_cm?: number | null
+          hips_cm?: number | null
+          id?: string
+          member_id?: string
+          notes?: string | null
+          photos?: Json | null
+          recorded_at?: string
+          recorded_by?: string | null
+          thighs_left_cm?: number | null
+          thighs_right_cm?: number | null
+          waist_cm?: number | null
+          weight_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_measurements_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_measurements_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_pt_packages: {
         Row: {
           branch_id: string
@@ -2183,6 +2280,9 @@ export type Database = {
       memberships: {
         Row: {
           branch_id: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
           created_by: string | null
           discount_amount: number | null
@@ -2195,6 +2295,7 @@ export type Database = {
           original_end_date: string
           plan_id: string
           price_paid: number
+          refund_amount: number | null
           start_date: string
           status: Database["public"]["Enums"]["membership_status"]
           total_freeze_days_used: number | null
@@ -2202,6 +2303,9 @@ export type Database = {
         }
         Insert: {
           branch_id: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by?: string | null
           discount_amount?: number | null
@@ -2214,6 +2318,7 @@ export type Database = {
           original_end_date: string
           plan_id: string
           price_paid: number
+          refund_amount?: number | null
           start_date: string
           status?: Database["public"]["Enums"]["membership_status"]
           total_freeze_days_used?: number | null
@@ -2221,6 +2326,9 @@ export type Database = {
         }
         Update: {
           branch_id?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by?: string | null
           discount_amount?: number | null
@@ -2233,6 +2341,7 @@ export type Database = {
           original_end_date?: string
           plan_id?: string
           price_paid?: number
+          refund_amount?: number | null
           start_date?: string
           status?: Database["public"]["Enums"]["membership_status"]
           total_freeze_days_used?: number | null
@@ -2244,6 +2353,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memberships_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -2787,6 +2903,9 @@ export type Database = {
           emergency_contact_phone: string | null
           full_name: string | null
           gender: Database["public"]["Enums"]["gender_type"] | null
+          government_id_number: string | null
+          government_id_type: string | null
+          government_id_verified: boolean | null
           id: string
           is_active: boolean | null
           must_set_password: boolean | null
@@ -2807,6 +2926,9 @@ export type Database = {
           emergency_contact_phone?: string | null
           full_name?: string | null
           gender?: Database["public"]["Enums"]["gender_type"] | null
+          government_id_number?: string | null
+          government_id_type?: string | null
+          government_id_verified?: boolean | null
           id: string
           is_active?: boolean | null
           must_set_password?: boolean | null
@@ -2827,6 +2949,9 @@ export type Database = {
           emergency_contact_phone?: string | null
           full_name?: string | null
           gender?: Database["public"]["Enums"]["gender_type"] | null
+          government_id_number?: string | null
+          government_id_type?: string | null
+          government_id_verified?: boolean | null
           id?: string
           is_active?: boolean | null
           must_set_password?: boolean | null
