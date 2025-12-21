@@ -1,141 +1,74 @@
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Settings, Building2, Mail, Bell, Shield } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Building2, Users, Plug, Bell, Shield, Globe, Settings as SettingsIcon } from 'lucide-react';
+import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
+import { BranchSettings } from '@/components/settings/BranchSettings';
+import { UserSettings } from '@/components/settings/UserSettings';
+import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
+import { NotificationSettings } from '@/components/settings/NotificationSettings';
+import { SecuritySettings } from '@/components/settings/SecuritySettings';
+import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 
 export default function SettingsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'organization';
+
+  const handleTabChange = (value: string) => {
+    setSearchParams({ tab: value });
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Settings</h1>
+        <div className="flex items-center gap-3">
+          <SettingsIcon className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold">Settings</h1>
+            <p className="text-muted-foreground">Manage your organization settings</p>
+          </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-primary" />
-                <CardTitle>Organization</CardTitle>
-              </div>
-              <CardDescription>Manage your organization settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="org-name">Organization Name</Label>
-                <Input id="org-name" placeholder="Your Gym Name" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone</Label>
-                <Input id="timezone" placeholder="Asia/Kolkata" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="currency">Currency</Label>
-                <Input id="currency" placeholder="INR" />
-              </div>
-              <Button className="w-full">Save Changes</Button>
-            </CardContent>
-          </Card>
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-7 h-auto p-1">
+            <TabsTrigger value="organization" className="flex items-center gap-2 py-2">
+              <SettingsIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Organization</span>
+            </TabsTrigger>
+            <TabsTrigger value="branches" className="flex items-center gap-2 py-2">
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Branches</span>
+            </TabsTrigger>
+            <TabsTrigger value="users" className="flex items-center gap-2 py-2">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Users</span>
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="flex items-center gap-2 py-2">
+              <Plug className="h-4 w-4" />
+              <span className="hidden sm:inline">Integrations</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2 py-2">
+              <Bell className="h-4 w-4" />
+              <span className="hidden sm:inline">Notifications</span>
+            </TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-2 py-2">
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Security</span>
+            </TabsTrigger>
+            <TabsTrigger value="website" className="flex items-center gap-2 py-2">
+              <Globe className="h-4 w-4" />
+              <span className="hidden sm:inline">Website</span>
+            </TabsTrigger>
+          </TabsList>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-primary" />
-                <CardTitle>Email Settings</CardTitle>
-              </div>
-              <CardDescription>Configure email notifications</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Membership Reminders</Label>
-                  <p className="text-sm text-muted-foreground">Send expiry reminders to members</p>
-                </div>
-                <Switch />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Payment Receipts</Label>
-                  <p className="text-sm text-muted-foreground">Send receipts after payments</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Class Notifications</Label>
-                  <p className="text-sm text-muted-foreground">Send class booking confirmations</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Bell className="h-5 w-5 text-primary" />
-                <CardTitle>Notifications</CardTitle>
-              </div>
-              <CardDescription>Manage notification preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Low Stock Alerts</Label>
-                  <p className="text-sm text-muted-foreground">Get notified when inventory is low</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>New Lead Alerts</Label>
-                  <p className="text-sm text-muted-foreground">Get notified about new leads</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Payment Alerts</Label>
-                  <p className="text-sm text-muted-foreground">Get notified about overdue payments</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
-                <CardTitle>Security</CardTitle>
-              </div>
-              <CardDescription>Manage security settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Two-Factor Authentication</Label>
-                  <p className="text-sm text-muted-foreground">Require 2FA for all admin users</p>
-                </div>
-                <Switch />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Session Timeout</Label>
-                  <p className="text-sm text-muted-foreground">Auto logout after inactivity</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="session-duration">Session Duration (hours)</Label>
-                <Input id="session-duration" type="number" placeholder="8" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          <TabsContent value="organization"><OrganizationSettings /></TabsContent>
+          <TabsContent value="branches"><BranchSettings /></TabsContent>
+          <TabsContent value="users"><UserSettings /></TabsContent>
+          <TabsContent value="integrations"><IntegrationSettings /></TabsContent>
+          <TabsContent value="notifications"><NotificationSettings /></TabsContent>
+          <TabsContent value="security"><SecuritySettings /></TabsContent>
+          <TabsContent value="website"><WebsiteSettings /></TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );

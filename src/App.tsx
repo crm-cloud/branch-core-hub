@@ -87,15 +87,16 @@ const App = () => (
             <Route path="/staff-attendance" element={<ProtectedRoute><StaffAttendancePage /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/audit-logs" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AuditLogsPage /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminUsersPage /></ProtectedRoute>} />
-            <Route path="/branches" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><BranchesPage /></ProtectedRoute>} />
             <Route path="/announcements" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnnouncementsPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SettingsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><StorePage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
-            <Route path="/website-cms" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><WebsiteCMSPage /></ProtectedRoute>} />
-            <Route path="/integrations" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><IntegrationsPage /></ProtectedRoute>} />
+            {/* Redirects for old routes - now consolidated in Settings */}
+            <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
+            <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
+            <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
+            <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
