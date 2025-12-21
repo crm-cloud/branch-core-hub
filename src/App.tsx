@@ -40,6 +40,8 @@ import POSPage from "./pages/POS";
 import ReferralsPage from "./pages/Referrals";
 import PublicWebsite from "./pages/PublicWebsite";
 import WebsiteCMSPage from "./pages/WebsiteCMS";
+import IntegrationsPage from "./pages/Integrations";
+import WhatsAppChatPage from "./pages/WhatsAppChat";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
@@ -91,6 +93,8 @@ const App = () => (
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
             <Route path="/website-cms" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><WebsiteCMSPage /></ProtectedRoute>} />
+            <Route path="/integrations" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><IntegrationsPage /></ProtectedRoute>} />
+            <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

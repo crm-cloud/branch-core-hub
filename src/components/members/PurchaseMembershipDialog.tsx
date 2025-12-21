@@ -1,0 +1,319 @@
+import { useState } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { format, addDays } from 'date-fns';
+import { usePlans } from '@/hooks/usePlans';
+import { CreditCard, IndianRupee, Calendar, User } from 'lucide-react';
+
+interface PurchaseMembershipDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  memberId: string;
+  memberName: string;
+  branchId: string;
+}
+
+export function PurchaseMembershipDialog({ 
+  open, 
+  onOpenChange, 
+  memberId, 
+  memberName,
+  branchId 
+}: PurchaseMembershipDialogProps) {
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountReason, setDiscountReason] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const queryClient = useQueryClient();
+
+  const { data: plans = [] } = usePlans(branchId);
+  const selectedPlan = plans.find((p: any) => p.id === selectedPlanId);
+
+  const calculateTotal = () => {
+    if (!selectedPlan) return 0;
+    const base = selectedPlan.discounted_price || selectedPlan.price;
+    const admission = selectedPlan.admission_fee || 0;
+    return base + admission - discountAmount;
+  };
+
+  const calculateEndDate = () => {
+    if (!selectedPlan) return '';
+    return format(addDays(new Date(startDate), selectedPlan.duration_days), 'yyyy-MM-dd');
+  };
+
+  const purchaseMembership = useMutation({
+    mutationFn: async () => {
+      if (!selectedPlan) throw new Error('Please select a plan');
+
+      const endDate = calculateEndDate();
+      const pricePaid = calculateTotal();
+
+      // Create membership
+      const { data: membership, error: membershipError } = await supabase
+        .from('memberships')
+        .insert({
+          member_id: memberId,
+          plan_id: selectedPlanId,
+          branch_id: branchId,
+          start_date: startDate,
+          end_date: endDate,
+          original_end_date: endDate,
+          price_paid: pricePaid,
+          discount_amount: discountAmount,
+          discount_reason: discountReason || null,
+          status: 'active',
+        })
+        .select()
+        .single();
+
+      if (membershipError) throw membershipError;
+
+      // Create invoice
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          branch_id: branchId,
+          member_id: memberId,
+          invoice_number: '', // Will be auto-generated
+          subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
+          discount_amount: discountAmount,
+          tax_amount: 0,
+          total_amount: pricePaid,
+          status: 'paid',
+          due_date: startDate,
+          amount_paid: pricePaid,
+        })
+        .select()
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      // Create invoice items
+      const items: any[] = [
+        {
+          invoice_id: invoice.id,
+          description: `${selectedPlan.name} - ${selectedPlan.duration_days} days`,
+          quantity: 1,
+          unit_price: selectedPlan.discounted_price || selectedPlan.price,
+          total_amount: selectedPlan.discounted_price || selectedPlan.price,
+          reference_type: 'membership',
+          reference_id: membership.id,
+        },
+      ];
+
+      if (selectedPlan.admission_fee > 0) {
+        items.push({
+          invoice_id: invoice.id,
+          description: 'Admission Fee',
+          quantity: 1,
+          unit_price: selectedPlan.admission_fee,
+          total_amount: selectedPlan.admission_fee,
+          reference_type: 'admission_fee',
+          reference_id: membership.id,
+        });
+      }
+
+      await supabase.from('invoice_items').insert(items);
+
+      // Record payment
+      await supabase.from('payments').insert({
+        branch_id: branchId,
+        member_id: memberId,
+        invoice_id: invoice.id,
+        amount: pricePaid,
+        payment_method: paymentMethod as any,
+        status: 'completed',
+        payment_date: new Date().toISOString(),
+      });
+
+      // Update member status to active
+      await supabase
+        .from('members')
+        .update({ status: 'active' })
+        .eq('id', memberId);
+
+      return { membership, invoice };
+    },
+    onSuccess: () => {
+      toast.success('Membership purchased successfully');
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      onOpenChange(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to purchase membership');
+    },
+  });
+
+  const resetForm = () => {
+    setSelectedPlanId('');
+    setStartDate(format(new Date(), 'yyyy-MM-dd'));
+    setDiscountAmount(0);
+    setDiscountReason('');
+    setPaymentMethod('cash');
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Purchase Membership
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-6">
+          {/* Member Info */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">{memberName}</p>
+                  <p className="text-sm text-muted-foreground">Member ID: {memberId.slice(0, 8)}...</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Plan Selection */}
+          <div className="space-y-2">
+            <Label>Select Plan *</Label>
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a membership plan" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map((plan: any) => (
+                  <SelectItem key={plan.id} value={plan.id}>
+                    <div className="flex justify-between items-center w-full">
+                      <span>{plan.name}</span>
+                      <span className="text-muted-foreground ml-2">
+                        ₹{plan.discounted_price || plan.price} / {plan.duration_days} days
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {selectedPlan && (
+            <>
+              {/* Plan Details */}
+              <Card className="bg-muted/50">
+                <CardContent className="pt-4 space-y-2">
+                  <div className="flex justify-between">
+                    <span>Plan Price</span>
+                    <span>₹{selectedPlan.discounted_price || selectedPlan.price}</span>
+                  </div>
+                  {selectedPlan.admission_fee > 0 && (
+                    <div className="flex justify-between">
+                      <span>Admission Fee</span>
+                      <span>₹{selectedPlan.admission_fee}</span>
+                    </div>
+                  )}
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-success">
+                      <span>Discount</span>
+                      <span>-₹{discountAmount}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold border-t pt-2">
+                    <span>Total</span>
+                    <span className="flex items-center">
+                      <IndianRupee className="h-4 w-4" />
+                      {calculateTotal()}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Start Date */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Start Date
+                </Label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <p className="text-sm text-muted-foreground">
+                  End Date: {calculateEndDate()}
+                </p>
+              </div>
+
+              {/* Discount */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Discount Amount</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Discount Reason</Label>
+                  <Input
+                    placeholder="e.g., Referral, Promo"
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-2">
+                <Label>Payment Method</Label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="wallet">Wallet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-4">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="flex-1" 
+              onClick={() => purchaseMembership.mutate()}
+              disabled={!selectedPlanId || purchaseMembership.isPending}
+            >
+              {purchaseMembership.isPending ? 'Processing...' : 'Complete Purchase'}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
