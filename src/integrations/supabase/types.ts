@@ -1400,6 +1400,7 @@ export type Database = {
           invoice_number: string
           member_id: string | null
           notes: string | null
+          pos_sale_id: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount: number | null
@@ -1417,6 +1418,7 @@ export type Database = {
           invoice_number: string
           member_id?: string | null
           notes?: string | null
+          pos_sale_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount?: number | null
@@ -1434,6 +1436,7 @@ export type Database = {
           invoice_number?: string
           member_id?: string | null
           notes?: string | null
+          pos_sale_id?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
           tax_amount?: number | null
@@ -1453,6 +1456,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_pos_sale_id_fkey"
+            columns: ["pos_sale_id"]
+            isOneToOne: false
+            referencedRelation: "pos_sales"
             referencedColumns: ["id"]
           },
         ]
@@ -2219,6 +2229,101 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string | null
+          email_announcements: boolean | null
+          email_class_notifications: boolean | null
+          email_membership_reminders: boolean | null
+          email_payment_receipts: boolean | null
+          id: string
+          push_low_stock: boolean | null
+          push_new_leads: boolean | null
+          push_payment_alerts: boolean | null
+          push_task_reminders: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_announcements?: boolean | null
+          email_class_notifications?: boolean | null
+          email_membership_reminders?: boolean | null
+          email_payment_receipts?: boolean | null
+          id?: string
+          push_low_stock?: boolean | null
+          push_new_leads?: boolean | null
+          push_payment_alerts?: boolean | null
+          push_task_reminders?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email_announcements?: boolean | null
+          email_class_notifications?: boolean | null
+          email_membership_reminders?: boolean | null
+          email_payment_receipts?: boolean | null
+          id?: string
+          push_low_stock?: boolean | null
+          push_new_leads?: boolean | null
+          push_payment_alerts?: boolean | null
+          push_task_reminders?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          action_url: string | null
+          branch_id: string | null
+          category: string | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          metadata: Json | null
+          title: string
+          type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_url?: string | null
+          branch_id?: string | null
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          metadata?: Json | null
+          title: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_url?: string | null
+          branch_id?: string | null
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          metadata?: Json | null
+          title?: string
+          type?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_transactions: {
         Row: {
           amount: number
@@ -2526,10 +2631,55 @@ export type Database = {
           },
         ]
       }
+      product_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          name: string
+          parent_id: string | null
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name: string
+          parent_id?: string | null
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          name?: string
+          parent_id?: string | null
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           branch_id: string | null
           category: string | null
+          category_id: string | null
           cost_price: number | null
           created_at: string
           description: string | null
@@ -2545,6 +2695,7 @@ export type Database = {
         Insert: {
           branch_id?: string | null
           category?: string | null
+          category_id?: string | null
           cost_price?: number | null
           created_at?: string
           description?: string | null
@@ -2560,6 +2711,7 @@ export type Database = {
         Update: {
           branch_id?: string | null
           category?: string | null
+          category_id?: string | null
           cost_price?: number | null
           created_at?: string
           description?: string | null
@@ -2578,6 +2730,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -2818,6 +2977,7 @@ export type Database = {
           referred_reward_value: number
           referrer_reward_type: string
           referrer_reward_value: number
+          reward_mode: string | null
           updated_at: string
         }
         Insert: {
@@ -2830,6 +2990,7 @@ export type Database = {
           referred_reward_value?: number
           referrer_reward_type?: string
           referrer_reward_value?: number
+          reward_mode?: string | null
           updated_at?: string
         }
         Update: {
@@ -2842,6 +3003,7 @@ export type Database = {
           referred_reward_value?: number
           referrer_reward_type?: string
           referrer_reward_value?: number
+          reward_mode?: string | null
           updated_at?: string
         }
         Relationships: [

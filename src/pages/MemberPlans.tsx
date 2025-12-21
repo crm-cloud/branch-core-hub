@@ -1,12 +1,15 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Dumbbell, Apple, Calendar, CheckCircle2, Sparkles } from 'lucide-react';
+import { Dumbbell, Apple, Calendar, Sparkles, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { generatePlanPDF } from '@/utils/pdfGenerator';
+import { toast } from 'sonner';
 
 export default function MemberPlansPage() {
   const { user } = useAuth();
@@ -94,6 +97,23 @@ export default function MemberPlansPage() {
     ...dietPlans,
   ];
 
+  const handleDownloadPDF = (plan: any, type: 'workout' | 'diet') => {
+    try {
+      generatePlanPDF({
+        name: plan.plan_name || plan.name,
+        description: plan.description,
+        type,
+        data: plan.plan_data || plan.workout_data || plan.meal_plan || {},
+        validFrom: plan.valid_from || plan.start_date,
+        validUntil: plan.valid_until || plan.end_date,
+        caloriesTarget: plan.calories_target,
+      });
+      toast.success('PDF generated! Check your print dialog.');
+    } catch (error) {
+      toast.error('Failed to generate PDF');
+    }
+  };
+
   const renderPlanCard = (plan: any, type: 'workout' | 'diet') => {
     const planData = plan.plan_data || plan.workout_data || plan.meal_plan || {};
     const isCustom = plan.is_custom || false;
@@ -169,6 +189,17 @@ export default function MemberPlansPage() {
               )}
             </div>
           )}
+
+          {/* Download Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full mt-2"
+            onClick={() => handleDownloadPDF(plan, type)}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Download PDF
+          </Button>
         </CardContent>
       </Card>
     );

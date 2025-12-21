@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, UserPlus, CreditCard, Calendar, Dumbbell, Package,
   Settings, ClipboardList, Megaphone, BarChart3, Wallet, Clock,
   Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, 
-  Briefcase, MessageSquare,
+  Briefcase, MessageSquare, Tags,
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -57,13 +57,20 @@ export const menuConfig: MenuSection[] = [
     ],
   },
   {
-    title: 'Revenue & Sales',
+    title: 'E-commerce',
     items: [
-      { label: 'Finance', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
+      { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Products', href: '/products', icon: Package, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Categories', href: '/product-categories', icon: Tags, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Store Orders', href: '/store', icon: ShoppingBag, roles: ['owner', 'admin', 'manager'] },
+    ],
+  },
+  {
+    title: 'Finance',
+    items: [
+      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
-      { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'manager', 'staff'] },
-      { label: 'Store', href: '/store', icon: ShoppingBag, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {

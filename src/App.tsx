@@ -48,6 +48,8 @@ import NotFound from "./pages/NotFound";
 
 import FinancePage from "./pages/Finance";
 import MemberPlansPage from "./pages/MemberPlans";
+import ProductsPage from "./pages/Products";
+import ProductCategoriesPage from "./pages/ProductCategories";
 
 const queryClient = new QueryClient();
 
