@@ -3172,6 +3172,7 @@ export type Database = {
           hourly_rate: number | null
           id: string
           is_active: boolean | null
+          max_clients: number | null
           specializations: string[] | null
           updated_at: string
           user_id: string
@@ -3184,6 +3185,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
+          max_clients?: number | null
           specializations?: string[] | null
           updated_at?: string
           user_id: string
@@ -3196,6 +3198,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
+          max_clients?: number | null
           specializations?: string[] | null
           updated_at?: string
           user_id?: string

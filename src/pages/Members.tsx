@@ -8,8 +8,9 @@ import { StatCard } from '@/components/ui/stat-card';
 import { BranchSelector } from '@/components/dashboard/BranchSelector';
 import { AddMemberDrawer } from '@/components/members/AddMemberDrawer';
 import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershipDrawer';
-import { Search, Plus, User, Users, UserCheck, UserX, CreditCard } from 'lucide-react';
+import { Search, Plus, User, Users, UserCheck, UserX, CreditCard, Dumbbell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { PurchasePTDrawer } from '@/components/members/PurchasePTDrawer';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
 import { useState } from 'react';
@@ -17,6 +18,7 @@ import { useState } from 'react';
 export default function MembersPage() {
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchasePTOpen, setPurchasePTOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [search, setSearch] = useState('');
   const { data: branches = [] } = useBranches();
@@ -90,13 +92,22 @@ export default function MembersPage() {
             branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''} 
           />
           {selectedMember && (
-            <PurchaseMembershipDrawer
-              open={purchaseOpen}
-              onOpenChange={setPurchaseOpen}
-              memberId={selectedMember.id}
-              memberName={selectedMember.profiles?.full_name || 'Member'}
-              branchId={selectedMember.branch_id}
-            />
+            <>
+              <PurchaseMembershipDrawer
+                open={purchaseOpen}
+                onOpenChange={setPurchaseOpen}
+                memberId={selectedMember.id}
+                memberName={selectedMember.profiles?.full_name || 'Member'}
+                branchId={selectedMember.branch_id}
+              />
+              <PurchasePTDrawer
+                open={purchasePTOpen}
+                onOpenChange={setPurchasePTOpen}
+                memberId={selectedMember.id}
+                memberName={selectedMember.profiles?.full_name || 'Member'}
+                branchId={selectedMember.branch_id}
+              />
+            </>
           )}
         </div>
 
@@ -156,6 +167,7 @@ export default function MembersPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Membership</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -191,12 +203,24 @@ export default function MembersPage() {
                           )}
                         </TableCell>
                         <TableCell>{new Date(member.joined_at).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          {activeMembership && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => { setSelectedMember(member); setPurchasePTOpen(true); }}
+                            >
+                              <Dumbbell className="h-3 w-3 mr-1" />
+                              Buy PT
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {members.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No members found
                       </TableCell>
                     </TableRow>
