@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
-import { CreditCard, IndianRupee, Calendar, User } from 'lucide-react';
+import { CreditCard, IndianRupee, Calendar, User, Gift } from 'lucide-react';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -37,6 +37,39 @@ export function PurchaseMembershipDrawer({
 
   const { data: plans = [] } = usePlans(branchId);
   const selectedPlan = plans.find((p: any) => p.id === selectedPlanId);
+
+  // Check if member has a pending referral
+  const { data: pendingReferral } = useQuery({
+    queryKey: ['pending-referral', memberId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('referrals')
+        .select('*, referrer:referrer_member_id(id, member_code, user_id)')
+        .eq('referred_member_id', memberId)
+        .eq('status', 'new')
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!memberId,
+  });
+
+  // Get referral settings
+  const { data: referralSettings } = useQuery({
+    queryKey: ['referral-settings', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('referral_settings')
+        .select('*')
+        .eq('is_active', true)
+        .or(`branch_id.eq.${branchId},branch_id.is.null`)
+        .order('branch_id', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const calculateTotal = () => {
     if (!selectedPlan) return 0;
@@ -141,6 +174,44 @@ export function PurchaseMembershipDrawer({
         .update({ status: 'active' })
         .eq('id', memberId);
 
+      // Process referral rewards if applicable
+      if (pendingReferral && referralSettings && pricePaid >= (referralSettings.min_membership_value || 0)) {
+        // Update referral status to converted
+        await supabase
+          .from('referrals')
+          .update({ 
+            status: 'converted' as const, 
+            converted_at: new Date().toISOString() 
+          })
+          .eq('id', pendingReferral.id);
+
+        // Create reward for referrer
+        if (referralSettings.referrer_reward_value > 0) {
+          await supabase.from('referral_rewards').insert({
+            referral_id: pendingReferral.id,
+            member_id: pendingReferral.referrer_member_id,
+            reward_type: referralSettings.referrer_reward_type,
+            reward_value: referralSettings.referrer_reward_value,
+            description: `Referral bonus for referring ${memberName}`,
+            is_claimed: false,
+          });
+        }
+
+        // Create reward for referred member (optional)
+        if (referralSettings.referred_reward_value > 0) {
+          await supabase.from('referral_rewards').insert({
+            referral_id: pendingReferral.id,
+            member_id: memberId,
+            reward_type: referralSettings.referred_reward_type,
+            reward_value: referralSettings.referred_reward_value,
+            description: `Welcome bonus for joining via referral`,
+            is_claimed: false,
+          });
+        }
+
+        toast.success('Referral rewards created!');
+      }
+
       return { membership, invoice };
     },
     onSuccess: () => {
@@ -148,6 +219,8 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      queryClient.invalidateQueries({ queryKey: ['all-rewards'] });
       onOpenChange(false);
       resetForm();
     },
@@ -211,6 +284,24 @@ export function PurchaseMembershipDrawer({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Referral Bonus Indicator */}
+          {pendingReferral && referralSettings && (
+            <Card className="border-green-500/50 bg-green-500/5">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-green-600">
+                  <Gift className="h-5 w-5" />
+                  <div>
+                    <p className="font-medium">Referral Bonus Active!</p>
+                    <p className="text-sm text-muted-foreground">
+                      Referrer gets ₹{referralSettings.referrer_reward_value} • 
+                      New member gets ₹{referralSettings.referred_reward_value}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {selectedPlan && (
             <>
