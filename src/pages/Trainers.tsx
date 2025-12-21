@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Mail, Phone, Award } from "lucide-react";
+import { Plus, Mail, Phone, Award, Users, Target } from "lucide-react";
 import { useTrainers, useCreateTrainer, useDeactivateTrainer } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
 import { supabase } from "@/integrations/supabase/client";
-
+import { useQuery } from "@tanstack/react-query";
+import { Progress } from "@/components/ui/progress";
 export default function TrainersPage() {
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>("");
@@ -35,6 +36,29 @@ export default function TrainersPage() {
   const { data: trainers, isLoading } = useTrainers(branchId, !showInactive);
   const createTrainer = useCreateTrainer();
   const deactivateTrainer = useDeactivateTrainer();
+
+  // Fetch PT client counts per trainer
+  const { data: ptClientCounts = {} } = useQuery({
+    queryKey: ['pt-client-counts', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_pt_packages')
+        .select('trainer_id')
+        .eq('branch_id', branchId)
+        .eq('status', 'active');
+      
+      if (error) throw error;
+      
+      const counts: Record<string, number> = {};
+      data?.forEach(pkg => {
+        if (pkg.trainer_id) {
+          counts[pkg.trainer_id] = (counts[pkg.trainer_id] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: !!branchId,
+  });
 
   const loadAvailableUsers = async () => {
     setLoadingUsers(true);
@@ -248,6 +272,33 @@ export default function TrainersPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* PT Client Ratio */}
+                  {(() => {
+                    const activeClients = ptClientCounts[trainer.id] || 0;
+                    const maxClients = (trainer as any).max_clients || 10;
+                    const utilization = Math.min((activeClients / maxClients) * 100, 100);
+                    return (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            PT Clients
+                          </span>
+                          <span className="font-medium">
+                            {activeClients}/{maxClients}
+                          </span>
+                        </div>
+                        <Progress value={utilization} className="h-2" />
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{utilization.toFixed(0)}% capacity</span>
+                          {utilization >= 80 && (
+                            <Badge variant="destructive" className="text-xs">Near Full</Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {trainer.profile_phone && (
                     <div className="flex items-center gap-2 text-sm">
                       <Phone className="h-4 w-4 text-muted-foreground" />
