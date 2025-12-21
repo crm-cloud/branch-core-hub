@@ -2,15 +2,24 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CreditCard } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
+import { BranchSelector } from '@/components/dashboard/BranchSelector';
+import { CreditCard, Wallet, TrendingUp, Receipt } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useBranches } from '@/hooks/useBranches';
+import { useState } from 'react';
+import { startOfMonth, endOfMonth } from 'date-fns';
 
 export default function PaymentsPage() {
+  const { data: branches = [] } = useBranches();
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ['payments'],
+    queryKey: ['payments', branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('payments')
         .select(`
           *,
@@ -19,18 +28,27 @@ export default function PaymentsPage() {
         `)
         .order('payment_date', { ascending: false })
         .limit(50);
+      
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
   });
 
+  const todayTotal = payments
+    .filter((p: any) => new Date(p.payment_date).toDateString() === new Date().toDateString())
+    .reduce((sum: number, p: any) => sum + p.amount, 0);
+
+  const monthTotal = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
   const getMethodColor = (method: string) => {
     const colors: Record<string, string> = {
-      cash: 'bg-green-500/10 text-green-500',
-      card: 'bg-blue-500/10 text-blue-500',
-      upi: 'bg-purple-500/10 text-purple-500',
-      wallet: 'bg-orange-500/10 text-orange-500',
-      bank_transfer: 'bg-cyan-500/10 text-cyan-500',
+      cash: 'bg-success/10 text-success',
+      card: 'bg-info/10 text-info',
+      upi: 'bg-accent/10 text-accent',
+      wallet: 'bg-warning/10 text-warning',
+      bank_transfer: 'bg-primary/10 text-primary',
     };
     return colors[method] || 'bg-muted text-muted-foreground';
   };
@@ -38,24 +56,21 @@ export default function PaymentsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h1 className="text-2xl font-bold">Payments</h1>
+          <BranchSelector
+            branches={branches}
+            selectedBranch={selectedBranch}
+            onBranchChange={setSelectedBranch}
+            showAllOption={true}
+          />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Today's Collection</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                ₹{payments
-                  .filter((p: any) => new Date(p.payment_date).toDateString() === new Date().toDateString())
-                  .reduce((sum: number, p: any) => sum + p.amount, 0)
-                  .toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          <StatCard title="Today's Collection" value={`₹${todayTotal.toLocaleString()}`} icon={CreditCard} variant="accent" />
+          <StatCard title="This Month" value={`₹${monthTotal.toLocaleString()}`} icon={TrendingUp} variant="success" />
+          <StatCard title="Total Transactions" value={payments.length} icon={Receipt} variant="default" />
+          <StatCard title="Avg Transaction" value={`₹${payments.length ? Math.round(monthTotal / payments.length).toLocaleString() : 0}`} icon={Wallet} variant="info" />
         </div>
 
         <Card>
