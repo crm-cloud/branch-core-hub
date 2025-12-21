@@ -10,11 +10,12 @@ import {
   User, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
-  Play, UserCog, IndianRupee, Ruler, IdCard
+  Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
+import { toast } from 'sonner';
 import { FreezeMembershipDrawer } from './FreezeMembershipDrawer';
 import { UnfreezeMembershipDrawer } from './UnfreezeMembershipDrawer';
 import { AssignTrainerDrawer } from './AssignTrainerDrawer';
@@ -37,11 +38,34 @@ export function MemberProfileDrawer({
   onPurchaseMembership,
   onPurchasePT
 }: MemberProfileDrawerProps) {
+  const queryClient = useQueryClient();
   const [freezeOpen, setFreezeOpen] = useState(false);
   const [unfreezeOpen, setUnfreezeOpen] = useState(false);
   const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
   const [measurementOpen, setMeasurementOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+
+  const toggleMemberStatus = async () => {
+    if (!member?.id) return;
+    setIsTogglingStatus(true);
+    try {
+      const newStatus = member.status === 'active' ? 'inactive' : 'active';
+      const { error } = await supabase
+        .from('members')
+        .update({ status: newStatus })
+        .eq('id', member.id);
+      
+      if (error) throw error;
+      toast.success(newStatus === 'active' ? 'Member activated' : 'Member deactivated');
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['member-details', member.id] });
+    } catch (error) {
+      toast.error('Failed to update member status');
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
 
   // Fetch full member details with all relations
   const { data: memberDetails } = useQuery({
@@ -268,6 +292,15 @@ export function MemberProfileDrawer({
                 <XCircle className="h-4 w-4" />
               </Button>
             )}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className={member.status === 'active' ? 'text-destructive' : 'text-success'}
+              onClick={toggleMemberStatus}
+              disabled={isTogglingStatus}
+            >
+              {member.status === 'active' ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+            </Button>
           </div>
 
           <Separator />
