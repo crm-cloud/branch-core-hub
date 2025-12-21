@@ -3,15 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus, Building2, Pencil } from 'lucide-react';
 import { useBranches } from '@/hooks/useBranches';
 import { AddBranchDialog } from '@/components/branches/AddBranchDialog';
+import { EditBranchDrawer } from '@/components/branches/EditBranchDrawer';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export default function BranchesPage() {
   const [addBranchOpen, setAddBranchOpen] = useState(false);
+  const [editBranch, setEditBranch] = useState<any>(null);
   const { data: branches = [], isLoading } = useBranches();
   const { hasAnyRole } = useAuth();
 
@@ -55,6 +57,7 @@ export default function BranchesPage() {
                     <TableHead>Location</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -82,11 +85,20 @@ export default function BranchesPage() {
                           {branch.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditBranch(branch)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {branches.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No branches found
                       </TableCell>
                     </TableRow>
@@ -96,6 +108,12 @@ export default function BranchesPage() {
             )}
           </CardContent>
         </Card>
+
+        <EditBranchDrawer
+          open={!!editBranch}
+          onOpenChange={(open) => !open && setEditBranch(null)}
+          branch={editBranch}
+        />
       </div>
     </AppLayout>
   );

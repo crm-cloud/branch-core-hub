@@ -33,6 +33,7 @@ export const menuConfig: MenuSection[] = [
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
     ],
   },

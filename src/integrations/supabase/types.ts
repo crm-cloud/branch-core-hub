@@ -1142,6 +1142,80 @@ export type Database = {
           },
         ]
       }
+      feedback: {
+        Row: {
+          admin_notes: string | null
+          branch_id: string
+          category: string | null
+          created_at: string | null
+          employee_id: string | null
+          feedback_text: string | null
+          id: string
+          member_id: string
+          rating: number
+          status: string | null
+          trainer_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          branch_id: string
+          category?: string | null
+          created_at?: string | null
+          employee_id?: string | null
+          feedback_text?: string | null
+          id?: string
+          member_id: string
+          rating: number
+          status?: string | null
+          trainer_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          admin_notes?: string | null
+          branch_id?: string
+          category?: string | null
+          created_at?: string | null
+          employee_id?: string | null
+          feedback_text?: string | null
+          id?: string
+          member_id?: string
+          rating?: number
+          status?: string | null
+          trainer_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           branch_id: string | null
