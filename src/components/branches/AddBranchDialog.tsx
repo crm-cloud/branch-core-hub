@@ -299,14 +299,14 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
               Assign Manager
             </Label>
             <Select 
-              value={formData.managerId} 
-              onValueChange={(v) => setFormData({ ...formData, managerId: v })}
+              value={formData.managerId || "none"} 
+              onValueChange={(v) => setFormData({ ...formData, managerId: v === "none" ? "" : v })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a manager (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No manager</SelectItem>
+                <SelectItem value="none">No manager</SelectItem>
                 {potentialManagers.map((m: any) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
                     {m.profiles?.full_name || m.profiles?.email} ({m.role})
