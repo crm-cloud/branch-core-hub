@@ -2,29 +2,28 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, CheckSquare, Clock, AlertCircle, User } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchTasks, createTask, updateTaskStatus, getTaskStats, type TaskStatus, type TaskPriority } from '@/services/taskService';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchTasks, updateTaskStatus, getTaskStats, type TaskStatus } from '@/services/taskService';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
+import { AddTaskDrawer } from '@/components/tasks/AddTaskDrawer';
 
 export default function TasksPage() {
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => fetchTasks(),
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ['task-stats'],
+    queryFn: () => getTaskStats(),
   });
 
   const { data: stats } = useQuery({
@@ -99,14 +98,13 @@ export default function TasksPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Task Management</h1>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                New Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+          <Button onClick={() => setDrawerOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Task
+          </Button>
+        </div>
+
+        <AddTaskDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
               </DialogHeader>

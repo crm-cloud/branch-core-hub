@@ -31,10 +31,10 @@ export const menuConfig: MenuSection[] = [
     title: 'Member Management',
     items: [
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager', 'staff'] },
-      { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager', 'staff'] },
-      { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'My Plans', href: '/my-plans', icon: Sparkles, roles: ['owner', 'admin', 'manager', 'staff', 'trainer'] },
     ],
   },
   {
@@ -47,13 +47,23 @@ export const menuConfig: MenuSection[] = [
     ],
   },
   {
+    title: 'CRM & Engagement',
+    items: [
+      { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
+      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
+    ],
+  },
+  {
     title: 'Revenue & Sales',
     items: [
+      { label: 'Finance', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
       { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Store', href: '/store', icon: ShoppingBag, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
@@ -62,9 +72,6 @@ export const menuConfig: MenuSection[] = [
       { label: 'Inventory', href: '/inventory', icon: Package, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager', 'staff'] },
-      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
-      { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
-      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager', 'staff'] },
     ],
   },
   {

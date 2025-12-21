@@ -1,14 +1,14 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Users, Plug, Bell, Shield, Globe, Settings as SettingsIcon } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
-import { UserSettings } from '@/components/settings/UserSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
 import { NotificationSettings } from '@/components/settings/NotificationSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
+import { ReferralSettings } from '@/components/settings/ReferralSettings';
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,9 +39,9 @@ export default function SettingsPage() {
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Branches</span>
             </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2 py-2">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Users</span>
+            <TabsTrigger value="referrals" className="flex items-center gap-2 py-2">
+              <Gift className="h-4 w-4" />
+              <span className="hidden sm:inline">Referrals</span>
             </TabsTrigger>
             <TabsTrigger value="integrations" className="flex items-center gap-2 py-2">
               <Plug className="h-4 w-4" />
@@ -63,7 +63,7 @@ export default function SettingsPage() {
 
           <TabsContent value="organization"><OrganizationSettings /></TabsContent>
           <TabsContent value="branches"><BranchSettings /></TabsContent>
-          <TabsContent value="users"><UserSettings /></TabsContent>
+          <TabsContent value="referrals"><ReferralSettings /></TabsContent>
           <TabsContent value="integrations"><IntegrationSettings /></TabsContent>
           <TabsContent value="notifications"><NotificationSettings /></TabsContent>
           <TabsContent value="security"><SecuritySettings /></TabsContent>

@@ -1079,6 +1079,36 @@ export type Database = {
         }
         Relationships: []
       }
+      expense_category_templates: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          name: string
+          type: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name: string
+          type: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number
@@ -1737,6 +1767,72 @@ export type Database = {
             columns: ["to_branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_fitness_plans: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_custom: boolean | null
+          is_public: boolean | null
+          member_id: string | null
+          plan_data: Json
+          plan_name: string
+          plan_type: string
+          updated_at: string | null
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_custom?: boolean | null
+          is_public?: boolean | null
+          member_id?: string | null
+          plan_data?: Json
+          plan_name: string
+          plan_type: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_custom?: boolean | null
+          is_public?: boolean | null
+          member_id?: string | null
+          plan_data?: Json
+          plan_name?: string
+          plan_type?: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_fitness_plans_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_fitness_plans_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -3615,6 +3711,13 @@ export type Database = {
         | "parking"
         | "guest_pass"
         | "other"
+        | "ice_bath"
+        | "yoga_class"
+        | "crossfit_class"
+        | "spa_access"
+        | "sauna_session"
+        | "cardio_area"
+        | "functional_training"
       class_booking_status:
         | "booked"
         | "attended"
@@ -3835,6 +3938,13 @@ export const Constants = {
         "parking",
         "guest_pass",
         "other",
+        "ice_bath",
+        "yoga_class",
+        "crossfit_class",
+        "spa_access",
+        "sauna_session",
+        "cardio_area",
+        "functional_training",
       ],
       class_booking_status: [
         "booked",
