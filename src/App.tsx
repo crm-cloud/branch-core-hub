@@ -46,6 +46,9 @@ import WhatsAppChatPage from "./pages/WhatsAppChat";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 
+import FinancePage from "./pages/Finance";
+import MemberPlansPage from "./pages/MemberPlans";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -92,6 +95,8 @@ const App = () => (
             <Route path="/store" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><StorePage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
+            <Route path="/finance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><FinancePage /></ProtectedRoute>} />
+            <Route path="/my-plans" element={<ProtectedRoute><MemberPlansPage /></ProtectedRoute>} />
             {/* Redirects for old routes - now consolidated in Settings */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
