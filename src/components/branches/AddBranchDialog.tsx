@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, MapPin, Clock, Phone, Mail, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AddBranchDialogProps {
   open: boolean;
@@ -15,6 +16,9 @@ interface AddBranchDialogProps {
 }
 
 export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
+  const { hasAnyRole } = useAuth();
+  const canCreateBranch = hasAnyRole(['owner', 'admin']);
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -129,12 +133,18 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
       });
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to create branch');
+      const message = error?.message || error?.error_description || 'Failed to create branch';
+      toast.error(message);
+      console.error('Create branch error:', error);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateBranch) {
+      toast.error('Only Owner/Admin can create branches');
+      return;
+    }
     if (!formData.name || !formData.code) {
       toast.error('Please fill in required fields');
       return;

@@ -7,17 +7,30 @@ import { Plus, Building2 } from 'lucide-react';
 import { useBranches } from '@/hooks/useBranches';
 import { AddBranchDialog } from '@/components/branches/AddBranchDialog';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 export default function BranchesPage() {
   const [addBranchOpen, setAddBranchOpen] = useState(false);
   const { data: branches = [], isLoading } = useBranches();
+  const { hasAnyRole } = useAuth();
+
+  const canCreateBranch = hasAnyRole(['owner', 'admin']);
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Branches</h1>
-          <Button onClick={() => setAddBranchOpen(true)}>
+          <Button
+            onClick={() => {
+              if (!canCreateBranch) {
+                toast.error('Only Owner/Admin can create branches');
+                return;
+              }
+              setAddBranchOpen(true);
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Branch
           </Button>
