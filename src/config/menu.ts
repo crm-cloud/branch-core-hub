@@ -44,6 +44,7 @@ export const menuConfig: MenuSection[] = [
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
@@ -73,6 +74,7 @@ export const menuConfig: MenuSection[] = [
     items: [
       { label: 'Employees', href: '/employees', icon: Users, roles: ['owner', 'admin', 'manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager', 'staff', 'trainer'] },
     ],
   },
   {

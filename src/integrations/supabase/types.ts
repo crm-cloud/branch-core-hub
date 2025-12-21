@@ -3016,6 +3016,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_to_waitlist: {
+        Args: { _class_id: string; _member_id: string }
+        Returns: Json
+      }
+      book_class: {
+        Args: { _class_id: string; _member_id: string }
+        Returns: Json
+      }
+      cancel_class_booking: {
+        Args: { _booking_id: string; _reason?: string }
+        Returns: Json
+      }
       get_member_id: { Args: { _user_id: string }; Returns: string }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {
@@ -3043,11 +3055,19 @@ export type Database = {
         Args: { _branch_id: string; _user_id: string }
         Returns: boolean
       }
+      mark_class_attendance: {
+        Args: { _attended: boolean; _booking_id: string }
+        Returns: Json
+      }
       member_check_in: {
         Args: { _branch_id: string; _member_id: string; _method?: string }
         Returns: Json
       }
       member_check_out: { Args: { _member_id: string }; Returns: Json }
+      validate_class_booking: {
+        Args: { _class_id: string; _member_id: string }
+        Returns: Json
+      }
       validate_member_checkin: {
         Args: { _branch_id: string; _member_id: string }
         Returns: Json
