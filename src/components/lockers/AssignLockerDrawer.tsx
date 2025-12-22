@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { lockerService } from '@/services/lockerService';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Receipt } from 'lucide-react';
+import { Search, Receipt, Gift, CheckCircle } from 'lucide-react';
 
 interface AssignLockerDrawerProps {
   open: boolean;
@@ -93,14 +93,23 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
 
   if (!locker) return null;
 
+  const isFreeLocker = !locker.monthly_fee || locker.monthly_fee === 0;
+  const totalAmount = (locker.monthly_fee || 0) * assignMonths;
+
   return (
     <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Assign Locker {locker.locker_number}</SheetTitle>
           <SheetDescription>
-            Assign this locker to a member
-            {locker.monthly_fee > 0 && ` (₹${locker.monthly_fee}/month)`}
+            {isFreeLocker ? (
+              <span className="flex items-center gap-2 text-success">
+                <Gift className="w-4 h-4" />
+                Free Locker - No charges apply
+              </span>
+            ) : (
+              `Assign this locker to a member (₹${locker.monthly_fee}/month)`
+            )}
           </SheetDescription>
         </SheetHeader>
 
@@ -165,12 +174,24 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
             </Select>
           </div>
 
-          {/* Total Amount */}
-          {locker.monthly_fee > 0 && (
+          {/* Total Amount or Free Assignment Message */}
+          {isFreeLocker ? (
+            <div className="p-4 rounded-lg bg-success/10 border border-success/30">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-success" />
+                <div>
+                  <p className="font-medium text-success">Free Assignment</p>
+                  <p className="text-sm text-muted-foreground">
+                    No invoice will be generated for this locker
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
             <div className="p-4 rounded-lg bg-muted">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Total Amount:</span>
-                <span className="text-xl font-bold">₹{locker.monthly_fee * assignMonths}</span>
+                <span className="text-xl font-bold">₹{totalAmount.toLocaleString()}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 <Receipt className="w-3 h-3 inline mr-1" />
