@@ -92,7 +92,9 @@ export function AppHeader() {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
                 <p className="text-xs leading-none text-muted-foreground">{profile?.email}</p>
-                <p className="text-xs leading-none text-accent capitalize mt-1">{primaryRole}</p>
+                <p className="text-xs leading-none text-accent capitalize mt-1">
+                  {typeof primaryRole === 'string' ? primaryRole : primaryRole?.role || 'user'}
+                </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

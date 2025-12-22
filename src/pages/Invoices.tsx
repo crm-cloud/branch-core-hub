@@ -326,7 +326,8 @@ export default function InvoicesPage() {
         <InvoiceViewDrawer
           open={!!viewInvoice}
           onOpenChange={(open) => !open && setViewInvoice(null)}
-          invoice={viewInvoice}
+          invoiceId={viewInvoice.id}
+          onRecordPayment={() => {}}
         />
       )}
     </AppLayout>
