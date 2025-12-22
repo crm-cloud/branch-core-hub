@@ -12,6 +12,9 @@ verify_jwt = true
 [functions.create-owner]
 verify_jwt = false
 
+[functions.create-staff-user]
+verify_jwt = true
+
 [functions.generate-fitness-plan]
 verify_jwt = true
 

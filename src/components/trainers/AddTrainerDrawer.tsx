@@ -161,60 +161,37 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
 
   const handleCreateNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserFormData.email || !newUserFormData.password || !branchId) {
+    if (!newUserFormData.email || !branchId) {
       toast.error('Please fill in all required fields');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Create user via edge function
-      const { data: userData, error: createError } = await supabase.functions.invoke('admin-create-user', {
+      // Create user via new edge function that handles trainer creation
+      const { data: userData, error: createError } = await supabase.functions.invoke('create-staff-user', {
         body: {
           email: newUserFormData.email,
-          password: newUserFormData.password,
-          full_name: newUserFormData.full_name,
+          fullName: newUserFormData.full_name,
           phone: newUserFormData.phone,
+          role: 'trainer',
+          branchId: branchId,
+          salaryType: newUserFormData.salary_type,
+          fixedSalary: newUserFormData.salary_type === 'fixed' ? newUserFormData.fixed_salary : null,
+          hourlyRate: newUserFormData.salary_type === 'hourly' ? newUserFormData.hourly_rate : null,
+          ptSharePercentage: newUserFormData.pt_share_percentage,
+          governmentIdType: newUserFormData.government_id_type || null,
+          governmentIdNumber: newUserFormData.government_id_number || null,
+          specializations: newUserFormData.specializations
+            ? newUserFormData.specializations.split(',').map((s) => s.trim())
+            : [],
         },
       });
 
       if (createError) throw createError;
-      if (!userData?.user?.id) throw new Error('Failed to create user');
+      if (userData?.error) throw new Error(userData.error);
 
-      const userId = userData.user.id;
-
-      // Create trainer profile
-      await createTrainer.mutateAsync({
-        branch_id: branchId,
-        user_id: userId,
-        specializations: newUserFormData.specializations
-          ? newUserFormData.specializations.split(',').map((s) => s.trim())
-          : null,
-        certifications: newUserFormData.certifications
-          ? newUserFormData.certifications.split(',').map((s) => s.trim())
-          : null,
-        bio: newUserFormData.bio || null,
-        hourly_rate: newUserFormData.salary_type === 'hourly' ? newUserFormData.hourly_rate : null,
-        salary_type: newUserFormData.salary_type,
-        fixed_salary: newUserFormData.salary_type === 'fixed' ? newUserFormData.fixed_salary : null,
-        pt_share_percentage: newUserFormData.pt_share_percentage,
-        government_id_type: newUserFormData.government_id_type || null,
-        government_id_number: newUserFormData.government_id_number || null,
-      });
-
-      // Assign trainer role
-      await supabase.from('user_roles').insert({
-        user_id: userId,
-        role: 'trainer',
-      });
-
-      // Add to staff_branches
-      await supabase.from('staff_branches').insert({
-        user_id: userId,
-        branch_id: branchId,
-      });
-
-      toast.success('Trainer created successfully');
+      toast.success('Trainer created successfully. They will set their password on first login.');
       onOpenChange(false);
       resetForms();
     } catch (error: any) {
@@ -400,6 +377,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                   placeholder="trainer@gym.com"
                   required
                 />
+                <p className="text-xs text-muted-foreground">Trainer will set their password on first login</p>
               </div>
 
               <div className="space-y-2">

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,15 +7,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Dumbbell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
+import { BranchSelector } from '@/components/dashboard/BranchSelector';
+import { useBranches } from '@/hooks/useBranches';
 
 export default function EquipmentPage() {
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const { data: branches = [] } = useBranches();
+  
   const { data: equipment = [], isLoading } = useQuery({
-    queryKey: ['equipment'],
+    queryKey: ['equipment', selectedBranch],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('equipment')
         .select('*')
         .order('name');
+      
+      if (selectedBranch) {
+        query = query.eq('branch_id', selectedBranch);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -30,15 +44,25 @@ export default function EquipmentPage() {
     return colors[status] || 'bg-muted text-muted-foreground';
   };
 
+  const currentBranchId = selectedBranch || branches[0]?.id || '';
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Equipment</h1>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Equipment
-          </Button>
+          <div className="flex items-center gap-4">
+            <BranchSelector
+              branches={branches}
+              selectedBranch={selectedBranch}
+              onBranchChange={setSelectedBranch}
+              showAllOption={true}
+            />
+            <Button onClick={() => setAddDrawerOpen(true)} disabled={!currentBranchId}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Equipment
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -142,6 +166,12 @@ export default function EquipmentPage() {
           </CardContent>
         </Card>
       </div>
+      
+      <AddEquipmentDrawer
+        open={addDrawerOpen}
+        onOpenChange={setAddDrawerOpen}
+        branchId={currentBranchId}
+      />
     </AppLayout>
   );
 }
