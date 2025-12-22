@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { AppSidebar, MobileNav } from './AppSidebar';
+import { AppHeader } from './AppHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -21,6 +22,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       <AppSidebar />
       
       <div className="flex-1 flex flex-col">
+        {/* Desktop header */}
+        <AppHeader />
+        
         {/* Mobile header */}
         <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-card">
           <MobileNav />
@@ -39,7 +43,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto p-6">
           {children}
         </main>
       </div>
