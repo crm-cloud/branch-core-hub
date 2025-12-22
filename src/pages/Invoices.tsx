@@ -1,16 +1,27 @@
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText } from 'lucide-react';
+import { BranchSelector } from '@/components/dashboard/BranchSelector';
+import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
+import { FileText, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useBranches } from '@/hooks/useBranches';
 
 export default function InvoicesPage() {
+  const [createOpen, setCreateOpen] = useState(false);
+  const { data: branches = [] } = useBranches();
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+
+  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+
   const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ['invoices'],
+    queryKey: ['invoices', branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('invoices')
         .select(`
           *,
@@ -18,6 +29,12 @@ export default function InvoicesPage() {
         `)
         .order('created_at', { ascending: false })
         .limit(50);
+
+      if (branchFilter) {
+        query = query.eq('branch_id', branchFilter);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -39,6 +56,18 @@ export default function InvoicesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Invoices</h1>
+          <div className="flex items-center gap-3">
+            <BranchSelector
+              branches={branches}
+              selectedBranch={selectedBranch}
+              onBranchChange={setSelectedBranch}
+              showAllOption={true}
+            />
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Invoice
+            </Button>
+          </div>
         </div>
 
         <Card>
@@ -93,6 +122,12 @@ export default function InvoicesPage() {
           </CardContent>
         </Card>
       </div>
+
+      <CreateInvoiceDrawer
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''}
+      />
     </AppLayout>
   );
 }

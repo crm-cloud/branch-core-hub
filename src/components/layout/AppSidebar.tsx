@@ -1,24 +1,19 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { menuConfig } from '@/config/menu';
-import { AvatarUpload } from '@/components/auth/AvatarUpload';
+import { getMenuForRole } from '@/config/menu';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { Menu, LogOut, ChevronRight } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 
 export function AppSidebar() {
-  const { hasAnyRole, signOut } = useAuth();
+  const { signOut, roles } = useAuth();
   const location = useLocation();
 
-  const filteredMenu = menuConfig
-    .map(section => ({
-      ...section,
-      items: section.items.filter(item => hasAnyRole(item.roles)),
-    }))
-    .filter(section => section.items.length > 0);
+  // Get role-specific menu based on user's roles
+  const menuSections = getMenuForRole(roles);
 
   return (
     <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border">
@@ -30,7 +25,7 @@ export function AppSidebar() {
 
       <ScrollArea className="flex-1 py-4">
         <nav className="px-3 space-y-6">
-          {filteredMenu.map((section) => (
+          {menuSections.map((section) => (
             <div key={section.title}>
               <p className="px-3 mb-2 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
                 {section.title}
@@ -77,15 +72,11 @@ export function AppSidebar() {
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
-  const { hasAnyRole, signOut, profile } = useAuth();
+  const { signOut, roles } = useAuth();
   const location = useLocation();
 
-  const filteredMenu = menuConfig
-    .map(section => ({
-      ...section,
-      items: section.items.filter(item => hasAnyRole(item.roles)),
-    }))
-    .filter(section => section.items.length > 0);
+  // Get role-specific menu based on user's roles
+  const menuSections = getMenuForRole(roles);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -103,7 +94,7 @@ export function MobileNav() {
 
         <ScrollArea className="h-[calc(100vh-180px)] py-4">
           <nav className="px-3 space-y-6">
-            {filteredMenu.map((section) => (
+            {menuSections.map((section) => (
               <div key={section.title}>
                 <p className="px-3 mb-2 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
                   {section.title}
