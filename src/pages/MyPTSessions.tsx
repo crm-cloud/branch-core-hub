@@ -11,23 +11,50 @@ import { format } from 'date-fns';
 export default function MyPTSessions() {
   const { member, ptPackages, isLoading: memberLoading } = useMemberData();
 
+  // Get member's PT package IDs first
+  const ptPackageIds = ptPackages.map(p => p.id);
+
   // Fetch PT sessions
-  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<any[]>({
-    queryKey: ['my-pt-sessions', member?.id],
-    enabled: !!member,
-    queryFn: async () => {
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: ['my-pt-sessions', member?.id, ptPackageIds],
+    enabled: !!member && ptPackageIds.length > 0,
+    queryFn: async (): Promise<any[]> => {
       const { data, error } = await supabase
         .from('pt_sessions')
-        .select(`
-          *,
-          trainer:trainers(id, user_id, profiles:user_id(full_name)),
-          member_pt_package:member_pt_packages(id, package:pt_packages(name))
-        `)
-        .eq('member_id', member!.id)
+        .select('id, scheduled_at, duration_minutes, status, notes, trainer_id, member_pt_package_id')
+        .in('member_pt_package_id', ptPackageIds)
         .order('scheduled_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      
+      // Fetch trainer info separately to avoid deep type recursion
+      const trainerIds = [...new Set((data || []).map(s => s.trainer_id).filter(Boolean))] as string[];
+      let trainersMap: Record<string, { profiles?: { full_name: string } }> = {};
+      
+      if (trainerIds.length > 0) {
+        const { data: trainers } = await supabase
+          .from('trainers')
+          .select('id, user_id')
+          .in('id', trainerIds);
+        
+        if (trainers) {
+          const userIds = trainers.map(t => t.user_id).filter(Boolean) as string[];
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', userIds);
+          
+          trainers.forEach(t => {
+            const profile = profiles?.find(p => p.id === t.user_id);
+            trainersMap[t.id] = { profiles: profile || undefined };
+          });
+        }
+      }
+      
+      return (data || []).map(session => ({
+        ...session,
+        trainer: trainersMap[session.trainer_id || ''] || null
+      }));
     },
   });
 

@@ -13,29 +13,38 @@ import { Link } from 'react-router-dom';
 export default function MyClients() {
   const { trainer, clients, isLoading: trainerLoading } = useTrainerData();
 
-  // Get session history for each client
+  // Get session history for each client - using member_pt_packages to link sessions to members
   const { data: sessionStats = {} } = useQuery({
     queryKey: ['client-session-stats', trainer?.id],
     enabled: !!trainer && clients.length > 0,
-    queryFn: async () => {
-      const clientIds = clients.map((c) => c.member_id);
+    queryFn: async (): Promise<Record<string, { completed: number; total: number }>> => {
+      // Get pt package IDs for each client
+      const packageIds = clients.map((c: { id: string }) => c.id);
       
       const { data, error } = await supabase
         .from('pt_sessions')
-        .select('member_id, status')
+        .select('member_pt_package_id, status')
         .eq('trainer_id', trainer!.id)
-        .in('member_id', clientIds);
+        .in('member_pt_package_id', packageIds);
 
       if (error) throw error;
 
+      // Map package_id back to member_id through clients
+      const packageToMember: Record<string, string> = {};
+      clients.forEach((c: { id: string; member_id: string }) => {
+        packageToMember[c.id] = c.member_id;
+      });
+
       const stats: Record<string, { completed: number; total: number }> = {};
-      data?.forEach((session: any) => {
-        if (!stats[session.member_id]) {
-          stats[session.member_id] = { completed: 0, total: 0 };
+      (data || []).forEach((session) => {
+        const memberId = packageToMember[session.member_pt_package_id];
+        if (!memberId) return;
+        if (!stats[memberId]) {
+          stats[memberId] = { completed: 0, total: 0 };
         }
-        stats[session.member_id].total++;
+        stats[memberId].total++;
         if (session.status === 'completed') {
-          stats[session.member_id].completed++;
+          stats[memberId].completed++;
         }
       });
 
