@@ -19,10 +19,27 @@ export function AddTaskDrawer({ open, onOpenChange }: AddTaskDrawerProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  // Fetch only staff/trainers/managers (not members)
   const { data: users = [] } = useQuery({
-    queryKey: ['assignable-users'],
+    queryKey: ['assignable-staff-users'],
     queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name, email');
+      // Get user IDs with staff roles (trainer, staff, manager, admin, owner)
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['trainer', 'staff', 'manager', 'admin', 'owner']);
+      
+      const staffUserIds = (roleData || []).map(r => r.user_id);
+      
+      if (staffUserIds.length === 0) {
+        return [];
+      }
+      
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', staffUserIds);
+      
       return data || [];
     },
   });

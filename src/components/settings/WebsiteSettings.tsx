@@ -131,12 +131,13 @@ export function WebsiteSettings() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="hero">Hero</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="testimonials">Reviews</TabsTrigger>
+          <TabsTrigger value="social">Social</TabsTrigger>
           <TabsTrigger value="theme">Theme</TabsTrigger>
         </TabsList>
 
@@ -395,6 +396,59 @@ export function WebsiteSettings() {
                   </div>
                 </Card>
               ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="social">
+          <Card>
+            <CardHeader>
+              <CardTitle>Social Media Links</CardTitle>
+              <CardDescription>Connect your social media profiles</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div>
+                  <Label>Instagram</Label>
+                  <Input 
+                    value={theme.socialLinks?.instagram || ''}
+                    onChange={(e) => updateTheme({ 
+                      socialLinks: { ...theme.socialLinks, instagram: e.target.value } 
+                    })}
+                    placeholder="https://instagram.com/yourgym"
+                  />
+                </div>
+                <div>
+                  <Label>Facebook</Label>
+                  <Input 
+                    value={theme.socialLinks?.facebook || ''}
+                    onChange={(e) => updateTheme({ 
+                      socialLinks: { ...theme.socialLinks, facebook: e.target.value } 
+                    })}
+                    placeholder="https://facebook.com/yourgym"
+                  />
+                </div>
+                <div>
+                  <Label>Twitter / X</Label>
+                  <Input 
+                    value={theme.socialLinks?.twitter || ''}
+                    onChange={(e) => updateTheme({ 
+                      socialLinks: { ...theme.socialLinks, twitter: e.target.value } 
+                    })}
+                    placeholder="https://twitter.com/yourgym"
+                  />
+                </div>
+                <div>
+                  <Label>YouTube</Label>
+                  <Input 
+                    value={theme.socialLinks?.youtube || ''}
+                    onChange={(e) => updateTheme({ 
+                      socialLinks: { ...theme.socialLinks, youtube: e.target.value } 
+                    })}
+                    placeholder="https://youtube.com/yourgym"
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
