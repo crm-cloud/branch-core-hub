@@ -24,21 +24,64 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [assignMonths, setAssignMonths] = useState(1);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   const handleMemberSearch = async () => {
     if (!memberSearch.trim() || !branchId) return;
-    const { data } = await supabase
-      .from('members')
-      .select(`
-        id,
-        member_code,
-        user_id,
-        profiles:user_id (full_name)
-      `)
-      .eq('branch_id', branchId)
-      .or(`member_code.ilike.%${memberSearch}%`)
-      .limit(10);
-    setSearchResults(data || []);
+    
+    setIsSearching(true);
+    try {
+      // Search by member_code first
+      const { data: membersByCode } = await supabase
+        .from('members')
+        .select(`
+          id,
+          member_code,
+          user_id,
+          profiles:user_id (full_name, email, phone)
+        `)
+        .eq('branch_id', branchId)
+        .ilike('member_code', `%${memberSearch}%`)
+        .limit(10);
+
+      // Search by profile name, email, or phone
+      const { data: membersByProfile } = await supabase
+        .from('members')
+        .select(`
+          id,
+          member_code,
+          user_id,
+          profiles:user_id (full_name, email, phone)
+        `)
+        .eq('branch_id', branchId)
+        .not('user_id', 'is', null)
+        .limit(50);
+
+      // Filter members whose profile matches the search
+      const searchLower = memberSearch.toLowerCase();
+      const filteredByProfile = (membersByProfile || []).filter((m) => {
+        const profile = m.profiles as any;
+        if (!profile) return false;
+        return (
+          (profile.full_name && profile.full_name.toLowerCase().includes(searchLower)) ||
+          (profile.email && profile.email.toLowerCase().includes(searchLower)) ||
+          (profile.phone && profile.phone.includes(memberSearch))
+        );
+      });
+
+      // Combine and deduplicate results
+      const allResults = [...(membersByCode || []), ...filteredByProfile];
+      const uniqueResults = allResults.filter(
+        (member, index, self) => index === self.findIndex((m) => m.id === member.id)
+      ).slice(0, 10);
+
+      setSearchResults(uniqueResults);
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error('Failed to search members');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleAssignLocker = async () => {
@@ -121,40 +164,63 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Enter member code or name"
+                  placeholder="Name, code, phone, or email"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleMemberSearch()}
                   className="pl-10"
                 />
               </div>
-              <Button variant="outline" onClick={handleMemberSearch}>Search</Button>
+              <Button variant="outline" onClick={handleMemberSearch} disabled={isSearching}>
+                {isSearching ? 'Searching...' : 'Search'}
+              </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Search by name, member code, phone number, or email
+            </p>
           </div>
 
           {/* Search Results */}
           {searchResults.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Search Results</Label>
-              {searchResults.map((member) => (
-                <div
-                  key={member.id}
-                  onClick={() => setSelectedMember(member)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    selectedMember?.id === member.id ? 'border-accent bg-accent/10' : 'hover:bg-muted/50'
-                  }`}
-                >
-                  <p className="font-medium">{member.profiles?.full_name || 'Unknown'}</p>
-                  <p className="text-sm text-muted-foreground">{member.member_code}</p>
-                </div>
-              ))}
+              <Label className="text-xs text-muted-foreground">Search Results ({searchResults.length})</Label>
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {searchResults.map((member) => {
+                  const profile = member.profiles as any;
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => setSelectedMember(member)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedMember?.id === member.id ? 'border-accent bg-accent/10' : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <p className="font-medium">{profile?.full_name || 'Unknown'}</p>
+                      <div className="flex gap-2 text-sm text-muted-foreground">
+                        <span>{member.member_code}</span>
+                        {profile?.phone && <span>• {profile.phone}</span>}
+                      </div>
+                      {profile?.email && (
+                        <p className="text-xs text-muted-foreground">{profile.email}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* No Results Message */}
+          {memberSearch && searchResults.length === 0 && !isSearching && (
+            <div className="p-4 rounded-lg bg-muted text-center">
+              <p className="text-sm text-muted-foreground">No members found matching "{memberSearch}"</p>
             </div>
           )}
 
           {/* Selected Member */}
           {selectedMember && (
             <div className="p-4 rounded-lg bg-accent/10 border border-accent/30">
-              <p className="font-medium">Selected: {selectedMember.profiles?.full_name}</p>
+              <p className="font-medium">Selected: {(selectedMember.profiles as any)?.full_name}</p>
               <p className="text-sm text-muted-foreground">{selectedMember.member_code}</p>
             </div>
           )}

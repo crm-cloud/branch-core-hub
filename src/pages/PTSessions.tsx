@@ -10,16 +10,29 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Package, Calendar, Check, X, Clock } from "lucide-react";
-import { usePTPackages, useCreatePTPackage, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession } from "@/hooks/usePTPackages";
+import { Plus, Package, Calendar, Check, X, Clock, Edit, TrendingUp, Users, Dumbbell } from "lucide-react";
+import { usePTPackages, useCreatePTPackage, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession, useUpdatePTPackage } from "@/hooks/usePTPackages";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+
+const SESSION_TYPES = [
+  { value: "per_session", label: "Per Session" },
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "custom", label: "Custom" },
+];
+
+const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function PTSessionsPage() {
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
+  const [isEditPackageOpen, setIsEditPackageOpen] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<any>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [selectedPackageForSession, setSelectedPackageForSession] = useState<string>("");
   const [newPackage, setNewPackage] = useState({
@@ -28,6 +41,9 @@ export default function PTSessionsPage() {
     total_sessions: 10,
     price: 0,
     validity_days: 90,
+    session_type: "per_session",
+    gst_inclusive: false,
+    gst_percentage: 18,
   });
   const [newSession, setNewSession] = useState({
     scheduled_at: "",
@@ -39,6 +55,7 @@ export default function PTSessionsPage() {
   const { data: trainers } = useTrainers(branchId);
   const { data: activePackages } = useActiveMemberPackages(branchId);
   const createPackage = useCreatePTPackage();
+  const updatePackage = useUpdatePTPackage();
   const scheduleSession = useSchedulePTSession();
   const completeSession = useCompletePTSession();
   const cancelSession = useCancelPTSession();
@@ -48,6 +65,18 @@ export default function PTSessionsPage() {
   const { data: sessions } = useTrainerSessions(firstTrainerId || "", {
     startDate: new Date(),
   });
+
+  // Chart data
+  const sessionStatusData = [
+    { name: "Completed", value: sessions?.filter((s) => s.status === "completed").length || 0 },
+    { name: "Scheduled", value: sessions?.filter((s) => s.status === "scheduled").length || 0 },
+    { name: "Cancelled", value: sessions?.filter((s) => s.status === "cancelled").length || 0 },
+  ].filter((d) => d.value > 0);
+
+  const trainerSessionsData = trainers?.slice(0, 5).map((t: any) => ({
+    name: t.profiles?.full_name?.split(" ")[0] || "Trainer",
+    sessions: activePackages?.filter((p) => p.trainer_id === t.id).reduce((acc, p) => acc + (p.sessions_total - p.sessions_remaining), 0) || 0,
+  })) || [];
 
   const handleCreatePackage = async () => {
     if (!newPackage.name || !newPackage.price || !branchId) {
@@ -62,16 +91,57 @@ export default function PTSessionsPage() {
       });
       toast.success("PT Package created");
       setIsCreatePackageOpen(false);
-      setNewPackage({
-        name: "",
-        description: "",
-        total_sessions: 10,
-        price: 0,
-        validity_days: 90,
-      });
+      resetPackageForm();
     } catch (error) {
       toast.error("Failed to create package");
     }
+  };
+
+  const handleEditPackage = async () => {
+    if (!editingPackage || !editingPackage.name || !editingPackage.price) {
+      toast.error("Please fill in required fields");
+      return;
+    }
+
+    try {
+      await updatePackage.mutateAsync({
+        id: editingPackage.id,
+        ...editingPackage,
+      });
+      toast.success("PT Package updated");
+      setIsEditPackageOpen(false);
+      setEditingPackage(null);
+    } catch (error) {
+      toast.error("Failed to update package");
+    }
+  };
+
+  const openEditDialog = (pkg: any) => {
+    setEditingPackage({
+      id: pkg.id,
+      name: pkg.name,
+      description: pkg.description || "",
+      total_sessions: pkg.total_sessions,
+      price: pkg.price,
+      validity_days: pkg.validity_days,
+      session_type: pkg.session_type || "per_session",
+      gst_inclusive: pkg.gst_inclusive || false,
+      gst_percentage: pkg.gst_percentage || 18,
+    });
+    setIsEditPackageOpen(true);
+  };
+
+  const resetPackageForm = () => {
+    setNewPackage({
+      name: "",
+      description: "",
+      total_sessions: 10,
+      price: 0,
+      validity_days: 90,
+      session_type: "per_session",
+      gst_inclusive: false,
+      gst_percentage: 18,
+    });
   };
 
   const handleScheduleSession = async () => {
@@ -118,6 +188,13 @@ export default function PTSessionsPage() {
     }
   };
 
+  const calculateGSTAmount = (price: number, gstPercentage: number, isInclusive: boolean) => {
+    if (isInclusive) {
+      return price - (price / (1 + gstPercentage / 100));
+    }
+    return price * (gstPercentage / 100);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -144,6 +221,121 @@ export default function PTSessionsPage() {
           </div>
         </div>
 
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Total Packages
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{packages?.length || 0}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4 text-success" />
+                Active Memberships
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{activePackages?.length || 0}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Dumbbell className="h-4 w-4 text-warning" />
+                Sessions Today
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {sessions?.filter((s) => {
+                  const today = new Date().toDateString();
+                  return new Date(s.scheduled_at).toDateString() === today;
+                }).length || 0}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-info/10 to-info/5 border-info/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-info" />
+                Completion Rate
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {sessions?.length
+                  ? Math.round((sessions.filter((s) => s.status === "completed").length / sessions.length) * 100)
+                  : 0}%
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts Row */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Session Status Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sessionStatusData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={sessionStatusData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={5}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {sessionStatusData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  No session data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Sessions by Trainer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {trainerSessionsData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={trainerSessionsData} layout="vertical">
+                    <XAxis type="number" />
+                    <YAxis type="category" dataKey="name" width={80} />
+                    <Tooltip />
+                    <Bar dataKey="sessions" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  No trainer data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         <Tabs defaultValue="packages" className="space-y-4">
           <TabsList>
             <TabsTrigger value="packages">Packages</TabsTrigger>
@@ -160,12 +352,12 @@ export default function PTSessionsPage() {
                     Create Package
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Create PT Package</DialogTitle>
                     <DialogDescription>Define a new personal training package</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
+                  <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                     <div className="grid gap-2">
                       <Label>Package Name *</Label>
                       <Input
@@ -173,6 +365,24 @@ export default function PTSessionsPage() {
                         onChange={(e) => setNewPackage({ ...newPackage, name: e.target.value })}
                         placeholder="10 Sessions Package"
                       />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Session Type *</Label>
+                      <Select
+                        value={newPackage.session_type}
+                        onValueChange={(v) => setNewPackage({ ...newPackage, session_type: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SESSION_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="grid gap-2">
@@ -192,6 +402,43 @@ export default function PTSessionsPage() {
                         />
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>GST %</Label>
+                        <Input
+                          type="number"
+                          value={newPackage.gst_percentage}
+                          onChange={(e) => setNewPackage({ ...newPackage, gst_percentage: parseFloat(e.target.value) || 18 })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 pt-6">
+                        <Switch
+                          checked={newPackage.gst_inclusive}
+                          onCheckedChange={(v) => setNewPackage({ ...newPackage, gst_inclusive: v })}
+                        />
+                        <Label>GST Inclusive</Label>
+                      </div>
+                    </div>
+                    {newPackage.price > 0 && (
+                      <div className="p-3 rounded-lg bg-muted text-sm">
+                        <p>
+                          <strong>Base Price:</strong> ₹
+                          {newPackage.gst_inclusive
+                            ? (newPackage.price - calculateGSTAmount(newPackage.price, newPackage.gst_percentage, true)).toFixed(2)
+                            : newPackage.price}
+                        </p>
+                        <p>
+                          <strong>GST ({newPackage.gst_percentage}%):</strong> ₹
+                          {calculateGSTAmount(newPackage.price, newPackage.gst_percentage, newPackage.gst_inclusive).toFixed(2)}
+                        </p>
+                        <p className="font-bold">
+                          <strong>Total:</strong> ₹
+                          {newPackage.gst_inclusive
+                            ? newPackage.price
+                            : (newPackage.price + calculateGSTAmount(newPackage.price, newPackage.gst_percentage, false)).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
                     <div className="grid gap-2">
                       <Label>Validity (days)</Label>
                       <Input
@@ -219,6 +466,101 @@ export default function PTSessionsPage() {
               </Dialog>
             </div>
 
+            {/* Edit Package Dialog */}
+            <Dialog open={isEditPackageOpen} onOpenChange={setIsEditPackageOpen}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Edit PT Package</DialogTitle>
+                  <DialogDescription>Update package details</DialogDescription>
+                </DialogHeader>
+                {editingPackage && (
+                  <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid gap-2">
+                      <Label>Package Name *</Label>
+                      <Input
+                        value={editingPackage.name}
+                        onChange={(e) => setEditingPackage({ ...editingPackage, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Session Type *</Label>
+                      <Select
+                        value={editingPackage.session_type}
+                        onValueChange={(v) => setEditingPackage({ ...editingPackage, session_type: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SESSION_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>Sessions *</Label>
+                        <Input
+                          type="number"
+                          value={editingPackage.total_sessions}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, total_sessions: parseInt(e.target.value) || 10 })}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Price (₹) *</Label>
+                        <Input
+                          type="number"
+                          value={editingPackage.price}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, price: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>GST %</Label>
+                        <Input
+                          type="number"
+                          value={editingPackage.gst_percentage}
+                          onChange={(e) => setEditingPackage({ ...editingPackage, gst_percentage: parseFloat(e.target.value) || 18 })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 pt-6">
+                        <Switch
+                          checked={editingPackage.gst_inclusive}
+                          onCheckedChange={(v) => setEditingPackage({ ...editingPackage, gst_inclusive: v })}
+                        />
+                        <Label>GST Inclusive</Label>
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Validity (days)</Label>
+                      <Input
+                        type="number"
+                        value={editingPackage.validity_days}
+                        onChange={(e) => setEditingPackage({ ...editingPackage, validity_days: parseInt(e.target.value) || 90 })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Description</Label>
+                      <Input
+                        value={editingPackage.description}
+                        onChange={(e) => setEditingPackage({ ...editingPackage, description: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditPackageOpen(false)}>Cancel</Button>
+                  <Button onClick={handleEditPackage} disabled={updatePackage.isPending}>
+                    {updatePackage.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             {packagesLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading packages...</div>
             ) : packages?.length === 0 ? (
@@ -229,10 +571,21 @@ export default function PTSessionsPage() {
               </Card>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {packages?.map((pkg) => (
-                  <Card key={pkg.id}>
+                {packages?.map((pkg: any) => (
+                  <Card key={pkg.id} className="relative overflow-hidden">
+                    <div className="absolute top-2 right-2">
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(pkg)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {SESSION_TYPES.find((t) => t.value === pkg.session_type)?.label || "Per Session"}
+                        </Badge>
+                        {pkg.gst_inclusive && <Badge variant="secondary" className="text-xs">GST Inc.</Badge>}
+                      </div>
+                      <CardTitle className="flex items-center gap-2 mt-2">
                         <Package className="h-5 w-5" />
                         {pkg.name}
                       </CardTitle>
@@ -246,6 +599,10 @@ export default function PTSessionsPage() {
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Price:</span>
                         <span className="font-medium">₹{pkg.price}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">GST:</span>
+                        <span className="font-medium">{pkg.gst_percentage || 18}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Validity:</span>

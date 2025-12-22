@@ -11,6 +11,19 @@ import { toast } from 'sonner';
 import { useCreateTrainer } from '@/hooks/useTrainers';
 import { UserPlus, Link } from 'lucide-react';
 
+const SALARY_TYPES = [
+  { value: 'hourly', label: 'Hourly Rate' },
+  { value: 'fixed', label: 'Fixed Salary' },
+];
+
+const GOVERNMENT_ID_TYPES = [
+  { value: 'aadhaar', label: 'Aadhaar Card' },
+  { value: 'pan', label: 'PAN Card' },
+  { value: 'driving_license', label: 'Driving License' },
+  { value: 'voter_id', label: 'Voter ID' },
+  { value: 'passport', label: 'Passport' },
+];
+
 interface AddTrainerDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,7 +43,12 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
     specializations: '',
     certifications: '',
     bio: '',
+    salary_type: 'hourly',
     hourly_rate: 0,
+    fixed_salary: 0,
+    pt_share_percentage: 40,
+    government_id_type: '',
+    government_id_number: '',
   });
 
   // Form data for creating new user
@@ -42,7 +60,12 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
     specializations: '',
     certifications: '',
     bio: '',
+    salary_type: 'hourly',
     hourly_rate: 0,
+    fixed_salary: 0,
+    pt_share_percentage: 40,
+    government_id_type: '',
+    government_id_number: '',
   });
 
   const loadAvailableUsers = async () => {
@@ -108,7 +131,12 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
           ? linkFormData.certifications.split(',').map((s) => s.trim())
           : null,
         bio: linkFormData.bio || null,
-        hourly_rate: linkFormData.hourly_rate || null,
+        hourly_rate: linkFormData.salary_type === 'hourly' ? linkFormData.hourly_rate : null,
+        salary_type: linkFormData.salary_type,
+        fixed_salary: linkFormData.salary_type === 'fixed' ? linkFormData.fixed_salary : null,
+        pt_share_percentage: linkFormData.pt_share_percentage,
+        government_id_type: linkFormData.government_id_type || null,
+        government_id_number: linkFormData.government_id_number || null,
       });
 
       // Assign trainer role
@@ -166,7 +194,12 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
           ? newUserFormData.certifications.split(',').map((s) => s.trim())
           : null,
         bio: newUserFormData.bio || null,
-        hourly_rate: newUserFormData.hourly_rate || null,
+        hourly_rate: newUserFormData.salary_type === 'hourly' ? newUserFormData.hourly_rate : null,
+        salary_type: newUserFormData.salary_type,
+        fixed_salary: newUserFormData.salary_type === 'fixed' ? newUserFormData.fixed_salary : null,
+        pt_share_percentage: newUserFormData.pt_share_percentage,
+        government_id_type: newUserFormData.government_id_type || null,
+        government_id_number: newUserFormData.government_id_number || null,
       });
 
       // Assign trainer role
@@ -198,7 +231,12 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       specializations: '',
       certifications: '',
       bio: '',
+      salary_type: 'hourly',
       hourly_rate: 0,
+      fixed_salary: 0,
+      pt_share_percentage: 40,
+      government_id_type: '',
+      government_id_number: '',
     });
     setNewUserFormData({
       email: '',
@@ -208,9 +246,102 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       specializations: '',
       certifications: '',
       bio: '',
+      salary_type: 'hourly',
       hourly_rate: 0,
+      fixed_salary: 0,
+      pt_share_percentage: 40,
+      government_id_type: '',
+      government_id_number: '',
     });
   };
+
+  const renderCompensationFields = (formData: any, setFormData: any) => (
+    <>
+      <div className="space-y-2">
+        <Label>Salary Type</Label>
+        <Select
+          value={formData.salary_type}
+          onValueChange={(value) => setFormData({ ...formData, salary_type: value })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SALARY_TYPES.map((type) => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {formData.salary_type === 'hourly' ? (
+        <div className="space-y-2">
+          <Label>Hourly Rate (₹)</Label>
+          <Input
+            type="number"
+            value={formData.hourly_rate}
+            onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
+          />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label>Fixed Salary (₹/month)</Label>
+          <Input
+            type="number"
+            value={formData.fixed_salary}
+            onChange={(e) => setFormData({ ...formData, fixed_salary: parseFloat(e.target.value) || 0 })}
+          />
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label>PT Share Percentage (%)</Label>
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          value={formData.pt_share_percentage}
+          onChange={(e) => setFormData({ ...formData, pt_share_percentage: parseFloat(e.target.value) || 40 })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Trainer gets {formData.pt_share_percentage}%, Owner gets {100 - formData.pt_share_percentage}% (before GST)
+        </p>
+      </div>
+    </>
+  );
+
+  const renderGovernmentIdFields = (formData: any, setFormData: any) => (
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label>Government ID Type</Label>
+        <Select
+          value={formData.government_id_type}
+          onValueChange={(value) => setFormData({ ...formData, government_id_type: value })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select ID type" />
+          </SelectTrigger>
+          <SelectContent>
+            {GOVERNMENT_ID_TYPES.map((type) => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>ID Number</Label>
+        <Input
+          value={formData.government_id_number}
+          onChange={(e) => setFormData({ ...formData, government_id_number: e.target.value })}
+          placeholder="Enter ID number"
+        />
+      </div>
+    </div>
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -283,6 +414,8 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                 />
               </div>
 
+              {renderGovernmentIdFields(newUserFormData, setNewUserFormData)}
+
               <div className="space-y-2">
                 <Label>Specializations</Label>
                 <Input
@@ -301,14 +434,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Hourly Rate (₹)</Label>
-                <Input
-                  type="number"
-                  value={newUserFormData.hourly_rate}
-                  onChange={(e) => setNewUserFormData({ ...newUserFormData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
+              {renderCompensationFields(newUserFormData, setNewUserFormData)}
 
               <div className="space-y-2">
                 <Label>Bio</Label>
@@ -364,6 +490,8 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                 </Select>
               </div>
 
+              {renderGovernmentIdFields(linkFormData, setLinkFormData)}
+
               <div className="space-y-2">
                 <Label>Specializations</Label>
                 <Input
@@ -382,14 +510,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Hourly Rate (₹)</Label>
-                <Input
-                  type="number"
-                  value={linkFormData.hourly_rate}
-                  onChange={(e) => setLinkFormData({ ...linkFormData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
+              {renderCompensationFields(linkFormData, setLinkFormData)}
 
               <div className="space-y-2">
                 <Label>Bio</Label>

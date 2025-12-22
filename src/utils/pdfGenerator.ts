@@ -1,4 +1,4 @@
-// PDF generation utility for fitness plans
+// PDF generation utility for fitness plans and contracts
 
 interface PlanData {
   name: string;
@@ -8,6 +8,23 @@ interface PlanData {
   validFrom?: string;
   validUntil?: string;
   caloriesTarget?: number;
+}
+
+interface ContractData {
+  employeeName: string;
+  employeeCode: string;
+  employeeEmail?: string;
+  employeePhone?: string;
+  position?: string;
+  department?: string;
+  startDate: string;
+  endDate?: string;
+  salary: number;
+  salaryType?: string;
+  contractType: string;
+  terms?: any;
+  companyName?: string;
+  companyAddress?: string;
 }
 
 export function generatePlanPDF(plan: PlanData): void {
@@ -159,6 +176,223 @@ export function generatePlanPDF(plan: PlanData): void {
   printWindow.document.close();
   
   // Wait for content to load then print
+  printWindow.onload = () => {
+    printWindow.print();
+  };
+}
+
+export function generateContractPDF(contract: ContractData): void {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('Please allow popups to download PDF');
+    return;
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Employment Contract - ${contract.employeeName}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Times New Roman', serif; 
+          padding: 50px;
+          color: #333;
+          max-width: 800px;
+          margin: 0 auto;
+          line-height: 1.6;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 40px;
+          padding-bottom: 20px;
+          border-bottom: 3px double #333;
+        }
+        .company-name {
+          font-size: 24px;
+          font-weight: bold;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+        }
+        .company-address {
+          font-size: 12px;
+          color: #666;
+          margin-top: 5px;
+        }
+        .title {
+          font-size: 20px;
+          font-weight: bold;
+          text-align: center;
+          margin: 30px 0;
+          text-decoration: underline;
+        }
+        .section {
+          margin-bottom: 25px;
+        }
+        .section-title {
+          font-size: 14px;
+          font-weight: bold;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+        }
+        .info-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+        .info-item {
+          font-size: 13px;
+        }
+        .info-item label {
+          font-weight: bold;
+          display: block;
+          margin-bottom: 3px;
+        }
+        .terms-box {
+          background: #f9f9f9;
+          padding: 20px;
+          border: 1px solid #ddd;
+          margin: 20px 0;
+        }
+        .terms-box ol {
+          margin-left: 20px;
+        }
+        .terms-box li {
+          margin-bottom: 10px;
+          font-size: 13px;
+        }
+        .signature-section {
+          margin-top: 60px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 50px;
+        }
+        .signature-box {
+          text-align: center;
+        }
+        .signature-line {
+          border-top: 1px solid #333;
+          margin-top: 60px;
+          padding-top: 10px;
+          font-size: 12px;
+        }
+        .footer {
+          margin-top: 40px;
+          text-align: center;
+          font-size: 11px;
+          color: #999;
+        }
+        @media print {
+          body { padding: 30px; }
+          .signature-section { break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="company-name">${contract.companyName || 'FITNESS CENTER'}</div>
+        <div class="company-address">${contract.companyAddress || 'Address to be filled'}</div>
+      </div>
+
+      <div class="title">EMPLOYMENT CONTRACT</div>
+
+      <div class="section">
+        <div class="section-title">Employee Details</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <label>Employee Name:</label>
+            <span>${contract.employeeName}</span>
+          </div>
+          <div class="info-item">
+            <label>Employee Code:</label>
+            <span>${contract.employeeCode}</span>
+          </div>
+          <div class="info-item">
+            <label>Email:</label>
+            <span>${contract.employeeEmail || '___________________'}</span>
+          </div>
+          <div class="info-item">
+            <label>Phone:</label>
+            <span>${contract.employeePhone || '___________________'}</span>
+          </div>
+          <div class="info-item">
+            <label>Position:</label>
+            <span>${contract.position || '___________________'}</span>
+          </div>
+          <div class="info-item">
+            <label>Department:</label>
+            <span>${contract.department || '___________________'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Contract Details</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <label>Contract Type:</label>
+            <span>${contract.contractType}</span>
+          </div>
+          <div class="info-item">
+            <label>Salary Type:</label>
+            <span>${contract.salaryType || 'Monthly'}</span>
+          </div>
+          <div class="info-item">
+            <label>Start Date:</label>
+            <span>${new Date(contract.startDate).toLocaleDateString('en-IN')}</span>
+          </div>
+          <div class="info-item">
+            <label>End Date:</label>
+            <span>${contract.endDate ? new Date(contract.endDate).toLocaleDateString('en-IN') : 'Ongoing'}</span>
+          </div>
+          <div class="info-item">
+            <label>Monthly Salary:</label>
+            <span>₹${contract.salary.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="terms-box">
+        <div class="section-title">Terms & Conditions</div>
+        <ol>
+          <li>The Employee agrees to perform their duties diligently and to the best of their abilities.</li>
+          <li>Working hours shall be as per the organization's standard policy.</li>
+          <li>The Employee shall maintain confidentiality of all business information.</li>
+          <li>Either party may terminate this contract with a notice period of 30 days.</li>
+          <li>The Employee shall adhere to all company policies and procedures.</li>
+          <li>Salary shall be paid on or before the 7th of each month.</li>
+          <li>The Employee is entitled to leaves as per company policy.</li>
+          <li>Any disputes shall be resolved through mutual discussion.</li>
+        </ol>
+      </div>
+
+      <div class="signature-section">
+        <div class="signature-box">
+          <div class="signature-line">
+            Employee Signature<br/>
+            <small>Date: _______________</small>
+          </div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-line">
+            Employer Signature<br/>
+            <small>Date: _______________</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>This is a computer-generated document. Generated on ${new Date().toLocaleDateString('en-IN')}</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  
   printWindow.onload = () => {
     printWindow.print();
   };

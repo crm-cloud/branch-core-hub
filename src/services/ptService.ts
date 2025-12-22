@@ -48,6 +48,22 @@ export async function createPTPackage(
   return data;
 }
 
+// Update PT package
+export async function updatePTPackage(
+  packageId: string,
+  packageData: Database["public"]["Tables"]["pt_packages"]["Update"]
+): Promise<PTPackage> {
+  const { data, error } = await supabase
+    .from("pt_packages")
+    .update(packageData)
+    .eq("id", packageId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 // Purchase PT package for member
 export async function purchasePTPackage(
   memberId: string,
