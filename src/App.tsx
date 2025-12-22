@@ -28,6 +28,7 @@ import EmployeesPage from "./pages/Employees";
 import HRMPage from "./pages/HRM";
 import TrainersPage from "./pages/Trainers";
 import StaffAttendancePage from "./pages/StaffAttendance";
+import AttendanceDashboardPage from "./pages/AttendanceDashboard";
 import TasksPage from "./pages/Tasks";
 import AnalyticsPage from "./pages/Analytics";
 import AuditLogsPage from "./pages/AuditLogs";
@@ -90,6 +91,7 @@ const App = () => (
             <Route path="/employees" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EmployeesPage /></ProtectedRoute>} />
             <Route path="/trainers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><TrainersPage /></ProtectedRoute>} />
             <Route path="/staff-attendance" element={<ProtectedRoute><StaffAttendancePage /></ProtectedRoute>} />
+            <Route path="/attendance-dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AttendanceDashboardPage /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/audit-logs" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AuditLogsPage /></ProtectedRoute>} />
             <Route path="/announcements" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnnouncementsPage /></ProtectedRoute>} />
