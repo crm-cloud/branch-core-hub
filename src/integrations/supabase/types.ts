@@ -2967,10 +2967,13 @@ export type Database = {
           branch_id: string
           created_at: string
           description: string | null
+          gst_inclusive: boolean | null
+          gst_percentage: number | null
           id: string
           is_active: boolean | null
           name: string
           price: number
+          session_type: string | null
           total_sessions: number
           updated_at: string
           validity_days: number
@@ -2979,10 +2982,13 @@ export type Database = {
           branch_id: string
           created_at?: string
           description?: string | null
+          gst_inclusive?: boolean | null
+          gst_percentage?: number | null
           id?: string
           is_active?: boolean | null
           name: string
           price: number
+          session_type?: string | null
           total_sessions: number
           updated_at?: string
           validity_days: number
@@ -2991,10 +2997,13 @@ export type Database = {
           branch_id?: string
           created_at?: string
           description?: string | null
+          gst_inclusive?: boolean | null
+          gst_percentage?: number | null
           id?: string
           is_active?: boolean | null
           name?: string
           price?: number
+          session_type?: string | null
           total_sessions?: number
           updated_at?: string
           validity_days?: number
@@ -3656,10 +3665,15 @@ export type Database = {
           branch_id: string
           certifications: string[] | null
           created_at: string
+          fixed_salary: number | null
+          government_id_number: string | null
+          government_id_type: string | null
           hourly_rate: number | null
           id: string
           is_active: boolean | null
           max_clients: number | null
+          pt_share_percentage: number | null
+          salary_type: string | null
           specializations: string[] | null
           updated_at: string
           user_id: string
@@ -3669,10 +3683,15 @@ export type Database = {
           branch_id: string
           certifications?: string[] | null
           created_at?: string
+          fixed_salary?: number | null
+          government_id_number?: string | null
+          government_id_type?: string | null
           hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
           max_clients?: number | null
+          pt_share_percentage?: number | null
+          salary_type?: string | null
           specializations?: string[] | null
           updated_at?: string
           user_id: string
@@ -3682,10 +3701,15 @@ export type Database = {
           branch_id?: string
           certifications?: string[] | null
           created_at?: string
+          fixed_salary?: number | null
+          government_id_number?: string | null
+          government_id_type?: string | null
           hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
           max_clients?: number | null
+          pt_share_percentage?: number | null
+          salary_type?: string | null
           specializations?: string[] | null
           updated_at?: string
           user_id?: string

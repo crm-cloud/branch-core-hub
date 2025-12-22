@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPTPackages,
   createPTPackage,
+  updatePTPackage,
   purchasePTPackage,
   fetchMemberPTPackages,
   fetchActiveMemberPackages,
@@ -14,6 +15,7 @@ import {
 import type { Database } from "@/integrations/supabase/types";
 
 type PTPackageInsert = Database["public"]["Tables"]["pt_packages"]["Insert"];
+type PTPackageUpdate = Database["public"]["Tables"]["pt_packages"]["Update"];
 
 export function usePTPackages(branchId: string) {
   return useQuery({
@@ -57,6 +59,17 @@ export function useCreatePTPackage() {
     mutationFn: (data: PTPackageInsert) => createPTPackage(data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["pt-packages", variables.branch_id] });
+    },
+  });
+}
+
+export function useUpdatePTPackage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: PTPackageUpdate & { id: string }) => updatePTPackage(data.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pt-packages"] });
     },
   });
 }
