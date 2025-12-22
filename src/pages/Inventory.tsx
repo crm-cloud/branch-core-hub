@@ -1,13 +1,20 @@
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AddProductDrawer } from '@/components/products/AddProductDrawer';
 import { Plus, Package, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useBranches } from '@/hooks/useBranches';
 
 export default function InventoryPage() {
+  const [addProductOpen, setAddProductOpen] = useState(false);
+  const { data: branches = [] } = useBranches();
+  const branchId = branches[0]?.id || '';
+
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: ['inventory'],
     queryFn: async () => {
@@ -32,7 +39,7 @@ export default function InventoryPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Inventory</h1>
-          <Button>
+          <Button onClick={() => setAddProductOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Product
           </Button>
@@ -114,6 +121,11 @@ export default function InventoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AddProductDrawer
+        open={addProductOpen}
+        onOpenChange={setAddProductOpen}
+      />
     </AppLayout>
   );
 }

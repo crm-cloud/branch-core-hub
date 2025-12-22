@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   User, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
@@ -272,35 +273,67 @@ export function MemberProfileDrawer({
           {/* Quick Actions - Row 2 */}
           <div className="grid grid-cols-4 gap-2">
             {activeMembership?.status === 'active' && (
-              <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)}>
-                <Snowflake className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)}>
+                    <Snowflake className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Freeze Membership</TooltipContent>
+              </Tooltip>
             )}
             {activeMembership?.status === 'frozen' && (
-              <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)}>
-                <Play className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)}>
+                    <Play className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Unfreeze Membership</TooltipContent>
+              </Tooltip>
             )}
-            <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)}>
-              <UserCog className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)}>
-              <Ruler className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)}>
+                  <UserCog className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Assign Trainer</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)}>
+                  <Ruler className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Record Measurement</TooltipContent>
+            </Tooltip>
             {activeMembership && (
-              <Button variant="outline" size="sm" className="text-destructive" onClick={() => setCancelOpen(true)}>
-                <XCircle className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" className="text-destructive" onClick={() => setCancelOpen(true)}>
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Cancel Membership</TooltipContent>
+              </Tooltip>
             )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className={member.status === 'active' ? 'text-destructive' : 'text-success'}
-              onClick={toggleMemberStatus}
-              disabled={isTogglingStatus}
-            >
-              {member.status === 'active' ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className={member.status === 'active' ? 'text-destructive' : 'text-success'}
+                  onClick={toggleMemberStatus}
+                  disabled={isTogglingStatus}
+                >
+                  {member.status === 'active' ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {member.status === 'active' ? 'Deactivate Member' : 'Activate Member'}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           <Separator />

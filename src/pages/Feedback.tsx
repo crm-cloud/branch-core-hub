@@ -1,23 +1,19 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
-import { Plus, Star, MessageSquare, CheckCircle, Clock, Eye } from 'lucide-react';
+import { Star, MessageSquare, CheckCircle, Clock, Eye } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
-import { AddFeedbackDrawer } from '@/components/feedback/AddFeedbackDrawer';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 export default function FeedbackPage() {
   const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const [addFeedbackOpen, setAddFeedbackOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const queryClient = useQueryClient();
 
@@ -101,7 +97,7 @@ export default function FeedbackPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Member Feedback</h1>
-            <p className="text-muted-foreground">Track and manage member feedback and ratings</p>
+            <p className="text-muted-foreground">Review and manage feedback submitted by members</p>
           </div>
           <div className="flex items-center gap-4">
             {branches.length > 1 && (
@@ -118,10 +114,6 @@ export default function FeedbackPage() {
                 </SelectContent>
               </Select>
             )}
-            <Button onClick={() => setAddFeedbackOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Feedback
-            </Button>
           </div>
         </div>
 
@@ -259,12 +251,6 @@ export default function FeedbackPage() {
             )}
           </CardContent>
         </Card>
-
-        <AddFeedbackDrawer
-          open={addFeedbackOpen}
-          onOpenChange={setAddFeedbackOpen}
-          branchId={branchId}
-        />
       </div>
     </AppLayout>
   );
