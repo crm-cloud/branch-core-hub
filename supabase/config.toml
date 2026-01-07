@@ -3,6 +3,9 @@ project_id = "iyqqpbvnszyrrgerniog"
 [functions.admin-create-user]
 verify_jwt = true
 
+[functions.capture-lead]
+verify_jwt = false
+
 [functions.check-setup]
 verify_jwt = false
 
