@@ -18,18 +18,58 @@ import {
   Mail,
   MapPin,
   Check,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 import { cmsService, ThemeSettings } from '@/services/cmsService';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export default function PublicWebsite() {
   const [theme, setTheme] = useState<ThemeSettings>(cmsService.getDefaultTheme());
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const heroRef = useRef<HTMLDivElement>(null);
+  
+  // Lead form state
+  const [leadForm, setLeadForm] = useState({ fullName: '', phone: '', email: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     setTheme(cmsService.getTheme());
   }, []);
+
+  const handleLeadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!leadForm.fullName.trim() || !leadForm.phone.trim()) {
+      toast.error('Please enter your name and phone number');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('capture-lead', {
+        body: {
+          fullName: leadForm.fullName.trim(),
+          phone: leadForm.phone.trim(),
+          email: leadForm.email.trim() || undefined,
+          source: 'website',
+        },
+      });
+      
+      if (error) throw error;
+      
+      setSubmitted(true);
+      toast.success('Thank you! We will contact you soon.');
+      setLeadForm({ fullName: '', phone: '', email: '' });
+    } catch (error) {
+      console.error('Lead submission error:', error);
+      toast.error('Failed to submit. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -381,26 +421,55 @@ export default function PublicWebsite() {
                   <p className="text-gray-400 mb-6">
                     Experience our facilities with a complimentary 3-day pass. No commitment required.
                   </p>
-                  <form className="space-y-4">
-                    <input 
-                      type="text" 
-                      placeholder="Your Name" 
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
-                    />
-                    <input 
-                      type="tel" 
-                      placeholder="Phone Number" 
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
-                    />
-                    <input 
-                      type="email" 
-                      placeholder="Email Address" 
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
-                    />
-                    <Button className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white py-6 rounded-xl text-lg">
-                      Claim Free Trial
-                    </Button>
-                  </form>
+                  {submitted ? (
+                    <div className="text-center py-8">
+                      <div className="h-16 w-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                        <Check className="h-8 w-8 text-green-400" />
+                      </div>
+                      <h4 className="text-xl font-bold text-white mb-2">Thank You!</h4>
+                      <p className="text-gray-400">We'll contact you shortly to schedule your free trial.</p>
+                    </div>
+                  ) : (
+                    <form className="space-y-4" onSubmit={handleLeadSubmit}>
+                      <input 
+                        type="text" 
+                        placeholder="Your Name" 
+                        value={leadForm.fullName}
+                        onChange={(e) => setLeadForm(prev => ({ ...prev, fullName: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
+                        required
+                      />
+                      <input 
+                        type="tel" 
+                        placeholder="Phone Number" 
+                        value={leadForm.phone}
+                        onChange={(e) => setLeadForm(prev => ({ ...prev, phone: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
+                        required
+                      />
+                      <input 
+                        type="email" 
+                        placeholder="Email Address (Optional)" 
+                        value={leadForm.email}
+                        onChange={(e) => setLeadForm(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-orange-500 focus:outline-none"
+                      />
+                      <Button 
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white py-6 rounded-xl text-lg"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                            Submitting...
+                          </>
+                        ) : (
+                          'Claim Free Trial'
+                        )}
+                      </Button>
+                    </form>
+                  )}
                 </CardContent>
               </Card>
             </div>

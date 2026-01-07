@@ -8,12 +8,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  User, Phone, Mail, Calendar, MapPin, Building2, 
+  User, Users, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
-  Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck
+  Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
+  Award, Copy, Share2, MessageCircle
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ import { AssignTrainerDrawer } from './AssignTrainerDrawer';
 import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
 import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
+import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 
 interface MemberProfileDrawerProps {
   open: boolean;
@@ -144,6 +146,60 @@ export function MemberProfileDrawer({
       return data;
     },
     enabled: !!member?.id && open,
+  });
+
+  // Fetch rewards
+  const { data: rewards = [] } = useQuery({
+    queryKey: ['member-rewards', member?.id],
+    queryFn: () => fetchMemberRewards(member.id),
+    enabled: !!member?.id && open,
+  });
+
+  // Fetch referrals
+  const { data: referrals = [] } = useQuery({
+    queryKey: ['member-referrals', member?.id],
+    queryFn: () => fetchMemberReferrals(member.id),
+    enabled: !!member?.id && open,
+  });
+
+  // Claim reward mutation
+  const claimRewardMutation = useMutation({
+    mutationFn: (rewardId: string) => claimReward(rewardId, member.id),
+    onSuccess: () => {
+      toast.success('Reward claimed successfully!');
+      queryClient.invalidateQueries({ queryKey: ['member-rewards', member?.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to claim reward');
+    },
+  });
+
+  const copyReferralCode = () => {
+    const code = member.member_code;
+    navigator.clipboard.writeText(code);
+    toast.success('Referral code copied!');
+  };
+
+  const shareViaWhatsApp = () => {
+    const code = member.member_code;
+    const message = `Join ${theme?.gymName || 'our gym'} with my referral code: ${code} and get exclusive rewards!`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const shareViaEmail = () => {
+    const code = member.member_code;
+    const subject = `Join me at ${theme?.gymName || 'our gym'}!`;
+    const body = `Hey!\n\nI'd love for you to join my gym. Use my referral code: ${code} when signing up to get exclusive rewards!\n\nSee you there!`;
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+  };
+
+  const [theme, setTheme] = useState<any>(null);
+  
+  // Load theme for gym name
+  useState(() => {
+    import('@/services/cmsService').then(({ cmsService }) => {
+      setTheme(cmsService.getTheme());
+    });
   });
 
   if (!member) return null;
@@ -338,13 +394,13 @@ export function MemberProfileDrawer({
 
           <Separator />
 
-          {/* Tabs for Details */}
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="membership">Plan</TabsTrigger>
               <TabsTrigger value="measurements">Body</TabsTrigger>
               <TabsTrigger value="payments">Pay</TabsTrigger>
+              <TabsTrigger value="rewards">Rewards</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
 
@@ -580,6 +636,144 @@ export function MemberProfileDrawer({
 
             <TabsContent value="measurements" className="space-y-4 mt-4">
               <MeasurementProgressView memberId={member.id} />
+            </TabsContent>
+
+            <TabsContent value="rewards" className="space-y-4 mt-4">
+              {/* Referral Code Card */}
+              <Card className="border-primary/30 bg-primary/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Share2 className="h-4 w-4" />
+                    Your Referral Code
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex-1 bg-background rounded-lg px-4 py-3 font-mono text-lg font-bold">
+                      {member.member_code}
+                    </div>
+                    <Button variant="outline" size="icon" onClick={copyReferralCode}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={shareViaWhatsApp}>
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp
+                    </Button>
+                    <Button variant="outline" size="sm" className="flex-1" onClick={shareViaEmail}>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Email
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-4 text-center">
+                    <div className="text-2xl font-bold text-primary">{referrals.length}</div>
+                    <p className="text-xs text-muted-foreground">Total Referrals</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 text-center">
+                    <div className="text-2xl font-bold text-success">
+                      {rewards.filter((r: any) => !r.is_claimed).length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Unclaimed Rewards</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Rewards List */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Award className="h-4 w-4" />
+                    Your Rewards
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {rewards.length > 0 ? (
+                    <div className="space-y-2">
+                      {rewards.map((reward: any) => (
+                        <div key={reward.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Gift className="h-4 w-4 text-primary" />
+                              <span className="font-medium capitalize">
+                                {reward.reward_type?.replace('_', ' ') || 'Reward'}
+                              </span>
+                            </div>
+                            {reward.reward_value && (
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Value: ₹{reward.reward_value}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            {reward.is_claimed ? (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                Claimed
+                              </Badge>
+                            ) : (
+                              <Button 
+                                size="sm" 
+                                onClick={() => claimRewardMutation.mutate(reward.id)}
+                                disabled={claimRewardMutation.isPending}
+                              >
+                                Claim
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Gift className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No rewards yet</p>
+                      <p className="text-xs mt-1">Refer friends to earn rewards!</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Recent Referrals */}
+              {referrals.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Recent Referrals
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {referrals.slice(0, 5).map((ref: any) => (
+                        <div key={ref.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{ref.referred_name || 'Member'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(ref.created_at), 'dd MMM yyyy')}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="capitalize text-xs">
+                            {ref.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-4 mt-4">
