@@ -474,43 +474,30 @@ Deno.serve(async (req) => {
     }
 
     // ==================== PLAN BENEFITS ====================
+    // Note: plan_benefits uses benefit_type enum, not benefit_type_id
     for (const plan of createdPlans) {
       const planBenefits = [];
       
-      // All plans get group classes
-      const groupClassBt = createdBenefitTypes.find(bt => bt.code === 'GROUP_CLASSES');
-      if (groupClassBt) {
-        planBenefits.push({ plan_id: plan.id, benefit_type_id: groupClassBt.id, quantity: -1 }); // -1 = unlimited
-      }
+      // All plans get gym access and group classes
+      planBenefits.push({ plan_id: plan.id, benefit_type: 'gym_access', limit_count: null, frequency: 'unlimited' });
+      planBenefits.push({ plan_id: plan.id, benefit_type: 'group_classes', limit_count: null, frequency: 'unlimited' });
 
       // Premium plans get more benefits
       if (plan.name.includes('Premium') || plan.name.includes('Elite')) {
-        const saunaBt = createdBenefitTypes.find(bt => bt.code === 'SAUNA');
-        const steamBt = createdBenefitTypes.find(bt => bt.code === 'STEAM_ROOM');
-        const towelBt = createdBenefitTypes.find(bt => bt.code === 'TOWEL');
-        
-        if (saunaBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: saunaBt.id, quantity: plan.duration_days });
-        if (steamBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: steamBt.id, quantity: plan.duration_days });
-        if (towelBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: towelBt.id, quantity: -1 });
+        planBenefits.push({ plan_id: plan.id, benefit_type: 'spa_access', limit_count: 8, frequency: 'monthly' });
+        planBenefits.push({ plan_id: plan.id, benefit_type: 'pool_access', limit_count: null, frequency: 'unlimited' });
       }
 
       // Elite plan gets everything
       if (plan.name.includes('Elite')) {
-        const iceBathBt = createdBenefitTypes.find(bt => bt.code === 'ICE_BATH');
-        const poolBt = createdBenefitTypes.find(bt => bt.code === 'POOL');
-        const lockerBt = createdBenefitTypes.find(bt => bt.code === 'LOCKER');
-        const parkingBt = createdBenefitTypes.find(bt => bt.code === 'PARKING');
-
-        if (iceBathBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: iceBathBt.id, quantity: 50 });
-        if (poolBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: poolBt.id, quantity: -1 });
-        if (lockerBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: lockerBt.id, quantity: 1 });
-        if (parkingBt) planBenefits.push({ plan_id: plan.id, benefit_type_id: parkingBt.id, quantity: 1 });
+        planBenefits.push({ plan_id: plan.id, benefit_type: 'locker', limit_count: 1, frequency: 'per_membership' });
+        planBenefits.push({ plan_id: plan.id, benefit_type: 'pt_sessions', limit_count: 4, frequency: 'monthly' });
       }
 
       for (const benefit of planBenefits) {
         const { error } = await supabase
           .from('plan_benefits')
-          .upsert(benefit, { onConflict: 'plan_id,benefit_type_id' });
+          .upsert(benefit, { onConflict: 'plan_id,benefit_type' });
         
         if (error && !error.message.includes('duplicate')) {
           console.error('Plan benefit error:', error);
@@ -556,7 +543,6 @@ Deno.serve(async (req) => {
           end_date: endDate.toISOString().split('T')[0],
           status: 'active',
           price_paid: plan.price,
-          admission_fee_paid: plan.admission_fee || 0,
         });
 
       if (membershipError) {
@@ -811,7 +797,6 @@ Deno.serve(async (req) => {
           price: product.price,
           category_id: category.id,
           branch_id: branchId,
-          stock_quantity: product.stock,
           is_active: true,
         });
 
@@ -826,9 +811,9 @@ Deno.serve(async (req) => {
     const leads = [
       { full_name: 'Ravi Kumar', phone: '9988776655', email: 'ravi.kumar@email.com', status: 'new', source: 'walk_in' },
       { full_name: 'Sunita Sharma', phone: '9988776644', email: 'sunita.sharma@email.com', status: 'contacted', source: 'website' },
-      { full_name: 'Deepak Mehta', phone: '9988776633', email: 'deepak.mehta@email.com', status: 'tour_scheduled', source: 'referral' },
-      { full_name: 'Anita Gupta', phone: '9988776622', email: 'anita.gupta@email.com', status: 'negotiating', source: 'social_media' },
-      { full_name: 'Vijay Singh', phone: '9988776611', email: 'vijay.singh@email.com', status: 'follow_up', source: 'phone' },
+      { full_name: 'Deepak Mehta', phone: '9988776633', email: 'deepak.mehta@email.com', status: 'qualified', source: 'referral' },
+      { full_name: 'Anita Gupta', phone: '9988776622', email: 'anita.gupta@email.com', status: 'negotiation', source: 'social_media' },
+      { full_name: 'Vijay Singh', phone: '9988776611', email: 'vijay.singh@email.com', status: 'contacted', source: 'phone' },
     ];
 
     for (const lead of leads) {
@@ -940,7 +925,7 @@ Deno.serve(async (req) => {
           branch_id: branchId,
           locker_number: lockerNumber,
           size: size,
-          status: i <= 5 ? 'occupied' : 'available',
+          status: i <= 5 ? 'assigned' : 'available',
           monthly_fee: monthlyFee,
         });
 
