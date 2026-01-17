@@ -12,13 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
-  Search, 
   Settings, 
   User, 
   LogOut, 
   Moon, 
-  Sun,
-  Command
+  Sun
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
@@ -40,32 +38,14 @@ export function AppHeader() {
 
   const primaryRole = roles[0] || 'user';
 
-  const openSearch = () => {
-    // Trigger the search dialog with keyboard event
-    const event = new KeyboardEvent('keydown', {
-      key: 'k',
-      metaKey: true,
-      bubbles: true,
-    });
-    document.dispatchEvent(event);
-  };
+  // openSearch function removed - GlobalSearch has its own trigger
 
   return (
     <>
-      <GlobalSearch />
       <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
-        {/* Search */}
+        {/* Single Search - GlobalSearch component */}
         <div className="flex-1 max-w-md">
-          <button
-            onClick={openSearch}
-            className="relative group w-full flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-transparent hover:border-border text-left text-muted-foreground transition-all"
-          >
-            <Search className="h-4 w-4" />
-            <span className="flex-1">Search...</span>
-            <kbd className="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-              <Command className="h-3 w-3" />K
-            </kbd>
-          </button>
+          <GlobalSearch />
         </div>
 
       {/* Right Side Actions */}
