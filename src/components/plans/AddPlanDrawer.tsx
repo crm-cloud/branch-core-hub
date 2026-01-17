@@ -298,7 +298,9 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-base font-semibold">Plan Benefits</Label>
-                  <p className="text-sm text-muted-foreground">Select the benefits included in this plan</p>
+                  <p className="text-sm text-muted-foreground">
+                    Select benefits and set as <span className="font-medium text-primary">Unlimited</span> or <span className="font-medium text-primary">Limited</span> (e.g., Sauna = 3/month)
+                  </p>
                 </div>
                 {branchId && (
                   <Button 
@@ -347,34 +349,68 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                       </div>
                       
                       {benefits[benefit.id]?.enabled && (
-                        <div className="mt-3 ml-6 grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs">Frequency</Label>
-                            <Select
-                              value={benefits[benefit.id]?.frequency || 'unlimited'}
-                              onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
-                            >
-                              <SelectTrigger className="h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="unlimited">Unlimited</SelectItem>
-                                <SelectItem value="daily">Per Day</SelectItem>
-                                <SelectItem value="weekly">Per Week</SelectItem>
-                                <SelectItem value="monthly">Per Month</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {benefits[benefit.id]?.frequency !== 'unlimited' && (
-                            <div>
-                              <Label className="text-xs">Limit</Label>
-                              <Input
-                                type="number"
-                                className="h-8"
-                                value={benefits[benefit.id]?.limit || 0}
-                                onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
-                                min={1}
+                        <div className="mt-3 ml-6 space-y-2">
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                id={`${benefit.id}-unlimited`}
+                                name={`${benefit.id}-type`}
+                                checked={benefits[benefit.id]?.frequency === 'unlimited'}
+                                onChange={() => updateBenefitConfig(benefit.id, 'frequency', 'unlimited')}
+                                className="h-4 w-4 text-primary"
                               />
+                              <label htmlFor={`${benefit.id}-unlimited`} className="text-sm font-medium cursor-pointer">
+                                ♾️ Unlimited
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                id={`${benefit.id}-limited`}
+                                name={`${benefit.id}-type`}
+                                checked={benefits[benefit.id]?.frequency !== 'unlimited'}
+                                onChange={() => updateBenefitConfig(benefit.id, 'frequency', 'monthly')}
+                                className="h-4 w-4 text-primary"
+                              />
+                              <label htmlFor={`${benefit.id}-limited`} className="text-sm font-medium cursor-pointer">
+                                🔢 Limited
+                              </label>
+                            </div>
+                          </div>
+                          
+                          {benefits[benefit.id]?.frequency !== 'unlimited' && (
+                            <div className="grid grid-cols-2 gap-2 p-2 bg-muted/50 rounded-md">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">How many times?</Label>
+                                <Input
+                                  type="number"
+                                  className="h-8"
+                                  value={benefits[benefit.id]?.limit || 1}
+                                  onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
+                                  min={1}
+                                  placeholder="e.g., 3"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Per period</Label>
+                                <Select
+                                  value={benefits[benefit.id]?.frequency || 'monthly'}
+                                  onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="daily">Day</SelectItem>
+                                    <SelectItem value="weekly">Week</SelectItem>
+                                    <SelectItem value="monthly">Month</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <p className="col-span-2 text-xs text-muted-foreground">
+                                Example: {benefits[benefit.id]?.limit || 1} time(s) per {benefits[benefit.id]?.frequency === 'daily' ? 'day' : benefits[benefit.id]?.frequency === 'weekly' ? 'week' : 'month'}
+                              </p>
                             </div>
                           )}
                         </div>

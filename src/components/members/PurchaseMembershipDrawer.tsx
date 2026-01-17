@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
-import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle } from 'lucide-react';
+import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock } from 'lucide-react';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -33,10 +33,32 @@ export function PurchaseMembershipDrawer({
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountReason, setDiscountReason] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [selectedLockerId, setSelectedLockerId] = useState<string>('');
   const queryClient = useQueryClient();
 
   const { data: plans = [] } = usePlans(branchId);
   const selectedPlan = plans.find((p: any) => p.id === selectedPlanId);
+
+  // Check if selected plan has locker benefit
+  const hasLockerBenefit = selectedPlan?.plan_benefits?.some(
+    (b: any) => b.benefit_type === 'locker_access' || b.benefit_type?.includes('locker')
+  );
+
+  // Fetch available lockers
+  const { data: availableLockers = [] } = useQuery({
+    queryKey: ['available-lockers', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lockers')
+        .select('*')
+        .eq('branch_id', branchId)
+        .eq('status', 'available')
+        .order('locker_number');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!branchId && hasLockerBenefit,
+  });
 
   // Check if member has active membership
   const { data: activeMembership } = useQuery({
@@ -236,6 +258,29 @@ export function PurchaseMembershipDrawer({
         toast.success('Referral rewards created!');
       }
 
+      // Auto-assign locker if plan has locker benefit and locker was selected
+      if (hasLockerBenefit && selectedLockerId) {
+        const endDate = calculateEndDate();
+        
+        // Create locker assignment
+        await supabase.from('locker_assignments').insert({
+          locker_id: selectedLockerId,
+          member_id: memberId,
+          start_date: startDate,
+          end_date: endDate,
+          fee_amount: 0, // Free as part of plan
+          is_active: true,
+        });
+
+        // Update locker status to assigned
+        await supabase
+          .from('lockers')
+          .update({ status: 'assigned' })
+          .eq('id', selectedLockerId);
+        
+        toast.success('Complimentary locker assigned!');
+      }
+
       return { membership, invoice };
     },
     onSuccess: () => {
@@ -245,6 +290,8 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['all-rewards'] });
+      queryClient.invalidateQueries({ queryKey: ['lockers'] });
+      queryClient.invalidateQueries({ queryKey: ['available-lockers'] });
       onOpenChange(false);
       resetForm();
     },
@@ -259,6 +306,7 @@ export function PurchaseMembershipDrawer({
     setDiscountAmount(0);
     setDiscountReason('');
     setPaymentMethod('cash');
+    setSelectedLockerId('');
   };
 
   return (
@@ -419,6 +467,39 @@ export function PurchaseMembershipDrawer({
                   />
                 </div>
               </div>
+
+              {/* Complimentary Locker Selection (if plan includes locker benefit) */}
+              {hasLockerBenefit && (
+                <Card className="border-primary/50 bg-primary/5">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Lock className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-primary">Complimentary Locker</p>
+                        <p className="text-xs text-muted-foreground">This plan includes a free locker</p>
+                      </div>
+                    </div>
+                    <Select value={selectedLockerId} onValueChange={setSelectedLockerId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a locker (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No locker needed</SelectItem>
+                        {availableLockers.map((locker: any) => (
+                          <SelectItem key={locker.id} value={locker.id}>
+                            🔐 {locker.locker_number} {locker.size ? `(${locker.size})` : ''}
+                          </SelectItem>
+                        ))}
+                        {availableLockers.length === 0 && (
+                          <SelectItem value="" disabled>
+                            No lockers available
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Payment Method */}
               <div className="space-y-2">
