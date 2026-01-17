@@ -3,7 +3,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +21,7 @@ import {
   Command
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { GlobalSearch } from '@/components/search/GlobalSearch';
 
 export function AppHeader() {
   const { profile, signOut, roles } = useAuth();
@@ -40,21 +40,33 @@ export function AppHeader() {
 
   const primaryRole = roles[0] || 'user';
 
+  const openSearch = () => {
+    // Trigger the search dialog with keyboard event
+    const event = new KeyboardEvent('keydown', {
+      key: 'k',
+      metaKey: true,
+      bubbles: true,
+    });
+    document.dispatchEvent(event);
+  };
+
   return (
-    <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
-      {/* Search */}
-      <div className="flex-1 max-w-md">
-        <div className="relative group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-accent" />
-          <Input
-            placeholder="Search..."
-            className="pl-10 pr-12 bg-muted/50 border-transparent hover:border-border focus:border-accent focus:bg-background transition-all"
-          />
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-            <Command className="h-3 w-3" />K
-          </kbd>
+    <>
+      <GlobalSearch />
+      <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+        {/* Search */}
+        <div className="flex-1 max-w-md">
+          <button
+            onClick={openSearch}
+            className="relative group w-full flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-transparent hover:border-border text-left text-muted-foreground transition-all"
+          >
+            <Search className="h-4 w-4" />
+            <span className="flex-1">Search...</span>
+            <kbd className="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <Command className="h-3 w-3" />K
+            </kbd>
+          </button>
         </div>
-      </div>
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2">
@@ -115,5 +127,6 @@ export function AppHeader() {
         </DropdownMenu>
       </div>
     </header>
+    </>
   );
 }

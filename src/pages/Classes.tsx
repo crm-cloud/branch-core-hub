@@ -3,20 +3,17 @@ import { format } from "date-fns";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Plus, Users, Clock, CalendarDays, Check, X, UserX } from "lucide-react";
-import { useClasses, useCreateClass, useClassBookings, useMarkAttendance, useCancelBooking } from "@/hooks/useClasses";
+import { useClasses, useClassBookings, useMarkAttendance, useCancelBooking } from "@/hooks/useClasses";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
 import { useAuth } from "@/contexts/AuthContext";
+import { AddClassDrawer } from "@/components/classes/AddClassDrawer";
 
 export default function ClassesPage() {
   const { profile } = useAuth();
@@ -24,52 +21,13 @@ export default function ClassesPage() {
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newClass, setNewClass] = useState({
-    name: "",
-    description: "",
-    capacity: 20,
-    duration_minutes: 60,
-    scheduled_at: "",
-    trainer_id: "",
-    class_type: "",
-  });
 
   const branchId = selectedBranch || branches?.[0]?.id || "";
   const { data: classes, isLoading } = useClasses(branchId, { activeOnly: true });
   const { data: trainers } = useTrainers(branchId);
   const { data: bookings } = useClassBookings(selectedClass || "");
-  const createClass = useCreateClass();
   const markAttendance = useMarkAttendance();
   const cancelBooking = useCancelBooking();
-
-  const handleCreateClass = async () => {
-    if (!newClass.name || !newClass.scheduled_at || !branchId) {
-      toast.error("Please fill in required fields");
-      return;
-    }
-
-    try {
-      await createClass.mutateAsync({
-        ...newClass,
-        branch_id: branchId,
-        trainer_id: newClass.trainer_id || null,
-        scheduled_at: new Date(newClass.scheduled_at).toISOString(),
-      });
-      toast.success("Class created successfully");
-      setIsCreateOpen(false);
-      setNewClass({
-        name: "",
-        description: "",
-        capacity: 20,
-        duration_minutes: 60,
-        scheduled_at: "",
-        trainer_id: "",
-        class_type: "",
-      });
-    } catch (error) {
-      toast.error("Failed to create class");
-    }
-  };
 
   const handleMarkAttendance = async (bookingId: string, attended: boolean) => {
     try {
@@ -122,119 +80,14 @@ export default function ClassesPage() {
                 </SelectContent>
               </Select>
             )}
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Class
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle>Create New Class</DialogTitle>
-                  <DialogDescription>Schedule a new group class</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Class Name *</Label>
-                    <Input
-                      id="name"
-                      value={newClass.name}
-                      onChange={(e) => setNewClass({ ...newClass, name: e.target.value })}
-                      placeholder="Yoga, HIIT, Spin, etc."
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="class_type">Class Type</Label>
-                      <Select
-                        value={newClass.class_type}
-                        onValueChange={(value) => setNewClass({ ...newClass, class_type: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yoga">Yoga</SelectItem>
-                          <SelectItem value="hiit">HIIT</SelectItem>
-                          <SelectItem value="spin">Spin</SelectItem>
-                          <SelectItem value="strength">Strength</SelectItem>
-                          <SelectItem value="cardio">Cardio</SelectItem>
-                          <SelectItem value="dance">Dance</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="capacity">Capacity *</Label>
-                      <Input
-                        id="capacity"
-                        type="number"
-                        value={newClass.capacity}
-                        onChange={(e) => setNewClass({ ...newClass, capacity: parseInt(e.target.value) || 20 })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="scheduled_at">Date & Time *</Label>
-                      <Input
-                        id="scheduled_at"
-                        type="datetime-local"
-                        value={newClass.scheduled_at}
-                        onChange={(e) => setNewClass({ ...newClass, scheduled_at: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="duration">Duration (minutes)</Label>
-                      <Input
-                        id="duration"
-                        type="number"
-                        value={newClass.duration_minutes}
-                        onChange={(e) => setNewClass({ ...newClass, duration_minutes: parseInt(e.target.value) || 60 })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="trainer">Trainer</Label>
-                    <Select
-                      value={newClass.trainer_id}
-                      onValueChange={(value) => setNewClass({ ...newClass, trainer_id: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select trainer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {trainers?.map((trainer) => (
-                          <SelectItem key={trainer.id} value={trainer.id}>
-                            {trainer.profile_name || trainer.profile_email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={newClass.description}
-                      onChange={(e) => setNewClass({ ...newClass, description: e.target.value })}
-                      placeholder="Class description..."
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateClass} disabled={createClass.isPending}>
-                    {createClass.isPending ? "Creating..." : "Create Class"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Class
+            </Button>
           </div>
         </div>
+
+        <AddClassDrawer open={isCreateOpen} onOpenChange={setIsCreateOpen} branchId={branchId} />
 
         <Tabs defaultValue="schedule" className="space-y-4">
           <TabsList>

@@ -85,6 +85,11 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
       toast.error('Equipment name is required');
       return;
     }
+    if (!branchId) {
+      toast.error('Branch is not selected');
+      return;
+    }
+    console.log('Creating equipment with branchId:', branchId, 'formData:', formData);
     createMutation.mutate();
   };
 
