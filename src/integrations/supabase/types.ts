@@ -2644,6 +2644,7 @@ export type Database = {
           is_active: boolean | null
           is_gst_inclusive: boolean | null
           is_transferable: boolean | null
+          is_visible_to_members: boolean | null
           max_freeze_days: number | null
           name: string
           price: number
@@ -2662,6 +2663,7 @@ export type Database = {
           is_active?: boolean | null
           is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
+          is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name: string
           price: number
@@ -2680,6 +2682,7 @@ export type Database = {
           is_active?: boolean | null
           is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
+          is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name?: string
           price?: number
@@ -3108,6 +3111,7 @@ export type Database = {
           id: string
           limit_count: number | null
           plan_id: string
+          reset_period: string | null
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
@@ -3117,6 +3121,7 @@ export type Database = {
           id?: string
           limit_count?: number | null
           plan_id: string
+          reset_period?: string | null
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
@@ -3126,6 +3131,7 @@ export type Database = {
           id?: string
           limit_count?: number | null
           plan_id?: string
+          reset_period?: string | null
         }
         Relationships: [
           {
