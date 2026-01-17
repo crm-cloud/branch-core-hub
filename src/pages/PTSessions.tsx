@@ -52,7 +52,7 @@ export default function PTSessionsPage() {
   const firstTrainerId = trainers?.[0]?.id;
   const { data: sessions } = useTrainerSessions(firstTrainerId || "", { startDate: new Date() });
 
-  const sessionStatusData = [
+const sessionStatusData = [
     { name: "Completed", value: sessions?.filter((s) => s.status === "completed").length || 0 },
     { name: "Scheduled", value: sessions?.filter((s) => s.status === "scheduled").length || 0 },
     { name: "Cancelled", value: sessions?.filter((s) => s.status === "cancelled").length || 0 },
