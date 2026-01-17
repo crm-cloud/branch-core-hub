@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, addDays, eachDayOfInterval, isSameDay } from "date-fns";
 import {
   Sheet,
   SheetContent,
@@ -13,10 +13,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Users, CheckCircle2, XCircle, UserCheck, UserX, Thermometer, Snowflake, CalendarPlus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Clock, Users, CheckCircle2, XCircle, UserCheck, UserX, CalendarPlus, Sparkles, CalendarRange } from "lucide-react";
 import { useAvailableSlots, useSlotBookings, useMarkAttendance, useGenerateDailySlots, useBenefitSettings } from "@/hooks/useBenefitBookings";
 import { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import * as LucideIcons from "lucide-react";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 
@@ -25,26 +27,42 @@ interface ManageSlotsDrawerProps {
   onOpenChange: (open: boolean) => void;
   branchId: string;
   benefitType: BenefitType;
+  benefitName?: string;
+  benefitIcon?: string;
 }
 
-const BENEFIT_ICONS: Record<string, React.ReactNode> = {
-  sauna_session: <Thermometer className="h-5 w-5" />,
-  ice_bath: <Snowflake className="h-5 w-5" />,
-};
+const DAYS_OF_WEEK = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
 
-const BENEFIT_LABELS: Record<string, string> = {
-  sauna_session: "Sauna",
-  ice_bath: "Ice Bath",
-};
+function getIconComponent(iconName?: string) {
+  if (!iconName) return <Sparkles className="h-5 w-5" />;
+  const Icon = (LucideIcons as any)[iconName];
+  return Icon ? <Icon className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />;
+}
 
 export function ManageSlotsDrawer({
   open,
   onOpenChange,
   branchId,
   benefitType,
+  benefitName,
+  benefitIcon,
 }: ManageSlotsDrawerProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [multiDayMode, setMultiDayMode] = useState(false);
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: new Date(),
+    to: addDays(new Date(), 7),
+  });
+  const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri by default
   
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   
@@ -57,6 +75,12 @@ export function ManageSlotsDrawer({
   
   const benefitSettings = settings?.find((s) => s.benefit_type === benefitType);
   
+  const toggleDay = (day: number) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+  
   const handleGenerateSlots = async () => {
     if (!benefitSettings) {
       toast.error("Please configure benefit settings first");
@@ -64,13 +88,36 @@ export function ManageSlotsDrawer({
     }
     
     try {
-      await generateSlots.mutateAsync({
-        branchId,
-        benefitType,
-        date: dateStr,
-        settings: benefitSettings,
-      });
-      toast.success("Slots generated successfully!");
+      if (multiDayMode) {
+        // Generate slots for multiple days
+        const dates = eachDayOfInterval({ start: dateRange.from, end: dateRange.to })
+          .filter((date) => selectedDays.includes(date.getDay()));
+        
+        let successCount = 0;
+        for (const date of dates) {
+          try {
+            await generateSlots.mutateAsync({
+              branchId,
+              benefitType,
+              date: format(date, "yyyy-MM-dd"),
+              settings: benefitSettings,
+            });
+            successCount++;
+          } catch (err) {
+            // Continue with other dates even if one fails
+            console.error(`Failed to generate slots for ${format(date, "yyyy-MM-dd")}:`, err);
+          }
+        }
+        toast.success(`Generated slots for ${successCount} of ${dates.length} days`);
+      } else {
+        await generateSlots.mutateAsync({
+          branchId,
+          benefitType,
+          date: dateStr,
+          settings: benefitSettings,
+        });
+        toast.success("Slots generated successfully!");
+      }
     } catch (error: any) {
       toast.error(error.message || "Failed to generate slots");
     }
@@ -90,8 +137,8 @@ export function ManageSlotsDrawer({
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            {BENEFIT_ICONS[benefitType]}
-            Manage {BENEFIT_LABELS[benefitType] || benefitType} Slots
+            {getIconComponent(benefitIcon)}
+            Manage {benefitName || benefitType} Slots
           </SheetTitle>
           <SheetDescription>
             View slots, manage bookings, and mark attendance
@@ -99,32 +146,100 @@ export function ManageSlotsDrawer({
         </SheetHeader>
         
         <div className="mt-6 space-y-4">
-          <div>
-            <Label className="mb-2 block">Select Date</Label>
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => date && setSelectedDate(date)}
-              className="rounded-md border"
+          {/* Multi-day toggle */}
+          <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-2">
+              <CalendarRange className="h-4 w-4" />
+              <span className="text-sm font-medium">Multi-day slot generation</span>
+            </div>
+            <Checkbox
+              checked={multiDayMode}
+              onCheckedChange={(checked) => setMultiDayMode(checked as boolean)}
             />
           </div>
           
-          <div className="flex items-center justify-between">
-            <Label>Slots for {format(selectedDate, "MMM dd, yyyy")}</Label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleGenerateSlots}
-              disabled={generateSlots.isPending || !benefitSettings}
-            >
-              <CalendarPlus className="h-4 w-4 mr-2" />
-              Generate Slots
-            </Button>
-          </div>
+          {multiDayMode ? (
+            <>
+              <div className="space-y-3">
+                <Label>Date Range</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.from}
+                      onSelect={(date) => date && setDateRange((prev) => ({ ...prev, from: date }))}
+                      className="rounded-md border"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.to}
+                      onSelect={(date) => date && setDateRange((prev) => ({ ...prev, to: date }))}
+                      className="rounded-md border"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Days of Week</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS_OF_WEEK.map((day) => (
+                    <Button
+                      key={day.value}
+                      type="button"
+                      variant={selectedDays.includes(day.value) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleDay(day.value)}
+                    >
+                      {day.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              
+              <Button
+                className="w-full"
+                onClick={handleGenerateSlots}
+                disabled={generateSlots.isPending || !benefitSettings || selectedDays.length === 0}
+              >
+                <CalendarPlus className="h-4 w-4 mr-2" />
+                {generateSlots.isPending ? "Generating..." : "Generate Slots for Selected Days"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div>
+                <Label className="mb-2 block">Select Date</Label>
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  className="rounded-md border"
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <Label>Slots for {format(selectedDate, "MMM dd, yyyy")}</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateSlots}
+                  disabled={generateSlots.isPending || !benefitSettings}
+                >
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                  Generate Slots
+                </Button>
+              </div>
+            </>
+          )}
           
-          {loadingSlots ? (
+          {!multiDayMode && loadingSlots ? (
             <div className="text-sm text-muted-foreground">Loading slots...</div>
-          ) : slots && slots.length > 0 ? (
+          ) : !multiDayMode && slots && slots.length > 0 ? (
             <Tabs value={selectedSlotId || ""} onValueChange={setSelectedSlotId}>
               <TabsList className="flex flex-wrap h-auto gap-1">
                 {slots.map((slot) => (
@@ -223,12 +338,12 @@ export function ManageSlotsDrawer({
                 </TabsContent>
               ))}
             </Tabs>
-          ) : (
+          ) : !multiDayMode ? (
             <div className="text-sm text-muted-foreground text-center py-8 border rounded-md">
               <CalendarPlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
               No slots available. Click "Generate Slots" to create them.
             </div>
-          )}
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
