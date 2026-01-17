@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  CommandDialog,
+  Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
@@ -9,18 +9,19 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Users, 
   UserCheck, 
   Dumbbell, 
-  CreditCard, 
   Calendar,
   Search,
   FileText,
   Building2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface SearchResult {
   id: string;
@@ -30,19 +31,24 @@ interface SearchResult {
   badge?: string;
 }
 
-export function GlobalSearch() {
+interface GlobalSearchProps {
+  className?: string;
+}
+
+export function GlobalSearch({ className }: GlobalSearchProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        setOpen(true);
       }
     };
 
@@ -108,11 +114,6 @@ export function GlobalSearch() {
       });
 
       // Search trainers
-      const { data: trainers } = await supabase
-        .from('trainers')
-        .select('id, trainer_code, is_active, profiles:user_id(full_name, email, phone)')
-        .limit(5);
-
       const { data: trainersByProfile } = await supabase
         .from('profiles')
         .select('id, full_name, email, phone, trainers!trainers_user_id_fkey(id, trainer_code, is_active)')
@@ -272,201 +273,79 @@ export function GlobalSearch() {
     lead: results.filter(r => r.type === 'lead'),
   };
 
-  return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput 
-        placeholder="Search members, trainers, invoices..." 
-        value={query}
-        onValueChange={setQuery}
-      />
-      <CommandList>
-        <CommandEmpty>
-          {isSearching ? 'Searching...' : query.length < 2 ? 'Type at least 2 characters to search' : 'No results found.'}
-        </CommandEmpty>
-
-        {groupedResults.member.length > 0 && (
-          <CommandGroup heading="Members">
-            {groupedResults.member.map((result) => {
-              const Icon = getIcon(result.type);
-              return (
-                <CommandItem
-                  key={`${result.type}-${result.id}`}
-                  onSelect={() => handleSelect(result)}
-                  className="flex items-center gap-3 cursor-pointer"
-                >
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <div className="flex-1">
-                    <div className="font-medium">{result.title}</div>
-                    {result.subtitle && (
-                      <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                    )}
-                  </div>
-                  {result.badge && (
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {result.badge}
-                    </Badge>
+  const renderGroup = (items: SearchResult[], heading: string, showSeparator = false) => {
+    if (items.length === 0) return null;
+    
+    return (
+      <>
+        {showSeparator && <CommandSeparator />}
+        <CommandGroup heading={heading}>
+          {items.map((result) => {
+            const Icon = getIcon(result.type);
+            return (
+              <CommandItem
+                key={`${result.type}-${result.id}`}
+                onSelect={() => handleSelect(result)}
+                className="flex items-center gap-3 cursor-pointer"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{result.title}</div>
+                  {result.subtitle && (
+                    <div className="text-sm text-muted-foreground truncate">{result.subtitle}</div>
                   )}
-                </CommandItem>
-              );
-            })}
-          </CommandGroup>
-        )}
+                </div>
+                {result.badge && (
+                  <Badge variant="outline" className="text-xs capitalize shrink-0">
+                    {result.badge}
+                  </Badge>
+                )}
+              </CommandItem>
+            );
+          })}
+        </CommandGroup>
+      </>
+    );
+  };
 
-        {groupedResults.trainer.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Trainers">
-              {groupedResults.trainer.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="font-medium">{result.title}</div>
-                      {result.subtitle && (
-                        <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                      )}
-                    </div>
-                    {result.badge && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </>
-        )}
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "flex items-center gap-2 h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            className
+          )}
+        >
+          <Search className="h-4 w-4" />
+          <span className="flex-1 text-left">Search...</span>
+          <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start" sideOffset={8}>
+        <Command shouldFilter={false}>
+          <CommandInput 
+            ref={inputRef}
+            placeholder="Search members, trainers, invoices..." 
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList className="max-h-[300px]">
+            <CommandEmpty>
+              {isSearching ? 'Searching...' : query.length < 2 ? 'Type at least 2 characters to search' : 'No results found.'}
+            </CommandEmpty>
 
-        {groupedResults.employee.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Employees">
-              {groupedResults.employee.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="font-medium">{result.title}</div>
-                      {result.subtitle && (
-                        <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                      )}
-                    </div>
-                    {result.badge && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </>
-        )}
-
-        {groupedResults.invoice.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Invoices">
-              {groupedResults.invoice.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="font-medium">{result.title}</div>
-                      {result.subtitle && (
-                        <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                      )}
-                    </div>
-                    {result.badge && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </>
-        )}
-
-        {groupedResults.class.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Classes">
-              {groupedResults.class.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="font-medium">{result.title}</div>
-                      {result.subtitle && (
-                        <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                      )}
-                    </div>
-                    {result.badge && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </>
-        )}
-
-        {groupedResults.lead.length > 0 && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Leads">
-              {groupedResults.lead.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="font-medium">{result.title}</div>
-                      {result.subtitle && (
-                        <div className="text-sm text-muted-foreground">{result.subtitle}</div>
-                      )}
-                    </div>
-                    {result.badge && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {result.badge}
-                      </Badge>
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </>
-        )}
-      </CommandList>
-    </CommandDialog>
+            {renderGroup(groupedResults.member, 'Members')}
+            {renderGroup(groupedResults.trainer, 'Trainers', groupedResults.member.length > 0)}
+            {renderGroup(groupedResults.employee, 'Employees', groupedResults.member.length > 0 || groupedResults.trainer.length > 0)}
+            {renderGroup(groupedResults.invoice, 'Invoices', groupedResults.member.length > 0 || groupedResults.trainer.length > 0 || groupedResults.employee.length > 0)}
+            {renderGroup(groupedResults.class, 'Classes', results.some(r => ['member', 'trainer', 'employee', 'invoice'].includes(r.type)))}
+            {renderGroup(groupedResults.lead, 'Leads', results.some(r => ['member', 'trainer', 'employee', 'invoice', 'class'].includes(r.type)))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
