@@ -23,18 +23,45 @@ export default function EmployeesPage() {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const { data: employees = [], isLoading } = useQuery({
+  const { data: employees = [], isLoading, error } = useQuery({
     queryKey: ['employees'],
     queryFn: async () => {
+      console.log('Fetching employees...');
       const { data, error } = await supabase
         .from('employees')
         .select(`
           *,
-          profiles:user_id(full_name, email, phone, avatar_url),
           branches:branch_id(name)
         `)
         .order('created_at', { ascending: false });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Employees query error:', error);
+        throw error;
+      }
+      
+      console.log('Employees fetched:', data?.length);
+      
+      // Fetch profiles separately
+      if (data && data.length > 0) {
+        const userIds = data.map((e: any) => e.user_id).filter(Boolean);
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone, avatar_url')
+          .in('id', userIds);
+        
+        if (profilesError) {
+          console.error('Profiles query error:', profilesError);
+        }
+        
+        // Merge profiles into employees
+        const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+        return data.map((emp: any) => ({
+          ...emp,
+          profiles: profileMap.get(emp.user_id) || null,
+        }));
+      }
+      
       return data;
     },
   });
@@ -80,7 +107,7 @@ export default function EmployeesPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 p-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Employees</h1>
