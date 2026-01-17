@@ -120,25 +120,28 @@ export const attendanceService = {
     return data;
   },
 
-  // Search member by code or name for check-in
+  // Search member by code, name, phone or email for check-in using search_members RPC
   async searchMemberForCheckIn(query: string, branchId: string) {
-    const { data, error } = await supabase
-      .from('members')
-      .select(`
-        id,
-        member_code,
-        user_id,
-        profiles:user_id (
-          full_name,
-          avatar_url,
-          phone
-        )
-      `)
-      .eq('branch_id', branchId)
-      .or(`member_code.ilike.%${query}%`)
-      .limit(10);
+    const { data, error } = await supabase.rpc('search_members', {
+      search_term: query,
+      branch_filter: branchId,
+    });
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error('Search members error:', error);
+      throw error;
+    }
+    
+    // Map result to expected format
+    return (data || []).map((m: any) => ({
+      id: m.id,
+      member_code: m.member_code,
+      user_id: m.user_id,
+      profiles: {
+        full_name: m.full_name,
+        avatar_url: m.avatar_url,
+        phone: m.phone,
+      },
+    }));
   },
 };

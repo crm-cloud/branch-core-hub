@@ -55,12 +55,20 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
     }),
     onSuccess: () => {
       toast.success('Equipment added successfully');
+      // Invalidate with proper branch filter to refresh list
+      queryClient.invalidateQueries({ queryKey: ['equipment', branchId] });
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
       resetForm();
       onOpenChange(false);
     },
-    onError: (error) => {
-      toast.error('Failed to add equipment: ' + error.message);
+    onError: (error: any) => {
+      // Provide clear error messages for RLS/permission issues
+      const message = error.message || 'Failed to add equipment';
+      if (message.includes('violates row-level security') || message.includes('permission denied')) {
+        toast.error('Permission denied. You need admin/manager/staff role to add equipment.');
+      } else {
+        toast.error('Failed to add equipment: ' + message);
+      }
     },
   });
 

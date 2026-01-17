@@ -23,22 +23,6 @@ interface EditPlanDrawerProps {
   plan: MembershipPlanWithBenefits | null;
 }
 
-// Fallback static benefits for when database benefit types aren't available
-const STATIC_BENEFIT_OPTIONS = [
-  { id: 'gym_access', label: 'Gym Access', icon: '🏋️', code: 'gym_access' },
-  { id: 'pool_access', label: 'Pool Access', icon: '🏊', code: 'pool_access' },
-  { id: 'steam_sauna', label: 'Steam & Sauna', icon: '🧖', code: 'steam_sauna' },
-  { id: 'group_classes', label: 'Group Classes', icon: '👥', code: 'group_classes' },
-  { id: 'personal_training', label: 'Personal Training Sessions', icon: '💪', code: 'personal_training' },
-  { id: 'locker', label: 'Locker Facility', icon: '🔐', code: 'locker' },
-  { id: 'parking', label: 'Free Parking', icon: '🅿️', code: 'parking' },
-  { id: 'towel_service', label: 'Towel Service', icon: '🧴', code: 'towel_service' },
-  { id: 'nutrition_consult', label: 'Nutrition Consultation', icon: '🥗', code: 'nutrition_consult' },
-  { id: 'body_composition', label: 'Body Composition Analysis', icon: '📊', code: 'body_composition' },
-  { id: 'guest_passes', label: 'Guest Passes', icon: '🎫', code: 'guest_passes' },
-  { id: 'smoothie_bar', label: 'Smoothie Bar Discount', icon: '🥤', code: 'smoothie_bar' },
-];
-
 type BenefitConfig = {
   enabled: boolean;
   frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
@@ -55,7 +39,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
   const [newBenefitCode, setNewBenefitCode] = useState('');
   const [newBenefitIcon, setNewBenefitIcon] = useState('🎁');
 
-  // Fetch dynamic benefit types from database
+  // Fetch dynamic benefit types from database (fully database-driven, no static fallback)
   const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(plan?.branch_id || undefined);
   const createBenefitType = useCreateBenefitType();
 
@@ -71,16 +55,15 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     is_active: true,
   });
 
-  // Combine database benefit types with static fallbacks
-  const benefitOptions: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = dbBenefitTypes.length > 0 
-    ? dbBenefitTypes.map(bt => ({
-        id: bt.code,
-        label: bt.name,
-        icon: bt.icon || '🎁',
-        code: bt.code,
-        benefitTypeId: bt.id
-      }))
-    : STATIC_BENEFIT_OPTIONS;
+  // Use database benefit types only (fully dynamic)
+  const benefitOptions: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = 
+    dbBenefitTypes.map(bt => ({
+      id: bt.code,
+      label: bt.name,
+      icon: bt.icon || '🎁',
+      code: bt.code,
+      benefitTypeId: bt.id
+    }));
 
   const [benefits, setBenefits] = useState<Record<string, BenefitConfig>>({});
 
@@ -384,6 +367,19 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
               {isLoadingBenefits ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : allBenefitsToShow.length === 0 ? (
+                <div className="text-center py-8 border rounded-lg bg-muted/30">
+                  <p className="text-muted-foreground mb-3">No benefit types created yet</p>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setAddBenefitDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Your First Benefit Type
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
