@@ -1,0 +1,453 @@
+import { supabase } from "@/integrations/supabase/client";
+import { Database } from "@/integrations/supabase/types";
+
+type BenefitType = Database["public"]["Enums"]["benefit_type"];
+type BenefitBookingStatus = Database["public"]["Enums"]["benefit_booking_status"];
+type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
+
+export interface BenefitSettings {
+  id: string;
+  branch_id: string;
+  benefit_type: BenefitType;
+  is_slot_booking_enabled: boolean;
+  slot_duration_minutes: number;
+  booking_opens_hours_before: number;
+  cancellation_deadline_minutes: number;
+  no_show_policy: NoShowPolicy;
+  no_show_penalty_amount: number;
+  max_bookings_per_day: number;
+  buffer_between_sessions_minutes: number;
+  operating_hours_start: string;
+  operating_hours_end: string;
+  capacity_per_slot: number;
+}
+
+export interface BenefitSlot {
+  id: string;
+  branch_id: string;
+  benefit_type: BenefitType;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  capacity: number;
+  booked_count: number;
+  is_active: boolean;
+}
+
+export interface BenefitBooking {
+  id: string;
+  slot_id: string;
+  member_id: string;
+  membership_id: string;
+  status: BenefitBookingStatus;
+  booked_at: string;
+  cancelled_at?: string;
+  cancellation_reason?: string;
+  check_in_at?: string;
+  no_show_marked_at?: string;
+  notes?: string;
+  slot?: BenefitSlot;
+}
+
+export interface BenefitPackage {
+  id: string;
+  branch_id: string;
+  name: string;
+  description?: string;
+  benefit_type: BenefitType;
+  quantity: number;
+  price: number;
+  validity_days: number;
+  is_active: boolean;
+  display_order: number;
+}
+
+export interface MemberBenefitCredits {
+  id: string;
+  member_id: string;
+  membership_id?: string;
+  benefit_type: BenefitType;
+  package_id?: string;
+  credits_total: number;
+  credits_remaining: number;
+  purchased_at: string;
+  expires_at: string;
+}
+
+// ========== SETTINGS ==========
+
+export async function getBenefitSettings(branchId: string): Promise<BenefitSettings[]> {
+  const { data, error } = await supabase
+    .from("benefit_settings")
+    .select("*")
+    .eq("branch_id", branchId);
+  
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & { branch_id: string; benefit_type: BenefitType }): Promise<BenefitSettings> {
+  const { data, error } = await supabase
+    .from("benefit_settings")
+    .upsert(setting, { onConflict: "branch_id,benefit_type" })
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ========== SLOTS ==========
+
+export async function getAvailableSlots(
+  branchId: string,
+  benefitType: BenefitType,
+  date: string
+): Promise<BenefitSlot[]> {
+  const { data, error } = await supabase
+    .from("benefit_slots")
+    .select("*")
+    .eq("branch_id", branchId)
+    .eq("benefit_type", benefitType)
+    .eq("slot_date", date)
+    .eq("is_active", true)
+    .order("start_time", { ascending: true });
+  
+  if (error) throw error;
+  return data || [];
+}
+
+export async function generateDailySlots(
+  branchId: string,
+  benefitType: BenefitType,
+  date: string,
+  settings: BenefitSettings
+): Promise<BenefitSlot[]> {
+  const slots: Omit<BenefitSlot, "id" | "booked_count" | "is_active">[] = [];
+  
+  const startTime = new Date(`2000-01-01T${settings.operating_hours_start}`);
+  const endTime = new Date(`2000-01-01T${settings.operating_hours_end}`);
+  const durationMs = settings.slot_duration_minutes * 60 * 1000;
+  const bufferMs = settings.buffer_between_sessions_minutes * 60 * 1000;
+  
+  let currentTime = startTime;
+  while (currentTime.getTime() + durationMs <= endTime.getTime()) {
+    const slotEnd = new Date(currentTime.getTime() + durationMs);
+    
+    slots.push({
+      branch_id: branchId,
+      benefit_type: benefitType,
+      slot_date: date,
+      start_time: currentTime.toTimeString().slice(0, 8),
+      end_time: slotEnd.toTimeString().slice(0, 8),
+      capacity: settings.capacity_per_slot,
+    });
+    
+    currentTime = new Date(slotEnd.getTime() + bufferMs);
+  }
+  
+  const { data, error } = await supabase
+    .from("benefit_slots")
+    .insert(slots)
+    .select();
+  
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createSlot(slot: Omit<BenefitSlot, "id" | "booked_count" | "is_active">): Promise<BenefitSlot> {
+  const { data, error } = await supabase
+    .from("benefit_slots")
+    .insert(slot)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSlot(id: string, updates: Partial<BenefitSlot>): Promise<BenefitSlot> {
+  const { data, error } = await supabase
+    .from("benefit_slots")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ========== BOOKINGS ==========
+
+export async function getSlotBookings(slotId: string): Promise<BenefitBooking[]> {
+  const { data, error } = await supabase
+    .from("benefit_bookings")
+    .select("*, slot:benefit_slots(*)")
+    .eq("slot_id", slotId)
+    .in("status", ["booked", "confirmed"]);
+  
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getMemberBookings(
+  memberId: string,
+  status?: BenefitBookingStatus[]
+): Promise<BenefitBooking[]> {
+  let query = supabase
+    .from("benefit_bookings")
+    .select("*, slot:benefit_slots(*)")
+    .eq("member_id", memberId)
+    .order("booked_at", { ascending: false });
+  
+  if (status && status.length > 0) {
+    query = query.in("status", status);
+  }
+  
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function bookSlot(
+  slotId: string,
+  memberId: string,
+  membershipId: string,
+  notes?: string
+): Promise<BenefitBooking> {
+  // Check slot availability
+  const { data: slot, error: slotError } = await supabase
+    .from("benefit_slots")
+    .select("*")
+    .eq("id", slotId)
+    .single();
+  
+  if (slotError) throw slotError;
+  if (!slot) throw new Error("Slot not found");
+  if (slot.booked_count >= slot.capacity) throw new Error("Slot is fully booked");
+  
+  const { data, error } = await supabase
+    .from("benefit_bookings")
+    .insert({
+      slot_id: slotId,
+      member_id: memberId,
+      membership_id: membershipId,
+      status: "booked" as BenefitBookingStatus,
+      notes,
+    })
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelBooking(
+  bookingId: string,
+  reason?: string
+): Promise<BenefitBooking> {
+  const { data, error } = await supabase
+    .from("benefit_bookings")
+    .update({
+      status: "cancelled" as BenefitBookingStatus,
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: reason,
+    })
+    .eq("id", bookingId)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function markAttendance(
+  bookingId: string,
+  attended: boolean
+): Promise<BenefitBooking> {
+  const updates = attended
+    ? {
+        status: "attended" as BenefitBookingStatus,
+        check_in_at: new Date().toISOString(),
+      }
+    : {
+        status: "no_show" as BenefitBookingStatus,
+        no_show_marked_at: new Date().toISOString(),
+      };
+  
+  const { data, error } = await supabase
+    .from("benefit_bookings")
+    .update(updates)
+    .eq("id", bookingId)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ========== PACKAGES (UPSELL) ==========
+
+export async function getBenefitPackages(
+  branchId: string,
+  benefitType?: BenefitType
+): Promise<BenefitPackage[]> {
+  let query = supabase
+    .from("benefit_packages")
+    .select("*")
+    .eq("branch_id", branchId)
+    .eq("is_active", true)
+    .order("display_order", { ascending: true });
+  
+  if (benefitType) {
+    query = query.eq("benefit_type", benefitType);
+  }
+  
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createBenefitPackage(
+  pkg: Omit<BenefitPackage, "id" | "is_active" | "display_order">
+): Promise<BenefitPackage> {
+  const { data, error } = await supabase
+    .from("benefit_packages")
+    .insert(pkg)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function updateBenefitPackage(
+  id: string,
+  updates: Partial<BenefitPackage>
+): Promise<BenefitPackage> {
+  const { data, error } = await supabase
+    .from("benefit_packages")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ========== MEMBER CREDITS ==========
+
+export async function getMemberCredits(
+  memberId: string,
+  benefitType?: BenefitType
+): Promise<MemberBenefitCredits[]> {
+  let query = supabase
+    .from("member_benefit_credits")
+    .select("*")
+    .eq("member_id", memberId)
+    .gt("expires_at", new Date().toISOString())
+    .gt("credits_remaining", 0);
+  
+  if (benefitType) {
+    query = query.eq("benefit_type", benefitType);
+  }
+  
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function purchaseBenefitCredits(
+  memberId: string,
+  membershipId: string | null,
+  packageId: string,
+  invoiceId?: string
+): Promise<MemberBenefitCredits> {
+  // Get package details
+  const { data: pkg, error: pkgError } = await supabase
+    .from("benefit_packages")
+    .select("*")
+    .eq("id", packageId)
+    .single();
+  
+  if (pkgError) throw pkgError;
+  if (!pkg) throw new Error("Package not found");
+  
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + pkg.validity_days);
+  
+  const { data, error } = await supabase
+    .from("member_benefit_credits")
+    .insert({
+      member_id: memberId,
+      membership_id: membershipId,
+      benefit_type: pkg.benefit_type,
+      package_id: packageId,
+      credits_total: pkg.quantity,
+      credits_remaining: pkg.quantity,
+      expires_at: expiresAt.toISOString(),
+      invoice_id: invoiceId,
+    })
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function deductMemberCredits(
+  creditsId: string,
+  amount: number = 1
+): Promise<MemberBenefitCredits> {
+  const { data: current, error: fetchError } = await supabase
+    .from("member_benefit_credits")
+    .select("credits_remaining")
+    .eq("id", creditsId)
+    .single();
+  
+  if (fetchError) throw fetchError;
+  if (!current) throw new Error("Credits not found");
+  
+  const newRemaining = Math.max(0, current.credits_remaining - amount);
+  
+  const { data, error } = await supabase
+    .from("member_benefit_credits")
+    .update({ credits_remaining: newRemaining })
+    .eq("id", creditsId)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+// ========== COMBINED BALANCE CALCULATION ==========
+
+export interface TotalBenefitBalance {
+  benefitType: BenefitType;
+  planBalance: number;
+  purchasedCredits: number;
+  totalAvailable: number;
+  isUnlimited: boolean;
+}
+
+export async function getTotalBenefitBalance(
+  memberId: string,
+  membershipId: string,
+  benefitType: BenefitType,
+  planBalance: number,
+  isUnlimited: boolean
+): Promise<TotalBenefitBalance> {
+  const credits = await getMemberCredits(memberId, benefitType);
+  const purchasedCredits = credits.reduce((sum, c) => sum + c.credits_remaining, 0);
+  
+  return {
+    benefitType,
+    planBalance,
+    purchasedCredits,
+    totalAvailable: isUnlimited ? -1 : planBalance + purchasedCredits,
+    isUnlimited,
+  };
+}

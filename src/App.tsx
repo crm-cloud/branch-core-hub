@@ -51,6 +51,7 @@ import FinancePage from "./pages/Finance";
 import MemberPlansPage from "./pages/MemberPlans";
 import ProductsPage from "./pages/Products";
 import ProductCategoriesPage from "./pages/ProductCategories";
+import BenefitTrackingPage from "./pages/BenefitTracking";
 
 const queryClient = new QueryClient();
 
@@ -103,6 +104,7 @@ const App = () => (
             <Route path="/my-plans" element={<ProtectedRoute><MemberPlansPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
+            <Route path="/benefit-tracking" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><BenefitTrackingPage /></ProtectedRoute>} />
             {/* Redirects for old routes - now consolidated in Settings */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
