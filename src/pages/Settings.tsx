@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, Database } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -10,6 +10,7 @@ import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
+import { DemoDataSettings } from '@/components/settings/DemoDataSettings';
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,7 +32,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8 h-auto p-1">
+          <TabsList className="grid w-full grid-cols-9 h-auto p-1">
             <TabsTrigger value="organization" className="flex items-center gap-2 py-2">
               <SettingsIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Organization</span>
@@ -64,6 +65,10 @@ export default function SettingsPage() {
               <Globe className="h-4 w-4" />
               <span className="hidden sm:inline">Website</span>
             </TabsTrigger>
+            <TabsTrigger value="demo" className="flex items-center gap-2 py-2">
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">Demo Data</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="organization"><OrganizationSettings /></TabsContent>
@@ -74,6 +79,7 @@ export default function SettingsPage() {
           <TabsContent value="notifications"><NotificationSettings /></TabsContent>
           <TabsContent value="security"><SecuritySettings /></TabsContent>
           <TabsContent value="website"><WebsiteSettings /></TabsContent>
+          <TabsContent value="demo"><DemoDataSettings /></TabsContent>
         </Tabs>
       </div>
     </AppLayout>
