@@ -284,6 +284,7 @@ export type Database = {
       benefit_packages: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           branch_id: string
           created_at: string
           description: string | null
@@ -298,6 +299,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           branch_id: string
           created_at?: string
           description?: string | null
@@ -312,6 +314,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           branch_id?: string
           created_at?: string
           description?: string | null
@@ -326,6 +329,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "benefit_packages_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "benefit_packages_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
@@ -337,6 +347,7 @@ export type Database = {
       benefit_settings: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           booking_opens_hours_before: number | null
           branch_id: string
           buffer_between_sessions_minutes: number | null
@@ -355,6 +366,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           booking_opens_hours_before?: number | null
           branch_id: string
           buffer_between_sessions_minutes?: number | null
@@ -373,6 +385,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           booking_opens_hours_before?: number | null
           branch_id?: string
           buffer_between_sessions_minutes?: number | null
@@ -391,6 +404,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "benefit_settings_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "benefit_settings_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
@@ -402,6 +422,7 @@ export type Database = {
       benefit_slots: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           booked_count: number | null
           branch_id: string
           capacity: number
@@ -415,6 +436,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           booked_count?: number | null
           branch_id: string
           capacity?: number
@@ -428,6 +450,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           booked_count?: number | null
           branch_id?: string
           capacity?: number
@@ -441,7 +464,70 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "benefit_slots_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "benefit_slots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benefit_types: {
+        Row: {
+          branch_id: string
+          category: string | null
+          code: string
+          created_at: string
+          default_duration_minutes: number | null
+          description: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          is_bookable: boolean | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          category?: string | null
+          code: string
+          created_at?: string
+          default_duration_minutes?: number | null
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_bookable?: boolean | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          category?: string | null
+          code?: string
+          created_at?: string
+          default_duration_minutes?: number | null
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_bookable?: boolean | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_types_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
@@ -452,6 +538,7 @@ export type Database = {
       benefit_usage: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           created_at: string
           id: string
           membership_id: string
@@ -462,6 +549,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           id?: string
           membership_id: string
@@ -472,6 +560,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           id?: string
           membership_id?: string
@@ -481,6 +570,13 @@ export type Database = {
           usage_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "benefit_usage_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "benefit_usage_membership_id_fkey"
             columns: ["membership_id"]
@@ -1986,6 +2082,7 @@ export type Database = {
       member_benefit_credits: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           created_at: string
           credits_remaining: number
           credits_total: number
@@ -2000,6 +2097,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           credits_remaining: number
           credits_total: number
@@ -2014,6 +2112,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           credits_remaining?: number
           credits_total?: number
@@ -2027,6 +2126,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "member_benefit_credits_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "member_benefit_credits_invoice_id_fkey"
             columns: ["invoice_id"]

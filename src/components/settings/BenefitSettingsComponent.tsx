@@ -7,18 +7,22 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Thermometer, Snowflake, Settings2, Clock, Users, AlertTriangle } from "lucide-react";
+import { Settings2, Clock, Users, AlertTriangle, Sparkles } from "lucide-react";
 import { useBenefitSettings, useUpsertBenefitSetting } from "@/hooks/useBenefitBookings";
+import { useBookableBenefitTypes } from "@/hooks/useBenefitTypes";
+import { BenefitTypesManager } from "./BenefitTypesManager";
 import { toast } from "sonner";
 import { Database } from "@/integrations/supabase/types";
+import * as LucideIcons from "lucide-react";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
 
-const BOOKABLE_BENEFITS: { type: BenefitType; label: string; icon: React.ReactNode }[] = [
-  { type: "sauna_session", label: "Sauna Sessions", icon: <Thermometer className="h-5 w-5" /> },
-  { type: "ice_bath", label: "Ice Bath", icon: <Snowflake className="h-5 w-5" /> },
-];
+function getIconComponent(iconName: string | null) {
+  if (!iconName) return <Sparkles className="h-5 w-5" />;
+  const Icon = (LucideIcons as any)[iconName];
+  return Icon ? <Icon className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />;
+}
 
 interface BenefitSettingFormProps {
   branchId: string;
@@ -243,7 +247,8 @@ export function BenefitSettingsComponent() {
   });
   
   const branchId = branches?.[0]?.id || "";
-  const { data: settings, isLoading } = useBenefitSettings(branchId);
+  const { data: settings, isLoading: loadingSettings } = useBenefitSettings(branchId);
+  const { data: bookableBenefitTypes, isLoading: loadingTypes } = useBookableBenefitTypes(branchId);
   
   if (!branchId) {
     return (
@@ -252,6 +257,8 @@ export function BenefitSettingsComponent() {
       </div>
     );
   }
+  
+  const isLoading = loadingSettings || loadingTypes;
   
   if (isLoading) {
     return <div className="text-center py-8">Loading settings...</div>;
@@ -262,26 +269,42 @@ export function BenefitSettingsComponent() {
   };
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Settings2 className="h-6 w-6 text-primary" />
-        <div>
-          <h2 className="text-xl font-semibold">Benefit Slot Booking</h2>
-          <p className="text-muted-foreground">Configure slot-based booking for amenities like Sauna and Ice Bath</p>
-        </div>
-      </div>
+    <div className="space-y-8">
+      {/* Benefit Types Manager */}
+      <BenefitTypesManager />
       
-      <div className="space-y-4">
-        {BOOKABLE_BENEFITS.map((benefit) => (
-          <BenefitSettingForm
-            key={benefit.type}
-            branchId={branchId}
-            benefitType={benefit.type}
-            label={benefit.label}
-            icon={benefit.icon}
-            initialSettings={getSettingsForType(benefit.type)}
-          />
-        ))}
+      {/* Slot Booking Settings */}
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Settings2 className="h-6 w-6 text-primary" />
+          <div>
+            <h2 className="text-xl font-semibold">Slot Booking Settings</h2>
+            <p className="text-muted-foreground">Configure slot-based booking for bookable benefits</p>
+          </div>
+        </div>
+        
+        {bookableBenefitTypes && bookableBenefitTypes.length > 0 ? (
+          <div className="space-y-4">
+            {bookableBenefitTypes.map((bt) => (
+              <BenefitSettingForm
+                key={bt.id}
+                branchId={branchId}
+                benefitType={bt.code as BenefitType}
+                label={bt.name}
+                icon={getIconComponent(bt.icon)}
+                initialSettings={getSettingsForType(bt.code as BenefitType)}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="text-center py-8">
+              <p className="text-muted-foreground">
+                No bookable benefit types found. Create benefit types above and enable "Requires Slot Booking" to configure slot settings.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
