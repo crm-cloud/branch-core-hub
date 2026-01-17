@@ -19,7 +19,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { differenceInDays, format } from 'date-fns';
 
 export default function MembersPage() {
@@ -35,44 +35,114 @@ export default function MembersPage() {
 
   const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
 
+  // Fetch members using the search_members function when searching, otherwise regular query
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['members', search, branchFilter],
     queryFn: async () => {
-      let query = supabase
-        .from('members')
-        .select(`
-          *,
-          profiles:user_id(full_name, email, phone, avatar_url),
-          branch:branch_id(name, code),
-          memberships(id, status, start_date, end_date, plan_id, membership_plans(name))
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
+      if (search && search.trim().length > 0) {
+        // Use the search_members function for searching
+        const { data, error } = await supabase
+          .rpc('search_members', {
+            search_term: search.trim(),
+            p_branch_id: branchFilter || null,
+            p_limit: 100
+          });
 
-      if (branchFilter) {
-        query = query.eq('branch_id', branchFilter);
+        if (error) throw error;
+
+        // Transform the RPC result to match the expected format
+        return (data || []).map((row: any) => ({
+          id: row.id,
+          member_code: row.member_code,
+          user_id: row.user_id,
+          branch_id: row.branch_id,
+          joined_at: row.created_at,
+          joined_date: row.joined_date,
+          status: row.is_active ? 'active' : 'inactive',
+          profiles: {
+            full_name: row.full_name,
+            email: row.email,
+            phone: row.phone,
+            avatar_url: row.avatar_url
+          },
+          branch: {
+            name: row.branch_name
+          },
+          memberships: [] // Need separate query for memberships
+        }));
+      } else {
+        // Regular query when not searching
+        let query = supabase
+          .from('members')
+          .select(`
+            *,
+            profiles:user_id(full_name, email, phone, avatar_url),
+            branch:branch_id(name, code),
+            memberships(id, status, start_date, end_date, plan_id, membership_plans(name))
+          `)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (branchFilter) {
+          query = query.eq('branch_id', branchFilter);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        return (data || []).map((m: any) => ({
+          ...m,
+          status: m.is_active ? 'active' : 'inactive',
+          joined_at: m.created_at
+        }));
       }
-
-      if (search) {
-        query = query.or(`member_code.ilike.%${search}%,profiles.full_name.ilike.%${search}%,profiles.email.ilike.%${search}%,profiles.phone.ilike.%${search}%`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
     },
   });
 
+  // Fetch memberships for searched members
+  const memberIds = useMemo(() => members.map((m: any) => m.id), [members]);
+  
+  const { data: memberships = [] } = useQuery({
+    queryKey: ['member-memberships', memberIds],
+    queryFn: async () => {
+      if (memberIds.length === 0) return [];
+      const { data } = await supabase
+        .from('memberships')
+        .select('id, member_id, status, start_date, end_date, plan_id, membership_plans(name)')
+        .in('member_id', memberIds);
+      return data || [];
+    },
+    enabled: memberIds.length > 0 && search.length > 0,
+  });
+
+  // Merge memberships into members for search results
+  const membersWithMemberships = useMemo(() => {
+    if (!search || memberships.length === 0) return members;
+    
+    const membershipMap = new Map<string, any[]>();
+    memberships.forEach((ms: any) => {
+      if (!membershipMap.has(ms.member_id)) {
+        membershipMap.set(ms.member_id, []);
+      }
+      membershipMap.get(ms.member_id)!.push(ms);
+    });
+    
+    return members.map((m: any) => ({
+      ...m,
+      memberships: membershipMap.get(m.id) || []
+    }));
+  }, [members, memberships, search]);
+
   // Filter by member status
   const filteredMembers = statusFilter === 'all' 
-    ? members 
-    : members.filter((m: any) => m.status === statusFilter);
+    ? membersWithMemberships 
+    : membersWithMemberships.filter((m: any) => m.status === statusFilter);
 
   const stats = {
-    total: members.length,
-    active: members.filter((m: any) => m.status === 'active').length,
-    inactive: members.filter((m: any) => m.status === 'inactive').length,
-    expiringSoon: members.filter((m: any) => {
+    total: membersWithMemberships.length,
+    active: membersWithMemberships.filter((m: any) => m.status === 'active').length,
+    inactive: membersWithMemberships.filter((m: any) => m.status === 'inactive').length,
+    expiringSoon: membersWithMemberships.filter((m: any) => {
       const activeMembership = m.memberships?.find((ms: any) => ms.status === 'active');
       if (!activeMembership) return false;
       const daysLeft = differenceInDays(new Date(activeMembership.end_date), new Date());
@@ -330,7 +400,7 @@ export default function MembersPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {format(new Date(member.joined_at), 'dd MMM yy')}
+                            {member.joined_at ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
@@ -369,12 +439,8 @@ export default function MembersPage() {
                     })}
                     {filteredMembers.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12">
-                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                            <Users className="h-10 w-10 opacity-30" />
-                            <p className="font-medium">No members found</p>
-                            <p className="text-sm">Try adjusting your search or filters</p>
-                          </div>
+                        <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                          {search ? 'No members found matching your search' : 'No members found'}
                         </TableCell>
                       </TableRow>
                     )}
@@ -384,40 +450,40 @@ export default function MembersPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Drawers */}
-      <AddMemberDrawer 
-        open={addMemberOpen} 
-        onOpenChange={setAddMemberOpen} 
-        branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''} 
-      />
-      
-      {selectedMember && (
-        <>
-          <MemberProfileDrawer
-            open={profileOpen}
-            onOpenChange={setProfileOpen}
-            member={selectedMember}
-            onPurchaseMembership={() => handlePurchaseMembership(selectedMember)}
-            onPurchasePT={() => handlePurchasePT(selectedMember)}
-          />
-          <PurchaseMembershipDrawer
-            open={purchaseOpen}
-            onOpenChange={setPurchaseOpen}
-            memberId={selectedMember.id}
-            memberName={selectedMember.profiles?.full_name || 'Member'}
-            branchId={selectedMember.branch_id}
-          />
-          <PurchasePTDrawer
-            open={purchasePTOpen}
-            onOpenChange={setPurchasePTOpen}
-            memberId={selectedMember.id}
-            memberName={selectedMember.profiles?.full_name || 'Member'}
-            branchId={selectedMember.branch_id}
-          />
-        </>
-      )}
+        {/* Drawers */}
+        <AddMemberDrawer 
+          open={addMemberOpen} 
+          onOpenChange={setAddMemberOpen}
+          branchId={branchFilter}
+        />
+
+        {selectedMember && (
+          <>
+            <PurchaseMembershipDrawer
+              open={purchaseOpen}
+              onOpenChange={setPurchaseOpen}
+              memberId={selectedMember.id}
+              memberName={selectedMember.profiles?.full_name || selectedMember.member_code}
+              branchId={selectedMember.branch_id}
+            />
+            <PurchasePTDrawer
+              open={purchasePTOpen}
+              onOpenChange={setPurchasePTOpen}
+              memberId={selectedMember.id}
+              memberName={selectedMember.profiles?.full_name || selectedMember.member_code}
+              branchId={selectedMember.branch_id}
+            />
+            <MemberProfileDrawer
+              open={profileOpen}
+              onOpenChange={setProfileOpen}
+              member={selectedMember}
+              onPurchaseMembership={() => { setProfileOpen(false); setPurchaseOpen(true); }}
+              onPurchasePT={() => { setProfileOpen(false); setPurchasePTOpen(true); }}
+            />
+          </>
+        )}
+      </div>
     </AppLayout>
   );
 }

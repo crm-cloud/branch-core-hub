@@ -4512,6 +4512,28 @@ export type Database = {
         }
         Returns: Json
       }
+      search_members: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term?: string }
+        Returns: {
+          avatar_url: string
+          branch_id: string
+          branch_name: string
+          created_at: string
+          email: string
+          emergency_contact_name: string
+          emergency_contact_phone: string
+          full_name: string
+          id: string
+          is_active: boolean
+          joined_date: string
+          medical_conditions: string
+          member_code: string
+          phone: string
+          referred_by: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
