@@ -53,6 +53,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     max_freeze_days: 0,
     is_transferable: false,
     is_active: true,
+    is_visible_to_members: true,
   });
 
   // Use database benefit types only (fully dynamic)
@@ -80,6 +81,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         max_freeze_days: plan.max_freeze_days || 0,
         is_transferable: plan.is_transferable || false,
         is_active: plan.is_active ?? true,
+        is_visible_to_members: (plan as any).is_visible_to_members ?? true,
       });
     }
   }, [plan]);
@@ -340,6 +342,17 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
               <Switch
                 checked={formData.is_active}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Visible to Members</Label>
+                <p className="text-xs text-muted-foreground">Show on member dashboard for self-purchase</p>
+              </div>
+              <Switch
+                checked={formData.is_visible_to_members}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_visible_to_members: checked })}
               />
             </div>
 

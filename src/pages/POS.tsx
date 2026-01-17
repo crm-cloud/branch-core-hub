@@ -5,15 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { createPOSSale, type CartItem } from '@/services/storeService';
+import { useNavigate } from 'react-router-dom';
 
 export default function POSPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +24,8 @@ export default function POSPage() {
   const [memberSearch, setMemberSearch] = useState('');
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
+  const [guestInfo, setGuestInfo] = useState({ name: '', phone: '', email: '' });
+  const [showGuestForm, setShowGuestForm] = useState(false);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['pos-products', categoryFilter],
@@ -55,17 +59,31 @@ export default function POSPage() {
     },
   });
 
+  // Enhanced member search - search by code, name, phone, email
   const { data: members = [] } = useQuery({
     queryKey: ['pos-members', memberSearch],
     queryFn: async () => {
       if (!memberSearch || memberSearch.length < 2) return [];
-      const { data, error } = await supabase
-        .from('members')
-        .select('id, member_code, user_id, profiles:user_id(full_name, phone)')
-        .or(`member_code.ilike.%${memberSearch}%`)
-        .limit(10);
-      if (error) throw error;
-      return data;
+      
+      // Use the search_members function for comprehensive search
+      const { data, error } = await supabase.rpc('search_members', {
+        search_term: memberSearch,
+        p_limit: 10
+      });
+      
+      if (error) {
+        console.error('Member search error:', error);
+        // Fallback to direct query
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('members')
+          .select('id, member_code, user_id, profiles:user_id(full_name, phone, email)')
+          .or(`member_code.ilike.%${memberSearch}%`)
+          .limit(10);
+        if (fallbackError) throw fallbackError;
+        return fallbackData || [];
+      }
+      
+      return data || [];
     },
     enabled: memberSearch.length >= 2,
   });
@@ -91,7 +109,7 @@ export default function POSPage() {
       const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('pos_sales')
-        .select('*')
+        .select('*, invoices(invoice_number)')
         .gte('sale_date', `${today}T00:00:00`)
         .lte('sale_date', `${today}T23:59:59`)
         .order('sale_date', { ascending: false });
@@ -128,18 +146,21 @@ export default function POSPage() {
       return sale;
     },
     onSuccess: (sale) => {
-      toast.success('Sale completed successfully!');
+      toast.success('Sale completed successfully! Invoice created.');
       setLastSale({ ...sale, items: cart, total: cartTotal, paymentMethod, member: selectedMember });
       setShowInvoice(true);
       setCart([]);
       setSelectedMember(null);
       setPaymentMethod('cash');
+      setGuestInfo({ name: '', phone: '', email: '' });
+      setShowGuestForm(false);
       queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
       // Also invalidate invoices and payments so they appear in Finance and Invoices pages
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['finance-income'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-sales-income'] });
     },
     onError: (error) => {
       toast.error('Failed to complete sale: ' + error.message);
@@ -196,13 +217,15 @@ export default function POSPage() {
           .item { display: flex; justify-content: space-between; margin: 5px 0; }
           .total { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; font-weight: bold; }
           .footer { text-align: center; margin-top: 20px; font-size: 12px; }
+          .invoice-number { font-size: 12px; color: #666; margin-top: 5px; }
         </style>
       </head>
       <body>
         <div class="header">
           <h2>GYM STORE</h2>
           <p>${new Date().toLocaleString()}</p>
-          ${lastSale?.member ? `<p>Member: ${lastSale.member.member_code}</p>` : ''}
+          ${lastSale?.member ? `<p>Member: ${lastSale.member.member_code || lastSale.member.full_name}</p>` : ''}
+          ${lastSale?.invoice_id ? `<p class="invoice-number">Invoice: ${lastSale.id?.slice(0, 8)}</p>` : ''}
         </div>
         ${lastSale?.items?.map((item: any) => `
           <div class="item">
@@ -224,6 +247,14 @@ export default function POSPage() {
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.onload = () => printWindow.print();
+  };
+
+  const getMemberDisplayInfo = (member: any) => {
+    // Handle both search_members RPC result and direct query result
+    const name = member.full_name || member.profiles?.full_name || member.member_code;
+    const phone = member.phone || member.profiles?.phone || '';
+    const email = member.email || member.profiles?.email || '';
+    return { name, phone, email };
   };
 
   return (
@@ -298,48 +329,110 @@ export default function POSPage() {
 
           {/* Cart */}
           <div className="space-y-4">
-            {/* Member Selection */}
+            {/* Enhanced Member Selection */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <User className="h-4 w-4" />
-                  Customer (Optional)
+                  Customer
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 {selectedMember ? (
-                  <div className="flex items-center justify-between bg-muted/50 p-2 rounded">
-                    <div>
-                      <p className="font-medium">{selectedMember.profiles?.full_name || selectedMember.member_code}</p>
-                      <p className="text-xs text-muted-foreground">Wallet: ₹{walletBalance.toLocaleString()}</p>
+                  <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{getMemberDisplayInfo(selectedMember).name}</p>
+                        <div className="flex flex-col text-xs text-muted-foreground mt-1">
+                          {getMemberDisplayInfo(selectedMember).phone && (
+                            <span className="flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {getMemberDisplayInfo(selectedMember).phone}
+                            </span>
+                          )}
+                          {getMemberDisplayInfo(selectedMember).email && (
+                            <span className="flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              {getMemberDisplayInfo(selectedMember).email}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-primary mt-1">Wallet: ₹{walletBalance.toLocaleString()}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedMember(null)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedMember(null)}>
-                      <Trash2 className="h-4 w-4" />
+                  </div>
+                ) : showGuestForm ? (
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Guest Name"
+                      value={guestInfo.name}
+                      onChange={(e) => setGuestInfo({ ...guestInfo, name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Phone Number"
+                      value={guestInfo.phone}
+                      onChange={(e) => setGuestInfo({ ...guestInfo, phone: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Email (optional)"
+                      value={guestInfo.email}
+                      onChange={(e) => setGuestInfo({ ...guestInfo, email: e.target.value })}
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => setShowGuestForm(false)}
+                    >
+                      Cancel
                     </Button>
                   </div>
                 ) : (
-                  <div>
-                    <Input
-                      placeholder="Search member by code..."
-                      value={memberSearch}
-                      onChange={(e) => setMemberSearch(e.target.value)}
-                    />
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by code, name, phone, email..."
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
                     {members.length > 0 && (
-                      <div className="mt-2 border rounded divide-y max-h-32 overflow-y-auto">
-                        {members.map((m: any) => (
-                          <div
-                            key={m.id}
-                            className="p-2 hover:bg-muted cursor-pointer text-sm"
-                            onClick={() => {
-                              setSelectedMember(m);
-                              setMemberSearch('');
-                            }}
-                          >
-                            {m.profiles?.full_name || m.member_code} ({m.member_code})
-                          </div>
-                        ))}
+                      <div className="border rounded divide-y max-h-40 overflow-y-auto">
+                        {members.map((m: any) => {
+                          const info = getMemberDisplayInfo(m);
+                          return (
+                            <div
+                              key={m.id}
+                              className="p-2 hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedMember(m);
+                                setMemberSearch('');
+                              }}
+                            >
+                              <p className="font-medium text-sm">{info.name}</p>
+                              <div className="flex gap-3 text-xs text-muted-foreground">
+                                {m.member_code && <span>{m.member_code}</span>}
+                                {info.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{info.phone}</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-muted-foreground"
+                      onClick={() => setShowGuestForm(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Walk-in Guest
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -424,10 +517,15 @@ export default function POSPage() {
               <CardContent>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {todaySales.slice(0, 5).map((sale: any) => (
-                    <div key={sale.id} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {new Date(sale.sale_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                    <div key={sale.id} className="flex justify-between items-center text-sm p-2 bg-muted/30 rounded">
+                      <div>
+                        <span className="text-muted-foreground">
+                          {new Date(sale.sale_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {sale.invoices?.invoice_number && (
+                          <span className="ml-2 text-xs text-primary font-mono">{sale.invoices.invoice_number}</span>
+                        )}
+                      </div>
                       <span className="font-medium">₹{sale.total_amount}</span>
                     </div>
                   ))}
@@ -446,11 +544,11 @@ export default function POSPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5" />
+              <Receipt className="h-5 w-5 text-green-500" />
               Sale Complete!
             </DialogTitle>
             <DialogDescription>
-              Sale ID: {lastSale?.id?.slice(0, 8)}
+              Invoice has been created and payment recorded.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -473,6 +571,10 @@ export default function POSPage() {
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setShowInvoice(false)} className="flex-1">
                 Close
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/invoices')} className="flex-1">
+                <FileText className="h-4 w-4 mr-2" />
+                View Invoices
               </Button>
               <Button onClick={printInvoice} className="flex-1">
                 <Receipt className="h-4 w-4 mr-2" />

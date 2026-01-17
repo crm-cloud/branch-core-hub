@@ -4,11 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingBag, Package, Truck } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { ShoppingBag, Package, ShoppingCart, DollarSign, TrendingUp, ExternalLink } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { Link } from 'react-router-dom';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function StorePage() {
+  const queryClient = useQueryClient();
+
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['store-products'],
     queryFn: async () => {
@@ -38,6 +44,41 @@ export default function StorePage() {
     },
   });
 
+  // Fetch POS sales
+  const { data: posSales = [], isLoading: posLoading } = useQuery({
+    queryKey: ['store-pos-sales'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pos_sales')
+        .select(`
+          *,
+          members(member_code, profiles:user_id(full_name)),
+          invoices(invoice_number)
+        `)
+        .order('sale_date', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const updateOrderStatus = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'confirmed' | 'returned' }) => {
+      const { error } = await supabase
+        .from('ecommerce_orders')
+        .update({ status })
+        .eq('id', orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Order status updated');
+      queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
+    },
+    onError: () => {
+      toast.error('Failed to update order status');
+    },
+  });
+
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-yellow-500/10 text-yellow-500',
@@ -45,18 +86,47 @@ export default function StorePage() {
       shipped: 'bg-purple-500/10 text-purple-500',
       delivered: 'bg-green-500/10 text-green-500',
       cancelled: 'bg-destructive/10 text-destructive',
+      completed: 'bg-green-500/10 text-green-500',
     };
     return colors[status] || 'bg-muted text-muted-foreground';
   };
+
+  // Calculate stats
+  const onlineOrdersTotal = orders
+    .filter((o: any) => o.status === 'delivered')
+    .reduce((sum: number, o: any) => sum + o.total_amount, 0);
+  
+  const posTotal = posSales.reduce((sum: number, s: any) => sum + s.total_amount, 0);
+  const pendingOrders = orders.filter((o: any) => o.status === 'pending').length;
+  const todayPosSales = posSales.filter((s: any) => {
+    const today = new Date().toISOString().split('T')[0];
+    return s.sale_date?.startsWith(today);
+  });
+  const todayPosTotal = todayPosSales.reduce((sum: number, s: any) => sum + s.total_amount, 0);
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">E-commerce Store</h1>
+          <h1 className="text-2xl font-bold">Store Management</h1>
+          <div className="flex gap-2">
+            <Link to="/pos">
+              <Button variant="outline">
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Open POS
+              </Button>
+            </Link>
+            <Link to="/products">
+              <Button variant="outline">
+                <Package className="h-4 w-4 mr-2" />
+                Manage Products
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Products</CardTitle>
@@ -67,39 +137,113 @@ export default function StorePage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Orders</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Today's POS Sales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">
+                ₹{todayPosTotal.toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">{todayPosSales.length} transactions</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Online Orders</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-500">
-                {orders.filter((o: any) => o.status === 'pending').length}
+                {pendingOrders}
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Sales</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-500">
-                ₹{orders
-                  .filter((o: any) => o.status === 'delivered')
-                  .reduce((sum: number, o: any) => sum + o.total_amount, 0)
-                  .toLocaleString()}
+                ₹{(onlineOrdersTotal + posTotal).toLocaleString()}
               </div>
+              <p className="text-xs text-muted-foreground">Online + POS combined</p>
             </CardContent>
           </Card>
         </div>
 
-        <Tabs defaultValue="orders">
+        <Tabs defaultValue="pos-history">
           <TabsList>
-            <TabsTrigger value="orders">Orders</TabsTrigger>
+            <TabsTrigger value="pos-history" className="gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              POS History ({posSales.length})
+            </TabsTrigger>
+            <TabsTrigger value="online-orders" className="gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              Online Orders ({orders.length})
+            </TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="orders" className="mt-4">
+          {/* POS History Tab */}
+          <TabsContent value="pos-history" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Recent Orders</CardTitle>
+                <CardTitle>POS Sales History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {posLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date/Time</TableHead>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Payment</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {posSales.map((sale: any) => (
+                        <TableRow key={sale.id}>
+                          <TableCell>
+                            {format(new Date(sale.sale_date), 'dd MMM yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {sale.invoices?.invoice_number || '-'}
+                          </TableCell>
+                          <TableCell>
+                            {sale.members?.profiles?.full_name || sale.members?.member_code || 'Walk-in'}
+                          </TableCell>
+                          <TableCell>{(sale.items as any[])?.length || 0} items</TableCell>
+                          <TableCell className="font-medium">₹{sale.total_amount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="capitalize">{sale.payment_method}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {posSales.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            No POS sales yet
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Online Orders Tab */}
+          <TabsContent value="online-orders" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Online Orders</CardTitle>
               </CardHeader>
               <CardContent>
                 {ordersLoading ? (
@@ -116,6 +260,7 @@ export default function StorePage() {
                         <TableHead>Amount</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Date</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -129,13 +274,30 @@ export default function StorePage() {
                             <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                           </TableCell>
                           <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            <Select
+                              value={order.status}
+                              onValueChange={(status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled') => updateOrderStatus.mutate({ orderId: order.id, status })}
+                            >
+                              <SelectTrigger className="w-[120px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="processing">Processing</SelectItem>
+                                <SelectItem value="shipped">Shipped</SelectItem>
+                                <SelectItem value="delivered">Delivered</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
                         </TableRow>
                       ))}
                       {orders.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            No orders yet
+                            No online orders yet
                           </TableCell>
                         </TableRow>
                       )}
@@ -148,8 +310,14 @@ export default function StorePage() {
 
           <TabsContent value="products" className="mt-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Available Products</CardTitle>
+                <Link to="/products">
+                  <Button variant="outline" size="sm">
+                    Manage Products
+                    <ExternalLink className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
               </CardHeader>
               <CardContent>
                 {productsLoading ? (

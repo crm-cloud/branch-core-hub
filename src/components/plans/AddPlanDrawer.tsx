@@ -50,6 +50,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
     max_freeze_days: 0,
     is_transferable: false,
     is_active: true,
+    is_visible_to_members: true,
   });
 
   // Use database benefit types only (fully dynamic)
@@ -143,6 +144,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         max_freeze_days: formData.max_freeze_days || null,
         is_transferable: formData.is_transferable,
         is_active: formData.is_active,
+        is_visible_to_members: formData.is_visible_to_members,
         branch_id: branchId || null,
       }).select().single();
 
@@ -183,6 +185,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         max_freeze_days: 0,
         is_transferable: false,
         is_active: true,
+        is_visible_to_members: true,
       });
       setBenefits(Object.fromEntries(benefitOptions.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0, benefitTypeId: b.benefitTypeId }])));
     } catch (error: any) {
@@ -289,6 +292,17 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
               <Switch
                 checked={formData.is_active}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Visible to Members</Label>
+                <p className="text-xs text-muted-foreground">Show on member dashboard for self-purchase</p>
+              </div>
+              <Switch
+                checked={formData.is_visible_to_members ?? true}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_visible_to_members: checked })}
               />
             </div>
 
