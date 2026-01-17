@@ -224,6 +224,7 @@ export default function InvoicesPage() {
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="w-[250px]">Client</TableHead>
                       <TableHead>Invoice #</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Paid</TableHead>
                       <TableHead>Balance</TableHead>
@@ -256,6 +257,11 @@ export default function InvoicesPage() {
                           </TableCell>
                           <TableCell>
                             <span className="font-mono text-sm">{invoice.invoice_number}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={invoice.pos_sale_id ? 'secondary' : 'outline'}>
+                              {invoice.pos_sale_id ? '🛒 POS' : '📋 Membership'}
+                            </Badge>
                           </TableCell>
                           <TableCell className="font-semibold">
                             ₹{invoice.total_amount.toLocaleString()}
@@ -302,7 +308,7 @@ export default function InvoicesPage() {
                     })}
                     {filteredInvoices.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No invoices found</p>
                         </TableCell>

@@ -136,6 +136,10 @@ export default function POSPage() {
       setPaymentMethod('cash');
       queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
+      // Also invalidate invoices and payments so they appear in Finance and Invoices pages
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['finance-income'] });
     },
     onError: (error) => {
       toast.error('Failed to complete sale: ' + error.message);

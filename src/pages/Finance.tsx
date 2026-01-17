@@ -41,7 +41,7 @@ export default function FinancePage() {
     queryFn: async () => {
       let query = supabase
         .from('payments')
-        .select('*, member:members(member_code), invoice:invoices(invoice_number)')
+        .select('*, member:members(member_code), invoice:invoices(invoice_number, pos_sale_id)')
         .eq('status', 'completed');
 
       if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
@@ -51,6 +51,27 @@ export default function FinancePage() {
       }
 
       const { data, error } = await query.order('payment_date', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch POS sales (for income that might not have payment records)
+  const { data: posSalesData = [] } = useQuery({
+    queryKey: ['finance-pos-sales', selectedBranch, dateRange],
+    queryFn: async () => {
+      let query = supabase
+        .from('pos_sales')
+        .select('*, members(member_code)')
+        .order('sale_date', { ascending: false });
+
+      if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
+      if (dateRange) {
+        query = query.gte('sale_date', dateRange.from.toISOString())
+                     .lte('sale_date', dateRange.to.toISOString());
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -77,14 +98,35 @@ export default function FinancePage() {
     },
   });
 
-  // Calculate totals
-  const totalIncome = incomeData.reduce((sum, p) => sum + (p.amount || 0), 0);
+  // Calculate totals - Include POS sales that don't have invoice_id (legacy)
+  const posSalesWithoutPayment = posSalesData.filter((sale: any) => !sale.invoice_id);
+  const posOnlyTotal = posSalesWithoutPayment.reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+  const paymentsTotal = incomeData.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalIncome = paymentsTotal + posOnlyTotal;
   const totalExpenses = expenseData.reduce((sum, e) => sum + (e.amount || 0), 0);
   const netProfit = totalIncome - totalExpenses;
   const profitMargin = totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : 0;
+  
+  // Combined income data for display
+  const combinedIncomeData = [
+    ...incomeData.map((p: any) => ({
+      ...p,
+      type: p.invoice?.pos_sale_id ? 'POS Sale' : 'Payment',
+      date: p.payment_date,
+    })),
+    ...posSalesWithoutPayment.map((sale: any) => ({
+      id: sale.id,
+      amount: sale.total_amount,
+      payment_method: sale.payment_method,
+      member: sale.members,
+      type: 'POS Sale (Legacy)',
+      date: sale.sale_date,
+      invoice: null,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Income by payment method
-  const incomeByMethod = incomeData.reduce((acc: Record<string, number>, p) => {
+  // Income by payment method (include all sources)
+  const incomeByMethod = combinedIncomeData.reduce((acc: Record<string, number>, p: any) => {
     const method = p.payment_method || 'other';
     acc[method] = (acc[method] || 0) + (p.amount || 0);
     return acc;
@@ -92,6 +134,18 @@ export default function FinancePage() {
 
   const incomeMethodData = Object.entries(incomeByMethod).map(([name, value]) => ({
     name: name.replace('_', ' ').toUpperCase(),
+    value,
+  }));
+
+  // Income by source type
+  const incomeBySource = combinedIncomeData.reduce((acc: Record<string, number>, p: any) => {
+    const source = p.type || 'Other';
+    acc[source] = (acc[source] || 0) + (p.amount || 0);
+    return acc;
+  }, {});
+
+  const incomeSourceData = Object.entries(incomeBySource).map(([name, value]) => ({
+    name,
     value,
   }));
 
@@ -160,8 +214,8 @@ export default function FinancePage() {
           />
           <StatCard
             title="Transactions"
-            value={incomeData.length + expenseData.length}
-            description={`${incomeData.length} income, ${expenseData.length} expense`}
+            value={combinedIncomeData.length + expenseData.length}
+            description={`${combinedIncomeData.length} income, ${expenseData.length} expense`}
             icon={FileText}
             variant="default"
           />
@@ -223,7 +277,7 @@ export default function FinancePage() {
           <TabsList>
             <TabsTrigger value="income" className="gap-2">
               <ArrowUpRight className="h-4 w-4 text-green-500" />
-              Income ({incomeData.length})
+              Income ({combinedIncomeData.length})
             </TabsTrigger>
             <TabsTrigger value="expenses" className="gap-2">
               <ArrowDownRight className="h-4 w-4 text-red-500" />
@@ -235,13 +289,14 @@ export default function FinancePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Income Transactions</CardTitle>
-                <CardDescription>All payments received</CardDescription>
+                <CardDescription>All income including memberships, POS sales, and other payments</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Member</TableHead>
                       <TableHead>Invoice</TableHead>
                       <TableHead>Method</TableHead>
@@ -249,9 +304,14 @@ export default function FinancePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {incomeData.slice(0, 20).map((payment) => (
+                    {combinedIncomeData.slice(0, 30).map((payment: any) => (
                       <TableRow key={payment.id}>
-                        <TableCell>{format(new Date(payment.payment_date), 'MMM d, yyyy')}</TableCell>
+                        <TableCell>{format(new Date(payment.date), 'MMM d, yyyy')}</TableCell>
+                        <TableCell>
+                          <Badge variant={payment.type.includes('POS') ? 'secondary' : 'outline'}>
+                            {payment.type}
+                          </Badge>
+                        </TableCell>
                         <TableCell>{payment.member?.member_code || '-'}</TableCell>
                         <TableCell>{payment.invoice?.invoice_number || '-'}</TableCell>
                         <TableCell>
@@ -262,9 +322,9 @@ export default function FinancePage() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {incomeData.length === 0 && (
+                    {combinedIncomeData.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           No income transactions found
                         </TableCell>
                       </TableRow>
