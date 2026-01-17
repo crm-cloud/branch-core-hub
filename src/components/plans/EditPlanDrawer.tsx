@@ -8,10 +8,13 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePlan } from '@/hooks/usePlans';
+import { useBenefitTypes, useCreateBenefitType } from '@/hooks/useBenefitTypes';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Plus, Loader2 } from 'lucide-react';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 
 interface EditPlanDrawerProps {
@@ -20,31 +23,41 @@ interface EditPlanDrawerProps {
   plan: MembershipPlanWithBenefits | null;
 }
 
-const BENEFIT_OPTIONS = [
-  { id: 'gym_access', label: 'Gym Access', icon: '🏋️' },
-  { id: 'pool_access', label: 'Pool Access', icon: '🏊' },
-  { id: 'steam_sauna', label: 'Steam & Sauna', icon: '🧖' },
-  { id: 'group_classes', label: 'Group Classes', icon: '👥' },
-  { id: 'personal_training', label: 'Personal Training Sessions', icon: '💪' },
-  { id: 'locker', label: 'Locker Facility', icon: '🔐' },
-  { id: 'parking', label: 'Free Parking', icon: '🅿️' },
-  { id: 'towel_service', label: 'Towel Service', icon: '🧴' },
-  { id: 'nutrition_consult', label: 'Nutrition Consultation', icon: '🥗' },
-  { id: 'body_composition', label: 'Body Composition Analysis', icon: '📊' },
-  { id: 'guest_passes', label: 'Guest Passes', icon: '🎫' },
-  { id: 'smoothie_bar', label: 'Smoothie Bar Discount', icon: '🥤' },
+// Fallback static benefits for when database benefit types aren't available
+const STATIC_BENEFIT_OPTIONS = [
+  { id: 'gym_access', label: 'Gym Access', icon: '🏋️', code: 'gym_access' },
+  { id: 'pool_access', label: 'Pool Access', icon: '🏊', code: 'pool_access' },
+  { id: 'steam_sauna', label: 'Steam & Sauna', icon: '🧖', code: 'steam_sauna' },
+  { id: 'group_classes', label: 'Group Classes', icon: '👥', code: 'group_classes' },
+  { id: 'personal_training', label: 'Personal Training Sessions', icon: '💪', code: 'personal_training' },
+  { id: 'locker', label: 'Locker Facility', icon: '🔐', code: 'locker' },
+  { id: 'parking', label: 'Free Parking', icon: '🅿️', code: 'parking' },
+  { id: 'towel_service', label: 'Towel Service', icon: '🧴', code: 'towel_service' },
+  { id: 'nutrition_consult', label: 'Nutrition Consultation', icon: '🥗', code: 'nutrition_consult' },
+  { id: 'body_composition', label: 'Body Composition Analysis', icon: '📊', code: 'body_composition' },
+  { id: 'guest_passes', label: 'Guest Passes', icon: '🎫', code: 'guest_passes' },
+  { id: 'smoothie_bar', label: 'Smoothie Bar Discount', icon: '🥤', code: 'smoothie_bar' },
 ];
 
 type BenefitConfig = {
   enabled: boolean;
   frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
   limit: number;
+  benefitTypeId?: string;
 };
 
 export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps) {
   const updatePlan = useUpdatePlan();
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
+  const [addBenefitDialogOpen, setAddBenefitDialogOpen] = useState(false);
+  const [newBenefitName, setNewBenefitName] = useState('');
+  const [newBenefitCode, setNewBenefitCode] = useState('');
+  const [newBenefitIcon, setNewBenefitIcon] = useState('🎁');
+
+  // Fetch dynamic benefit types from database
+  const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(plan?.branch_id || undefined);
+  const createBenefitType = useCreateBenefitType();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -58,10 +71,20 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     is_active: true,
   });
 
-  const [benefits, setBenefits] = useState<Record<string, BenefitConfig>>(
-    Object.fromEntries(BENEFIT_OPTIONS.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0 }]))
-  );
+  // Combine database benefit types with static fallbacks
+  const benefitOptions: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = dbBenefitTypes.length > 0 
+    ? dbBenefitTypes.map(bt => ({
+        id: bt.code,
+        label: bt.name,
+        icon: bt.icon || '🎁',
+        code: bt.code,
+        benefitTypeId: bt.id
+      }))
+    : STATIC_BENEFIT_OPTIONS;
 
+  const [benefits, setBenefits] = useState<Record<string, BenefitConfig>>({});
+
+  // Initialize form data when plan changes
   useEffect(() => {
     if (plan) {
       setFormData({
@@ -75,31 +98,55 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         is_transferable: plan.is_transferable || false,
         is_active: plan.is_active ?? true,
       });
+    }
+  }, [plan]);
 
-      // Load existing benefits
-      const benefitMap = Object.fromEntries(
-        BENEFIT_OPTIONS.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0 }])
-      );
+  // Initialize benefits when benefit options or plan changes
+  useEffect(() => {
+    if (plan && benefitOptions.length > 0) {
+      const benefitMap: Record<string, BenefitConfig> = {};
       
+      // Initialize all benefits as disabled
+      benefitOptions.forEach(b => {
+        benefitMap[b.id] = { 
+          enabled: false, 
+          frequency: 'unlimited' as const, 
+          limit: 0,
+          benefitTypeId: b.benefitTypeId
+        };
+      });
+      
+      // Enable benefits that are in the plan
       if (plan.plan_benefits) {
         plan.plan_benefits.forEach((benefit: any) => {
-          if (benefitMap[benefit.benefit_type]) {
-            benefitMap[benefit.benefit_type] = {
+          const benefitKey = benefit.benefit_type;
+          if (benefitMap[benefitKey]) {
+            benefitMap[benefitKey] = {
               enabled: true,
               frequency: benefit.frequency || 'unlimited',
               limit: benefit.limit_count || 0,
+              benefitTypeId: benefit.benefit_type_id || undefined
+            };
+          } else {
+            // Handle benefits that exist in plan but not in current options
+            benefitMap[benefitKey] = {
+              enabled: true,
+              frequency: benefit.frequency || 'unlimited',
+              limit: benefit.limit_count || 0,
+              benefitTypeId: benefit.benefit_type_id || undefined
             };
           }
         });
       }
+      
       setBenefits(benefitMap);
     }
-  }, [plan]);
+  }, [plan, dbBenefitTypes]);
 
   const toggleBenefit = (id: string) => {
     setBenefits(prev => ({
       ...prev,
-      [id]: { ...prev[id], enabled: !prev[id].enabled }
+      [id]: { ...prev[id], enabled: !prev[id]?.enabled }
     }));
   };
 
@@ -108,6 +155,36 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
       ...prev,
       [id]: { ...prev[id], [field]: value }
     }));
+  };
+
+  const handleAddBenefitType = async () => {
+    if (!newBenefitName.trim() || !newBenefitCode.trim()) {
+      toast.error('Please fill in name and code');
+      return;
+    }
+
+    if (!plan?.branch_id) {
+      toast.error('Branch not available');
+      return;
+    }
+
+    try {
+      await createBenefitType.mutateAsync({
+        name: newBenefitName.trim(),
+        code: newBenefitCode.trim().toLowerCase().replace(/\s+/g, '_'),
+        icon: newBenefitIcon,
+        branch_id: plan.branch_id,
+        is_bookable: false,
+      });
+
+      toast.success('Benefit type added');
+      setAddBenefitDialogOpen(false);
+      setNewBenefitName('');
+      setNewBenefitCode('');
+      setNewBenefitIcon('🎁');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add benefit type');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,6 +220,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         .map(([benefitType, config]) => ({
           plan_id: plan.id,
           benefit_type: benefitType as any,
+          benefit_type_id: config.benefitTypeId || null,
           frequency: config.frequency as any,
           limit_count: config.frequency === 'unlimited' ? null : config.limit,
           is_active: true,
@@ -167,175 +245,260 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     }
   };
 
+  // Get all benefits to display (from options + any existing in plan not in options)
+  const allBenefitsToShow: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = [...benefitOptions];
+  if (plan?.plan_benefits) {
+    plan.plan_benefits.forEach((pb: any) => {
+      if (!allBenefitsToShow.find(b => b.id === pb.benefit_type)) {
+        allBenefitsToShow.push({
+          id: pb.benefit_type,
+          label: pb.benefit_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+          icon: '🎁',
+          code: pb.benefit_type,
+          benefitTypeId: pb.benefit_type_id || undefined
+        });
+      }
+    });
+  }
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Edit Membership Plan</SheetTitle>
-          <SheetDescription>Update plan details and benefits</SheetDescription>
-        </SheetHeader>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Edit Membership Plan</SheetTitle>
+            <SheetDescription>Update plan details and benefits</SheetDescription>
+          </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Plan Name *</Label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Monthly Basic, Annual Premium, etc."
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Plan description..."
-              rows={2}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Price (₹) *</Label>
+              <Label>Plan Name *</Label>
               <Input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Monthly Basic, Annual Premium, etc."
               />
             </div>
+
             <div className="space-y-2">
-              <Label>Discounted Price (₹)</Label>
-              <Input
-                type="number"
-                value={formData.discounted_price}
-                onChange={(e) => setFormData({ ...formData, discounted_price: e.target.value })}
-                placeholder="Optional"
+              <Label>Description</Label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Plan description..."
+                rows={2}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Price (₹) *</Label>
+                <Input
+                  type="number"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Discounted Price (₹)</Label>
+                <Input
+                  type="number"
+                  value={formData.discounted_price}
+                  onChange={(e) => setFormData({ ...formData, discounted_price: e.target.value })}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Duration (days) *</Label>
+                <Input
+                  type="number"
+                  value={formData.duration_days}
+                  onChange={(e) => setFormData({ ...formData, duration_days: Number(e.target.value) })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Admission Fee (₹)</Label>
+                <Input
+                  type="number"
+                  value={formData.admission_fee}
+                  onChange={(e) => setFormData({ ...formData, admission_fee: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label>Duration (days) *</Label>
+              <Label>Max Freeze Days</Label>
               <Input
                 type="number"
-                value={formData.duration_days}
-                onChange={(e) => setFormData({ ...formData, duration_days: Number(e.target.value) })}
+                value={formData.max_freeze_days}
+                onChange={(e) => setFormData({ ...formData, max_freeze_days: Number(e.target.value) })}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Admission Fee (₹)</Label>
-              <Input
-                type="number"
-                value={formData.admission_fee}
-                onChange={(e) => setFormData({ ...formData, admission_fee: Number(e.target.value) })}
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Transferable</Label>
+                <p className="text-xs text-muted-foreground">Allow membership transfer</p>
+              </div>
+              <Switch
+                checked={formData.is_transferable}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_transferable: checked })}
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label>Max Freeze Days</Label>
-            <Input
-              type="number"
-              value={formData.max_freeze_days}
-              onChange={(e) => setFormData({ ...formData, max_freeze_days: Number(e.target.value) })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <Label>Transferable</Label>
-              <p className="text-xs text-muted-foreground">Allow membership transfer</p>
-            </div>
-            <Switch
-              checked={formData.is_transferable}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_transferable: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <Label>Active</Label>
-              <p className="text-xs text-muted-foreground">Show plan in purchase options</p>
-            </div>
-            <Switch
-              checked={formData.is_active}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-            />
-          </div>
-
-          <Separator className="my-4" />
-
-          <div className="space-y-4">
-            <div>
-              <Label className="text-base font-semibold">Plan Benefits</Label>
-              <p className="text-sm text-muted-foreground">Select the benefits included in this plan</p>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Active</Label>
+                <p className="text-xs text-muted-foreground">Show plan in purchase options</p>
+              </div>
+              <Switch
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
             </div>
 
-            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-              {BENEFIT_OPTIONS.map((benefit) => (
-                <div key={benefit.id} className="border rounded-lg p-3">
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id={`edit-${benefit.id}`}
-                      checked={benefits[benefit.id].enabled}
-                      onCheckedChange={() => toggleBenefit(benefit.id)}
-                    />
-                    <label htmlFor={`edit-${benefit.id}`} className="flex-1 cursor-pointer">
-                      <span className="mr-2">{benefit.icon}</span>
-                      {benefit.label}
-                    </label>
-                  </div>
-                  
-                  {benefits[benefit.id].enabled && (
-                    <div className="mt-3 ml-6 grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Frequency</Label>
-                        <Select
-                          value={benefits[benefit.id].frequency}
-                          onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
-                        >
-                          <SelectTrigger className="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unlimited">Unlimited</SelectItem>
-                            <SelectItem value="daily">Per Day</SelectItem>
-                            <SelectItem value="weekly">Per Week</SelectItem>
-                            <SelectItem value="monthly">Per Month</SelectItem>
-                          </SelectContent>
-                        </Select>
+            <Separator className="my-4" />
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-base font-semibold">Plan Benefits</Label>
+                  <p className="text-sm text-muted-foreground">Select the benefits included in this plan</p>
+                </div>
+                {plan?.branch_id && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setAddBenefitDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Custom
+                  </Button>
+                )}
+              </div>
+
+              {isLoadingBenefits ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                  {allBenefitsToShow.map((benefit) => (
+                    <div key={benefit.id} className="border rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id={`edit-${benefit.id}`}
+                          checked={benefits[benefit.id]?.enabled || false}
+                          onCheckedChange={() => toggleBenefit(benefit.id)}
+                        />
+                        <label htmlFor={`edit-${benefit.id}`} className="flex-1 cursor-pointer">
+                          <span className="mr-2">{benefit.icon}</span>
+                          {benefit.label}
+                        </label>
                       </div>
-                      {benefits[benefit.id].frequency !== 'unlimited' && (
-                        <div>
-                          <Label className="text-xs">Limit</Label>
-                          <Input
-                            type="number"
-                            className="h-8"
-                            value={benefits[benefit.id].limit}
-                            onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
-                            min={1}
-                          />
+                      
+                      {benefits[benefit.id]?.enabled && (
+                        <div className="mt-3 ml-6 grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Frequency</Label>
+                            <Select
+                              value={benefits[benefit.id]?.frequency || 'unlimited'}
+                              onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unlimited">Unlimited</SelectItem>
+                                <SelectItem value="daily">Per Day</SelectItem>
+                                <SelectItem value="weekly">Per Week</SelectItem>
+                                <SelectItem value="monthly">Per Month</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {benefits[benefit.id]?.frequency !== 'unlimited' && (
+                            <div>
+                              <Label className="text-xs">Limit</Label>
+                              <Input
+                                type="number"
+                                className="h-8"
+                                value={benefits[benefit.id]?.limit || 0}
+                                onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
+                                min={1}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              )}
+            </div>
+
+            <SheetFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving || updatePlan.isPending}>
+                {isSaving || updatePlan.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* Add Benefit Type Dialog */}
+      <Dialog open={addBenefitDialogOpen} onOpenChange={setAddBenefitDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Custom Benefit Type</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Benefit Name *</Label>
+              <Input
+                value={newBenefitName}
+                onChange={(e) => {
+                  setNewBenefitName(e.target.value);
+                  setNewBenefitCode(e.target.value.toLowerCase().replace(/\s+/g, '_'));
+                }}
+                placeholder="e.g., Ice Bath, Cryotherapy"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Code *</Label>
+              <Input
+                value={newBenefitCode}
+                onChange={(e) => setNewBenefitCode(e.target.value)}
+                placeholder="e.g., ice_bath"
+              />
+              <p className="text-xs text-muted-foreground">Unique identifier (lowercase, underscores)</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Icon (Emoji)</Label>
+              <Input
+                value={newBenefitIcon}
+                onChange={(e) => setNewBenefitIcon(e.target.value)}
+                placeholder="🎁"
+                className="w-20"
+              />
             </div>
           </div>
-
-          <SheetFooter className="pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddBenefitDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving || updatePlan.isPending}>
-              {isSaving || updatePlan.isPending ? 'Saving...' : 'Save Changes'}
+            <Button onClick={handleAddBenefitType} disabled={createBenefitType.isPending}>
+              {createBenefitType.isPending ? 'Adding...' : 'Add Benefit'}
             </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

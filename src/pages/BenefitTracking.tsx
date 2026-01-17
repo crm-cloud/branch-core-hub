@@ -35,37 +35,37 @@ export default function BenefitTracking() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [preselectedBenefit, setPreselectedBenefit] = useState<BenefitType | undefined>();
 
-  // Search members
+  // Search members using the search_members function
   const { data: searchResults, isLoading: isSearching } = useQuery({
     queryKey: ['member-search', searchQuery],
     queryFn: async () => {
       if (searchQuery.length < 2) return [];
       
-      const { data } = await supabase
-        .from('members')
-        .select('id, member_code, profiles:user_id(full_name, email, phone)')
-        .or(`member_code.ilike.%${searchQuery}%`)
-        .eq('status', 'active')
-        .limit(10);
-      
-      // Also search by profile
-      const { data: byProfile } = await supabase
-        .from('profiles')
-        .select('members!members_user_id_profiles_fkey(id, member_code, status)')
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
-        .limit(10);
-      
-      const results: MemberSearchResult[] = [];
-      const memberIds = new Set<string>();
-      
-      data?.forEach((m: any) => {
-        if (!memberIds.has(m.id)) {
-          memberIds.add(m.id);
-          results.push(m);
-        }
-      });
-      
-      return results;
+      // Use the search_members function for comprehensive search
+      const { data, error } = await supabase
+        .rpc('search_members', {
+          search_term: searchQuery.trim(),
+          p_branch_id: null,
+          p_limit: 10
+        });
+
+      if (error) {
+        console.error('Search error:', error);
+        return [];
+      }
+
+      // Transform the result to match expected format
+      return (data || [])
+        .filter((row: any) => row.is_active) // Only active members
+        .map((row: any) => ({
+          id: row.id,
+          member_code: row.member_code,
+          profiles: {
+            full_name: row.full_name,
+            email: row.email,
+            phone: row.phone
+          }
+        }));
     },
     enabled: searchQuery.length >= 2,
   });
