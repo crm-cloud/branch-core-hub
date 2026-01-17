@@ -211,6 +211,244 @@ export type Database = {
           },
         ]
       }
+      benefit_bookings: {
+        Row: {
+          booked_at: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          check_in_at: string | null
+          created_at: string
+          id: string
+          member_id: string
+          membership_id: string
+          no_show_marked_at: string | null
+          notes: string | null
+          slot_id: string
+          status: Database["public"]["Enums"]["benefit_booking_status"]
+          updated_at: string
+        }
+        Insert: {
+          booked_at?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          check_in_at?: string | null
+          created_at?: string
+          id?: string
+          member_id: string
+          membership_id: string
+          no_show_marked_at?: string | null
+          notes?: string | null
+          slot_id: string
+          status?: Database["public"]["Enums"]["benefit_booking_status"]
+          updated_at?: string
+        }
+        Update: {
+          booked_at?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          check_in_at?: string | null
+          created_at?: string
+          id?: string
+          member_id?: string
+          membership_id?: string
+          no_show_marked_at?: string | null
+          notes?: string | null
+          slot_id?: string
+          status?: Database["public"]["Enums"]["benefit_booking_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_bookings_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "benefit_bookings_membership_id_fkey"
+            columns: ["membership_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "benefit_bookings_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benefit_packages: {
+        Row: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          branch_id: string
+          created_at: string
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number
+          quantity: number
+          updated_at: string
+          validity_days: number
+        }
+        Insert: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          branch_id: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price: number
+          quantity: number
+          updated_at?: string
+          validity_days?: number
+        }
+        Update: {
+          benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          branch_id?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          quantity?: number
+          updated_at?: string
+          validity_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_packages_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benefit_settings: {
+        Row: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          booking_opens_hours_before: number | null
+          branch_id: string
+          buffer_between_sessions_minutes: number | null
+          cancellation_deadline_minutes: number | null
+          capacity_per_slot: number | null
+          created_at: string
+          id: string
+          is_slot_booking_enabled: boolean | null
+          max_bookings_per_day: number | null
+          no_show_penalty_amount: number | null
+          no_show_policy: Database["public"]["Enums"]["no_show_policy"] | null
+          operating_hours_end: string | null
+          operating_hours_start: string | null
+          slot_duration_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          booking_opens_hours_before?: number | null
+          branch_id: string
+          buffer_between_sessions_minutes?: number | null
+          cancellation_deadline_minutes?: number | null
+          capacity_per_slot?: number | null
+          created_at?: string
+          id?: string
+          is_slot_booking_enabled?: boolean | null
+          max_bookings_per_day?: number | null
+          no_show_penalty_amount?: number | null
+          no_show_policy?: Database["public"]["Enums"]["no_show_policy"] | null
+          operating_hours_end?: string | null
+          operating_hours_start?: string | null
+          slot_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          booking_opens_hours_before?: number | null
+          branch_id?: string
+          buffer_between_sessions_minutes?: number | null
+          cancellation_deadline_minutes?: number | null
+          capacity_per_slot?: number | null
+          created_at?: string
+          id?: string
+          is_slot_booking_enabled?: boolean | null
+          max_bookings_per_day?: number | null
+          no_show_penalty_amount?: number | null
+          no_show_policy?: Database["public"]["Enums"]["no_show_policy"] | null
+          operating_hours_end?: string | null
+          operating_hours_start?: string | null
+          slot_duration_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benefit_slots: {
+        Row: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          booked_count: number | null
+          branch_id: string
+          capacity: number
+          created_at: string
+          end_time: string
+          id: string
+          is_active: boolean | null
+          slot_date: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          booked_count?: number | null
+          branch_id: string
+          capacity?: number
+          created_at?: string
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          slot_date: string
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          booked_count?: number | null
+          branch_id?: string
+          capacity?: number
+          created_at?: string
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          slot_date?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_slots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       benefit_usage: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
@@ -1741,6 +1979,80 @@ export type Database = {
             columns: ["membership_id"]
             isOneToOne: false
             referencedRelation: "memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_benefit_credits: {
+        Row: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          created_at: string
+          credits_remaining: number
+          credits_total: number
+          expires_at: string
+          id: string
+          invoice_id: string | null
+          member_id: string
+          membership_id: string | null
+          package_id: string | null
+          purchased_at: string
+          updated_at: string
+        }
+        Insert: {
+          benefit_type: Database["public"]["Enums"]["benefit_type"]
+          created_at?: string
+          credits_remaining: number
+          credits_total: number
+          expires_at: string
+          id?: string
+          invoice_id?: string | null
+          member_id: string
+          membership_id?: string | null
+          package_id?: string | null
+          purchased_at?: string
+          updated_at?: string
+        }
+        Update: {
+          benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          created_at?: string
+          credits_remaining?: number
+          credits_total?: number
+          expires_at?: string
+          id?: string
+          invoice_id?: string | null
+          member_id?: string
+          membership_id?: string | null
+          package_id?: string | null
+          purchased_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_benefit_credits_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_benefit_credits_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_benefit_credits_membership_id_fkey"
+            columns: ["membership_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_benefit_credits_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_packages"
             referencedColumns: ["id"]
           },
         ]
@@ -4114,6 +4426,12 @@ export type Database = {
         | "complimentary"
         | "expense"
         | "contract"
+      benefit_booking_status:
+        | "booked"
+        | "confirmed"
+        | "attended"
+        | "no_show"
+        | "cancelled"
       benefit_type:
         | "gym_access"
         | "pool_access"
@@ -4170,6 +4488,7 @@ export type Database = {
         | "frozen"
         | "expired"
         | "cancelled"
+      no_show_policy: "mark_used" | "allow_reschedule" | "charge_penalty"
       order_status:
         | "pending"
         | "confirmed"
@@ -4341,6 +4660,13 @@ export const Constants = {
         "expense",
         "contract",
       ],
+      benefit_booking_status: [
+        "booked",
+        "confirmed",
+        "attended",
+        "no_show",
+        "cancelled",
+      ],
       benefit_type: [
         "gym_access",
         "pool_access",
@@ -4403,6 +4729,7 @@ export const Constants = {
         "expired",
         "cancelled",
       ],
+      no_show_policy: ["mark_used", "allow_reschedule", "charge_penalty"],
       order_status: [
         "pending",
         "confirmed",
