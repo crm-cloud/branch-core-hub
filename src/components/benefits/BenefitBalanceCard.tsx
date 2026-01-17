@@ -1,0 +1,129 @@
+import { Progress } from '@/components/ui/progress';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Dumbbell, Droplets, Thermometer, Snowflake, 
+  Users, Ticket, Apple, Activity, Car, Bath
+} from 'lucide-react';
+import { type MemberBenefitBalance, benefitTypeLabels, frequencyLabels } from '@/services/benefitService';
+import type { Database } from '@/integrations/supabase/types';
+
+type BenefitType = Database['public']['Enums']['benefit_type'];
+
+const benefitIcons: Record<BenefitType, React.ComponentType<{ className?: string }>> = {
+  gym_access: Dumbbell,
+  group_classes: Users,
+  pt_sessions: Dumbbell,
+  pool_access: Droplets,
+  sauna_session: Thermometer,
+  sauna_access: Thermometer,
+  steam_access: Thermometer,
+  locker: Bath,
+  towel: Bath,
+  parking: Car,
+  guest_pass: Ticket,
+  ice_bath: Snowflake,
+  yoga_class: Activity,
+  crossfit_class: Activity,
+  spa_access: Bath,
+  cardio_area: Activity,
+  functional_training: Dumbbell,
+  other: Ticket,
+};
+
+interface BenefitBalanceCardProps {
+  balance: MemberBenefitBalance;
+  showRecordButton?: boolean;
+  onRecordUsage?: () => void;
+}
+
+export function BenefitBalanceCard({ balance, showRecordButton, onRecordUsage }: BenefitBalanceCardProps) {
+  const Icon = benefitIcons[balance.benefit_type] || Dumbbell;
+  const progressValue = balance.isUnlimited 
+    ? 100 
+    : balance.limit_count 
+      ? (balance.used / balance.limit_count) * 100 
+      : 0;
+
+  const isExhausted = !balance.isUnlimited && balance.remaining === 0;
+
+  return (
+    <Card className={isExhausted ? 'opacity-60' : ''}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Icon className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">
+              {benefitTypeLabels[balance.benefit_type]}
+            </CardTitle>
+          </div>
+          <Badge variant={balance.isUnlimited ? 'default' : 'outline'} className="text-xs">
+            {frequencyLabels[balance.frequency]}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {balance.isUnlimited ? (
+          <div className="text-sm text-muted-foreground">Unlimited access</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                {balance.used} / {balance.limit_count} used
+              </span>
+              <span className={balance.remaining === 0 ? 'text-destructive font-medium' : 'text-primary font-medium'}>
+                {balance.remaining} remaining
+              </span>
+            </div>
+            <Progress 
+              value={progressValue} 
+              className={progressValue >= 100 ? '[&>div]:bg-destructive' : ''}
+            />
+          </>
+        )}
+        
+        {balance.description && (
+          <p className="text-xs text-muted-foreground">{balance.description}</p>
+        )}
+
+        {showRecordButton && !isExhausted && (
+          <button
+            onClick={onRecordUsage}
+            className="w-full mt-2 text-sm bg-primary text-primary-foreground rounded-md py-2 hover:bg-primary/90 transition-colors"
+          >
+            Record Usage
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface BenefitBalancesGridProps {
+  balances: MemberBenefitBalance[];
+  showRecordButtons?: boolean;
+  onRecordUsage?: (benefitType: BenefitType) => void;
+}
+
+export function BenefitBalancesGrid({ balances, showRecordButtons, onRecordUsage }: BenefitBalancesGridProps) {
+  if (balances.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No benefits available with current plan
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {balances.map((balance) => (
+        <BenefitBalanceCard
+          key={balance.benefit_type}
+          balance={balance}
+          showRecordButton={showRecordButtons}
+          onRecordUsage={() => onRecordUsage?.(balance.benefit_type)}
+        />
+      ))}
+    </div>
+  );
+}
