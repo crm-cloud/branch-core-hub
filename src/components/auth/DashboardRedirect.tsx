@@ -26,6 +26,12 @@ export function DashboardRedirect() {
     return <Navigate to="/auth" replace />;
   }
 
+  // Handle users with no roles - redirect to auth to avoid access denied loop
+  if (roles.length === 0) {
+    console.warn('User has no roles assigned, redirecting to auth');
+    return <Navigate to="/auth" replace />;
+  }
+
   // Priority: member gets member dashboard (exclusive role)
   if (roles.some(r => r.role === 'member')) {
     return <Navigate to="/member-dashboard" replace />;
