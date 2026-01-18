@@ -13,6 +13,8 @@ interface UserProfile {
   avatar_url: string | null;
   phone: string | null;
   must_set_password: boolean;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
 }
 
 interface UserRoleInfo {
@@ -51,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url, phone, must_set_password')
+      .select('id, email, full_name, avatar_url, phone, must_set_password, emergency_contact_name, emergency_contact_phone')
       .eq('id', userId)
       .single();
 

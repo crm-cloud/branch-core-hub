@@ -34,6 +34,8 @@ export default function MemberProfile() {
 
   const [formData, setFormData] = useState({
     phone: profile?.phone || '',
+    emergency_contact_name: profile?.emergency_contact_name || '',
+    emergency_contact_phone: profile?.emergency_contact_phone || '',
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -48,7 +50,11 @@ export default function MemberProfile() {
       if (profile?.id) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ phone: formData.phone })
+          .update({ 
+            phone: formData.phone,
+            emergency_contact_name: formData.emergency_contact_name || null,
+            emergency_contact_phone: formData.emergency_contact_phone || null,
+          })
           .eq('id', profile.id);
 
         if (profileError) throw profileError;
@@ -287,7 +293,7 @@ export default function MemberProfile() {
               <div className="space-y-2">
                 <Label>Contact Name</Label>
                 <Input
-                  value={isEditing ? formData.emergency_contact_name : ((member as any)?.emergency_contact_name || '')}
+                  value={isEditing ? formData.emergency_contact_name : (profile?.emergency_contact_name || '')}
                   onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Emergency contact name"
@@ -297,7 +303,7 @@ export default function MemberProfile() {
               <div className="space-y-2">
                 <Label>Contact Phone</Label>
                 <Input
-                  value={isEditing ? formData.emergency_contact_phone : ((member as any)?.emergency_contact_phone || '')}
+                  value={isEditing ? formData.emergency_contact_phone : (profile?.emergency_contact_phone || '')}
                   onChange={(e) => setFormData({ ...formData, emergency_contact_phone: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Emergency contact phone"

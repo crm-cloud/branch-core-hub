@@ -78,6 +78,7 @@ export default function ScheduleSession() {
         .from('pt_sessions')
         .insert({
           trainer_id: trainer!.id,
+          branch_id: trainer!.branch_id,
           member_pt_package_id: clientPackage.id,
           scheduled_at: scheduledAt.toISOString(),
           duration_minutes: duration,
@@ -164,7 +165,7 @@ export default function ScheduleSession() {
                       {clients.map((client: any) => (
                         <SelectItem key={client.member_id} value={client.member_id}>
                           <div className="flex items-center justify-between w-full gap-4">
-                            <span>{client.member?.profiles?.full_name || client.member?.member_code}</span>
+                            <span>{client.member?.profile?.full_name || client.member?.member_code || 'Unknown'}</span>
                             <Badge variant="outline" className="text-xs">
                               {client.sessions_remaining} sessions left
                             </Badge>
@@ -284,7 +285,7 @@ export default function ScheduleSession() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Client</span>
                       <span className="font-medium">
-                        {clients.find(c => c.member_id === selectedClient)?.member?.profiles?.full_name || 'N/A'}
+                        {(clients.find((c: any) => c.member_id === selectedClient)?.member?.profile?.full_name) || (clients.find((c: any) => c.member_id === selectedClient)?.member?.member_code) || 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between">

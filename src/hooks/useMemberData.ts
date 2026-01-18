@@ -195,14 +195,37 @@ export function useTrainerData() {
         .from('member_pt_packages')
         .select(`
           *,
-          member:members(id, member_code, user_id, profiles:user_id(full_name, avatar_url, phone)),
+          member:members!member_pt_packages_member_id_fkey(id, member_code, user_id),
           package:pt_packages(name)
         `)
         .eq('trainer_id', trainer!.id)
         .eq('status', 'active');
       
       if (error) throw error;
-      return data || [];
+      
+      // Fetch profile data separately for each member
+      const clientsWithProfiles = await Promise.all(
+        (data || []).map(async (client: any) => {
+          if (client.member?.user_id) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url, phone')
+              .eq('id', client.member.user_id)
+              .single();
+            
+            return {
+              ...client,
+              member: {
+                ...client.member,
+                profile: profileData
+              }
+            };
+          }
+          return client;
+        })
+      );
+      
+      return clientsWithProfiles;
     },
   });
 

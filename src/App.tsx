@@ -63,10 +63,22 @@ import MyPTSessions from "./pages/MyPTSessions";
 import MyInvoices from "./pages/MyInvoices";
 import MemberRequests from "./pages/MemberRequests";
 import MemberStore from "./pages/MemberStore";
+import MyWorkout from "./pages/MyWorkout";
+import MyDiet from "./pages/MyDiet";
+import MyBenefits from "./pages/MyBenefits";
+import MemberProfile from "./pages/MemberProfile";
 
 // Trainer-specific pages
 import TrainerDashboard from "./pages/TrainerDashboard";
 import MyClients from "./pages/MyClients";
+import TrainerEarnings from "./pages/TrainerEarnings";
+import ScheduleSession from "./pages/ScheduleSession";
+
+// Staff-specific pages
+import StaffDashboard from "./pages/StaffDashboard";
+
+// Admin pages
+import AdminRoles from "./pages/AdminRoles";
 
 const queryClient = new QueryClient();
 
@@ -101,10 +113,19 @@ const App = () => (
             <Route path="/member-store" element={<ProtectedRoute requiredRoles={['member']}><MemberStore /></ProtectedRoute>} />
             <Route path="/member-announcements" element={<ProtectedRoute requiredRoles={['member']}><AnnouncementsPage /></ProtectedRoute>} />
             <Route path="/member-feedback" element={<ProtectedRoute requiredRoles={['member']}><FeedbackPage /></ProtectedRoute>} />
+            <Route path="/my-workout" element={<ProtectedRoute requiredRoles={['member']}><MyWorkout /></ProtectedRoute>} />
+            <Route path="/my-diet" element={<ProtectedRoute requiredRoles={['member']}><MyDiet /></ProtectedRoute>} />
+            <Route path="/my-benefits" element={<ProtectedRoute requiredRoles={['member']}><MyBenefits /></ProtectedRoute>} />
+            <Route path="/member-profile" element={<ProtectedRoute requiredRoles={['member']}><MemberProfile /></ProtectedRoute>} />
 
             {/* ==================== TRAINER ROUTES ==================== */}
             <Route path="/trainer-dashboard" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerDashboard /></ProtectedRoute>} />
             <Route path="/my-clients" element={<ProtectedRoute requiredRoles={['trainer']}><MyClients /></ProtectedRoute>} />
+            <Route path="/trainer-earnings" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerEarnings /></ProtectedRoute>} />
+            <Route path="/schedule-session" element={<ProtectedRoute requiredRoles={['trainer']}><ScheduleSession /></ProtectedRoute>} />
+
+            {/* ==================== STAFF ROUTES ==================== */}
+            <Route path="/staff-dashboard" element={<ProtectedRoute requiredRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
 
             {/* ==================== ADMIN/MANAGER/OWNER ROUTES ==================== */}
             <Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><DashboardPage /></ProtectedRoute>} />
@@ -141,6 +162,9 @@ const App = () => (
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
             <Route path="/benefit-tracking" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><BenefitTrackingPage /></ProtectedRoute>} />
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
+
+            {/* Admin user/role management */}
+            <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
 
             {/* Redirects for old routes - now consolidated in Settings */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
