@@ -10,20 +10,35 @@ export function useMemberData() {
     queryKey: ['my-member', user?.id],
     enabled: !!user,
     queryFn: async () => {
+      // Simplified query - fetch trainer profile separately to avoid nested relationship issues
       const { data, error } = await supabase
         .from('members')
         .select(`
           *,
           branch:branches(id, name, code),
-          assigned_trainer:trainers(id, user_id, profiles:user_id(full_name))
+          assigned_trainer:trainers!assigned_trainer_id(id, user_id)
         `)
         .eq('user_id', user!.id)
-        .single();
+        .maybeSingle();
       
       if (error) {
         console.error('Error fetching member:', error);
         return null;
       }
+      
+      if (!data) return null;
+      
+      // If there's an assigned trainer, fetch their profile separately
+      if (data.assigned_trainer?.user_id) {
+        const { data: trainerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', data.assigned_trainer.user_id)
+          .maybeSingle();
+        
+        (data as any).assigned_trainer.profile = trainerProfile;
+      }
+      
       return data;
     },
   });
