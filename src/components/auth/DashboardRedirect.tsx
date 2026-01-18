@@ -37,7 +37,12 @@ export function DashboardRedirect() {
     return <Navigate to="/trainer-dashboard" replace />;
   }
 
-  // Staff without admin privileges stays on staff-appropriate dashboard
-  // Admin, Manager, Owner, or Staff with elevated privileges -> main dashboard
+  // Staff without admin privileges gets staff dashboard
+  if (roles.some(r => r.role === 'staff') && 
+      !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+    return <Navigate to="/staff-dashboard" replace />;
+  }
+
+  // Admin, Manager, Owner -> main dashboard
   return <Navigate to="/dashboard" replace />;
 }

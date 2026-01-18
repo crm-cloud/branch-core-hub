@@ -27,6 +27,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'My Account',
     items: [
       { label: 'Dashboard', href: '/member-dashboard', icon: LayoutDashboard, roles: ['member'] },
+      { label: 'My Profile', href: '/member-profile', icon: UserCog, roles: ['member'] },
       { label: 'My Attendance', href: '/my-attendance', icon: Clock, roles: ['member'] },
       { label: 'My Progress', href: '/my-progress', icon: TrendingUp, roles: ['member'] },
     ],
@@ -43,9 +44,10 @@ export const memberMenuConfig: MenuSection[] = [
   {
     title: 'Services',
     items: [
+      { label: 'My Benefits', href: '/my-benefits', icon: Heart, roles: ['member'] },
       { label: 'Store', href: '/member-store', icon: ShoppingBag, roles: ['member'] },
       { label: 'My Invoices', href: '/my-invoices', icon: FileText, roles: ['member'] },
-      { label: 'My Requests', href: '/my-requests', icon: UserCog, roles: ['member'] },
+      { label: 'My Requests', href: '/my-requests', icon: Target, roles: ['member'] },
     ],
   },
   {
@@ -70,8 +72,15 @@ export const trainerMenuConfig: MenuSection[] = [
     items: [
       { label: 'My Clients', href: '/my-clients', icon: Users, roles: ['trainer'] },
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['trainer'] },
+      { label: 'Schedule Session', href: '/schedule-session', icon: Calendar, roles: ['trainer'] },
       { label: 'My Classes', href: '/classes', icon: Calendar, roles: ['trainer'] },
       { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['trainer'] },
+    ],
+  },
+  {
+    title: 'Earnings',
+    items: [
+      { label: 'My Earnings', href: '/trainer-earnings', icon: Wallet, roles: ['trainer'] },
     ],
   },
   {
@@ -88,7 +97,7 @@ export const staffMenuConfig: MenuSection[] = [
   {
     title: 'Core',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['staff'] },
+      { label: 'Dashboard', href: '/staff-dashboard', icon: LayoutDashboard, roles: ['staff'] },
     ],
   },
   {
@@ -105,6 +114,7 @@ export const staffMenuConfig: MenuSection[] = [
     items: [
       { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['staff'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['staff'] },
+      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['staff'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['staff'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['staff'] },
     ],
