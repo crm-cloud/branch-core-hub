@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
 import SetupPage from "./pages/Setup";
 import AuthPage from "./pages/Auth";
 import SetPasswordPage from "./pages/SetPassword";
@@ -53,6 +54,20 @@ import ProductsPage from "./pages/Products";
 import ProductCategoriesPage from "./pages/ProductCategories";
 import BenefitTrackingPage from "./pages/BenefitTracking";
 
+// Member-specific pages
+import MemberDashboard from "./pages/MemberDashboard";
+import MyAttendance from "./pages/MyAttendance";
+import MyProgress from "./pages/MyProgress";
+import MemberClassBooking from "./pages/MemberClassBooking";
+import MyPTSessions from "./pages/MyPTSessions";
+import MyInvoices from "./pages/MyInvoices";
+import MemberRequests from "./pages/MemberRequests";
+import MemberStore from "./pages/MemberStore";
+
+// Trainer-specific pages
+import TrainerDashboard from "./pages/TrainerDashboard";
+import MyClients from "./pages/MyClients";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -72,7 +87,27 @@ const App = () => (
             <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            {/* Smart Dashboard Redirect - routes to appropriate dashboard based on role */}
+            <Route path="/home" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
+
+            {/* ==================== MEMBER ROUTES ==================== */}
+            <Route path="/member-dashboard" element={<ProtectedRoute requiredRoles={['member']}><MemberDashboard /></ProtectedRoute>} />
+            <Route path="/my-attendance" element={<ProtectedRoute requiredRoles={['member']}><MyAttendance /></ProtectedRoute>} />
+            <Route path="/my-progress" element={<ProtectedRoute requiredRoles={['member']}><MyProgress /></ProtectedRoute>} />
+            <Route path="/my-classes" element={<ProtectedRoute requiredRoles={['member']}><MemberClassBooking /></ProtectedRoute>} />
+            <Route path="/my-pt-sessions" element={<ProtectedRoute requiredRoles={['member']}><MyPTSessions /></ProtectedRoute>} />
+            <Route path="/my-invoices" element={<ProtectedRoute requiredRoles={['member']}><MyInvoices /></ProtectedRoute>} />
+            <Route path="/my-requests" element={<ProtectedRoute requiredRoles={['member']}><MemberRequests /></ProtectedRoute>} />
+            <Route path="/member-store" element={<ProtectedRoute requiredRoles={['member']}><MemberStore /></ProtectedRoute>} />
+            <Route path="/member-announcements" element={<ProtectedRoute requiredRoles={['member']}><AnnouncementsPage /></ProtectedRoute>} />
+            <Route path="/member-feedback" element={<ProtectedRoute requiredRoles={['member']}><FeedbackPage /></ProtectedRoute>} />
+
+            {/* ==================== TRAINER ROUTES ==================== */}
+            <Route path="/trainer-dashboard" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerDashboard /></ProtectedRoute>} />
+            <Route path="/my-clients" element={<ProtectedRoute requiredRoles={['trainer']}><MyClients /></ProtectedRoute>} />
+
+            {/* ==================== ADMIN/MANAGER/OWNER ROUTES ==================== */}
+            <Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><DashboardPage /></ProtectedRoute>} />
             <Route path="/members" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><MembersPage /></ProtectedRoute>} />
             <Route path="/leads" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LeadsPage /></ProtectedRoute>} />
             <Route path="/plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PlansPage /></ProtectedRoute>} />
@@ -91,11 +126,11 @@ const App = () => (
             <Route path="/tasks" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><TasksPage /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EmployeesPage /></ProtectedRoute>} />
             <Route path="/trainers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><TrainersPage /></ProtectedRoute>} />
-            <Route path="/staff-attendance" element={<ProtectedRoute><StaffAttendancePage /></ProtectedRoute>} />
+            <Route path="/staff-attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><StaffAttendancePage /></ProtectedRoute>} />
             <Route path="/attendance-dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AttendanceDashboardPage /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/audit-logs" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AuditLogsPage /></ProtectedRoute>} />
-            <Route path="/announcements" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnnouncementsPage /></ProtectedRoute>} />
+            <Route path="/announcements" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><AnnouncementsPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SettingsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><StorePage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
@@ -105,12 +140,13 @@ const App = () => (
             <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
             <Route path="/benefit-tracking" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><BenefitTrackingPage /></ProtectedRoute>} />
+            <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
+
             {/* Redirects for old routes - now consolidated in Settings */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
             <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
             <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
-            <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

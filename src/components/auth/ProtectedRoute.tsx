@@ -10,6 +10,14 @@ interface ProtectedRouteProps {
   requiredRoles?: AppRole[];
 }
 
+/**
+ * ProtectedRoute component that handles authentication and role-based access control.
+ * 
+ * - Redirects unauthenticated users to /auth
+ * - Enforces role requirements when specified
+ * - Automatically redirects users to their appropriate dashboard if they try to access
+ *   routes they don't have permission for
+ */
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
   const { user, isLoading, mustSetPassword, hasAnyRole, roles } = useAuth();
   const location = useLocation();
@@ -38,6 +46,26 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   // Check role requirements
   if (requiredRoles && requiredRoles.length > 0) {
     if (!hasAnyRole(requiredRoles)) {
+      // Instead of showing unauthorized, redirect to appropriate dashboard
+      // This provides a smoother UX
+      
+      // Member trying to access non-member routes
+      if (roles.some(r => r.role === 'member')) {
+        return <Navigate to="/member-dashboard" replace />;
+      }
+      
+      // Trainer trying to access non-trainer routes (without admin privileges)
+      if (roles.some(r => r.role === 'trainer') && 
+          !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+        return <Navigate to="/trainer-dashboard" replace />;
+      }
+      
+      // Staff or admin trying to access higher-level routes
+      if (roles.some(r => ['owner', 'admin', 'manager', 'staff'].includes(r.role))) {
+        return <Navigate to="/dashboard" replace />;
+      }
+      
+      // Fallback to unauthorized page
       return <Navigate to="/unauthorized" replace />;
     }
   }

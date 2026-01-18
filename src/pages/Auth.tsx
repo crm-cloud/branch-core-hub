@@ -7,7 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 
 export default function AuthPage() {
-  const { user, isLoading, mustSetPassword } = useAuth();
+  const { user, isLoading, mustSetPassword, roles } = useAuth();
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const navigate = useNavigate();
@@ -30,6 +30,18 @@ export default function AuthPage() {
     checkSetup();
   }, []);
 
+  // Determine the correct redirect path based on user roles
+  const getRedirectPath = () => {
+    if (roles.some(r => r.role === 'member')) {
+      return '/member-dashboard';
+    }
+    if (roles.some(r => r.role === 'trainer') && 
+        !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+      return '/trainer-dashboard';
+    }
+    return '/dashboard';
+  };
+
   if (isLoading || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--gradient-hero)' }}>
@@ -43,15 +55,21 @@ export default function AuthPage() {
     return <Navigate to="/setup" replace />;
   }
 
-  // Already logged in
+  // Already logged in - redirect to appropriate dashboard
   if (user && !mustSetPassword) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getRedirectPath()} replace />;
   }
 
   // Needs to set password
   if (user && mustSetPassword) {
     return <Navigate to="/auth/set-password" replace />;
   }
+
+  // Handle successful login - redirect to appropriate dashboard
+  const handleLoginSuccess = () => {
+    // Use /home which will then redirect to the appropriate dashboard
+    navigate('/home');
+  };
 
   return (
     <div 
@@ -67,7 +85,7 @@ export default function AuthPage() {
           <p className="mt-2 text-primary-foreground/70">Gym Management System</p>
         </div>
 
-        <LoginForm onSuccess={() => navigate('/dashboard')} />
+        <LoginForm onSuccess={handleLoginSuccess} />
 
         <p className="text-center text-sm text-primary-foreground/60">
           Forgot your password?{' '}
