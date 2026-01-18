@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
+import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
 import { 
   Plus, 
   Users, 
@@ -20,7 +21,8 @@ import {
   CheckCircle,
   Clock,
   Search,
-  Download
+  Download,
+  Edit
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEmployees, fetchEmployeeContracts } from '@/services/hrmService';
@@ -32,6 +34,8 @@ export default function HRMPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [contractDrawerOpen, setContractDrawerOpen] = useState(false);
   const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const [editEmployeeOpen, setEditEmployeeOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [searchTerm, setSearchTerm] = useState('');
   const queryClient = useQueryClient();
@@ -255,17 +259,29 @@ export default function HRMPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedEmployee(employee);
-                                setContractDrawerOpen(true);
-                              }}
-                            >
-                              <FileText className="mr-1 h-3 w-3" />
-                              Contract
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedEmployee(employee);
+                                  setContractDrawerOpen(true);
+                                }}
+                              >
+                                <FileText className="mr-1 h-3 w-3" />
+                                Contract
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingEmployee(employee);
+                                  setEditEmployeeOpen(true);
+                                }}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -482,6 +498,13 @@ export default function HRMPage() {
       <AddEmployeeDrawer
         open={addEmployeeOpen}
         onOpenChange={setAddEmployeeOpen}
+      />
+
+      {/* Edit Employee Drawer */}
+      <EditEmployeeDrawer
+        open={editEmployeeOpen}
+        onOpenChange={setEditEmployeeOpen}
+        employee={editingEmployee}
       />
     </AppLayout>
   );

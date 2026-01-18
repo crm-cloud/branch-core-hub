@@ -2,22 +2,21 @@ import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar } from "lucide-react";
-import { useTrainers, useCreateTrainer, useDeactivateTrainer } from "@/hooks/useTrainers";
+import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit } from "lucide-react";
+import { useTrainers, useDeactivateTrainer } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Progress } from "@/components/ui/progress";
 import { AddTrainerDrawer } from "@/components/trainers/AddTrainerDrawer";
 import { TrainerProfileDrawer } from "@/components/trainers/TrainerProfileDrawer";
+import { EditTrainerDrawer } from "@/components/trainers/EditTrainerDrawer";
 import { StatCard } from "@/components/ui/stat-card";
+
 export default function TrainersPage() {
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>("");
@@ -25,10 +24,11 @@ export default function TrainersPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<any>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingTrainer, setEditingTrainer] = useState<any>(null);
 
   const branchId = selectedBranch || branches?.[0]?.id || "";
   const { data: trainers, isLoading } = useTrainers(branchId, !showInactive);
-  const createTrainer = useCreateTrainer();
   const deactivateTrainer = useDeactivateTrainer();
 
   // Fetch PT client counts per trainer
@@ -76,6 +76,12 @@ export default function TrainersPage() {
   const openTrainerProfile = (trainer: any) => {
     setSelectedTrainer(trainer);
     setProfileOpen(true);
+  };
+
+  const openEditTrainer = (trainer: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTrainer(trainer);
+    setEditOpen(true);
   };
 
   const handleDeactivate = async (trainerId: string) => {
@@ -182,7 +188,16 @@ export default function TrainersPage() {
                         {trainer.profile_email}
                       </CardDescription>
                     </div>
-                    {!trainer.is_active && <Badge variant="outline">Inactive</Badge>}
+                    <div className="flex items-center gap-2">
+                      {!trainer.is_active && <Badge variant="outline">Inactive</Badge>}
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={(e) => openEditTrainer(trainer, e)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -259,6 +274,13 @@ export default function TrainersPage() {
           onOpenChange={setProfileOpen}
           trainer={selectedTrainer}
           onDeactivate={handleDeactivate}
+        />
+
+        {/* Edit Trainer Drawer */}
+        <EditTrainerDrawer
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          trainer={editingTrainer}
         />
       </div>
     </AppLayout>

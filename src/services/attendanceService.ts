@@ -124,7 +124,7 @@ export const attendanceService = {
   async searchMemberForCheckIn(query: string, branchId: string) {
     const { data, error } = await supabase.rpc('search_members', {
       search_term: query,
-      branch_filter: branchId,
+      p_branch_id: branchId,
     });
 
     if (error) {
