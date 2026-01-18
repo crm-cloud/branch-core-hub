@@ -9,9 +9,9 @@ import { toast } from 'sonner';
 import { useCreatePTPackage } from '@/hooks/usePTPackages';
 
 const SESSION_TYPES = [
-  { value: 'per_session', label: 'Per Session' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'per_session', label: 'Per Session (Fixed sessions)' },
+  { value: 'monthly', label: 'Monthly Subscription' },
+  { value: 'quarterly', label: 'Quarterly Subscription' },
   { value: 'custom', label: 'Custom' },
 ];
 
@@ -27,12 +27,16 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
     name: '',
     description: '',
     total_sessions: 10,
+    sessions_per_month: 8,
     price: 0,
     validity_days: 90,
     session_type: 'per_session',
+    auto_renew: false,
     gst_inclusive: false,
     gst_percentage: 18,
   });
+
+  const isSubscription = formData.session_type === 'monthly' || formData.session_type === 'quarterly';
 
   const calculateGSTAmount = (price: number, gstPercentage: number, isInclusive: boolean) => {
     if (isInclusive) {
@@ -66,9 +70,11 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
       name: '',
       description: '',
       total_sessions: 10,
+      sessions_per_month: 8,
       price: 0,
       validity_days: 90,
       session_type: 'per_session',
+      auto_renew: false,
       gst_inclusive: false,
       gst_percentage: 18,
     });
@@ -112,24 +118,59 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Sessions *</Label>
-              <Input
-                type="number"
-                value={formData.total_sessions}
-                onChange={(e) => setFormData({ ...formData, total_sessions: parseInt(e.target.value) || 10 })}
-              />
+          {/* Sessions - Different UI based on type */}
+          {!isSubscription ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Total Sessions *</Label>
+                <Input
+                  type="number"
+                  value={formData.total_sessions}
+                  onChange={(e) => setFormData({ ...formData, total_sessions: parseInt(e.target.value) || 10 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Price (₹) *</Label>
+                <Input
+                  type="number"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Price (₹) *</Label>
-              <Input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-              />
+          ) : (
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+              <h4 className="text-sm font-medium">Subscription Details</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Sessions per Month *</Label>
+                  <Input
+                    type="number"
+                    value={formData.sessions_per_month}
+                    onChange={(e) => setFormData({ ...formData, sessions_per_month: parseInt(e.target.value) || 8 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Monthly Price (₹) *</Label>
+                  <Input
+                    type="number"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={formData.auto_renew}
+                  onCheckedChange={(v) => setFormData({ ...formData, auto_renew: v })}
+                />
+                <div>
+                  <Label>Auto Renew</Label>
+                  <p className="text-xs text-muted-foreground">Automatically renew subscription each billing cycle</p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
