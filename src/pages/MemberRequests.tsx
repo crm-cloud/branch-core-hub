@@ -216,10 +216,12 @@ export default function MemberRequests() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
-                Change Trainer
+                {member.assigned_trainer_id ? 'Change Trainer' : 'Request Trainer'}
               </CardTitle>
               <CardDescription>
-                Request a different personal trainer
+                {member.assigned_trainer_id 
+                  ? 'Request a different personal trainer' 
+                  : 'Request a personal trainer assignment'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -227,7 +229,7 @@ export default function MemberRequests() {
                 <DialogTrigger asChild>
                   <Button className="w-full" variant="outline">
                     <Plus className="h-4 w-4 mr-2" />
-                    Request Trainer Change
+                    {member.assigned_trainer_id ? 'Request Trainer Change' : 'Request Trainer'}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>

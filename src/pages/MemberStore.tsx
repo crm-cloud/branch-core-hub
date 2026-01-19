@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart } from 'lucide-react';
+import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface CartItem {
   product: any;
@@ -16,6 +17,8 @@ interface CartItem {
 }
 
 export default function MemberStore() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { member, isLoading: memberLoading } = useMemberData();
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -83,6 +86,62 @@ export default function MemberStore() {
   const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Checkout mutation - creates invoice for member
+  const checkout = useMutation({
+    mutationFn: async () => {
+      if (!member || cart.length === 0) throw new Error('Cart is empty');
+      
+      // Generate invoice number
+      const invoiceNumber = `INV-${member.branch?.code || 'GYM'}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      
+      // Create invoice
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          invoice_number: invoiceNumber,
+          member_id: member.id,
+          branch_id: member.branch_id,
+          subtotal: cartTotal,
+          total_amount: cartTotal,
+          status: 'pending',
+          notes: 'Store purchase by member',
+        })
+        .select()
+        .single();
+      
+      if (invoiceError) throw invoiceError;
+      
+      // Create invoice items
+      const items = cart.map(item => ({
+        invoice_id: invoice.id,
+        description: item.product.name,
+        quantity: item.quantity,
+        unit_price: item.product.price,
+        total_amount: item.product.price * item.quantity,
+        reference_type: 'product',
+        reference_id: item.product.id,
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(items);
+      
+      if (itemsError) throw itemsError;
+      
+      return invoice;
+    },
+    onSuccess: (invoice) => {
+      toast.success(`Order placed! Invoice: ${invoice.invoice_number}`);
+      setCart([]);
+      queryClient.invalidateQueries({ queryKey: ['member-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['my-pending-invoices'] });
+      navigate('/my-invoices');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to place order');
+    },
+  });
+
   if (memberLoading || productsLoading) {
     return (
       <AppLayout>
@@ -103,6 +162,20 @@ export default function MemberStore() {
       </AppLayout>
     );
   }
+
+  // Helper to determine stock display
+  const getStockDisplay = (product: any) => {
+    const hasInventory = product.inventory && product.inventory.length > 0;
+    const stock = hasInventory ? product.inventory[0].quantity : null;
+    
+    if (!hasInventory) {
+      return { text: 'Available', canAdd: true, stock: null };
+    }
+    if (stock === 0) {
+      return { text: 'Out of Stock', canAdd: false, stock: 0 };
+    }
+    return { text: `${stock} in stock`, canAdd: true, stock };
+  };
 
   return (
     <AppLayout>
@@ -144,8 +217,9 @@ export default function MemberStore() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-4">
                 {filteredProducts.map((product: any) => {
-                  const stock = product.inventory?.[0]?.quantity || 0;
+                  const stockInfo = getStockDisplay(product);
                   const cartItem = cart.find(item => item.product.id === product.id);
+                  const maxQty = stockInfo.stock ?? 999; // No limit if no inventory tracking
 
                   return (
                     <Card key={product.id} className="border-border/50">
@@ -166,7 +240,9 @@ export default function MemberStore() {
                             <h3 className="font-semibold">{product.name}</h3>
                             <p className="text-sm text-muted-foreground">{product.category?.name}</p>
                             <p className="text-lg font-bold text-accent mt-1">₹{product.price}</p>
-                            <p className="text-xs text-muted-foreground">{stock} in stock</p>
+                            <p className={`text-xs ${stockInfo.canAdd ? 'text-muted-foreground' : 'text-destructive'}`}>
+                              {stockInfo.text}
+                            </p>
                           </div>
                         </div>
                         <div className="mt-4">
@@ -184,7 +260,7 @@ export default function MemberStore() {
                                 variant="outline"
                                 size="icon"
                                 onClick={() => updateQuantity(product.id, 1)}
-                                disabled={cartItem.quantity >= stock}
+                                disabled={cartItem.quantity >= maxQty}
                               >
                                 <Plus className="h-4 w-4" />
                               </Button>
@@ -193,9 +269,9 @@ export default function MemberStore() {
                             <Button
                               className="w-full"
                               onClick={() => addToCart(product)}
-                              disabled={stock === 0}
+                              disabled={!stockInfo.canAdd}
                             >
-                              {stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                              {stockInfo.canAdd ? 'Add to Cart' : 'Out of Stock'}
                             </Button>
                           )}
                         </div>
@@ -251,11 +327,26 @@ export default function MemberStore() {
                         <span>₹{cartTotal.toLocaleString()}</span>
                       </div>
                     </div>
-                    <Button className="w-full" size="lg">
-                      Proceed to Checkout
+                    <Button 
+                      className="w-full" 
+                      size="lg"
+                      onClick={() => checkout.mutate()}
+                      disabled={checkout.isPending}
+                    >
+                      {checkout.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          Place Order
+                        </>
+                      )}
                     </Button>
                     <p className="text-xs text-center text-muted-foreground">
-                      Pay at the front desk to complete your purchase
+                      An invoice will be generated. Pay at the front desk.
                     </p>
                   </div>
                 )}
