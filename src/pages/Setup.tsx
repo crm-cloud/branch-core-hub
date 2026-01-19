@@ -20,6 +20,7 @@ const setupSchema = z.object({
     .regex(/[a-z]/, 'Must contain lowercase letter')
     .regex(/[0-9]/, 'Must contain number'),
   confirmPassword: z.string(),
+  setupToken: z.string().min(1, 'Setup token is required'),
 }).refine(data => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword'],
@@ -40,6 +41,7 @@ export default function SetupPage() {
       fullName: '',
       password: '',
       confirmPassword: '',
+      setupToken: '',
     },
   });
 
@@ -51,6 +53,9 @@ export default function SetupPage() {
           email: data.email,
           password: data.password,
           fullName: data.fullName,
+        },
+        headers: {
+          'X-Setup-Token': data.setupToken,
         },
       });
 
@@ -176,6 +181,27 @@ export default function SetupPage() {
                           {...field}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="setupToken"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-foreground">Setup Token</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Enter setup token"
+                          className="bg-input border-border focus:border-accent"
+                          {...field}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Contact your administrator to obtain the setup token
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
