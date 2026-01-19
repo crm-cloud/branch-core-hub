@@ -1608,6 +1608,62 @@ export type Database = {
           },
         ]
       }
+      fitness_plan_templates: {
+        Row: {
+          branch_id: string | null
+          content: Json
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          difficulty: string | null
+          goal: string | null
+          id: string
+          is_active: boolean | null
+          is_public: boolean | null
+          name: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          content?: Json
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          difficulty?: string | null
+          goal?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_public?: boolean | null
+          name: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          content?: Json
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          difficulty?: string | null
+          goal?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_public?: boolean | null
+          name?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fitness_plan_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           branch_id: string | null
