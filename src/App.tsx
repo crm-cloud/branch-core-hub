@@ -53,6 +53,7 @@ import MemberPlansPage from "./pages/MemberPlans";
 import ProductsPage from "./pages/Products";
 import ProductCategoriesPage from "./pages/ProductCategories";
 import BenefitTrackingPage from "./pages/BenefitTracking";
+import AllBookingsPage from "./pages/AllBookings";
 
 // Member-specific pages
 import MemberDashboard from "./pages/MemberDashboard";
@@ -165,6 +166,7 @@ const App = () => (
             <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
             <Route path="/benefit-tracking" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><BenefitTrackingPage /></ProtectedRoute>} />
+            <Route path="/all-bookings" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AllBookingsPage /></ProtectedRoute>} />
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
 
             {/* Admin user/role management */}
