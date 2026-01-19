@@ -28,6 +28,26 @@ export default function MemberDashboard() {
     isLoading 
   } = useMemberData();
 
+  // Fetch assigned locker - MUST be called before any early returns to follow Rules of Hooks
+  const { data: assignedLocker } = useQuery({
+    queryKey: ['my-locker', member?.id],
+    enabled: !!member,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locker_assignments')
+        .select('*, locker:lockers(locker_number, size)')
+        .eq('member_id', member!.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching locker:', error);
+        return null;
+      }
+      return data;
+    },
+  });
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -52,26 +72,6 @@ export default function MemberDashboard() {
 
   const activePtPackage = ptPackages.find(p => p.status === 'active');
   const totalPendingAmount = pendingInvoices.reduce((sum, inv) => sum + (inv.total_amount - (inv.amount_paid || 0)), 0);
-
-  // Fetch assigned locker
-  const { data: assignedLocker } = useQuery({
-    queryKey: ['my-locker', member?.id],
-    enabled: !!member,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('locker_assignments')
-        .select('*, locker:lockers(locker_number, size)')
-        .eq('member_id', member!.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching locker:', error);
-        return null;
-      }
-      return data;
-    },
-  });
 
   return (
     <AppLayout>
