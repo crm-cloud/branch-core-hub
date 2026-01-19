@@ -20,7 +20,7 @@ export default function MemberStore() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Fetch products
+  // Fetch products - don't require inventory (show all active products)
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['store-products', member?.branch_id],
     enabled: !!member,
@@ -30,13 +30,17 @@ export default function MemberStore() {
         .select(`
           *,
           category:product_categories(id, name),
-          inventory!inner(quantity, branch_id)
+          inventory(quantity, branch_id)
         `)
-        .eq('is_active', true)
-        .eq('inventory.branch_id', member!.branch_id);
+        .eq('is_active', true);
 
       if (error) throw error;
-      return data || [];
+      
+      // Filter to show inventory for this branch or no inventory data
+      return (data || []).map(product => ({
+        ...product,
+        inventory: product.inventory?.filter((inv: any) => inv.branch_id === member!.branch_id) || []
+      }));
     },
   });
 

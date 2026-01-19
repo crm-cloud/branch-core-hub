@@ -1,16 +1,41 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { Calendar, Clock, AlertCircle, Loader2, CheckCircle, TrendingUp } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Loader2, CheckCircle, TrendingUp, LogOut } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { toast } from 'sonner';
 
 export default function MyAttendance() {
+  const queryClient = useQueryClient();
   const { member, isLoading: memberLoading } = useMemberData();
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // Find active session (checked in but not checked out)
+  const activeSession = (attendance: any[]) => attendance.find(a => !a.check_out);
+
+  // Check-out mutation
+  const checkOutMutation = useMutation({
+    mutationFn: async (attendanceId: string) => {
+      const { error } = await supabase
+        .from('member_attendance')
+        .update({ check_out: new Date().toISOString() })
+        .eq('id', attendanceId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Checked out successfully!');
+      queryClient.invalidateQueries({ queryKey: ['my-monthly-attendance'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to check out: ' + error.message);
+    },
+  });
 
   // Fetch attendance for selected month
   const { data: attendance = [], isLoading: attendanceLoading } = useQuery({
@@ -72,13 +97,49 @@ export default function MyAttendance() {
       }, 0) / completedSessions.length / (1000 * 60) // in minutes
     : 0;
 
+  const currentActiveSession = activeSession(attendance);
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Attendance</h1>
-          <p className="text-muted-foreground">Track your gym visits</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">My Attendance</h1>
+            <p className="text-muted-foreground">Track your gym visits</p>
+          </div>
+          {currentActiveSession && (
+            <Button 
+              variant="outline" 
+              onClick={() => checkOutMutation.mutate(currentActiveSession.id)}
+              disabled={checkOutMutation.isPending}
+              className="gap-2"
+            >
+              <LogOut className="h-4 w-4" />
+              {checkOutMutation.isPending ? 'Checking out...' : 'Check Out'}
+            </Button>
+          )}
         </div>
+
+        {/* Active Session Alert */}
+        {currentActiveSession && (
+          <Card className="border-success/50 bg-success/5">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-success/20 flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-success" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-success">Currently Checked In</p>
+                    <p className="text-sm text-muted-foreground">
+                      Since {format(new Date(currentActiveSession.check_in), 'HH:mm')} today
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
