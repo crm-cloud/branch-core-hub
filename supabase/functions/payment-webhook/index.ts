@@ -3,8 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-razorpay-signature, x-phonepe-signature",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-razorpay-signature, x-phonepe-signature, x-verify",
 };
+
+// Validation constants
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PAYLOAD_SIZE = 102400; // 100KB
+const ALLOWED_GATEWAYS = ['razorpay', 'phonepe'];
 
 interface RazorpayPaymentEntity {
   id: string;
@@ -32,6 +37,16 @@ interface PhonePeWebhookPayload {
   };
 }
 
+// Validate UUID format
+function isValidUUID(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+// Validate gateway
+function isValidGateway(gateway: string): boolean {
+  return ALLOWED_GATEWAYS.includes(gateway.toLowerCase());
+}
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -42,10 +57,30 @@ serve(async (req: Request) => {
   }
 
   try {
+    // Check request size
+    const contentLength = parseInt(req.headers.get("content-length") || "0");
+    if (contentLength > MAX_PAYLOAD_SIZE) {
+      console.error("Request payload too large:", contentLength);
+      return new Response(
+        JSON.stringify({ error: "Request too large" }),
+        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const url = new URL(req.url);
     const gateway = url.searchParams.get("gateway") || "razorpay";
     const branchId = url.searchParams.get("branch_id");
 
+    // Validate gateway
+    if (!isValidGateway(gateway)) {
+      console.error("Invalid gateway specified:", gateway);
+      return new Response(
+        JSON.stringify({ error: "Invalid payment gateway" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate branch_id format
     if (!branchId) {
       return new Response(
         JSON.stringify({ error: "branch_id is required" }),
@@ -53,11 +88,46 @@ serve(async (req: Request) => {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const body = await req.text();
-    const payload = JSON.parse(body);
+    if (!isValidUUID(branchId)) {
+      console.error("Invalid branch_id format:", branchId);
+      return new Response(
+        JSON.stringify({ error: "Invalid branch_id format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    console.log(`Processing ${gateway} webhook for branch ${branchId}:`, payload);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Verify branch exists before processing
+    const { data: branchExists } = await supabase
+      .from("branches")
+      .select("id")
+      .eq("id", branchId)
+      .single();
+
+    if (!branchExists) {
+      console.error("Branch not found:", branchId);
+      return new Response(
+        JSON.stringify({ error: "Branch not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.text();
+    
+    // Parse JSON safely
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      console.error("Invalid JSON payload");
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON payload" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Processing ${gateway} webhook for branch ${branchId}`);
 
     // Get integration settings for verification
     const { data: integration } = await supabase
@@ -82,7 +152,7 @@ serve(async (req: Request) => {
       gateway_payment_id: string;
       amount: number;
       status: string;
-      webhook_data: any;
+      webhook_data: unknown;
     };
 
     if (gateway === "razorpay") {
@@ -99,6 +169,12 @@ serve(async (req: Request) => {
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+      } else if (webhookSecret && !razorpaySignature) {
+        console.error("Missing Razorpay signature when webhook secret is configured");
+        return new Response(
+          JSON.stringify({ error: "Missing signature" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       const event = payload.event;
@@ -140,6 +216,12 @@ serve(async (req: Request) => {
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+      } else if (saltKey && !phonePeSignature) {
+        console.error("Missing PhonePe signature when salt key is configured");
+        return new Response(
+          JSON.stringify({ error: "Missing signature" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       const data = payload.data as PhonePeWebhookPayload;
@@ -230,7 +312,7 @@ serve(async (req: Request) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("Webhook error:", errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

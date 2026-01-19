@@ -5,12 +5,82 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Validation constants
+const MAX_EMAIL_LENGTH = 255;
+const MAX_NAME_LENGTH = 100;
+const MAX_PHONE_LENGTH = 20;
+const MAX_BIO_LENGTH = 1000;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?[0-9\s\-\(\)]{10,20}$/;
+const ALLOWED_ROLES = ['trainer', 'staff', 'manager', 'admin', 'owner'];
+const ALLOWED_SALARY_TYPES = ['hourly', 'monthly', 'commission'];
+const ALLOWED_ID_TYPES = ['aadhaar', 'pan', 'passport', 'driving_license', 'voter_id'];
+
+// Sanitize string input
+function sanitizeString(str: string | undefined | null, maxLength: number): string {
+  if (!str) return '';
+  return str
+    .toString()
+    .trim()
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+    .slice(0, maxLength);
+}
+
+// Validate email
+function validateEmail(email: string): { valid: boolean; error?: string } {
+  if (!email) return { valid: false, error: 'Email is required' };
+  if (email.length > MAX_EMAIL_LENGTH) return { valid: false, error: 'Email is too long' };
+  if (!EMAIL_REGEX.test(email)) return { valid: false, error: 'Invalid email format' };
+  return { valid: true };
+}
+
+// Validate UUID
+function isValidUUID(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+// Validate phone (optional)
+function validatePhone(phone: string | undefined): { valid: boolean; error?: string } {
+  if (!phone) return { valid: true };
+  if (!PHONE_REGEX.test(phone)) return { valid: false, error: 'Invalid phone number format' };
+  return { valid: true };
+}
+
+// Validate role
+function validateRole(role: string): { valid: boolean; error?: string } {
+  if (!role) return { valid: false, error: 'Role is required' };
+  if (!ALLOWED_ROLES.includes(role)) {
+    return { valid: false, error: `Valid role is required (${ALLOWED_ROLES.join(', ')})` };
+  }
+  return { valid: true };
+}
+
+// Validate numeric fields
+function validateNumeric(value: unknown, fieldName: string, min?: number, max?: number): { valid: boolean; error?: string; value?: number } {
+  if (value === undefined || value === null || value === '') return { valid: true };
+  const num = Number(value);
+  if (isNaN(num)) return { valid: false, error: `${fieldName} must be a number` };
+  if (min !== undefined && num < min) return { valid: false, error: `${fieldName} must be at least ${min}` };
+  if (max !== undefined && num > max) return { valid: false, error: `${fieldName} must be at most ${max}` };
+  return { valid: true, value: num };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
+    // Check request size
+    const contentLength = parseInt(req.headers.get('content-length') || '0');
+    if (contentLength > 51200) { // 50KB max
+      return new Response(
+        JSON.stringify({ error: 'Request too large' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       console.log('No authorization header provided')
@@ -57,45 +127,112 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    console.log('Request body:', JSON.stringify(body))
     
-    // Support both naming conventions
-    const email = body.email
-    const fullName = body.fullName || body.full_name
-    const phone = body.phone
-    const role = body.role
-    const branchId = body.branchId || body.branch_id
-    const gender = body.gender
-    const dateOfBirth = body.dateOfBirth || body.date_of_birth
+    // Sanitize and extract inputs
+    const email = sanitizeString(body.email, MAX_EMAIL_LENGTH);
+    const fullName = sanitizeString(body.fullName || body.full_name, MAX_NAME_LENGTH);
+    const phone = sanitizeString(body.phone, MAX_PHONE_LENGTH);
+    const role = sanitizeString(body.role, 20).toLowerCase();
+    const branchId = sanitizeString(body.branchId || body.branch_id, 36);
+    const gender = sanitizeString(body.gender, 10);
+    const dateOfBirth = sanitizeString(body.dateOfBirth || body.date_of_birth, 10);
     
     // Trainer-specific fields
-    const salaryType = body.salaryType || body.salary_type
-    const fixedSalary = body.fixedSalary || body.fixed_salary
-    const hourlyRate = body.hourlyRate || body.hourly_rate
-    const ptSharePercentage = body.ptSharePercentage || body.pt_share_percentage
-    const governmentIdType = body.governmentIdType || body.government_id_type
-    const governmentIdNumber = body.governmentIdNumber || body.government_id_number
-    const specializations = body.specializations
+    const salaryType = sanitizeString(body.salaryType || body.salary_type, 20);
+    const fixedSalary = body.fixedSalary || body.fixed_salary;
+    const hourlyRate = body.hourlyRate || body.hourly_rate;
+    const ptSharePercentage = body.ptSharePercentage || body.pt_share_percentage;
+    const governmentIdType = sanitizeString(body.governmentIdType || body.government_id_type, 20);
+    const governmentIdNumber = sanitizeString(body.governmentIdNumber || body.government_id_number, 50);
+    const specializations = Array.isArray(body.specializations) 
+      ? body.specializations.slice(0, 10).map((s: unknown) => sanitizeString(String(s), 50))
+      : [];
 
-    if (!email) {
+    // Validate required fields
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
       return new Response(
-        JSON.stringify({ error: 'Email is required' }),
+        JSON.stringify({ error: emailValidation.error }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    if (!role || !['trainer', 'staff', 'manager', 'admin', 'owner'].includes(role)) {
+    const roleValidation = validateRole(role);
+    if (!roleValidation.valid) {
       return new Response(
-        JSON.stringify({ error: 'Valid role is required (trainer, staff, manager, admin, owner)' }),
+        JSON.stringify({ error: roleValidation.error }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    if (!branchId) {
+    if (!branchId || !isValidUUID(branchId)) {
       return new Response(
-        JSON.stringify({ error: 'Branch ID is required' }),
+        JSON.stringify({ error: 'Valid Branch ID is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Verify branch exists
+    const { data: branchExists } = await supabaseAdmin
+      .from('branches')
+      .select('id')
+      .eq('id', branchId)
+      .single();
+
+    if (!branchExists) {
+      return new Response(
+        JSON.stringify({ error: 'Branch not found' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const phoneValidation = validatePhone(phone);
+    if (!phoneValidation.valid) {
+      return new Response(
+        JSON.stringify({ error: phoneValidation.error }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate numeric fields for trainers
+    if (role === 'trainer') {
+      if (salaryType && !ALLOWED_SALARY_TYPES.includes(salaryType)) {
+        return new Response(
+          JSON.stringify({ error: `Invalid salary type. Allowed: ${ALLOWED_SALARY_TYPES.join(', ')}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const fixedSalaryValidation = validateNumeric(fixedSalary, 'Fixed salary', 0, 10000000);
+      if (!fixedSalaryValidation.valid) {
+        return new Response(
+          JSON.stringify({ error: fixedSalaryValidation.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const hourlyRateValidation = validateNumeric(hourlyRate, 'Hourly rate', 0, 100000);
+      if (!hourlyRateValidation.valid) {
+        return new Response(
+          JSON.stringify({ error: hourlyRateValidation.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const ptShareValidation = validateNumeric(ptSharePercentage, 'PT share percentage', 0, 100);
+      if (!ptShareValidation.valid) {
+        return new Response(
+          JSON.stringify({ error: ptShareValidation.error }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (governmentIdType && !ALLOWED_ID_TYPES.includes(governmentIdType)) {
+        return new Response(
+          JSON.stringify({ error: `Invalid ID type. Allowed: ${ALLOWED_ID_TYPES.join(', ')}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
     // Generate a temporary password
@@ -122,9 +259,9 @@ Deno.serve(async (req) => {
       .from('profiles')
       .update({ 
         full_name: fullName, 
-        phone,
-        gender,
-        date_of_birth: dateOfBirth,
+        phone: phone || null,
+        gender: gender || null,
+        date_of_birth: dateOfBirth || null,
         must_set_password: true 
       })
       .eq('id', authData.user.id)
@@ -162,14 +299,13 @@ Deno.serve(async (req) => {
         .insert({
           user_id: authData.user.id,
           branch_id: branchId,
-          trainer_code: trainerCode,
-          specializations: specializations || [],
-          salary_type: salaryType,
-          fixed_salary: fixedSalary,
-          hourly_rate: hourlyRate,
-          pt_share_percentage: ptSharePercentage,
-          government_id_type: governmentIdType,
-          government_id_number: governmentIdNumber,
+          specializations: specializations,
+          salary_type: salaryType || 'hourly',
+          fixed_salary: fixedSalary || null,
+          hourly_rate: hourlyRate || null,
+          pt_share_percentage: ptSharePercentage || 40,
+          government_id_type: governmentIdType || null,
+          government_id_number: governmentIdNumber || null,
           is_active: true,
         })
         .select('id')
