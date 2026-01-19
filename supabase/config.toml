@@ -15,6 +15,9 @@ verify_jwt = true
 [functions.create-owner]
 verify_jwt = false
 
+[functions.create-payment-order]
+verify_jwt = true
+
 [functions.create-staff-user]
 verify_jwt = true
 

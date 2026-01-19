@@ -12,16 +12,20 @@ import { FileText, AlertCircle, Loader2, CheckCircle, Eye, CreditCard } from 'lu
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { initializePayment, openRazorpayCheckout } from '@/services/paymentService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function MyInvoices() {
+  const { profile } = useAuth();
   const { member, isLoading: memberLoading } = useMemberData();
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Fetch all invoices for member
-  const { data: invoices = [], isLoading: invoicesLoading } = useQuery({
+  const { data: invoices = [], isLoading: invoicesLoading, refetch } = useQuery({
     queryKey: ['member-invoices', member?.id],
     enabled: !!member,
     queryFn: async () => {
@@ -48,6 +52,50 @@ export default function MyInvoices() {
     setInvoiceToPay(invoice);
     setPayDialogOpen(true);
     setDetailOpen(false);
+  };
+
+  const handleOnlinePayment = async () => {
+    if (!invoiceToPay || !member) return;
+
+    setIsProcessingPayment(true);
+    try {
+      // Initialize payment order
+      const order = await initializePayment(
+        invoiceToPay.id,
+        'razorpay',
+        invoiceToPay.branch_id
+      );
+
+      if (!order.orderId) {
+        throw new Error('Failed to create payment order');
+      }
+
+      // Open Razorpay checkout
+      await openRazorpayCheckout(
+        order,
+        {
+          name: profile?.full_name || '',
+          email: profile?.email || '',
+          phone: profile?.phone || '',
+        },
+        async (response: any) => {
+          // Payment successful
+          toast.success('Payment successful!');
+          setPayDialogOpen(false);
+          setInvoiceToPay(null);
+          refetch();
+        },
+        (error: any) => {
+          toast.error(error.message || 'Payment failed');
+          setIsProcessingPayment(false);
+        }
+      );
+    } catch (error: any) {
+      console.error('Payment error:', error);
+      toast.error(error.message || 'Payment failed. Please try again.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   if (memberLoading || invoicesLoading) {
@@ -230,10 +278,29 @@ export default function MyInvoices() {
                   ₹{(invoiceToPay?.total_amount - (invoiceToPay?.amount_paid || 0))?.toLocaleString()}
                 </p>
               </div>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Please visit the front desk to complete payment.</p>
-                <p>Payment methods accepted:</p>
-                <ul className="list-disc list-inside">
+              
+              <Button 
+                onClick={handleOnlinePayment} 
+                disabled={isProcessingPayment}
+                className="w-full"
+                size="lg"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Pay Online (Razorpay)
+                  </>
+                )}
+              </Button>
+
+              <div className="text-sm text-muted-foreground">
+                <p>Or visit the front desk to pay via:</p>
+                <ul className="list-disc list-inside mt-2">
                   <li>Cash</li>
                   <li>Card (Credit/Debit)</li>
                   <li>UPI</li>
