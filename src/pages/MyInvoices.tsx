@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,12 +7,18 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { FileText, Download, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { InvoiceDetailDrawer } from '@/components/members/InvoiceDetailDrawer';
+import { FileText, AlertCircle, Loader2, CheckCircle, Eye, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
 export default function MyInvoices() {
   const { member, isLoading: memberLoading } = useMemberData();
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
 
   // Fetch all invoices for member
   const { data: invoices = [], isLoading: invoicesLoading } = useQuery({
@@ -32,9 +39,15 @@ export default function MyInvoices() {
     },
   });
 
-  const handleDownload = async (invoice: any) => {
-    // Simple download - just show invoice details
-    toast.info(`Invoice ${invoice.invoice_number} - ₹${invoice.total_amount}`);
+  const handleViewInvoice = (invoice: any) => {
+    setSelectedInvoice(invoice);
+    setDetailOpen(true);
+  };
+
+  const handlePayNow = (invoice: any) => {
+    setInvoiceToPay(invoice);
+    setPayDialogOpen(true);
+    setDetailOpen(false);
   };
 
   if (memberLoading || invoicesLoading) {
@@ -82,7 +95,7 @@ export default function MyInvoices() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My Invoices</h1>
-          <p className="text-muted-foreground">View and download your invoices</p>
+          <p className="text-muted-foreground">View and pay your invoices</p>
         </div>
 
         {/* Summary Cards */}
@@ -152,31 +165,89 @@ export default function MyInvoices() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                      <TableCell>{format(new Date(invoice.created_at), 'dd MMM yyyy')}</TableCell>
-                      <TableCell>₹{invoice.total_amount.toLocaleString()}</TableCell>
-                      <TableCell>₹{(invoice.amount_paid || 0).toLocaleString()}</TableCell>
-                      <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDownload(invoice)}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {invoices.map((invoice) => {
+                    const amountDue = invoice.total_amount - (invoice.amount_paid || 0);
+                    return (
+                      <TableRow key={invoice.id}>
+                        <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                        <TableCell>{format(new Date(invoice.created_at), 'dd MMM yyyy')}</TableCell>
+                        <TableCell>₹{invoice.total_amount.toLocaleString()}</TableCell>
+                        <TableCell>₹{(invoice.amount_paid || 0).toLocaleString()}</TableCell>
+                        <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewInvoice(invoice)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                            {invoice.status === 'pending' && amountDue > 0 && (
+                              <Button
+                                size="sm"
+                                onClick={() => handlePayNow(invoice)}
+                              >
+                                <CreditCard className="h-4 w-4 mr-1" />
+                                Pay
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Invoice Detail Drawer */}
+      <InvoiceDetailDrawer
+        invoice={selectedInvoice}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onPayNow={handlePayNow}
+      />
+
+      {/* Pay Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pay Invoice</DialogTitle>
+            <DialogDescription>
+              Invoice: {invoiceToPay?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="text-center space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">Amount Due</p>
+                <p className="text-3xl font-bold text-accent">
+                  ₹{(invoiceToPay?.total_amount - (invoiceToPay?.amount_paid || 0))?.toLocaleString()}
+                </p>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Please visit the front desk to complete payment.</p>
+                <p>Payment methods accepted:</p>
+                <ul className="list-disc list-inside">
+                  <li>Cash</li>
+                  <li>Card (Credit/Debit)</li>
+                  <li>UPI</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

@@ -1,0 +1,173 @@
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { format } from 'date-fns';
+import { FileText, Download, CreditCard, CheckCircle, Clock, XCircle } from 'lucide-react';
+
+interface InvoiceDetailDrawerProps {
+  invoice: any;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPayNow?: (invoice: any) => void;
+}
+
+export function InvoiceDetailDrawer({ invoice, open, onOpenChange, onPayNow }: InvoiceDetailDrawerProps) {
+  if (!invoice) return null;
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'paid':
+        return <Badge variant="default" className="bg-success"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>;
+      case 'pending':
+        return <Badge variant="destructive"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+      case 'partial':
+        return <Badge variant="secondary">Partial</Badge>;
+      case 'overdue':
+        return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Overdue</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const amountDue = invoice.total_amount - (invoice.amount_paid || 0);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Invoice Details
+          </SheetTitle>
+          <SheetDescription>
+            {invoice.invoice_number}
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-6">
+          {/* Invoice Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Invoice Date</p>
+              <p className="font-medium">{format(new Date(invoice.created_at), 'dd MMM yyyy')}</p>
+            </div>
+            {getStatusBadge(invoice.status)}
+          </div>
+
+          {invoice.due_date && (
+            <div>
+              <p className="text-sm text-muted-foreground">Due Date</p>
+              <p className="font-medium">{format(new Date(invoice.due_date), 'dd MMM yyyy')}</p>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Invoice Items */}
+          <div>
+            <h4 className="font-semibold mb-3">Items</h4>
+            {invoice.items && invoice.items.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoice.items.map((item: any) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell className="text-right">{item.quantity || 1}</TableCell>
+                      <TableCell className="text-right">₹{item.unit_price?.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">₹{item.total_amount?.toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground">No item details available</p>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Totals */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span>₹{invoice.subtotal?.toLocaleString()}</span>
+            </div>
+            {invoice.tax_amount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tax</span>
+                <span>₹{invoice.tax_amount?.toLocaleString()}</span>
+              </div>
+            )}
+            {invoice.discount_amount > 0 && (
+              <div className="flex justify-between text-sm text-success">
+                <span>Discount</span>
+                <span>-₹{invoice.discount_amount?.toLocaleString()}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-lg pt-2 border-t">
+              <span>Total</span>
+              <span>₹{invoice.total_amount?.toLocaleString()}</span>
+            </div>
+            {invoice.amount_paid > 0 && (
+              <div className="flex justify-between text-sm text-success">
+                <span>Amount Paid</span>
+                <span>₹{invoice.amount_paid?.toLocaleString()}</span>
+              </div>
+            )}
+            {amountDue > 0 && (
+              <div className="flex justify-between font-bold text-destructive">
+                <span>Amount Due</span>
+                <span>₹{amountDue.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {invoice.notes && (
+            <>
+              <Separator />
+              <div>
+                <h4 className="font-semibold mb-2">Notes</h4>
+                <p className="text-sm text-muted-foreground">{invoice.notes}</p>
+              </div>
+            </>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-4">
+            {invoice.status === 'pending' && amountDue > 0 && onPayNow && (
+              <Button 
+                className="flex-1"
+                onClick={() => onPayNow(invoice)}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Pay Now
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              className="flex-1"
+              onClick={() => {
+                // Simple download - just show info for now
+                const info = `Invoice: ${invoice.invoice_number}\nTotal: ₹${invoice.total_amount}\nStatus: ${invoice.status}`;
+                alert(info);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}

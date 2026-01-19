@@ -66,6 +66,7 @@ import MemberStore from "./pages/MemberStore";
 import MyWorkout from "./pages/MyWorkout";
 import MyDiet from "./pages/MyDiet";
 import MyBenefits from "./pages/MyBenefits";
+import BookBenefitSlot from "./pages/BookBenefitSlot";
 import MemberProfile from "./pages/MemberProfile";
 import MemberFeedback from "./pages/MemberFeedback";
 import MemberAnnouncements from "./pages/MemberAnnouncements";
@@ -118,6 +119,7 @@ const App = () => (
             <Route path="/my-workout" element={<ProtectedRoute requiredRoles={['member']}><MyWorkout /></ProtectedRoute>} />
             <Route path="/my-diet" element={<ProtectedRoute requiredRoles={['member']}><MyDiet /></ProtectedRoute>} />
             <Route path="/my-benefits" element={<ProtectedRoute requiredRoles={['member']}><MyBenefits /></ProtectedRoute>} />
+            <Route path="/book-benefit" element={<ProtectedRoute requiredRoles={['member']}><BookBenefitSlot /></ProtectedRoute>} />
             <Route path="/member-profile" element={<ProtectedRoute requiredRoles={['member']}><MemberProfile /></ProtectedRoute>} />
 
             {/* ==================== TRAINER ROUTES ==================== */}

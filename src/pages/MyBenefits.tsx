@@ -129,6 +129,12 @@ export default function MyBenefits() {
               Track and manage your membership benefits
             </p>
           </div>
+          <Button asChild>
+            <Link to="/book-benefit">
+              <Calendar className="h-4 w-4 mr-2" />
+              Book a Slot
+            </Link>
+          </Button>
         </div>
 
         {/* Active Membership Info */}

@@ -75,13 +75,29 @@ export function useMemberData() {
         .select(`
           *,
           package:pt_packages(name, total_sessions),
-          trainer:trainers(id, user_id, profiles:user_id(full_name))
+          trainer:trainers(id, user_id)
         `)
         .eq('member_id', member!.id)
         .in('status', ['active', 'expired']);
       
       if (error) throw error;
-      return data || [];
+      
+      // Fetch trainer profiles separately
+      const packagesWithProfiles = await Promise.all(
+        (data || []).map(async (pkg: any) => {
+          if (pkg.trainer?.user_id) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', pkg.trainer.user_id)
+              .maybeSingle();
+            return { ...pkg, trainer: { ...pkg.trainer, profile: profileData } };
+          }
+          return pkg;
+        })
+      );
+      
+      return packagesWithProfiles;
     },
   });
 
@@ -128,16 +144,49 @@ export function useMemberData() {
         .from('class_bookings')
         .select(`
           *,
-          class:classes(id, name, scheduled_at, duration_minutes, trainer:trainers(user_id, profiles:user_id(full_name)))
+          class:classes(id, name, scheduled_at, duration_minutes, trainer_id)
         `)
         .eq('member_id', member!.id)
         .eq('status', 'booked')
-        .gte('class.scheduled_at', new Date().toISOString())
-        .order('class(scheduled_at)', { ascending: true })
-        .limit(5);
+        .order('booked_at', { ascending: false })
+        .limit(10);
       
       if (error) throw error;
-      return data || [];
+      
+      // Filter for future classes and fetch trainer profiles
+      const now = new Date();
+      const futureBookings = (data || []).filter((b: any) => 
+        b.class?.scheduled_at && new Date(b.class.scheduled_at) >= now
+      ).slice(0, 5);
+      
+      // Fetch trainer profiles for each class
+      const bookingsWithTrainers = await Promise.all(
+        futureBookings.map(async (booking: any) => {
+          if (booking.class?.trainer_id) {
+            const { data: trainer } = await supabase
+              .from('trainers')
+              .select('id, user_id')
+              .eq('id', booking.class.trainer_id)
+              .maybeSingle();
+            
+            if (trainer?.user_id) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', trainer.user_id)
+                .maybeSingle();
+              
+              return {
+                ...booking,
+                class: { ...booking.class, trainer: { ...trainer, profile } }
+              };
+            }
+          }
+          return booking;
+        })
+      );
+      
+      return bookingsWithTrainers;
     },
   });
 
