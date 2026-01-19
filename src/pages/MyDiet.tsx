@@ -22,17 +22,29 @@ export default function MyDiet() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('diet_plans')
-        .select(`
-          *,
-          trainer:trainer_id(user_id, profiles:user_id(full_name))
-        `)
+        .select('*, trainer:trainers!trainer_id(id, user_id)')
         .eq('member_id', member!.id)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching diet plan:', error);
+        return null;
+      }
+      
+      // Fetch trainer profile separately if trainer exists
+      if (data?.trainer?.user_id) {
+        const { data: trainerProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', data.trainer.user_id)
+          .single();
+        
+        return { ...data, trainerProfile };
+      }
+      
       return data;
     },
   });
@@ -137,12 +149,12 @@ export default function MyDiet() {
                       </div>
                     </div>
                   )}
-                  {dietPlan.trainer && (
+                  {((dietPlan as any).trainer || (dietPlan as any).trainerProfile) && (
                     <div className="flex items-center gap-3">
                       <User className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Trainer</p>
-                        <p className="font-medium">{(dietPlan.trainer as any)?.profiles?.full_name || 'Assigned Trainer'}</p>
+                        <p className="font-medium">{(dietPlan as any).trainerProfile?.full_name || 'Assigned Trainer'}</p>
                       </div>
                     </div>
                   )}

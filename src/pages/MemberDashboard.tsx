@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMemberData } from '@/hooks/useMemberData';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Calendar, Clock, CreditCard, Dumbbell, FileText, 
-  TrendingUp, User, AlertCircle, CheckCircle
+  TrendingUp, User, AlertCircle, CheckCircle, Lock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -50,6 +52,26 @@ export default function MemberDashboard() {
 
   const activePtPackage = ptPackages.find(p => p.status === 'active');
   const totalPendingAmount = pendingInvoices.reduce((sum, inv) => sum + (inv.total_amount - (inv.amount_paid || 0)), 0);
+
+  // Fetch assigned locker
+  const { data: assignedLocker } = useQuery({
+    queryKey: ['my-locker', member?.id],
+    enabled: !!member,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locker_assignments')
+        .select('*, locker:lockers(locker_number, size)')
+        .eq('member_id', member!.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching locker:', error);
+        return null;
+      }
+      return data;
+    },
+  });
 
   return (
     <AppLayout>
@@ -264,7 +286,7 @@ export default function MemberDashboard() {
                     <User className="h-6 w-6 text-accent" />
                   </div>
                   <div>
-                    <p className="font-medium">{(member.assigned_trainer as any).profiles?.full_name || 'Trainer'}</p>
+                    <p className="font-medium">{(member.assigned_trainer as any)?.profile?.full_name || 'Trainer'}</p>
                     <p className="text-sm text-muted-foreground">Personal Trainer</p>
                   </div>
                 </div>
@@ -274,7 +296,7 @@ export default function MemberDashboard() {
                     <User className="h-6 w-6 text-accent" />
                   </div>
                   <div>
-                    <p className="font-medium">{(activePtPackage.trainer as any).profiles?.full_name || 'Trainer'}</p>
+                    <p className="font-medium">{(activePtPackage.trainer as any)?.profile?.full_name || 'Trainer'}</p>
                     <p className="text-sm text-muted-foreground">PT Package Trainer</p>
                   </div>
                 </div>
@@ -283,6 +305,39 @@ export default function MemberDashboard() {
                   <p className="text-muted-foreground mb-4">No trainer assigned</p>
                   <Button variant="outline" asChild>
                     <Link to="/my-requests">Request Trainer</Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Assigned Locker */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Lock className="h-5 w-5" />
+                My Locker
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {assignedLocker ? (
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
+                    <Lock className="h-6 w-6 text-warning" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Locker #{assignedLocker.locker?.locker_number}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {assignedLocker.locker?.size || 'Standard'} Size
+                      {assignedLocker.end_date && ` • Until ${format(new Date(assignedLocker.end_date), 'dd MMM yyyy')}`}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground mb-4">No locker assigned</p>
+                  <Button variant="outline" asChild>
+                    <Link to="/my-requests">Request Locker</Link>
                   </Button>
                 </div>
               )}

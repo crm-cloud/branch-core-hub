@@ -22,17 +22,29 @@ export default function MyWorkout() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('member_fitness_plans')
-        .select(`
-          *,
-          trainer:created_by(full_name)
-        `)
+        .select('*')
         .eq('member_id', member!.id)
         .eq('plan_type', 'workout')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching workout plan:', error);
+        return null;
+      }
+      
+      // Fetch trainer profile separately if created_by exists
+      if (data?.created_by) {
+        const { data: trainerProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', data.created_by)
+          .single();
+        
+        return { ...data, trainer: trainerProfile };
+      }
+      
       return data;
     },
   });
@@ -147,12 +159,12 @@ export default function MyWorkout() {
                       </div>
                     </div>
                   )}
-                  {workoutPlan.trainer && (
+                  {(workoutPlan as any).trainer && (
                     <div className="flex items-center gap-3">
                       <User className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Trainer</p>
-                        <p className="font-medium">{(workoutPlan.trainer as any)?.full_name || 'Assigned Trainer'}</p>
+                        <p className="font-medium">{(workoutPlan as any).trainer?.full_name || 'Assigned Trainer'}</p>
                       </div>
                     </div>
                   )}
