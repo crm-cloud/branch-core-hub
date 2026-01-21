@@ -54,12 +54,17 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     e.preventDefault();
     if (!employee?.id) return;
 
+    // Check if this is a trainer (has staff_type = 'trainer') or regular employee
+    const isTrainer = employee.staff_type === 'trainer';
+    
     createContractMutation.mutate({
-      employeeId: employee.id,
+      employeeId: isTrainer ? undefined : employee.id,
+      trainerId: isTrainer ? employee.id : undefined,
       contractType: formData.contractType,
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,
       salary: Number(formData.salary),
+      terms: formData.terms ? { conditions: formData.terms } : undefined,
     });
   };
 

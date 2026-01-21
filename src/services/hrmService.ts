@@ -145,7 +145,8 @@ export async function fetchEmployeeContracts(employeeId: string) {
 }
 
 export async function createContract(contract: {
-  employeeId: string;
+  employeeId?: string;
+  trainerId?: string;
   contractType: string;
   startDate: string;
   endDate?: string;
@@ -155,7 +156,8 @@ export async function createContract(contract: {
   const { data, error } = await supabase
     .from('contracts')
     .insert({
-      employee_id: contract.employeeId,
+      employee_id: contract.employeeId || null,
+      trainer_id: contract.trainerId || null,
       contract_type: contract.contractType,
       start_date: contract.startDate,
       end_date: contract.endDate,

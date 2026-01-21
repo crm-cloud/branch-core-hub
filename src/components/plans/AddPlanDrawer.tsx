@@ -159,7 +159,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
           benefit_type_id: config.benefitTypeId || null,
           frequency: config.frequency as any,
           limit_count: config.frequency === 'unlimited' ? null : config.limit,
-          is_active: true,
         }));
 
       if (enabledBenefits.length > 0) {
