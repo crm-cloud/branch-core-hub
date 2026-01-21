@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell } from "lucide-react";
-import { usePTPackages, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession } from "@/hooks/usePTPackages";
+import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell, Eye, EyeOff } from "lucide-react";
+import { usePTPackages, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession, useUpdatePTPackage } from "@/hooks/usePTPackages";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -36,6 +37,7 @@ export default function PTSessionsPage() {
   const [editingPackage, setEditingPackage] = useState<any>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [selectedPackageForSession, setSelectedPackageForSession] = useState<string>("");
+  const [showInactive, setShowInactive] = useState(false);
   const [newSession, setNewSession] = useState({
     scheduled_at: "",
     duration_minutes: 60,
@@ -48,11 +50,17 @@ export default function PTSessionsPage() {
   const scheduleSession = useSchedulePTSession();
   const completeSession = useCompletePTSession();
   const cancelSession = useCancelPTSession();
+  const updatePackage = useUpdatePTPackage();
 
   const firstTrainerId = trainers?.[0]?.id;
   const { data: sessions } = useTrainerSessions(firstTrainerId || "", { startDate: new Date() });
 
-const sessionStatusData = [
+  // Filter packages by active status
+  const filteredPackages = (packages || []).filter((pkg: any) => 
+    showInactive ? true : pkg.is_active !== false
+  );
+
+  const sessionStatusData = [
     { name: "Completed", value: sessions?.filter((s) => s.status === "completed").length || 0 },
     { name: "Scheduled", value: sessions?.filter((s) => s.status === "scheduled").length || 0 },
     { name: "Cancelled", value: sessions?.filter((s) => s.status === "cancelled").length || 0 },
@@ -66,6 +74,18 @@ const sessionStatusData = [
   const openEditDrawer = (pkg: any) => {
     setEditingPackage(pkg);
     setIsEditPackageOpen(true);
+  };
+
+  const togglePackageActive = async (pkg: any) => {
+    try {
+      await updatePackage.mutateAsync({
+        id: pkg.id,
+        is_active: !pkg.is_active,
+      });
+      toast.success(pkg.is_active ? "Package deactivated" : "Package activated");
+    } catch (error) {
+      toast.error("Failed to update package status");
+    }
   };
 
   const handleScheduleSession = async () => {
@@ -219,7 +239,18 @@ const sessionStatusData = [
           </TabsList>
 
           <TabsContent value="packages" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={showInactive}
+                  onCheckedChange={setShowInactive}
+                  id="show-inactive"
+                />
+                <Label htmlFor="show-inactive" className="text-sm cursor-pointer">
+                  {showInactive ? <Eye className="h-4 w-4 inline mr-1" /> : <EyeOff className="h-4 w-4 inline mr-1" />}
+                  Show Inactive
+                </Label>
+              </div>
               <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
             </div>
 
@@ -228,24 +259,55 @@ const sessionStatusData = [
 
             {packagesLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading packages...</div>
-            ) : packages?.length === 0 ? (
-              <Card><CardContent className="py-8 text-center text-muted-foreground">No PT packages found. Create your first package.</CardContent></Card>
+            ) : filteredPackages.length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">
+                {showInactive ? "No PT packages found." : "No active PT packages. Create your first package or enable 'Show Inactive'."}
+              </CardContent></Card>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {packages?.map((pkg: any) => (
-                  <Card key={pkg.id} className="relative overflow-hidden">
-                    <div className="absolute top-2 right-2">
-                      <Button variant="ghost" size="icon" onClick={() => openEditDrawer(pkg)}><Edit className="h-4 w-4" /></Button>
+                {filteredPackages.map((pkg: any) => (
+                  <Card key={pkg.id} className={`relative overflow-hidden transition-opacity ${pkg.is_active === false ? "opacity-60" : ""}`}>
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEditDrawer(pkg)} title="Edit">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => togglePackageActive(pkg)}
+                        title={pkg.is_active !== false ? "Deactivate" : "Activate"}
+                      >
+                        {pkg.is_active !== false ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
                     <CardHeader>
-                      <Badge variant="outline" className="w-fit text-xs">{SESSION_TYPES.find((t) => t.value === pkg.session_type)?.label || "Per Session"}</Badge>
-                      <CardTitle className="flex items-center gap-2 mt-2"><Package className="h-5 w-5" />{pkg.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="w-fit text-xs">
+                          {SESSION_TYPES.find((t) => t.value === pkg.session_type)?.label || "Per Session"}
+                        </Badge>
+                        {pkg.is_active === false && (
+                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                        )}
+                      </div>
+                      <CardTitle className="flex items-center gap-2 mt-2">
+                        <Package className="h-5 w-5" />
+                        {pkg.name}
+                      </CardTitle>
                       <CardDescription>{pkg.description}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Sessions:</span><span className="font-medium">{pkg.total_sessions}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Price:</span><span className="font-medium">₹{pkg.price}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Validity:</span><span className="font-medium">{pkg.validity_days} days</span></div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Sessions:</span>
+                        <span className="font-medium">{pkg.total_sessions}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Price:</span>
+                        <span className="font-medium text-lg">₹{pkg.price}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Validity:</span>
+                        <span className="font-medium">{pkg.validity_days} days</span>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

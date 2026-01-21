@@ -32,6 +32,7 @@ export function EditPTPackageDrawer({ open, onOpenChange, package: pkg }: EditPT
     session_type: 'per_session',
     gst_inclusive: false,
     gst_percentage: 18,
+    is_active: true,
   });
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export function EditPTPackageDrawer({ open, onOpenChange, package: pkg }: EditPT
         session_type: pkg.session_type || 'per_session',
         gst_inclusive: pkg.gst_inclusive || false,
         gst_percentage: pkg.gst_percentage || 18,
+        is_active: pkg.is_active !== false,
       });
     }
   }, [pkg]);
@@ -186,6 +188,21 @@ export function EditPTPackageDrawer({ open, onOpenChange, package: pkg }: EditPT
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Package details..."
+            />
+          </div>
+
+          {/* Active Status Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg border">
+            <div>
+              <Label htmlFor="is-active">Package Status</Label>
+              <p className="text-sm text-muted-foreground">
+                {formData.is_active ? 'Active - available for purchase' : 'Inactive - hidden from members'}
+              </p>
+            </div>
+            <Switch
+              id="is-active"
+              checked={formData.is_active}
+              onCheckedChange={(v) => setFormData({ ...formData, is_active: v })}
             />
           </div>
 

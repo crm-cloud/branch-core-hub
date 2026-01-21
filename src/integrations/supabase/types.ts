@@ -1817,12 +1817,15 @@ export type Database = {
           id: string
           invoice_number: string
           member_id: string | null
+          next_reminder_at: string | null
           notes: string | null
+          payment_due_date: string | null
           pos_sale_id: string | null
           refund_amount: number | null
           refund_reason: string | null
           refunded_at: string | null
           refunded_by: string | null
+          reminder_sent_at: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount: number | null
@@ -1839,12 +1842,15 @@ export type Database = {
           id?: string
           invoice_number: string
           member_id?: string | null
+          next_reminder_at?: string | null
           notes?: string | null
+          payment_due_date?: string | null
           pos_sale_id?: string | null
           refund_amount?: number | null
           refund_reason?: string | null
           refunded_at?: string | null
           refunded_by?: string | null
+          reminder_sent_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount?: number | null
@@ -1861,12 +1867,15 @@ export type Database = {
           id?: string
           invoice_number?: string
           member_id?: string | null
+          next_reminder_at?: string | null
           notes?: string | null
+          payment_due_date?: string | null
           pos_sale_id?: string | null
           refund_amount?: number | null
           refund_reason?: string | null
           refunded_at?: string | null
           refunded_by?: string | null
+          reminder_sent_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
           tax_amount?: number | null
@@ -2992,6 +3001,64 @@ export type Database = {
           },
         ]
       }
+      payment_reminders: {
+        Row: {
+          branch_id: string
+          created_at: string | null
+          id: string
+          invoice_id: string
+          member_id: string
+          reminder_type: string
+          scheduled_for: string
+          sent_at: string | null
+          status: string | null
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string | null
+          id?: string
+          invoice_id: string
+          member_id: string
+          reminder_type: string
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string | null
+          id?: string
+          invoice_id?: string
+          member_id?: string
+          reminder_type?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reminders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_reminders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_reminders_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_transactions: {
         Row: {
           amount: number
@@ -3203,6 +3270,7 @@ export type Database = {
       plan_benefits: {
         Row: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id: string | null
           created_at: string
           description: string | null
           frequency: Database["public"]["Enums"]["frequency_type"]
@@ -3213,6 +3281,7 @@ export type Database = {
         }
         Insert: {
           benefit_type: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           description?: string | null
           frequency: Database["public"]["Enums"]["frequency_type"]
@@ -3223,6 +3292,7 @@ export type Database = {
         }
         Update: {
           benefit_type?: Database["public"]["Enums"]["benefit_type"]
+          benefit_type_id?: string | null
           created_at?: string
           description?: string | null
           frequency?: Database["public"]["Enums"]["frequency_type"]
@@ -3232,6 +3302,13 @@ export type Database = {
           reset_period?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "plan_benefits_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "plan_benefits_plan_id_fkey"
             columns: ["plan_id"]
