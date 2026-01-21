@@ -21,7 +21,7 @@ import AttendancePage from "./pages/Attendance";
 import ClassesPage from "./pages/Classes";
 import PTSessionsPage from "./pages/PTSessions";
 import AIFitnessPage from "./pages/AIFitness";
-import InventoryPage from "./pages/Inventory";
+// Inventory is now part of Products page
 import EquipmentPage from "./pages/Equipment";
 import EquipmentMaintenancePage from "./pages/EquipmentMaintenance";
 import LockersPage from "./pages/Lockers";
@@ -144,7 +144,7 @@ const App = () => (
             <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
             <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PTSessionsPage /></ProtectedRoute>} />
             <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
-            <Route path="/inventory" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><InventoryPage /></ProtectedRoute>} />
+            <Route path="/inventory" element={<Navigate to="/products" replace />} />
             <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
             <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentMaintenancePage /></ProtectedRoute>} />
             <Route path="/lockers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LockersPage /></ProtectedRoute>} />
