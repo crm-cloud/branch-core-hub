@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { format, isPast, isFuture, isToday, differenceInMinutes, addMinutes } from "date-fns";
+import { useState, useMemo } from "react";
+import { format, isPast, isFuture, isToday, differenceInMinutes, addMinutes, isAfter, isBefore, startOfDay } from "date-fns";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, Users, Clock, CalendarDays, Check, X, UserX, Edit, Phone, User, Search, Filter } from "lucide-react";
+import { Plus, Users, Clock, CalendarDays, Check, X, UserX, Edit, Phone, User, Search, Filter, Dumbbell, Calendar } from "lucide-react";
 import { useClasses, useClassBookings, useMarkAttendance, useCancelBooking } from "@/hooks/useClasses";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranches } from "@/hooks/useBranches";
@@ -17,6 +19,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AddClassDrawer } from "@/components/classes/AddClassDrawer";
 import { EditClassDrawer } from "@/components/classes/EditClassDrawer";
 import type { ClassWithDetails } from "@/services/classService";
+
+type TimeFilter = "upcoming" | "past" | "all";
 
 export default function ClassesPage() {
   const { profile } = useAuth();
@@ -31,6 +35,7 @@ export default function ClassesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [classTypeFilter, setClassTypeFilter] = useState<string>("all");
   const [trainerFilter, setTrainerFilter] = useState<string>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
 
   const branchId = selectedBranch || branches?.[0]?.id || "";
   const { data: classes, isLoading } = useClasses(branchId, { activeOnly: false });
@@ -70,30 +75,62 @@ export default function ClassesPage() {
     setIsEditOpen(true);
   };
 
-  // Filter classes
-  const filteredClasses = (classes || []).filter(cls => {
-    const matchesSearch = !searchQuery || 
-      cls.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cls.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesType = classTypeFilter === "all" || cls.class_type === classTypeFilter;
-    const matchesTrainer = trainerFilter === "all" || cls.trainer_id === trainerFilter;
-    
-    return matchesSearch && matchesType && matchesTrainer;
-  });
-
-  // Get trainer name by ID
-  const getTrainerName = (trainerId: string | null) => {
+  // Get trainer info by ID
+  const getTrainer = (trainerId: string | null) => {
     if (!trainerId) return null;
-    const trainer = trainers?.find((t: any) => t.id === trainerId);
-    return trainer?.profile_name || trainer?.profile_email || "Unknown Trainer";
+    return trainers?.find((t: any) => t.id === trainerId);
+  };
+
+  const getTrainerName = (trainerId: string | null) => {
+    const trainer = getTrainer(trainerId);
+    return trainer?.profile_name || trainer?.profile_email || null;
   };
 
   const getTrainerPhone = (trainerId: string | null) => {
-    if (!trainerId) return null;
-    const trainer = trainers?.find((t: any) => t.id === trainerId);
+    const trainer = getTrainer(trainerId);
     return trainer?.profile_phone;
   };
+
+  const getTrainerAvatar = (trainerId: string | null) => {
+    const trainer = getTrainer(trainerId);
+    return trainer?.profile_avatar;
+  };
+
+  // Filter classes by time period
+  const filteredByTime = useMemo(() => {
+    const now = new Date();
+    return (classes || []).filter(cls => {
+      const scheduledAt = new Date(cls.scheduled_at);
+      const endTime = addMinutes(scheduledAt, cls.duration_minutes || 60);
+      
+      if (timeFilter === "upcoming") {
+        return isAfter(endTime, now); // Not yet ended
+      } else if (timeFilter === "past") {
+        return isBefore(endTime, now); // Already ended
+      }
+      return true; // "all"
+    });
+  }, [classes, timeFilter]);
+
+  // Filter classes by search and other filters
+  const filteredClasses = useMemo(() => {
+    return filteredByTime.filter(cls => {
+      const matchesSearch = !searchQuery || 
+        cls.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        getTrainerName(cls.trainer_id)?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesType = classTypeFilter === "all" || cls.class_type === classTypeFilter;
+      const matchesTrainer = trainerFilter === "all" || cls.trainer_id === trainerFilter;
+      
+      return matchesSearch && matchesType && matchesTrainer;
+    }).sort((a, b) => {
+      // For upcoming, sort by nearest first; for past, sort by most recent first
+      const dateA = new Date(a.scheduled_at).getTime();
+      const dateB = new Date(b.scheduled_at).getTime();
+      return timeFilter === "past" ? dateB - dateA : dateA - dateB;
+    });
+  }, [filteredByTime, searchQuery, classTypeFilter, trainerFilter, timeFilter]);
 
   // Get class status badge
   const getClassStatus = (cls: ClassWithDetails) => {
@@ -102,43 +139,43 @@ export default function ClassesPage() {
     const endTime = addMinutes(scheduledAt, cls.duration_minutes || 60);
 
     if (!cls.is_active) {
-      return { label: "Cancelled", variant: "destructive" as const };
+      return { label: "Cancelled", variant: "destructive" as const, color: "bg-destructive/10 text-destructive border-destructive/30" };
     }
     if (isPast(endTime)) {
-      return { label: "Completed", variant: "secondary" as const };
+      return { label: "Completed", variant: "secondary" as const, color: "bg-muted text-muted-foreground" };
     }
     if (isPast(scheduledAt) && isFuture(endTime)) {
-      return { label: "In Progress", variant: "default" as const };
+      return { label: "In Progress", variant: "default" as const, color: "bg-primary/10 text-primary border-primary/30" };
     }
     if (isToday(scheduledAt)) {
       const minsUntil = differenceInMinutes(scheduledAt, now);
       if (minsUntil <= 60 && minsUntil > 0) {
-        return { label: `Starts in ${minsUntil}m`, variant: "default" as const };
+        return { label: `Starts in ${minsUntil}m`, variant: "default" as const, color: "bg-warning/10 text-warning border-warning/30" };
       }
-      return { label: "Today", variant: "outline" as const };
+      return { label: "Today", variant: "outline" as const, color: "bg-success/10 text-success border-success/30" };
     }
-    return { label: "Upcoming", variant: "outline" as const };
+    return { label: "Upcoming", variant: "outline" as const, color: "bg-blue-500/10 text-blue-600 border-blue-500/30" };
   };
 
-  // Get capacity badge variant
-  const getCapacityBadge = (cls: ClassWithDetails) => {
+  // Get capacity percentage
+  const getCapacityPercentage = (cls: ClassWithDetails) => {
     const bookedCount = cls.bookings_count || 0;
-    const capacity = cls.capacity;
-    const percentage = (bookedCount / capacity) * 100;
-
-    if (bookedCount >= capacity) {
-      return { label: `Full (${bookedCount}/${capacity})`, variant: "destructive" as const };
-    }
-    if (percentage >= 75) {
-      return { label: `${bookedCount}/${capacity}`, variant: "secondary" as const };
-    }
-    return { label: `${bookedCount}/${capacity}`, variant: "outline" as const };
+    return Math.min((bookedCount / cls.capacity) * 100, 100);
   };
 
   const selectedClassData = filteredClasses.find((c) => c.id === selectedClass);
 
   // Unique class types for filter
   const classTypes = [...new Set((classes || []).map(c => c.class_type).filter(Boolean))];
+
+  // Stats
+  const stats = useMemo(() => {
+    const now = new Date();
+    const upcoming = (classes || []).filter(cls => isAfter(addMinutes(new Date(cls.scheduled_at), cls.duration_minutes || 60), now) && cls.is_active);
+    const todayClasses = upcoming.filter(cls => isToday(new Date(cls.scheduled_at)));
+    const totalBookings = upcoming.reduce((acc, cls) => acc + (cls.bookings_count || 0), 0);
+    return { upcoming: upcoming.length, today: todayClasses.length, totalBookings };
+  }, [classes]);
 
   return (
     <AppLayout>
@@ -178,54 +215,131 @@ export default function ClassesPage() {
           branchId={branchId}
         />
 
-        {/* Filters */}
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                Upcoming Classes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.upcoming}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Dumbbell className="h-4 w-4 text-success" />
+                Today's Classes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-success">{stats.today}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4 text-warning" />
+                Total Bookings
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.totalBookings}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-info/10 to-info/5 border-info/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <User className="h-4 w-4 text-info" />
+                Active Trainers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{trainers?.filter((t: any) => t.is_active).length || 0}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Time Filter Tabs + Filters */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search classes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+            <div className="flex flex-col gap-4">
+              {/* Time Period Tabs */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={timeFilter === "upcoming" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTimeFilter("upcoming")}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Upcoming
+                </Button>
+                <Button
+                  variant={timeFilter === "past" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTimeFilter("past")}
+                >
+                  Past
+                </Button>
+                <Button
+                  variant={timeFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTimeFilter("all")}
+                >
+                  All
+                </Button>
               </div>
-              <Select value={classTypeFilter} onValueChange={setClassTypeFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Class Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {classTypes.map(type => (
-                    <SelectItem key={type} value={type!}>
-                      {type!.charAt(0).toUpperCase() + type!.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={trainerFilter} onValueChange={setTrainerFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <User className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Trainer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Trainers</SelectItem>
-                  {trainers?.map((trainer: any) => (
-                    <SelectItem key={trainer.id} value={trainer.id}>
-                      {trainer.profile_name || trainer.profile_email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              {/* Search and Filters */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search classes or trainers..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={classTypeFilter} onValueChange={setClassTypeFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Class Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {classTypes.map(type => (
+                      <SelectItem key={type} value={type!}>
+                        {type!.charAt(0).toUpperCase() + type!.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={trainerFilter} onValueChange={setTrainerFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <User className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Trainer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Trainers</SelectItem>
+                    {trainers?.map((trainer: any) => (
+                      <SelectItem key={trainer.id} value={trainer.id}>
+                        {trainer.profile_name || trainer.profile_email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <Tabs defaultValue="schedule" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule ({filteredClasses.length})</TabsTrigger>
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
           </TabsList>
 
@@ -234,39 +348,52 @@ export default function ClassesPage() {
               <div className="text-center py-8 text-muted-foreground">Loading classes...</div>
             ) : filteredClasses.length === 0 ? (
               <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  No classes found. {searchQuery || classTypeFilter !== "all" || trainerFilter !== "all" 
-                    ? "Try adjusting your filters." 
-                    : "Create your first class to get started."}
+                <CardContent className="py-12 text-center">
+                  <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                  <p className="text-muted-foreground">
+                    {searchQuery || classTypeFilter !== "all" || trainerFilter !== "all" 
+                      ? "No classes match your filters." 
+                      : timeFilter === "upcoming" 
+                        ? "No upcoming classes scheduled."
+                        : "No classes found."}
+                  </p>
+                  {timeFilter === "upcoming" && (
+                    <Button variant="outline" className="mt-4" onClick={() => setIsCreateOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Schedule a Class
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredClasses.map((cls) => {
                   const status = getClassStatus(cls);
-                  const capacityBadge = getCapacityBadge(cls);
                   const trainerName = getTrainerName(cls.trainer_id);
                   const trainerPhone = getTrainerPhone(cls.trainer_id);
+                  const trainerAvatar = getTrainerAvatar(cls.trainer_id);
+                  const capacityPercent = getCapacityPercentage(cls);
+                  const bookedCount = cls.bookings_count || 0;
 
                   return (
                     <Card
                       key={cls.id}
-                      className={`cursor-pointer transition-all hover:border-primary hover:shadow-md ${
+                      className={`cursor-pointer transition-all hover:shadow-lg hover:border-primary/50 group ${
                         selectedClass === cls.id ? "border-primary ring-2 ring-primary/20" : ""
                       } ${!cls.is_active ? "opacity-60" : ""}`}
                       onClick={() => setSelectedClass(cls.id)}
                     >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              {cls.name}
-                              <Badge variant={status.variant} className="text-xs">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <CardTitle className="text-lg truncate">{cls.name}</CardTitle>
+                              <Badge className={`text-xs ${status.color}`}>
                                 {status.label}
                               </Badge>
-                            </CardTitle>
+                            </div>
                             {cls.class_type && (
-                              <Badge variant="secondary" className="mt-1">
+                              <Badge variant="secondary" className="mt-1.5 text-xs">
                                 {cls.class_type.charAt(0).toUpperCase() + cls.class_type.slice(1)}
                               </Badge>
                             )}
@@ -274,6 +401,7 @@ export default function ClassesPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleEditClass(cls);
@@ -282,35 +410,52 @@ export default function ClassesPage() {
                             <Edit className="h-4 w-4" />
                           </Button>
                         </div>
-                        <CardDescription className="line-clamp-2">{cls.description}</CardDescription>
+                        {cls.description && (
+                          <CardDescription className="line-clamp-2 mt-1">{cls.description}</CardDescription>
+                        )}
                       </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2 text-sm">
+                      <CardContent className="space-y-4">
+                        {/* Date & Time */}
+                        <div className="flex items-center gap-4 text-sm">
                           <div className="flex items-center gap-2">
                             <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                            <span>{format(new Date(cls.scheduled_at), "PPP p")}</span>
+                            <span>{format(new Date(cls.scheduled_at), "MMM d, yyyy")}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span>{cls.duration_minutes} minutes</span>
+                            <span>{format(new Date(cls.scheduled_at), "h:mm a")}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <Badge variant={capacityBadge.variant}>{capacityBadge.label}</Badge>
-                            {(cls.waitlist_count || 0) > 0 && (
-                              <Badge variant="outline">{cls.waitlist_count} waitlisted</Badge>
-                            )}
+                        </div>
+
+                        {/* Capacity Progress */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Capacity</span>
+                            <span className={`font-medium ${bookedCount >= cls.capacity ? "text-destructive" : ""}`}>
+                              {bookedCount}/{cls.capacity} booked
+                            </span>
                           </div>
-                          
-                          {/* Trainer Info */}
-                          {trainerName && (
-                            <div className="flex items-center gap-2 pt-2 border-t mt-2">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium">{trainerName}</span>
+                          <Progress value={capacityPercent} className="h-2" />
+                          {(cls.waitlist_count || 0) > 0 && (
+                            <p className="text-xs text-muted-foreground">{cls.waitlist_count} on waitlist</p>
+                          )}
+                        </div>
+
+                        {/* Trainer Card */}
+                        {trainerName ? (
+                          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={trainerAvatar} />
+                              <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                                {trainerName.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{trainerName}</p>
                               {trainerPhone && (
                                 <a 
                                   href={`tel:${trainerPhone}`} 
-                                  className="flex items-center gap-1 text-primary hover:underline"
+                                  className="flex items-center gap-1 text-xs text-primary hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <Phone className="h-3 w-3" />
@@ -318,8 +463,15 @@ export default function ClassesPage() {
                                 </a>
                               )}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-dashed">
+                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                              <User className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <p className="text-sm text-muted-foreground">No trainer assigned</p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );

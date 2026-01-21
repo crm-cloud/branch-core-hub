@@ -6,12 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
-import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock } from 'lucide-react';
+import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock, Wallet } from 'lucide-react';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -34,6 +35,13 @@ export function PurchaseMembershipDrawer({
   const [discountReason, setDiscountReason] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [selectedLockerId, setSelectedLockerId] = useState<string>('');
+  
+  // Partial Payment State
+  const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [amountPaying, setAmountPaying] = useState(0);
+  const [paymentDueDate, setPaymentDueDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+  const [sendReminders, setSendReminders] = useState(true);
+  
   const queryClient = useQueryClient();
 
   const { data: plans = [] } = usePlans(branchId);
@@ -129,12 +137,22 @@ export function PurchaseMembershipDrawer({
     return format(addDays(new Date(startDate), selectedPlan.duration_days), 'yyyy-MM-dd');
   };
 
+  const remainingAmount = calculateTotal() - amountPaying;
+
   const purchaseMembership = useMutation({
     mutationFn: async () => {
       if (!selectedPlan) throw new Error('Please select a plan');
+      
+      // Validate partial payment
+      if (isPartialPayment) {
+        if (amountPaying <= 0) throw new Error('Please enter amount paying now');
+        if (amountPaying >= calculateTotal()) throw new Error('Amount paying should be less than total for partial payment');
+        if (!paymentDueDate) throw new Error('Please set a due date for remaining amount');
+      }
 
       const endDate = calculateEndDate();
-      const pricePaid = calculateTotal();
+      const totalAmount = calculateTotal();
+      const actualAmountPaid = isPartialPayment ? amountPaying : totalAmount;
 
       // Create membership
       const { data: membership, error: membershipError } = await supabase
@@ -146,7 +164,7 @@ export function PurchaseMembershipDrawer({
           start_date: startDate,
           end_date: endDate,
           original_end_date: endDate,
-          price_paid: pricePaid,
+          price_paid: totalAmount,
           discount_amount: discountAmount,
           discount_reason: discountReason || null,
           status: 'active',
@@ -156,20 +174,24 @@ export function PurchaseMembershipDrawer({
 
       if (membershipError) throw membershipError;
 
-      // Create invoice
+      // Determine invoice status
+      const invoiceStatus = isPartialPayment ? 'partial' : 'paid';
+
+      // Create invoice with partial payment support
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
           branch_id: branchId,
           member_id: memberId,
-          invoice_number: '', // Will be auto-generated
+          invoice_number: '',
           subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
           discount_amount: discountAmount,
           tax_amount: 0,
-          total_amount: pricePaid,
-          status: 'paid',
-          due_date: startDate,
-          amount_paid: pricePaid,
+          total_amount: totalAmount,
+          status: invoiceStatus as any,
+          due_date: isPartialPayment ? paymentDueDate : startDate,
+          amount_paid: actualAmountPaid,
+          payment_due_date: isPartialPayment ? paymentDueDate : null,
         })
         .select()
         .single();
@@ -203,16 +225,37 @@ export function PurchaseMembershipDrawer({
 
       await supabase.from('invoice_items').insert(items);
 
-      // Record payment
+      // Record payment (only for amount paid)
       await supabase.from('payments').insert({
         branch_id: branchId,
         member_id: memberId,
         invoice_id: invoice.id,
-        amount: pricePaid,
+        amount: actualAmountPaid,
         payment_method: paymentMethod as any,
         status: 'completed',
         payment_date: new Date().toISOString(),
       });
+
+      // Create payment reminders if partial payment and reminders enabled
+      if (isPartialPayment && sendReminders && remainingAmount > 0) {
+        const dueDate = new Date(paymentDueDate);
+        const reminderDates = [
+          { date: addDays(dueDate, -3), type: 'due_soon' },
+          { date: dueDate, type: 'on_due' },
+          { date: addDays(dueDate, 3), type: 'overdue' },
+        ].filter(r => r.date > new Date());
+
+        for (const reminder of reminderDates) {
+          await supabase.from('payment_reminders').insert({
+            branch_id: branchId,
+            invoice_id: invoice.id,
+            member_id: memberId,
+            reminder_type: reminder.type,
+            scheduled_for: reminder.date.toISOString(),
+            status: 'pending',
+          });
+        }
+      }
 
       // Update member status to active
       await supabase
@@ -221,7 +264,7 @@ export function PurchaseMembershipDrawer({
         .eq('id', memberId);
 
       // Process referral rewards if applicable
-      if (pendingReferral && referralSettings && pricePaid >= (referralSettings.min_membership_value || 0)) {
+      if (pendingReferral && referralSettings && totalAmount >= (referralSettings.min_membership_value || 0)) {
         // Update referral status to converted
         await supabase
           .from('referrals')
@@ -307,6 +350,10 @@ export function PurchaseMembershipDrawer({
     setDiscountReason('');
     setPaymentMethod('cash');
     setSelectedLockerId('');
+    setIsPartialPayment(false);
+    setAmountPaying(0);
+    setPaymentDueDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
+    setSendReminders(true);
   };
 
   return (
@@ -500,6 +547,78 @@ export function PurchaseMembershipDrawer({
                   </CardContent>
                 </Card>
               )}
+
+              {/* Partial Payment Toggle */}
+              <Card className="border-dashed">
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-5 w-5 text-primary" />
+                      <div>
+                        <Label htmlFor="partial-payment" className="cursor-pointer">Partial Payment</Label>
+                        <p className="text-xs text-muted-foreground">Record partial payment with due date</p>
+                      </div>
+                    </div>
+                    <Switch
+                      id="partial-payment"
+                      checked={isPartialPayment}
+                      onCheckedChange={(checked) => {
+                        setIsPartialPayment(checked);
+                        if (checked) {
+                          setAmountPaying(Math.round(calculateTotal() * 0.5)); // Default to 50%
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {isPartialPayment && (
+                    <div className="space-y-4 pt-2 border-t">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Amount Paying Now *</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={calculateTotal() - 1}
+                            value={amountPaying}
+                            onChange={(e) => setAmountPaying(Number(e.target.value))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Due Date for Remaining *</Label>
+                          <Input
+                            type="date"
+                            value={paymentDueDate}
+                            min={format(addDays(new Date(), 1), 'yyyy-MM-dd')}
+                            onChange={(e) => setPaymentDueDate(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                        <div className="flex justify-between text-sm">
+                          <span>Remaining Amount:</span>
+                          <span className="font-bold text-warning">₹{remainingAmount}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Due on {format(new Date(paymentDueDate), 'dd MMM yyyy')}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="send-reminders"
+                          checked={sendReminders}
+                          onCheckedChange={setSendReminders}
+                        />
+                        <Label htmlFor="send-reminders" className="text-sm cursor-pointer">
+                          Send payment reminders (3 days before, on due date, 3 days after)
+                        </Label>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Payment Method */}
               <div className="space-y-2">
