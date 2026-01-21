@@ -116,12 +116,29 @@ export const leadService = {
     // Generate member code
     const memberCode = `MEM${Date.now().toString(36).toUpperCase()}`;
     
-    // Create member from lead
+    // First, create a profile for the lead so the member has a name
+    // Email is required in profiles, so we generate one if missing
+    const profileEmail = lead.email || `lead_${leadId}@placeholder.local`;
+    
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        full_name: lead.name || 'Unknown',
+        phone: lead.phone || null,
+        email: profileEmail,
+      } as any)
+      .select()
+      .single();
+
+    if (profileError) throw profileError;
+    
+    // Create member from lead with user_id linking to profile
     const { data: member, error: memberError } = await supabase
       .from('members')
       .insert({
         branch_id: branchId,
         member_code: memberCode,
+        user_id: profile.id, // Link to the profile so member has a name!
         lead_id: leadId,
         status: 'active',
         source: lead.source || 'lead_conversion',

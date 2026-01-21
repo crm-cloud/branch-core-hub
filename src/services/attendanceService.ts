@@ -122,9 +122,11 @@ export const attendanceService = {
 
   // Search member by code, name, phone or email for check-in using search_members RPC
   async searchMemberForCheckIn(query: string, branchId: string) {
+    // Search across all branches first to improve results, then filter
     const { data, error } = await supabase.rpc('search_members', {
       search_term: query,
-      p_branch_id: branchId,
+      p_branch_id: null, // Search all branches for better matching
+      p_limit: 20
     });
 
     if (error) {
@@ -132,11 +134,13 @@ export const attendanceService = {
       throw error;
     }
     
-    // Map result to expected format
-    return (data || []).map((m: any) => ({
+    // Filter by branch after search and map to expected format
+    const filteredData = (data || []).filter((m: any) => m.branch_id === branchId);
+    
+    return filteredData.map((m: any) => ({
       id: m.id,
       member_code: m.member_code,
-      user_id: m.user_id,
+      user_id: null,
       profiles: {
         full_name: m.full_name,
         avatar_url: m.avatar_url,

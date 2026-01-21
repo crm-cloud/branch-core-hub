@@ -178,12 +178,15 @@ export function PurchaseMembershipDrawer({
       const invoiceStatus = isPartialPayment ? 'partial' : 'paid';
 
       // Create invoice with partial payment support
+      // Generate unique invoice number
+      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+      
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
           branch_id: branchId,
           member_id: memberId,
-          invoice_number: '',
+          invoice_number: invoiceNumber,
           subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
           discount_amount: discountAmount,
           tax_amount: 0,
