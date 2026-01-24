@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { lockerService } from '@/services/lockerService';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Receipt, Gift, CheckCircle } from 'lucide-react';
+import { Search, Receipt, Gift, CheckCircle, CreditCard } from 'lucide-react';
 
 interface AssignLockerDrawerProps {
   open: boolean;
@@ -25,6 +26,8 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
   const [assignMonths, setAssignMonths] = useState(1);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [memberHasFreeLocker, setMemberHasFreeLocker] = useState(false);
+  const [checkingPlan, setCheckingPlan] = useState(false);
 
   const handleMemberSearch = async () => {
     if (!memberSearch.trim() || !branchId) return;
@@ -84,6 +87,60 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     }
   };
 
+  // Check if selected member's plan includes free locker
+  useEffect(() => {
+    async function checkMemberPlan() {
+      if (!selectedMember) {
+        setMemberHasFreeLocker(false);
+        return;
+      }
+      
+      setCheckingPlan(true);
+      try {
+        // Get active membership with plan
+        const { data: membership } = await supabase
+          .from('memberships')
+          .select(`
+            id,
+            membership_plans!inner(
+              includes_free_locker,
+              free_locker_size
+            )
+          `)
+          .eq('member_id', selectedMember.id)
+          .eq('status', 'active')
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .order('end_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (membership) {
+          const plan = membership.membership_plans as any;
+          const hasFreeLocker = plan?.includes_free_locker === true;
+          
+          // If plan includes locker and locker size matches (or any size), grant free
+          if (hasFreeLocker) {
+            const planSize = plan?.free_locker_size;
+            const lockerSize = locker?.size?.toLowerCase();
+            // Free if no size specified in plan OR sizes match
+            setMemberHasFreeLocker(!planSize || !lockerSize || planSize === lockerSize);
+          } else {
+            setMemberHasFreeLocker(false);
+          }
+        } else {
+          setMemberHasFreeLocker(false);
+        }
+      } catch (error) {
+        console.error('Error checking member plan:', error);
+        setMemberHasFreeLocker(false);
+      } finally {
+        setCheckingPlan(false);
+      }
+    }
+    
+    checkMemberPlan();
+  }, [selectedMember, locker]);
+
   const handleAssignLocker = async () => {
     if (!selectedMember || !locker || !branchId) return;
     
@@ -91,7 +148,9 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     try {
       const startDate = new Date().toISOString().split('T')[0];
       const endDate = new Date(Date.now() + assignMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const feeAmount = (locker.monthly_fee || 0) * assignMonths;
+      
+      // If member's plan includes free locker, set fee to 0
+      const feeAmount = memberHasFreeLocker ? 0 : (locker.monthly_fee || 0) * assignMonths;
 
       // Assign locker
       await lockerService.assignLocker({
@@ -113,6 +172,8 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           assignMonths
         );
         toast.success(`Locker assigned and invoice of ₹${feeAmount} created`);
+      } else if (memberHasFreeLocker) {
+        toast.success('Locker assigned (included in membership plan)');
       } else {
         toast.success('Locker assigned (free)');
       }
@@ -132,12 +193,14 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     setSearchResults([]);
     setMemberSearch('');
     setAssignMonths(1);
+    setMemberHasFreeLocker(false);
   };
 
   if (!locker) return null;
 
   const isFreeLocker = !locker.monthly_fee || locker.monthly_fee === 0;
-  const totalAmount = (locker.monthly_fee || 0) * assignMonths;
+  const effectivelyFree = isFreeLocker || memberHasFreeLocker;
+  const totalAmount = effectivelyFree ? 0 : (locker.monthly_fee || 0) * assignMonths;
 
   return (
     <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>

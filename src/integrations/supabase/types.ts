@@ -1535,8 +1535,11 @@ export type Database = {
           created_at: string | null
           employee_id: string | null
           feedback_text: string | null
+          google_review_id: string | null
           id: string
+          is_approved_for_google: boolean | null
           member_id: string
+          published_to_google_at: string | null
           rating: number
           status: string | null
           trainer_id: string | null
@@ -1549,8 +1552,11 @@ export type Database = {
           created_at?: string | null
           employee_id?: string | null
           feedback_text?: string | null
+          google_review_id?: string | null
           id?: string
+          is_approved_for_google?: boolean | null
           member_id: string
+          published_to_google_at?: string | null
           rating: number
           status?: string | null
           trainer_id?: string | null
@@ -1563,8 +1569,11 @@ export type Database = {
           created_at?: string | null
           employee_id?: string | null
           feedback_text?: string | null
+          google_review_id?: string | null
           id?: string
+          is_approved_for_google?: boolean | null
           member_id?: string
+          published_to_google_at?: string | null
           rating?: number
           status?: string | null
           trainer_id?: string | null
@@ -2746,8 +2755,10 @@ export type Database = {
           discounted_price: number | null
           display_order: number | null
           duration_days: number
+          free_locker_size: string | null
           gst_rate: number | null
           id: string
+          includes_free_locker: boolean | null
           is_active: boolean | null
           is_gst_inclusive: boolean | null
           is_transferable: boolean | null
@@ -2765,8 +2776,10 @@ export type Database = {
           discounted_price?: number | null
           display_order?: number | null
           duration_days: number
+          free_locker_size?: string | null
           gst_rate?: number | null
           id?: string
+          includes_free_locker?: boolean | null
           is_active?: boolean | null
           is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
@@ -2784,8 +2797,10 @@ export type Database = {
           discounted_price?: number | null
           display_order?: number | null
           duration_days?: number
+          free_locker_size?: string | null
           gst_rate?: number | null
           id?: string
+          includes_free_locker?: boolean | null
           is_active?: boolean | null
           is_gst_inclusive?: boolean | null
           is_transferable?: boolean | null
@@ -3993,6 +4008,60 @@ export type Database = {
           },
         ]
       }
+      stock_movements: {
+        Row: {
+          branch_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          movement_type: string
+          notes: string | null
+          product_id: string
+          quantity: number
+          reference_id: string | null
+          reference_type: string | null
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type: string
+          notes?: string | null
+          product_id: string
+          quantity: number
+          reference_id?: string | null
+          reference_type?: string | null
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          movement_type?: string
+          notes?: string | null
+          product_id?: string
+          quantity?: number
+          reference_id?: string | null
+          reference_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_by: string | null
@@ -4833,7 +4902,12 @@ export type Database = {
         | "maintenance"
         | "out_of_order"
         | "retired"
-      frequency_type: "daily" | "weekly" | "monthly" | "unlimited"
+      frequency_type:
+        | "daily"
+        | "weekly"
+        | "monthly"
+        | "unlimited"
+        | "per_membership"
       gender_type: "male" | "female" | "other"
       invoice_status:
         | "draft"
@@ -5071,7 +5145,13 @@ export const Constants = {
         "out_of_order",
         "retired",
       ],
-      frequency_type: ["daily", "weekly", "monthly", "unlimited"],
+      frequency_type: [
+        "daily",
+        "weekly",
+        "monthly",
+        "unlimited",
+        "per_membership",
+      ],
       gender_type: ["male", "female", "other"],
       invoice_status: [
         "draft",

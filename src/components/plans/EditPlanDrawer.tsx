@@ -25,7 +25,7 @@ interface EditPlanDrawerProps {
 
 type BenefitConfig = {
   enabled: boolean;
-  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly';
+  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly' | 'per_membership';
   limit: number;
   benefitTypeId?: string;
 };
@@ -54,6 +54,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
     is_transferable: false,
     is_active: true,
     is_visible_to_members: true,
+    includes_free_locker: false,
+    free_locker_size: 'medium',
   });
 
   // Use database benefit types only (fully dynamic)
@@ -82,6 +84,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
         is_transferable: plan.is_transferable || false,
         is_active: plan.is_active ?? true,
         is_visible_to_members: (plan as any).is_visible_to_members ?? true,
+        includes_free_locker: (plan as any).includes_free_locker ?? false,
+        free_locker_size: (plan as any).free_locker_size || 'medium',
       });
     }
   }, [plan]);
@@ -194,6 +198,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
           max_freeze_days: formData.max_freeze_days || undefined,
           is_transferable: formData.is_transferable,
           is_active: formData.is_active,
+          includes_free_locker: formData.includes_free_locker,
+          free_locker_size: formData.includes_free_locker ? formData.free_locker_size : null,
         },
       });
 
@@ -355,6 +361,36 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
               />
             </div>
 
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Includes Free Locker</Label>
+                <p className="text-xs text-muted-foreground">Member gets a complimentary locker</p>
+              </div>
+              <Switch
+                checked={formData.includes_free_locker}
+                onCheckedChange={(checked) => setFormData({ ...formData, includes_free_locker: checked })}
+              />
+            </div>
+
+            {formData.includes_free_locker && (
+              <div className="space-y-2 ml-4 p-3 border rounded-lg bg-muted/30">
+                <Label>Locker Size</Label>
+                <Select
+                  value={formData.free_locker_size}
+                  onValueChange={(v) => setFormData({ ...formData, free_locker_size: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <Separator className="my-4" />
 
             <div className="space-y-4">
@@ -468,11 +504,15 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
                                     <SelectItem value="daily">Day</SelectItem>
                                     <SelectItem value="weekly">Week</SelectItem>
                                     <SelectItem value="monthly">Month</SelectItem>
+                                    <SelectItem value="per_membership">Total Pool (Full Duration)</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                               <p className="col-span-2 text-xs text-muted-foreground">
-                                Example: {benefits[benefit.id]?.limit || 1} time(s) per {benefits[benefit.id]?.frequency === 'daily' ? 'day' : benefits[benefit.id]?.frequency === 'weekly' ? 'week' : 'month'}
+                                {benefits[benefit.id]?.frequency === 'per_membership' 
+                                  ? `Total: ${benefits[benefit.id]?.limit || 1} session(s) for entire membership (${formData.duration_days} days)`
+                                  : `Example: ${benefits[benefit.id]?.limit || 1} time(s) per ${benefits[benefit.id]?.frequency === 'daily' ? 'day' : benefits[benefit.id]?.frequency === 'weekly' ? 'week' : 'month'}`
+                                }
                               </p>
                             </div>
                           )}

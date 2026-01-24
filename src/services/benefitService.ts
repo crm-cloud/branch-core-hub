@@ -125,6 +125,12 @@ export function calculateBenefitBalances(
           new Date(u.usage_date) >= startOfMonth
         );
         break;
+      case 'per_membership':
+        // For per_membership, count ALL usage from membership start to end (total pool)
+        relevantUsage = relevantUsage.filter(u => 
+          new Date(u.usage_date) >= new Date(membershipStartDate)
+        );
+        break;
       case 'unlimited':
         // No filtering needed for unlimited
         break;
@@ -281,4 +287,5 @@ export const frequencyLabels: Record<FrequencyType, string> = {
   weekly: 'Per Week',
   monthly: 'Per Month',
   unlimited: 'Unlimited',
+  per_membership: 'Total for Membership',
 };

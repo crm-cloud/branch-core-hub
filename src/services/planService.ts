@@ -76,6 +76,8 @@ export async function updatePlan(
     max_freeze_days: number;
     is_transferable: boolean;
     is_active: boolean;
+    includes_free_locker: boolean;
+    free_locker_size: string | null;
   }>
 ) {
   const { data, error } = await supabase

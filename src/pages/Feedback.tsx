@@ -47,15 +47,20 @@ export default function FeedbackPage() {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status, notes }: { id: string; status: string; notes?: string }) => {
+    mutationFn: async ({ id, status, notes, isApprovedForGoogle }: { id: string; status?: string; notes?: string; isApprovedForGoogle?: boolean }) => {
+      const updates: any = {};
+      if (status !== undefined) updates.status = status;
+      if (notes !== undefined) updates.admin_notes = notes;
+      if (isApprovedForGoogle !== undefined) updates.is_approved_for_google = isApprovedForGoogle;
+      
       const { error } = await supabase
         .from('feedback')
-        .update({ status, admin_notes: notes })
+        .update(updates)
         .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success('Feedback status updated');
+      toast.success('Feedback updated');
       queryClient.invalidateQueries({ queryKey: ['feedback'] });
     },
     onError: () => {
