@@ -58,7 +58,7 @@ export default function MembersPage() {
           branch_id: row.branch_id,
           joined_at: row.created_at,
           joined_date: row.joined_date,
-          status: row.is_active ? 'active' : 'inactive',
+          status: row.member_status || 'inactive', // Use calculated status from RPC
           profiles: {
             full_name: row.full_name,
             email: row.email,
@@ -90,11 +90,20 @@ export default function MembersPage() {
         const { data, error } = await query;
         if (error) throw error;
         
-        return (data || []).map((m: any) => ({
-          ...m,
-          status: m.is_active ? 'active' : 'inactive',
-          joined_at: m.created_at
-        }));
+        return (data || []).map((m: any) => {
+          // Calculate status dynamically based on active membership
+          const activeMembership = m.memberships?.find((ms: any) => {
+            const now = new Date();
+            const start = new Date(ms.start_date);
+            const end = new Date(ms.end_date);
+            return ms.status === 'active' && now >= start && now <= end;
+          });
+          return {
+            ...m,
+            status: activeMembership ? 'active' : 'inactive',
+            joined_at: m.created_at
+          };
+        });
       }
     },
   });

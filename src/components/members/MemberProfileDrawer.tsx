@@ -12,7 +12,7 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle
+  Award, Copy, Share2, MessageCircle, Edit
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,6 +24,7 @@ import { AssignTrainerDrawer } from './AssignTrainerDrawer';
 import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
 import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
+import { EditProfileDialog } from './EditProfileDialog';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 
 interface MemberProfileDrawerProps {
@@ -47,6 +48,7 @@ export function MemberProfileDrawer({
   const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
   const [measurementOpen, setMeasurementOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
 
   const toggleMemberStatus = async () => {
@@ -260,6 +262,14 @@ export function MemberProfileDrawer({
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-semibold">{profile?.full_name || 'N/A'}</h2>
                 <Badge className={getMemberStatusColor(member.status)}>{member.status}</Badge>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={() => setEditProfileOpen(true)}
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
               </div>
               <p className="text-sm text-muted-foreground font-mono">{member.member_code}</p>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
@@ -847,6 +857,12 @@ export function MemberProfileDrawer({
           onOpenChange={setMeasurementOpen}
           memberId={member.id}
           memberName={profile?.full_name}
+        />
+        <EditProfileDialog
+          open={editProfileOpen}
+          onOpenChange={setEditProfileOpen}
+          member={member}
+          profile={profile}
         />
       </SheetContent>
     </Sheet>

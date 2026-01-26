@@ -56,7 +56,7 @@ export default function BenefitTracking() {
 
       // Transform the result to match expected format
       return (data || [])
-        .filter((row: any) => row.is_active) // Only active members
+        .filter((row: any) => row.member_status === 'active') // Only active members (using new RPC field)
         .map((row: any) => ({
           id: row.id,
           member_code: row.member_code,

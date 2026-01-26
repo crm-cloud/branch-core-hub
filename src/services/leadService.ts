@@ -123,7 +123,7 @@ export const leadService = {
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .insert({
-        full_name: lead.name || 'Unknown',
+        full_name: lead.full_name || 'Unknown',
         phone: lead.phone || null,
         email: profileEmail,
       } as any)
