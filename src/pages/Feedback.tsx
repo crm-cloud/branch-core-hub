@@ -25,13 +25,15 @@ export default function FeedbackPage() {
     queryKey: ['feedback', branchId, statusFilter],
     queryFn: async () => {
       if (!branchId) return [];
+      
+      // First get feedback with basic relations
       let query = supabase
         .from('feedback')
         .select(`
           *,
-          members(member_code, profiles:user_id(full_name)),
-          employees(profiles:user_id(full_name)),
-          trainers(profiles:user_id(full_name))
+          members(member_code, user_id),
+          employees(user_id),
+          trainers(user_id)
         `)
         .eq('branch_id', branchId)
         .order('created_at', { ascending: false });
@@ -42,7 +44,29 @@ export default function FeedbackPage() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      
+      // Get all unique user_ids and fetch profiles
+      const userIds = new Set<string>();
+      (data || []).forEach((f: any) => {
+        if (f.members?.user_id) userIds.add(f.members.user_id);
+        if (f.employees?.user_id) userIds.add(f.employees.user_id);
+        if (f.trainers?.user_id) userIds.add(f.trainers.user_id);
+      });
+      
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', Array.from(userIds));
+      
+      const profileMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
+      
+      // Enrich feedback with profile names
+      return (data || []).map((f: any) => ({
+        ...f,
+        member_name: f.members?.user_id ? profileMap.get(f.members.user_id) : null,
+        trainer_name: f.trainers?.user_id ? profileMap.get(f.trainers.user_id) : null,
+        employee_name: f.employees?.user_id ? profileMap.get(f.employees.user_id) : null,
+      }));
     },
     enabled: !!branchId,
   });
@@ -195,7 +219,7 @@ export default function FeedbackPage() {
                     <TableRow key={feedback.id}>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{feedback.members?.profiles?.full_name || 'Unknown'}</p>
+                          <p className="font-medium">{feedback.member_name || 'Unknown'}</p>
                           <p className="text-xs text-muted-foreground">{feedback.members?.member_code}</p>
                         </div>
                       </TableCell>
@@ -216,13 +240,13 @@ export default function FeedbackPage() {
                         <p className="text-sm truncate">{feedback.feedback_text || '-'}</p>
                       </TableCell>
                       <TableCell>
-                        {feedback.trainers?.profiles?.full_name && (
-                          <p className="text-xs">Trainer: {feedback.trainers.profiles.full_name}</p>
+                        {feedback.trainer_name && (
+                          <p className="text-xs">Trainer: {feedback.trainer_name}</p>
                         )}
-                        {feedback.employees?.profiles?.full_name && (
-                          <p className="text-xs">Staff: {feedback.employees.profiles.full_name}</p>
+                        {feedback.employee_name && (
+                          <p className="text-xs">Staff: {feedback.employee_name}</p>
                         )}
-                        {!feedback.trainers && !feedback.employees && '-'}
+                        {!feedback.trainer_name && !feedback.employee_name && '-'}
                       </TableCell>
                       <TableCell>{getStatusBadge(feedback.status)}</TableCell>
                       <TableCell>
