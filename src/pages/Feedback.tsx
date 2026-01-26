@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
-import { Star, MessageSquare, CheckCircle, Clock, Eye } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
@@ -184,6 +185,7 @@ export default function FeedbackPage() {
                     <TableHead>Feedback</TableHead>
                     <TableHead>Related To</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Google</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -223,6 +225,19 @@ export default function FeedbackPage() {
                         {!feedback.trainers && !feedback.employees && '-'}
                       </TableCell>
                       <TableCell>{getStatusBadge(feedback.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={feedback.is_approved_for_google || false}
+                            onCheckedChange={(checked) => 
+                              updateStatus.mutate({ id: feedback.id, isApprovedForGoogle: checked })
+                            }
+                          />
+                          {feedback.is_approved_for_google && (
+                            <Globe className="h-4 w-4 text-green-600" />
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {format(new Date(feedback.created_at), 'dd MMM yyyy')}
                       </TableCell>
@@ -245,7 +260,7 @@ export default function FeedbackPage() {
                   ))}
                   {feedbackList.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
                         No feedback recorded yet
                       </TableCell>

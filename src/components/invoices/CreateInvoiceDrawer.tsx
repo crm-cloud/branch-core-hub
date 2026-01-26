@@ -162,12 +162,12 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
           {/* Member Selection */}
           <div className="space-y-2">
             <Label>Member (optional)</Label>
-            <Select value={memberId} onValueChange={setMemberId}>
+            <Select value={memberId || "walk-in"} onValueChange={(val) => setMemberId(val === "walk-in" ? "" : val)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select member or leave for walk-in" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Walk-in Customer</SelectItem>
+                <SelectItem value="walk-in">Walk-in Customer</SelectItem>
                 {members.map((member: any) => (
                   <SelectItem key={member.id} value={member.id}>
                     {member.profiles?.full_name || member.member_code}

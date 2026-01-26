@@ -4842,6 +4842,7 @@ export type Database = {
           full_name: string
           id: string
           member_code: string
+          member_status: string
           phone: string
         }[]
       }

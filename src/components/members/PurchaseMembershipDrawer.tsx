@@ -529,19 +529,19 @@ export function PurchaseMembershipDrawer({
                         <p className="text-xs text-muted-foreground">This plan includes a free locker</p>
                       </div>
                     </div>
-                    <Select value={selectedLockerId} onValueChange={setSelectedLockerId}>
+                    <Select value={selectedLockerId || "none"} onValueChange={(val) => setSelectedLockerId(val === "none" ? "" : val)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a locker (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No locker needed</SelectItem>
+                        <SelectItem value="none">No locker needed</SelectItem>
                         {availableLockers.map((locker: any) => (
                           <SelectItem key={locker.id} value={locker.id}>
                             🔐 {locker.locker_number} {locker.size ? `(${locker.size})` : ''}
                           </SelectItem>
                         ))}
                         {availableLockers.length === 0 && (
-                          <SelectItem value="" disabled>
+                          <SelectItem value="no-lockers" disabled>
                             No lockers available
                           </SelectItem>
                         )}
