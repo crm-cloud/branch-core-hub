@@ -93,6 +93,31 @@ export default function FeedbackPage() {
     },
   });
 
+  // Mock function to prepare review data for Google Business Profile API
+  const syncToGoogleMyBusiness = async (reviewId: string, feedback: any) => {
+    const reviewData = {
+      reviewId,
+      starRating: feedback.rating,
+      comment: feedback.feedback_text,
+      reviewerName: feedback.member_name || 'Anonymous',
+      createTime: feedback.created_at,
+      // Google Business Profile API endpoint would be:
+      // POST https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews/{reviewId}/reply
+    };
+    
+    console.log('Prepared for Google Business sync:', reviewData);
+    toast.success('Review prepared for Google Business sync');
+    
+    // Update the database to mark as published
+    await supabase
+      .from('feedback')
+      .update({ published_to_google_at: new Date().toISOString() })
+      .eq('id', reviewId);
+    
+    queryClient.invalidateQueries({ queryKey: ['feedback'] });
+    return reviewData;
+  };
+
   const stats = {
     total: feedbackList.length,
     avgRating: feedbackList.length

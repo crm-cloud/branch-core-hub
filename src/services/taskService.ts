@@ -121,20 +121,27 @@ export async function updateTask(id: string, updates: Partial<Task>) {
   return data;
 }
 
+export async function assignTask(taskId: string, userId: string | null, assignedBy: string) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .update({ 
+      assigned_to: userId === 'unassigned' ? null : userId,
+      assigned_by: assignedBy 
+    })
+    .eq('id', taskId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function updateTaskStatus(id: string, status: TaskStatus) {
   const updates: Partial<Task> = { status };
   if (status === 'completed') {
     updates.completed_at = new Date().toISOString();
   }
   return updateTask(id, updates);
-}
-
-export async function assignTask(id: string, userId: string, assignedBy: string) {
-  return updateTask(id, {
-    assigned_to: userId,
-    assigned_by: assignedBy,
-    status: 'pending',
-  });
 }
 
 export async function deleteTask(id: string) {

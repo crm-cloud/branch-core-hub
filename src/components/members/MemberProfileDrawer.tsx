@@ -24,7 +24,7 @@ import { AssignTrainerDrawer } from './AssignTrainerDrawer';
 import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
 import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
-import { EditProfileDialog } from './EditProfileDialog';
+import { EditProfileDrawer } from './EditProfileDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 
 interface MemberProfileDrawerProps {
@@ -291,10 +291,18 @@ export function MemberProfileDrawer({
           <div className="grid grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-4 text-center">
-                <div className={`text-2xl font-bold ${activeMembership ? getDaysLeftColor(daysLeft) : 'text-muted-foreground'}`}>
-                  {activeMembership ? (daysLeft > 0 ? daysLeft : 0) : '--'}
-                </div>
-                <p className="text-xs text-muted-foreground">Days Left</p>
+                {activeMembership ? (
+                  daysLeft > 0 ? (
+                    <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
+                  ) : (
+                    <div className="text-lg font-bold text-destructive">EXPIRED</div>
+                  )
+                ) : (
+                  <div className="text-sm font-bold text-muted-foreground">No Plan</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {activeMembership && daysLeft <= 0 ? 'Plan Status' : 'Days Left'}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -318,12 +326,12 @@ export function MemberProfileDrawer({
           {/* Quick Actions - Row 1 */}
           <div className="flex gap-2">
             <Button 
-              variant={activeMembership ? 'outline' : 'default'} 
+              variant={activeMembership && daysLeft > 0 ? 'outline' : 'default'} 
               className="flex-1"
               onClick={() => { onOpenChange(false); onPurchaseMembership(); }}
             >
               <CreditCard className="h-4 w-4 mr-2" />
-              {activeMembership ? 'Renew Plan' : 'Add Plan'}
+              {activeMembership && daysLeft > 0 ? 'Upgrade Plan' : (activeMembership && daysLeft <= 0 ? 'Renew Plan' : 'Add Plan')}
             </Button>
             <Button 
               variant="outline" 
@@ -858,7 +866,7 @@ export function MemberProfileDrawer({
           memberId={member.id}
           memberName={profile?.full_name}
         />
-        <EditProfileDialog
+        <EditProfileDrawer
           open={editProfileOpen}
           onOpenChange={setEditProfileOpen}
           member={member}

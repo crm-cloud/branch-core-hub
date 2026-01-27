@@ -166,10 +166,10 @@ export function AssignTrainerDrawer({
             <RadioGroup value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
               <div className="space-y-3">
                 {/* No Trainer Option */}
-                <Card className={`cursor-pointer transition-colors ${!selectedTrainerId ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                <Card className={`cursor-pointer transition-colors ${selectedTrainerId === 'none' || !selectedTrainerId ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-3">
-                      <RadioGroupItem value="" id="no-trainer" />
+                      <RadioGroupItem value="none" id="no-trainer" />
                       <Label htmlFor="no-trainer" className="flex-1 cursor-pointer">
                         <span className="font-medium">No Trainer Assigned</span>
                         <p className="text-sm text-muted-foreground">Member will not have a dedicated trainer</p>

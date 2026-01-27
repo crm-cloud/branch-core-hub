@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -210,19 +210,19 @@ export default function EquipmentMaintenancePage() {
                                   <SelectItem value="retired">Retired</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <Dialog open={maintenanceDialogOpen && selectedEquipment === item.id} onOpenChange={(open) => {
+                              <Sheet open={maintenanceDialogOpen && selectedEquipment === item.id} onOpenChange={(open) => {
                                 setMaintenanceDialogOpen(open);
                                 if (open) setSelectedEquipment(item.id);
                               }}>
-                                <DialogTrigger asChild>
+                                <SheetTrigger asChild>
                                   <Button size="sm" variant="outline">
                                     <Wrench className="h-3 w-3" />
                                   </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Log Maintenance</DialogTitle>
-                                  </DialogHeader>
+                                </SheetTrigger>
+                                <SheetContent>
+                                  <SheetHeader>
+                                    <SheetTitle>Log Maintenance - {item.name}</SheetTitle>
+                                  </SheetHeader>
                                   <form
                                     onSubmit={(e) => {
                                       e.preventDefault();
@@ -236,7 +236,7 @@ export default function EquipmentMaintenancePage() {
                                         cost: Number(formData.get('cost')) || undefined,
                                       });
                                     }}
-                                    className="space-y-4"
+                                    className="space-y-4 mt-6"
                                   >
                                     <div className="space-y-2">
                                       <Label htmlFor="maintenanceType">Maintenance Type</Label>
@@ -271,8 +271,8 @@ export default function EquipmentMaintenancePage() {
                                       {createMaintenanceMutation.isPending ? 'Saving...' : 'Log Maintenance'}
                                     </Button>
                                   </form>
-                                </DialogContent>
-                              </Dialog>
+                                </SheetContent>
+                              </Sheet>
                             </div>
                           </TableCell>
                         </TableRow>

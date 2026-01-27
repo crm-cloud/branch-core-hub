@@ -6,15 +6,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, CheckSquare, AlertCircle, User } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchTasks, updateTaskStatus, getTaskStats, type TaskStatus } from '@/services/taskService';
+import { fetchTasks, updateTaskStatus, getTaskStats, assignTask, type TaskStatus } from '@/services/taskService';
+import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddTaskDrawer } from '@/components/tasks/AddTaskDrawer';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TasksPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['tasks'],
@@ -26,12 +29,45 @@ export default function TasksPage() {
     queryFn: () => getTaskStats(),
   });
 
+  // Fetch staff users for assignment dropdown
+  const { data: staffUsers = [] } = useQuery({
+    queryKey: ['staff-users-for-tasks'],
+    queryFn: async () => {
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .in('role', ['trainer', 'staff', 'manager', 'admin', 'owner']);
+      
+      if (!roles?.length) return [];
+      
+      const userIds = [...new Set(roles.map(r => r.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', userIds);
+      
+      return profiles || [];
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => updateTaskStatus(id, status),
     onSuccess: () => {
       toast.success('Task updated');
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task-stats'] });
+    },
+  });
+
+  const assignTaskMutation = useMutation({
+    mutationFn: ({ taskId, userId }: { taskId: string; userId: string }) => 
+      assignTask(taskId, userId, user?.id || ''),
+    onSuccess: () => {
+      toast.success('Task assigned');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: () => {
+      toast.error('Failed to assign task');
     },
   });
 
@@ -169,14 +205,22 @@ export default function TasksPage() {
                           <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
                         </TableCell>
                         <TableCell>
-                          {task.assignee ? (
-                            <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              {task.assignee.full_name || task.assignee.email}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">Unassigned</span>
-                          )}
+                          <Select
+                            value={task.assigned_to || 'unassigned'}
+                            onValueChange={(value) => assignTaskMutation.mutate({ taskId: task.id, userId: value })}
+                          >
+                            <SelectTrigger className="w-36 h-8">
+                              <SelectValue placeholder="Assign..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {staffUsers.map((staff: any) => (
+                                <SelectItem key={staff.id} value={staff.id}>
+                                  {staff.full_name || staff.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           {task.due_date ? (
