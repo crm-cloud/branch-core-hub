@@ -16,10 +16,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { 
   CreditCard, MessageSquare, Mail, Phone,
-  Settings, CheckCircle, XCircle, Save
+  Settings, CheckCircle, XCircle, Save, Globe
 } from 'lucide-react';
 
-type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp';
+type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business';
+
+const GOOGLE_PROVIDERS = [
+  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+];
 
 const PAYMENT_PROVIDERS = [
   { id: 'razorpay', name: 'Razorpay', logo: '🔵' },
@@ -134,14 +138,21 @@ export function IntegrationSettings() {
           icon={MessageSquare}
           variant={activeWhatsApp > 0 ? 'success' : 'default'}
         />
+        <StatCard
+          title="Google Business"
+          value={getIntegrationsByType('google_business').filter((i: any) => i.is_active).length}
+          icon={Globe}
+          variant={getIntegrationsByType('google_business').filter((i: any) => i.is_active).length > 0 ? 'success' : 'default'}
+        />
       </div>
 
       <Tabs defaultValue="payment" className="space-y-4">
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
           <TabsTrigger value="payment">Payment</TabsTrigger>
           <TabsTrigger value="sms">SMS</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="google">Google</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payment" className="space-y-4">
@@ -333,6 +344,61 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="google" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                Google Business Profile
+              </CardTitle>
+              <CardDescription>
+                Sync approved reviews to your Google Maps listing
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                {GOOGLE_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('google_business').find(
+                    (i: any) => i.provider === provider.id
+                  );
+                  return (
+                    <Card key={provider.id}>
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <Globe className="h-8 w-8 text-blue-500" />
+                            <div>
+                              <h3 className="font-semibold">{provider.name}</h3>
+                              <p className="text-sm text-muted-foreground">{provider.description}</p>
+                            </div>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'}>
+                            {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                            {config?.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <div className="mt-4 p-3 bg-muted/50 rounded-md">
+                          <p className="text-sm text-muted-foreground">
+                            Configure Google Business Profile API to automatically sync approved reviews from the Feedback page to your Google Maps listing.
+                          </p>
+                        </div>
+                        <Button 
+                          className="w-full mt-4" 
+                          variant={config?.is_active ? 'outline' : 'default'}
+                          onClick={() => openConfig('google_business', provider.id)}
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          {config ? 'Configure' : 'Setup'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <IntegrationConfigSheet 
@@ -431,6 +497,12 @@ function IntegrationConfigSheet({
       return {
         config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
         credentials: ['access_token', 'api_key'],
+      };
+    }
+    if (type === 'google_business') {
+      return {
+        config: ['account_id', 'location_id', 'auto_sync_approved'],
+        credentials: ['api_key', 'client_id', 'client_secret'],
       };
     }
     return { config: [], credentials: [] };
