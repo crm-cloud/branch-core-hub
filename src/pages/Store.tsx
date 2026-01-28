@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingBag, Package, ShoppingCart, DollarSign, TrendingUp, ExternalLink } from 'lucide-react';
+import { ShoppingBag, Package, ShoppingCart, DollarSign, TrendingUp, ExternalLink, AlertTriangle, Boxes } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
@@ -59,6 +59,31 @@ export default function StorePage() {
         .limit(100);
       if (error) throw error;
       return data;
+    },
+  });
+
+  // Fetch inventory stats
+  const { data: inventoryStats } = useQuery({
+    queryKey: ['store-inventory-stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('inventory')
+        .select(`
+          quantity,
+          min_quantity,
+          products(price, name)
+        `);
+      
+      if (error) throw error;
+      
+      const totalValue = data?.reduce((sum, i: any) => {
+        return sum + ((i.quantity || 0) * (i.products?.price || 0));
+      }, 0) || 0;
+      
+      const lowStockItems = data?.filter((i: any) => (i.quantity || 0) < (i.min_quantity || 10)).length || 0;
+      const totalItems = data?.reduce((sum, i: any) => sum + (i.quantity || 0), 0) || 0;
+      
+      return { totalValue, lowStockItems, totalItems };
     },
   });
 
@@ -126,13 +151,34 @@ export default function StorePage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Products</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{products.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <Boxes className="h-4 w-4" />
+                Stock Value
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-500">
+                ₹{(inventoryStats?.totalValue || 0).toLocaleString()}
+              </div>
+              {inventoryStats?.lowStockItems && inventoryStats.lowStockItems > 0 ? (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {inventoryStats.lowStockItems} low stock
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">{inventoryStats?.totalItems || 0} items in stock</p>
+              )}
             </CardContent>
           </Card>
           <Card>
