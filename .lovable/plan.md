@@ -1,245 +1,393 @@
 
-
-# Comprehensive Audit & Fix Plan for Incline Gym App
+# Comprehensive Audit & Real-time Integration Plan for Incline Gym
 
 ## Executive Summary
-This audit identified 7 key issues across Feedback, Membership, Member Management, Task Assignment, Equipment Maintenance, and UI accessibility. Several issues have already been partially fixed in previous iterations.
+
+After thorough audit, I've identified which features need real-time Supabase integration vs. what is already properly implemented. The system has excellent database infrastructure but several UI components need enhancement to fully utilize the data.
 
 ---
 
-## Issue 1: Feedback Page - PARTIALLY FIXED
+## Current State Analysis
 
-### Current Status
-The Supabase 400 error was fixed in the last session by implementing a two-step query pattern:
-1. Fetch feedback with basic relations (user_id only)
-2. Fetch profiles separately and merge
+### Already Working (No Changes Needed)
 
-### Remaining Work: Google Sync Mock Integration
-**File:** `src/pages/Feedback.tsx`
-
-Add a mock `syncToGoogleMyBusiness` function that prepares data for the Google Business Profile API:
-
-```typescript
-// Add after the updateStatus mutation (around line 94)
-const syncToGoogleMyBusiness = async (reviewId: string, feedback: any) => {
-  // Mock implementation - prepares data for Google Business API
-  const reviewData = {
-    reviewId,
-    starRating: feedback.rating,
-    comment: feedback.feedback_text,
-    reviewerName: feedback.member_name || 'Anonymous',
-    createTime: feedback.created_at,
-    // Google Business Profile API endpoint would be:
-    // POST https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews/{reviewId}/reply
-  };
-  
-  console.log('Prepared for Google sync:', reviewData);
-  toast.success('Review prepared for Google Business sync');
-  return reviewData;
-};
-```
-
-**Enhancement:** When "Publish to Google" toggle is enabled, call the sync function.
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Store/POS Sales | ✅ **Fully Integrated** | `src/pages/Store.tsx` fetches from `pos_sales` and `ecommerce_orders` tables with real revenue calculation |
+| Equipment Management | ✅ **Fully Integrated** | `src/pages/Equipment.tsx` and `AddEquipmentDrawer.tsx` use Supabase with serial number, purchase date, service tracking |
+| Branch Manager Assignment | ✅ **Fully Integrated** | `EditBranchDrawer.tsx` fetches managers from `user_roles` table filtered by `['manager', 'admin', 'owner']` |
+| Notification Preferences | ✅ **Fully Integrated** | `NotificationSettings.tsx` saves to `notification_preferences` table |
+| Notification Bell | ✅ **Fully Integrated** | `NotificationBell.tsx` reads from `notifications` table with 30-second refresh |
+| Dashboard Revenue | ✅ **Fully Integrated** | `Dashboard.tsx` fetches monthly revenue from `payments` table |
+| Stock Movements | ✅ **Fully Integrated** | `stockMovementService.ts` tracks all inventory changes |
+| Feedback + Google Toggle | ✅ **Fully Integrated** | `Feedback.tsx` has `syncToGoogleMyBusiness` function and database toggle |
 
 ---
 
-## Issue 2: Clean Membership Logic - ALREADY FIXED
+## Issues Requiring Implementation
 
-### Current Status
-The membership status is now calculated dynamically in `Members.tsx`:
+### Issue 1: Analytics Page - "Coming Soon" Placeholder
 
-```typescript
-// Lines 93-103: Dynamic status calculation
-const activeMembership = m.memberships?.find((ms: any) => {
-  const now = new Date();
-  const start = new Date(ms.start_date);
-  const end = new Date(ms.end_date);
-  return ms.status === 'active' && now >= start && now <= end;
-});
-return {
-  ...m,
-  status: activeMembership ? 'active' : 'inactive',
-};
-```
+**Current State:** `src/pages/Analytics.tsx` shows "Charts coming soon" placeholder (line 84-88)
 
-### Remaining Work: Expiration Display Enhancement
-**File:** `src/components/members/MemberProfileDrawer.tsx`
+**Problem:** Real-time data is fetched (members, payments, invoices) but charts are not rendered.
 
-When `daysLeft <= 0`, enhance the UI to:
-1. Show "No Active Plan" instead of "0" days
-2. Hide plan name and show "EXPIRED" badge in red
-3. Change "Renew Plan" button to "Buy Plan"
+**Solution:** Replace placeholder with Recharts visualizations:
 
-**Lines to modify:** 293-298 (Quick Stats card)
+1. **Monthly Revenue Chart** - Line/Bar chart from `payments` table grouped by month
+2. **Membership Growth Chart** - Area chart from `members` table grouped by join date
+3. **Collection Rate Gauge** - Shows `amount_paid` vs `total_amount` ratio
 
-```typescript
-// Replace current daysLeft display
-{activeMembership ? (
-  daysLeft > 0 ? (
-    <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
-  ) : (
-    <div className="text-2xl font-bold text-destructive">EXPIRED</div>
-  )
-) : (
-  <div className="text-lg font-bold text-muted-foreground">No Plan</div>
-)}
-```
-
-### Duplicate Prevention / Upgrade Plan
-**File:** `src/components/members/MemberProfileDrawer.tsx` (Lines 319-327)
-
-When member has an active plan, disable "Add Plan" and show "Upgrade Plan":
-- Check if `activeMembership` exists and has `daysLeft > 0`
-- If true: Show "Upgrade Plan" button (calculates pro-rated value)
-- If false: Show "Add Plan" button
+**Implementation:**
+- Import `BarChart, LineChart, AreaChart, ResponsiveContainer` from `recharts`
+- Add 3 new queries for chart data:
+  - `monthly-revenue`: Group payments by month for last 12 months
+  - `membership-growth`: Count members by join month
+  - `collection-stats`: Calculate paid vs total ratios
 
 ---
 
-## Issue 3: Member Management - Edit Side Drawer (NOT Dialog)
+### Issue 2: Google Business Profile Integration Settings
 
-### Current Status
-`EditProfileDialog.tsx` uses a Dialog component (lines 68-119). Per project memory, the system enforces a **strict Side Drawer policy** for all edit workflows.
+**Current State:** `IntegrationSettings.tsx` has Payment, SMS, Email, WhatsApp tabs but **NO Google Business tab**
 
-### Required Changes
+**Problem:** Users cannot configure Google Business Profile API credentials
 
-**File:** `src/components/members/EditProfileDialog.tsx`
+**Solution:** Add 5th tab "Google" to integration settings:
 
-Convert Dialog to Sheet (Side Drawer):
-1. Replace `Dialog` imports with `Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter`
-2. Add missing fields: Emergency Contact Name, Emergency Contact Phone
-3. Add Avatar Upload component integration
-
-**Rename file to:** `src/components/members/EditProfileDrawer.tsx`
-
-**New structure:**
 ```typescript
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { MemberAvatarUpload } from './MemberAvatarUpload';
-
-// Add fields for:
-// - full_name (existing)
-// - phone (existing)
-// - email (existing)
-// - emergency_contact_name (NEW)
-// - emergency_contact_phone (NEW)
-// - Avatar upload component (NEW)
+// Add to PROVIDERS at top of file
+const GOOGLE_PROVIDERS = [
+  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+];
 ```
 
-### Avatar Storage
-Currently using `avatars` bucket. Consider creating a dedicated `member-avatars` bucket for facial recognition integration:
-
-**Database Migration:**
-```sql
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('member-avatars', 'member-avatars', false)
-ON CONFLICT (id) DO NOTHING;
-```
-
-**Update MemberAvatarUpload.tsx (line 66):** Change bucket from `'avatars'` to `'member-avatars'`
+**Tab Content:**
+- Business Account ID input
+- Location ID input  
+- API Key / OAuth credentials
+- Toggle to auto-sync approved reviews
+- Webhook URL for incoming Google reviews
 
 ---
 
-## Issue 4: Task Management - Assignment Dropdown
+### Issue 3: Inventory ↔ Store Revenue Sync Visibility
 
-### Current Status (ALREADY WORKING)
-The `AddTaskDrawer.tsx` already has proper assignment functionality:
-- Lines 22-45: Fetches staff users filtered by roles (trainer, staff, manager, admin, owner)
-- Lines 138-148: "Assign To" dropdown populated with staff users
-- Line 78: `assignedTo` is properly passed to createTask mutation
+**Current State:** Stock movements are tracked in `stock_movements` table but Store page doesn't show inventory levels
 
-### Required Enhancement
-**File:** `src/pages/Tasks.tsx`
+**Problem:** The Store page (image_cdecf0.jpg) shows 0 Stock Value because it's not querying `inventory` table
 
-Add ability to reassign tasks directly from the table (not just when creating):
+**Solution:** Add inventory stats to Store page:
 
-1. Add an "Assign To" column with inline dropdown
-2. Create a mutation to update assignment:
+1. Query `inventory` table joined with `products` to get current stock levels
+2. Calculate total stock value: `SUM(inventory.quantity * products.price)`
+3. Show Low Stock alerts for items below minimum threshold
+4. Link POS sales to inventory deduction (already partially implemented in `stockMovementService`)
 
+**Implementation:**
 ```typescript
-const assignTaskMutation = useMutation({
-  mutationFn: ({ taskId, userId }: { taskId: string; userId: string }) => 
-    assignTask(taskId, userId, user?.id || ''),
-  onSuccess: () => {
-    toast.success('Task assigned');
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+// Add to Store.tsx
+const { data: inventoryStats } = useQuery({
+  queryKey: ['store-inventory-stats'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('inventory')
+      .select('quantity, products(price, name)');
+    return {
+      totalValue: data?.reduce((sum, i) => sum + (i.quantity * i.products?.price || 0), 0) || 0,
+      lowStockItems: data?.filter(i => i.quantity < 10).length || 0,
+    };
   },
 });
 ```
 
-3. Fetch assignable staff users (same query as AddTaskDrawer)
-4. Add inline Select dropdown in TableCell for "Assigned To" column
+---
+
+### Issue 4: Real-time Notification Engine Enhancement
+
+**Current State:** `NotificationBell.tsx` reads existing notifications but doesn't create them automatically
+
+**Problem:** Events like "Expiring Memberships", "Overdue Tasks", "New Feedback" don't auto-generate notifications
+
+**Solution:** Create notification generation triggers:
+
+**Option A: Database Triggers (Recommended)**
+```sql
+-- Trigger on feedback insert
+CREATE FUNCTION notify_new_feedback() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO notifications (user_id, title, message, type, category)
+  SELECT user_id, 'New Feedback Received', 
+         'Rating: ' || NEW.rating || ' stars', 
+         'info', 'feedback'
+  FROM staff_branches WHERE branch_id = NEW.branch_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Option B: Edge Function (Scheduled)**
+- Run daily check for expiring memberships (7 days)
+- Check overdue invoices
+- Check overdue tasks
+- Insert notifications for each alert
 
 ---
 
-## Issue 5: Fix UI Errors
+### Issue 5: Dashboard Revenue → POS Integration
 
-### A. RadioGroup value="" Error
-**File:** `src/components/members/AssignTrainerDrawer.tsx` (Line 172)
+**Current State:** Dashboard shows monthly revenue from `payments` table only
 
-**Current:**
-```tsx
-<RadioGroupItem value="" id="no-trainer" />
-```
+**Problem:** POS sales revenue may not be reflected in dashboard if not linked to payments
 
-**Fix:**
-```tsx
-<RadioGroupItem value="none" id="no-trainer" />
-```
+**Solution:** Ensure POS sales create corresponding payment records:
 
-Also update the logic that handles this value to treat "none" as null.
-
-### B. DialogTitle Accessibility
-All Dialog components currently have DialogTitle - VERIFIED CORRECT.
-
-The EquipmentMaintenance.tsx Dialog at line 222 has DialogTitle at line 224.
-
----
-
-## Issue 6: Equipment Maintenance - Dialog vs Side Drawer
-
-### Current Status
-**File:** `src/pages/EquipmentMaintenance.tsx` (Lines 213-275)
-
-Uses Dialog for "Log Maintenance" which violates the project's UI drawer policy.
-
-### Required Change
-Convert the maintenance logging Dialog to a Side Drawer:
-
-1. Replace `Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger` with Sheet components
-2. Use SheetTrigger instead of DialogTrigger
-3. Maintain the same form functionality
+In `src/services/storeService.ts` `createPOSSale` function, verify:
+1. Invoice is created ✅ (already done)
+2. Payment record is created ✅ (already done based on code review)
+3. Finance dashboard query includes POS payment types
 
 ---
 
 ## Implementation Summary
 
-| Issue | Priority | Complexity | Status |
-|-------|----------|------------|--------|
-| Feedback Google Sync | Low | Low | Add mock function |
-| Membership Expiration UI | Medium | Low | Enhance display |
-| Edit Profile → Drawer | High | Medium | Convert Dialog to Sheet |
-| Task Reassignment | Medium | Medium | Add inline dropdown |
-| RadioGroup value="" | High | Low | Change to "none" |
-| Maintenance Dialog → Drawer | Medium | Low | Convert to Sheet |
-| Member-avatars bucket | Low | Low | Create storage bucket |
+| Task | Complexity | Priority | Files |
+|------|------------|----------|-------|
+| Analytics Recharts | Medium | High | `src/pages/Analytics.tsx` |
+| Google Business Integration Tab | Medium | Medium | `src/components/settings/IntegrationSettings.tsx` |
+| Store Inventory Stats | Low | Medium | `src/pages/Store.tsx` |
+| Auto-notification Engine | High | Low | Database trigger OR Edge function |
+| Verify POS → Payment sync | Low | High | `src/services/storeService.ts` (audit only) |
+
+---
+
+## Technical Implementation Details
+
+### 1. Analytics Page Enhancement
+
+**Add these imports:**
+```typescript
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, Legend } from 'recharts';
+```
+
+**New queries:**
+```typescript
+// Monthly revenue for last 12 months
+const { data: revenueByMonth = [] } = useQuery({
+  queryKey: ['analytics-revenue-by-month'],
+  queryFn: async () => {
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = subMonths(new Date(), i);
+      const monthStart = startOfMonth(date).toISOString();
+      const monthEnd = endOfMonth(date).toISOString();
+      
+      const { data } = await supabase
+        .from('payments')
+        .select('amount')
+        .gte('payment_date', monthStart)
+        .lte('payment_date', monthEnd)
+        .eq('status', 'completed');
+      
+      months.push({
+        name: format(date, 'MMM'),
+        revenue: data?.reduce((sum, p) => sum + p.amount, 0) || 0,
+      });
+    }
+    return months;
+  },
+});
+
+// Membership growth
+const { data: memberGrowth = [] } = useQuery({
+  queryKey: ['analytics-member-growth'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('members')
+      .select('created_at')
+      .order('created_at');
+    
+    // Group by month
+    const grouped = data?.reduce((acc: any, m) => {
+      const month = format(new Date(m.created_at), 'yyyy-MM');
+      acc[month] = (acc[month] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return Object.entries(grouped || {}).slice(-12).map(([month, count]) => ({
+      name: format(new Date(month + '-01'), 'MMM yy'),
+      members: count,
+    }));
+  },
+});
+```
+
+**Chart Components:**
+```tsx
+<div className="grid gap-6 md:grid-cols-2">
+  <Card>
+    <CardHeader><CardTitle>Monthly Revenue</CardTitle></CardHeader>
+    <CardContent className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={revenueByMonth}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip />
+          <Bar dataKey="revenue" fill="#8884d8" />
+        </BarChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+  
+  <Card>
+    <CardHeader><CardTitle>Membership Growth</CardTitle></CardHeader>
+    <CardContent className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={memberGrowth}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip />
+          <Area type="monotone" dataKey="members" fill="#82ca9d" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </CardContent>
+  </Card>
+</div>
+```
+
+---
+
+### 2. Google Business Integration Tab
+
+**Add to IntegrationSettings.tsx:**
+
+```typescript
+// Add to provider arrays
+const GOOGLE_PROVIDERS = [
+  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+];
+
+// Add 5th tab
+<TabsTrigger value="google">Google</TabsTrigger>
+
+<TabsContent value="google" className="space-y-4">
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Globe className="h-5 w-5" />
+        Google Business Profile
+      </CardTitle>
+      <CardDescription>
+        Sync approved reviews to your Google Maps listing
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      {GOOGLE_PROVIDERS.map((provider) => {
+        const config = getIntegrationsByType('google_business').find(
+          (i: any) => i.provider === provider.id
+        );
+        return (
+          <Card key={provider.id}>
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold">{provider.name}</h3>
+                  <p className="text-sm text-muted-foreground">{provider.description}</p>
+                </div>
+                <Badge variant={config?.is_active ? 'default' : 'secondary'}>
+                  {config?.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+              <Button 
+                className="w-full mt-4" 
+                variant="outline"
+                onClick={() => openConfig('google_business' as IntegrationType, provider.id)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Configure
+              </Button>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </CardContent>
+  </Card>
+</TabsContent>
+```
+
+**Update config fields:**
+```typescript
+if (type === 'google_business') {
+  return {
+    config: ['account_id', 'location_id', 'auto_sync_approved'],
+    credentials: ['api_key', 'client_id', 'client_secret'],
+  };
+}
+```
+
+---
+
+### 3. Store Inventory Stats Card
+
+**Add to Store.tsx:**
+
+```typescript
+// Add inventory stats query
+const { data: inventoryStats } = useQuery({
+  queryKey: ['store-inventory-stats'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select(`
+        quantity,
+        products(price, name)
+      `);
+    
+    if (error) throw error;
+    
+    const totalValue = data?.reduce((sum, i) => {
+      return sum + ((i.quantity || 0) * (i.products?.price || 0));
+    }, 0) || 0;
+    
+    const lowStockItems = data?.filter(i => (i.quantity || 0) < 10).length || 0;
+    
+    return { totalValue, lowStockItems };
+  },
+});
+
+// Add stat card
+<Card>
+  <CardHeader className="pb-2">
+    <CardTitle className="text-sm font-medium text-muted-foreground">Stock Value</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="text-2xl font-bold text-blue-500">
+      ₹{(inventoryStats?.totalValue || 0).toLocaleString()}
+    </div>
+    {inventoryStats?.lowStockItems > 0 && (
+      <p className="text-xs text-destructive">{inventoryStats.lowStockItems} items low stock</p>
+    )}
+  </CardContent>
+</Card>
+```
 
 ---
 
 ## Files to Modify
 
-1. **src/pages/Feedback.tsx** - Add mock Google sync function
-2. **src/components/members/EditProfileDialog.tsx** - Rename to EditProfileDrawer.tsx, convert to Sheet, add fields
-3. **src/components/members/MemberProfileDrawer.tsx** - Update import, enhance expired state display
-4. **src/components/members/AssignTrainerDrawer.tsx** - Fix RadioGroup value=""
-5. **src/pages/Tasks.tsx** - Add inline assignment dropdown
-6. **src/pages/EquipmentMaintenance.tsx** - Convert Dialog to Sheet
-7. **src/components/members/MemberAvatarUpload.tsx** - Update bucket to 'member-avatars'
+1. **`src/pages/Analytics.tsx`** - Replace "Coming Soon" with real Recharts charts
+2. **`src/components/settings/IntegrationSettings.tsx`** - Add Google Business Profile tab
+3. **`src/pages/Store.tsx`** - Add inventory stock value stat card
+4. **Database Migration** - Optional: Create notification trigger for auto-alerts
 
-## New Files
+## No Changes Needed (Already Working)
 
-1. None (renaming EditProfileDialog → EditProfileDrawer)
-
-## Database Migrations
-
-1. Create `member-avatars` storage bucket with RLS policies
-
+- ✅ Equipment Management (AddEquipmentDrawer fully integrated)
+- ✅ Branch Manager Assignment (EditBranchDrawer uses user_roles table correctly)
+- ✅ Notification Settings (saves to notification_preferences)
+- ✅ Notification Bell (reads from notifications with 30s refresh)
+- ✅ Dashboard Stats (all real-time from Supabase)
+- ✅ Feedback Google Toggle (syncToGoogleMyBusiness function exists)
+- ✅ POS → Invoice → Payment flow (storeService creates linked records)
