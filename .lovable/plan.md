@@ -1,393 +1,442 @@
 
-# Comprehensive Audit & Real-time Integration Plan for Incline Gym
+
+# Hardware Management & Biometric Sync Module Implementation Plan
 
 ## Executive Summary
 
-After thorough audit, I've identified which features need real-time Supabase integration vs. what is already properly implemented. The system has excellent database infrastructure but several UI components need enhancement to fully utilize the data.
+This plan implements a complete Turnstile & Face ID Integration system for Incline Gym, enabling hardware management of Android-based access control terminals with facial recognition capabilities. The system bridges the web management software with SMDT-compatible Android terminals.
 
 ---
 
-## Current State Analysis
+## SDK Analysis (From Uploaded Documents)
 
-### Already Working (No Changes Needed)
+The uploaded SDK documentation reveals the following key APIs for the Android terminals:
 
-| Feature | Status | Evidence |
-|---------|--------|----------|
-| Store/POS Sales | ✅ **Fully Integrated** | `src/pages/Store.tsx` fetches from `pos_sales` and `ecommerce_orders` tables with real revenue calculation |
-| Equipment Management | ✅ **Fully Integrated** | `src/pages/Equipment.tsx` and `AddEquipmentDrawer.tsx` use Supabase with serial number, purchase date, service tracking |
-| Branch Manager Assignment | ✅ **Fully Integrated** | `EditBranchDrawer.tsx` fetches managers from `user_roles` table filtered by `['manager', 'admin', 'owner']` |
-| Notification Preferences | ✅ **Fully Integrated** | `NotificationSettings.tsx` saves to `notification_preferences` table |
-| Notification Bell | ✅ **Fully Integrated** | `NotificationBell.tsx` reads from `notifications` table with 30-second refresh |
-| Dashboard Revenue | ✅ **Fully Integrated** | `Dashboard.tsx` fetches monthly revenue from `payments` table |
-| Stock Movements | ✅ **Fully Integrated** | `stockMovementService.ts` tracks all inventory changes |
-| Feedback + Google Toggle | ✅ **Fully Integrated** | `Feedback.tsx` has `syncToGoogleMyBusiness` function and database toggle |
+### Relay Control (Turnstile Gate)
+- `setRelayIoMode(int mode, int delay)` - Configure auto-close mode (0=manual, 1=auto-close after X seconds)
+- `setRelayIoValue(int value)` - Open (1) or Close (0) the relay/turnstile gate
+- `getRelayIoMode()` - Get current relay state
 
----
+### LED Indicators  
+- `setLedLighted(String ledColor, boolean lighted)` - Control LED colors (WHITE, RED, GREEN)
 
-## Issues Requiring Implementation
+### Wiegand Protocol
+- `smdtSendCard(String idCard, int transformat)` - Send card data via Wiegand 26/34
+- `smdtReadWiegandData()` - Read incoming card data (blocking method)
 
-### Issue 1: Analytics Page - "Coming Soon" Placeholder
-
-**Current State:** `src/pages/Analytics.tsx` shows "Charts coming soon" placeholder (line 84-88)
-
-**Problem:** Real-time data is fetched (members, payments, invoices) but charts are not rendered.
-
-**Solution:** Replace placeholder with Recharts visualizations:
-
-1. **Monthly Revenue Chart** - Line/Bar chart from `payments` table grouped by month
-2. **Membership Growth Chart** - Area chart from `members` table grouped by join date
-3. **Collection Rate Gauge** - Shows `amount_paid` vs `total_amount` ratio
-
-**Implementation:**
-- Import `BarChart, LineChart, AreaChart, ResponsiveContainer` from `recharts`
-- Add 3 new queries for chart data:
-  - `monthly-revenue`: Group payments by month for last 12 months
-  - `membership-growth`: Count members by join month
-  - `collection-stats`: Calculate paid vs total ratios
+### Camera
+- `smdtGetCameraVidPid(int cameraId)` - Get camera identification for face recognition
 
 ---
 
-### Issue 2: Google Business Profile Integration Settings
+## Database Schema
 
-**Current State:** `IntegrationSettings.tsx` has Payment, SMS, Email, WhatsApp tabs but **NO Google Business tab**
+### New Tables Required
 
-**Problem:** Users cannot configure Google Business Profile API credentials
-
-**Solution:** Add 5th tab "Google" to integration settings:
-
-```typescript
-// Add to PROVIDERS at top of file
-const GOOGLE_PROVIDERS = [
-  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
-];
-```
-
-**Tab Content:**
-- Business Account ID input
-- Location ID input  
-- API Key / OAuth credentials
-- Toggle to auto-sync approved reviews
-- Webhook URL for incoming Google reviews
-
----
-
-### Issue 3: Inventory ↔ Store Revenue Sync Visibility
-
-**Current State:** Stock movements are tracked in `stock_movements` table but Store page doesn't show inventory levels
-
-**Problem:** The Store page (image_cdecf0.jpg) shows 0 Stock Value because it's not querying `inventory` table
-
-**Solution:** Add inventory stats to Store page:
-
-1. Query `inventory` table joined with `products` to get current stock levels
-2. Calculate total stock value: `SUM(inventory.quantity * products.price)`
-3. Show Low Stock alerts for items below minimum threshold
-4. Link POS sales to inventory deduction (already partially implemented in `stockMovementService`)
-
-**Implementation:**
-```typescript
-// Add to Store.tsx
-const { data: inventoryStats } = useQuery({
-  queryKey: ['store-inventory-stats'],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('inventory')
-      .select('quantity, products(price, name)');
-    return {
-      totalValue: data?.reduce((sum, i) => sum + (i.quantity * i.products?.price || 0), 0) || 0,
-      lowStockItems: data?.filter(i => i.quantity < 10).length || 0,
-    };
-  },
-});
-```
-
----
-
-### Issue 4: Real-time Notification Engine Enhancement
-
-**Current State:** `NotificationBell.tsx` reads existing notifications but doesn't create them automatically
-
-**Problem:** Events like "Expiring Memberships", "Overdue Tasks", "New Feedback" don't auto-generate notifications
-
-**Solution:** Create notification generation triggers:
-
-**Option A: Database Triggers (Recommended)**
 ```sql
--- Trigger on feedback insert
-CREATE FUNCTION notify_new_feedback() RETURNS trigger AS $$
-BEGIN
-  INSERT INTO notifications (user_id, title, message, type, category)
-  SELECT user_id, 'New Feedback Received', 
-         'Rating: ' || NEW.rating || ' stars', 
-         'info', 'feedback'
-  FROM staff_branches WHERE branch_id = NEW.branch_id;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- 1. Device Registry Table
+CREATE TABLE IF NOT EXISTS access_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  device_name TEXT NOT NULL,
+  ip_address INET NOT NULL,
+  mac_address TEXT,
+  device_type TEXT NOT NULL DEFAULT 'turnstile', -- 'turnstile', 'face_terminal', 'card_reader'
+  model TEXT,
+  firmware_version TEXT,
+  serial_number TEXT,
+  relay_mode INTEGER DEFAULT 1, -- 0=manual, 1=auto-close
+  relay_delay INTEGER DEFAULT 5, -- seconds for auto-close
+  is_online BOOLEAN DEFAULT false,
+  last_heartbeat TIMESTAMPTZ,
+  last_sync TIMESTAMPTZ,
+  config JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(ip_address)
+);
+
+-- 2. Device Access Events (Live Log)
+CREATE TABLE IF NOT EXISTS device_access_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID REFERENCES access_devices(id) ON DELETE SET NULL,
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+  staff_id UUID REFERENCES employees(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL, -- 'face_recognized', 'card_swipe', 'manual_trigger', 'denied'
+  access_granted BOOLEAN NOT NULL DEFAULT false,
+  denial_reason TEXT, -- 'expired', 'frozen', 'not_found', 'no_photo'
+  confidence_score DECIMAL(5,2), -- Face recognition confidence (0-100)
+  photo_url TEXT, -- Snapshot from terminal camera
+  response_sent TEXT, -- 'OPEN', 'DENIED', 'ERROR'
+  device_message TEXT, -- Message displayed on terminal
+  processed_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Biometric Sync Queue
+CREATE TABLE IF NOT EXISTS biometric_sync_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id UUID REFERENCES members(id) ON DELETE CASCADE,
+  staff_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+  device_id UUID REFERENCES access_devices(id) ON DELETE CASCADE,
+  sync_type TEXT NOT NULL, -- 'add', 'update', 'delete'
+  photo_url TEXT NOT NULL,
+  person_uuid TEXT NOT NULL, -- UUID sent to device for matching
+  person_name TEXT NOT NULL,
+  status TEXT DEFAULT 'pending', -- 'pending', 'syncing', 'completed', 'failed'
+  retry_count INTEGER DEFAULT 0,
+  error_message TEXT,
+  queued_at TIMESTAMPTZ DEFAULT now(),
+  processed_at TIMESTAMPTZ,
+  UNIQUE(member_id, device_id),
+  UNIQUE(staff_id, device_id)
+);
+
+-- 4. Add biometric_enrolled flag to members
+ALTER TABLE members ADD COLUMN IF NOT EXISTS biometric_enrolled BOOLEAN DEFAULT false;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS biometric_photo_url TEXT;
+
+-- 5. Add biometric_enrolled flag to employees  
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_enrolled BOOLEAN DEFAULT false;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_photo_url TEXT;
 ```
 
-**Option B: Edge Function (Scheduled)**
-- Run daily check for expiring memberships (7 days)
-- Check overdue invoices
-- Check overdue tasks
-- Insert notifications for each alert
+### RLS Policies
 
----
+```sql
+-- Enable RLS
+ALTER TABLE access_devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_access_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE biometric_sync_queue ENABLE ROW LEVEL SECURITY;
 
-### Issue 5: Dashboard Revenue → POS Integration
+-- Policies for access_devices (Admin/Manager only)
+CREATE POLICY "Managers can view branch devices" ON access_devices
+  FOR SELECT USING (
+    public.has_any_role(auth.uid(), ARRAY['owner', 'admin']::app_role[])
+    OR public.manages_branch(auth.uid(), branch_id)
+  );
 
-**Current State:** Dashboard shows monthly revenue from `payments` table only
+CREATE POLICY "Admins can manage devices" ON access_devices
+  FOR ALL USING (public.has_any_role(auth.uid(), ARRAY['owner', 'admin']::app_role[]));
 
-**Problem:** POS sales revenue may not be reflected in dashboard if not linked to payments
-
-**Solution:** Ensure POS sales create corresponding payment records:
-
-In `src/services/storeService.ts` `createPOSSale` function, verify:
-1. Invoice is created ✅ (already done)
-2. Payment record is created ✅ (already done based on code review)
-3. Finance dashboard query includes POS payment types
-
----
-
-## Implementation Summary
-
-| Task | Complexity | Priority | Files |
-|------|------------|----------|-------|
-| Analytics Recharts | Medium | High | `src/pages/Analytics.tsx` |
-| Google Business Integration Tab | Medium | Medium | `src/components/settings/IntegrationSettings.tsx` |
-| Store Inventory Stats | Low | Medium | `src/pages/Store.tsx` |
-| Auto-notification Engine | High | Low | Database trigger OR Edge function |
-| Verify POS → Payment sync | Low | High | `src/services/storeService.ts` (audit only) |
-
----
-
-## Technical Implementation Details
-
-### 1. Analytics Page Enhancement
-
-**Add these imports:**
-```typescript
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, Legend } from 'recharts';
-```
-
-**New queries:**
-```typescript
-// Monthly revenue for last 12 months
-const { data: revenueByMonth = [] } = useQuery({
-  queryKey: ['analytics-revenue-by-month'],
-  queryFn: async () => {
-    const months = [];
-    for (let i = 11; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const monthStart = startOfMonth(date).toISOString();
-      const monthEnd = endOfMonth(date).toISOString();
-      
-      const { data } = await supabase
-        .from('payments')
-        .select('amount')
-        .gte('payment_date', monthStart)
-        .lte('payment_date', monthEnd)
-        .eq('status', 'completed');
-      
-      months.push({
-        name: format(date, 'MMM'),
-        revenue: data?.reduce((sum, p) => sum + p.amount, 0) || 0,
-      });
-    }
-    return months;
-  },
-});
-
-// Membership growth
-const { data: memberGrowth = [] } = useQuery({
-  queryKey: ['analytics-member-growth'],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('members')
-      .select('created_at')
-      .order('created_at');
-    
-    // Group by month
-    const grouped = data?.reduce((acc: any, m) => {
-      const month = format(new Date(m.created_at), 'yyyy-MM');
-      acc[month] = (acc[month] || 0) + 1;
-      return acc;
-    }, {});
-    
-    return Object.entries(grouped || {}).slice(-12).map(([month, count]) => ({
-      name: format(new Date(month + '-01'), 'MMM yy'),
-      members: count,
-    }));
-  },
-});
-```
-
-**Chart Components:**
-```tsx
-<div className="grid gap-6 md:grid-cols-2">
-  <Card>
-    <CardHeader><CardTitle>Monthly Revenue</CardTitle></CardHeader>
-    <CardContent className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={revenueByMonth}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Bar dataKey="revenue" fill="#8884d8" />
-        </BarChart>
-      </ResponsiveContainer>
-    </CardContent>
-  </Card>
-  
-  <Card>
-    <CardHeader><CardTitle>Membership Growth</CardTitle></CardHeader>
-    <CardContent className="h-64">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={memberGrowth}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Area type="monotone" dataKey="members" fill="#82ca9d" />
-        </AreaChart>
-      </ResponsiveContainer>
-    </CardContent>
-  </Card>
-</div>
+-- Device access events (Staff+ can view)
+CREATE POLICY "Staff can view access events" ON device_access_events
+  FOR SELECT USING (
+    public.has_any_role(auth.uid(), ARRAY['owner', 'admin', 'manager', 'staff']::app_role[])
+  );
 ```
 
 ---
 
-### 2. Google Business Integration Tab
+## New Files to Create
 
-**Add to IntegrationSettings.tsx:**
+### 1. Device Management Service
+**File:** `src/services/deviceService.ts`
 
 ```typescript
-// Add to provider arrays
-const GOOGLE_PROVIDERS = [
-  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
-];
-
-// Add 5th tab
-<TabsTrigger value="google">Google</TabsTrigger>
-
-<TabsContent value="google" className="space-y-4">
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <Globe className="h-5 w-5" />
-        Google Business Profile
-      </CardTitle>
-      <CardDescription>
-        Sync approved reviews to your Google Maps listing
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      {GOOGLE_PROVIDERS.map((provider) => {
-        const config = getIntegrationsByType('google_business').find(
-          (i: any) => i.provider === provider.id
-        );
-        return (
-          <Card key={provider.id}>
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold">{provider.name}</h3>
-                  <p className="text-sm text-muted-foreground">{provider.description}</p>
-                </div>
-                <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                  {config?.is_active ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
-              <Button 
-                className="w-full mt-4" 
-                variant="outline"
-                onClick={() => openConfig('google_business' as IntegrationType, provider.id)}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Configure
-              </Button>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </CardContent>
-  </Card>
-</TabsContent>
+// Core functions:
+// - fetchDevices(branchId?) - Get all registered devices
+// - addDevice(device) - Register new device
+// - updateDevice(id, updates) - Update device settings
+// - deleteDevice(id) - Remove device
+// - triggerRelay(deviceId) - Remote open turnstile
+// - checkDeviceStatus(deviceId) - Ping device heartbeat
+// - getAccessEvents(branchId, filters) - Fetch live access log
 ```
 
-**Update config fields:**
+### 2. Biometric Sync Service  
+**File:** `src/services/biometricService.ts`
+
 ```typescript
-if (type === 'google_business') {
-  return {
-    config: ['account_id', 'location_id', 'auto_sync_approved'],
-    credentials: ['api_key', 'client_id', 'client_secret'],
-  };
+// Core functions:
+// - queueMemberSync(memberId, deviceIds) - Add member to sync queue
+// - queueStaffSync(staffId, deviceIds) - Add staff to sync queue
+// - processSyncQueue() - Background job processor
+// - getSyncStatus(memberId|staffId) - Check enrollment status
+// - removeBiometricData(personId, deviceIds) - Delete from devices
+```
+
+### 3. Device Registry Page
+**File:** `src/pages/DeviceManagement.tsx`
+
+Features:
+- Device list with status indicators (Online/Offline)
+- Add Device button → Side Drawer
+- Edit device settings → Side Drawer
+- Remote Trigger button per device
+- Bulk sync members to devices
+- Real-time heartbeat status
+
+### 4. Add/Edit Device Drawer
+**File:** `src/components/devices/AddDeviceDrawer.tsx`
+
+Fields:
+- Device Name (required)
+- IP Address (required, validated)
+- Branch Location (dropdown from branches)
+- Device Type (Turnstile, Face Terminal, Card Reader)
+- Model / Serial Number
+- Relay Mode (Manual / Auto-close)
+- Auto-close Delay (1-63 seconds)
+
+### 5. Live Access Log Widget
+**File:** `src/components/devices/LiveAccessLog.tsx`
+
+Features:
+- Real-time feed using Supabase Realtime subscriptions
+- Shows: Photo thumbnail, Name, Time, Access Result (Granted/Denied)
+- Color-coded badges for access results
+- Click to view full event details
+- Embedded in Admin Dashboard
+
+### 6. Edge Function: Access Event Handler
+**File:** `supabase/functions/device-access-event/index.ts`
+
+```typescript
+// POST /api/device/access-event
+// Receives: { device_id, person_uuid, confidence, photo_base64 }
+// 
+// Logic:
+// 1. Validate device exists and is online
+// 2. Look up person_uuid in members/employees
+// 3. If member: Check membership status (active, expired, frozen)
+// 4. Return: { action: "OPEN"|"DENIED", message: "...", led_color: "GREEN"|"RED" }
+// 5. Log event to device_access_events table
+// 6. If OPEN: Call member_check_in RPC to log attendance
+```
+
+### 7. Edge Function: Device Heartbeat
+**File:** `supabase/functions/device-heartbeat/index.ts`
+
+```typescript
+// POST /api/device/heartbeat
+// Updates device last_heartbeat and is_online status
+// Called every 30s from Android terminal
+```
+
+### 8. Edge Function: Biometric Sync Endpoint
+**File:** `supabase/functions/device-sync-data/index.ts`
+
+```typescript
+// GET /api/device/sync-data?device_id=xxx
+// Returns pending sync items for a specific device
+// Includes: { person_uuid, name, photo_url, action: "add"|"delete" }
+```
+
+---
+
+## UI Integration Points
+
+### Dashboard Widget
+Add "Live Access" card to Admin Dashboard (`src/pages/Dashboard.tsx`):
+- Shows last 5 access events with photos
+- Quick link to full Device Management page
+- Live counter of "Currently In Gym"
+
+### Member Profile Integration
+Update `src/components/members/MemberProfileDrawer.tsx`:
+- Add "Biometric Status" badge (Enrolled / Not Enrolled)
+- Add "Sync to Devices" button to manually trigger enrollment
+- Show last access event for this member
+
+### Settings Integration
+Add "Access Control" section to Settings:
+- Default relay mode for new devices
+- Default auto-close delay
+- Enable/disable biometric requirement
+
+---
+
+## Workflow Diagrams
+
+### Access Control Flow
+
+```text
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Android        │     │  Supabase        │     │  Incline Web    │
+│  Terminal       │     │  Edge Function   │     │  Dashboard      │
+└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
+         │                       │                        │
+         │  1. Face Detected     │                        │
+         │  POST /access-event   │                        │
+         │ ───────────────────>  │                        │
+         │                       │  2. Lookup member_uuid │
+         │                       │  3. Check membership   │
+         │                       │                        │
+         │  4. Response:         │                        │
+         │  {action: "OPEN",     │                        │
+         │   led: "GREEN"}       │                        │
+         │ <───────────────────  │                        │
+         │                       │                        │
+         │  5. Open Relay        │                        │
+         │  setRelayIoValue(1)   │                        │
+         │                       │  6. Insert event log   │
+         │                       │ ──────────────────────>│
+         │                       │                        │
+         │                       │  7. Realtime update    │
+         │                       │ ──────────────────────>│
+         │                       │                        │
+         │                       │        8. Live log     │
+         │                       │        shows entry     │
+         └───────────────────────┴────────────────────────┘
+```
+
+### Biometric Enrollment Flow
+
+```text
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Web App        │     │  Supabase        │     │  Android        │
+│  (Staff)        │     │  Database        │     │  Terminal       │
+└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
+         │                       │                        │
+         │  1. Upload avatar     │                        │
+         │  to member-photos     │                        │
+         │ ───────────────────>  │                        │
+         │                       │                        │
+         │  2. Click "Sync to    │                        │
+         │     Devices"          │                        │
+         │ ───────────────────>  │                        │
+         │                       │                        │
+         │  3. Insert to         │                        │
+         │  biometric_sync_queue │                        │
+         │ ───────────────────>  │                        │
+         │                       │                        │
+         │                       │  4. Terminal polls     │
+         │                       │  GET /sync-data        │
+         │                       │ <───────────────────── │
+         │                       │                        │
+         │                       │  5. Return pending     │
+         │                       │  sync items            │
+         │                       │ ──────────────────────>│
+         │                       │                        │
+         │                       │  6. Download photo     │
+         │                       │  Register face         │
+         │                       │ <───────────────────── │
+         │                       │                        │
+         │                       │  7. Mark as completed  │
+         │                       │ <───────────────────── │
+         └───────────────────────┴────────────────────────┘
+```
+
+---
+
+## Implementation Phases
+
+### Phase 1: Database & Core Services (Day 1)
+1. Create database migration with all new tables
+2. Implement `deviceService.ts` with CRUD operations
+3. Implement `biometricService.ts` with sync queue logic
+4. Create device-heartbeat edge function
+
+### Phase 2: Device Access Edge Function (Day 2)
+1. Implement `device-access-event` edge function
+2. Full membership validation logic
+3. Automatic attendance logging
+4. LED color and message response generation
+
+### Phase 3: Device Management UI (Day 3)
+1. Create DeviceManagement.tsx page
+2. Add AddDeviceDrawer.tsx component
+3. Add EditDeviceDrawer.tsx component
+4. Integrate remote trigger functionality
+
+### Phase 4: Live Access Log & Dashboard (Day 4)
+1. Create LiveAccessLog.tsx component
+2. Add Supabase Realtime subscription
+3. Embed widget in Admin Dashboard
+4. Add access stats to dashboard cards
+
+### Phase 5: Member/Staff Biometric Sync (Day 5)
+1. Update MemberProfileDrawer with biometric status
+2. Add "Sync to Devices" button
+3. Implement sync queue processing
+4. Update AddMemberDrawer to auto-queue sync
+
+### Phase 6: Testing & Integration (Day 6)
+1. Test access event flow end-to-end
+2. Test denial scenarios (expired, frozen)
+3. Verify attendance logging accuracy
+4. Performance test with multiple devices
+
+---
+
+## Technical Specifications
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/device-access-event` | POST | Receive face recognition events |
+| `/device-heartbeat` | POST | Device status heartbeat |
+| `/device-sync-data` | GET | Get pending biometric sync items |
+| `/device-trigger-relay` | POST | Remote open turnstile gate |
+
+### Access Event Request Format
+
+```json
+{
+  "device_id": "uuid",
+  "person_uuid": "member-uuid-or-staff-uuid",
+  "confidence": 95.5,
+  "photo_base64": "optional-snapshot",
+  "timestamp": "2026-01-29T08:00:00Z"
 }
 ```
 
----
+### Access Event Response Format
 
-### 3. Store Inventory Stats Card
-
-**Add to Store.tsx:**
-
-```typescript
-// Add inventory stats query
-const { data: inventoryStats } = useQuery({
-  queryKey: ['store-inventory-stats'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('inventory')
-      .select(`
-        quantity,
-        products(price, name)
-      `);
-    
-    if (error) throw error;
-    
-    const totalValue = data?.reduce((sum, i) => {
-      return sum + ((i.quantity || 0) * (i.products?.price || 0));
-    }, 0) || 0;
-    
-    const lowStockItems = data?.filter(i => (i.quantity || 0) < 10).length || 0;
-    
-    return { totalValue, lowStockItems };
-  },
-});
-
-// Add stat card
-<Card>
-  <CardHeader className="pb-2">
-    <CardTitle className="text-sm font-medium text-muted-foreground">Stock Value</CardTitle>
-  </CardHeader>
-  <CardContent>
-    <div className="text-2xl font-bold text-blue-500">
-      ₹{(inventoryStats?.totalValue || 0).toLocaleString()}
-    </div>
-    {inventoryStats?.lowStockItems > 0 && (
-      <p className="text-xs text-destructive">{inventoryStats.lowStockItems} items low stock</p>
-    )}
-  </CardContent>
-</Card>
+```json
+{
+  "action": "OPEN",           // or "DENIED"
+  "message": "Welcome, John!", // Display on terminal
+  "led_color": "GREEN",        // LED to illuminate
+  "relay_delay": 5,            // Auto-close seconds
+  "person_name": "John Doe",
+  "member_code": "BR1-00023",
+  "plan_name": "Premium Annual",
+  "days_remaining": 280
+}
 ```
 
+### Denial Reasons
+
+| Code | Message | LED |
+|------|---------|-----|
+| `expired` | "Membership Expired - See Reception" | RED |
+| `frozen` | "Membership Frozen" | RED |
+| `not_found` | "Not Registered" | RED |
+| `no_active_plan` | "No Active Plan" | RED |
+| `wrong_branch` | "Wrong Branch" | RED |
+
 ---
 
-## Files to Modify
+## Files Summary
 
-1. **`src/pages/Analytics.tsx`** - Replace "Coming Soon" with real Recharts charts
-2. **`src/components/settings/IntegrationSettings.tsx`** - Add Google Business Profile tab
-3. **`src/pages/Store.tsx`** - Add inventory stock value stat card
-4. **Database Migration** - Optional: Create notification trigger for auto-alerts
+### New Files (12 total)
 
-## No Changes Needed (Already Working)
+| File | Type | Description |
+|------|------|-------------|
+| `src/services/deviceService.ts` | Service | Device CRUD and control |
+| `src/services/biometricService.ts` | Service | Biometric sync queue |
+| `src/pages/DeviceManagement.tsx` | Page | Device registry UI |
+| `src/components/devices/AddDeviceDrawer.tsx` | Component | Add device form |
+| `src/components/devices/EditDeviceDrawer.tsx` | Component | Edit device form |
+| `src/components/devices/LiveAccessLog.tsx` | Component | Real-time access feed |
+| `src/components/devices/DeviceStatusBadge.tsx` | Component | Online/Offline indicator |
+| `supabase/functions/device-access-event/index.ts` | Edge Function | Access validation |
+| `supabase/functions/device-heartbeat/index.ts` | Edge Function | Device status |
+| `supabase/functions/device-sync-data/index.ts` | Edge Function | Biometric sync |
+| `supabase/functions/device-trigger-relay/index.ts` | Edge Function | Remote trigger |
+| `supabase/migrations/xxx_access_devices.sql` | Migration | Database schema |
 
-- ✅ Equipment Management (AddEquipmentDrawer fully integrated)
-- ✅ Branch Manager Assignment (EditBranchDrawer uses user_roles table correctly)
-- ✅ Notification Settings (saves to notification_preferences)
-- ✅ Notification Bell (reads from notifications with 30s refresh)
-- ✅ Dashboard Stats (all real-time from Supabase)
-- ✅ Feedback Google Toggle (syncToGoogleMyBusiness function exists)
-- ✅ POS → Invoice → Payment flow (storeService creates linked records)
+### Modified Files (5 total)
+
+| File | Changes |
+|------|---------|
+| `src/pages/Dashboard.tsx` | Add Live Access widget |
+| `src/components/members/MemberProfileDrawer.tsx` | Add biometric status |
+| `src/components/members/AddMemberDrawer.tsx` | Auto-queue biometric sync |
+| `src/config/menu.ts` | Add Device Management route |
+| `src/App.tsx` | Add DeviceManagement route |
+
