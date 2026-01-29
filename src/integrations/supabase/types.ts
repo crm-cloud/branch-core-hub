@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_devices: {
+        Row: {
+          branch_id: string
+          config: Json | null
+          created_at: string | null
+          device_name: string
+          device_type: string
+          firmware_version: string | null
+          id: string
+          ip_address: unknown
+          is_online: boolean | null
+          last_heartbeat: string | null
+          last_sync: string | null
+          mac_address: string | null
+          model: string | null
+          relay_delay: number | null
+          relay_mode: number | null
+          serial_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id: string
+          config?: Json | null
+          created_at?: string | null
+          device_name: string
+          device_type?: string
+          firmware_version?: string | null
+          id?: string
+          ip_address: unknown
+          is_online?: boolean | null
+          last_heartbeat?: string | null
+          last_sync?: string | null
+          mac_address?: string | null
+          model?: string | null
+          relay_delay?: number | null
+          relay_mode?: number | null
+          serial_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string
+          config?: Json | null
+          created_at?: string | null
+          device_name?: string
+          device_type?: string
+          firmware_version?: string | null
+          id?: string
+          ip_address?: unknown
+          is_online?: boolean | null
+          last_heartbeat?: string | null
+          last_sync?: string | null
+          mac_address?: string | null
+          model?: string | null
+          relay_delay?: number | null
+          relay_mode?: number | null
+          serial_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_devices_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_plan_logs: {
         Row: {
           created_at: string
@@ -586,6 +654,76 @@ export type Database = {
           },
         ]
       }
+      biometric_sync_queue: {
+        Row: {
+          device_id: string | null
+          error_message: string | null
+          id: string
+          member_id: string | null
+          person_name: string
+          person_uuid: string
+          photo_url: string
+          processed_at: string | null
+          queued_at: string | null
+          retry_count: number | null
+          staff_id: string | null
+          status: string | null
+          sync_type: string
+        }
+        Insert: {
+          device_id?: string | null
+          error_message?: string | null
+          id?: string
+          member_id?: string | null
+          person_name: string
+          person_uuid: string
+          photo_url: string
+          processed_at?: string | null
+          queued_at?: string | null
+          retry_count?: number | null
+          staff_id?: string | null
+          status?: string | null
+          sync_type: string
+        }
+        Update: {
+          device_id?: string | null
+          error_message?: string | null
+          id?: string
+          member_id?: string | null
+          person_name?: string
+          person_uuid?: string
+          photo_url?: string
+          processed_at?: string | null
+          queued_at?: string | null
+          retry_count?: number | null
+          staff_id?: string | null
+          status?: string | null
+          sync_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "biometric_sync_queue_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "access_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_sync_queue_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_sync_queue_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       branch_managers: {
         Row: {
           branch_id: string
@@ -1029,6 +1167,86 @@ export type Database = {
           },
         ]
       }
+      device_access_events: {
+        Row: {
+          access_granted: boolean
+          branch_id: string
+          confidence_score: number | null
+          created_at: string | null
+          denial_reason: string | null
+          device_id: string | null
+          device_message: string | null
+          event_type: string
+          id: string
+          member_id: string | null
+          photo_url: string | null
+          processed_at: string | null
+          response_sent: string | null
+          staff_id: string | null
+        }
+        Insert: {
+          access_granted?: boolean
+          branch_id: string
+          confidence_score?: number | null
+          created_at?: string | null
+          denial_reason?: string | null
+          device_id?: string | null
+          device_message?: string | null
+          event_type: string
+          id?: string
+          member_id?: string | null
+          photo_url?: string | null
+          processed_at?: string | null
+          response_sent?: string | null
+          staff_id?: string | null
+        }
+        Update: {
+          access_granted?: boolean
+          branch_id?: string
+          confidence_score?: number | null
+          created_at?: string | null
+          denial_reason?: string | null
+          device_id?: string | null
+          device_message?: string | null
+          event_type?: string
+          id?: string
+          member_id?: string | null
+          photo_url?: string | null
+          processed_at?: string | null
+          response_sent?: string | null
+          staff_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_access_events_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_access_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "access_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_access_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_access_events_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diet_plans: {
         Row: {
           calories_target: number | null
@@ -1243,6 +1461,8 @@ export type Database = {
         Row: {
           bank_account: string | null
           bank_name: string | null
+          biometric_enrolled: boolean | null
+          biometric_photo_url: string | null
           branch_id: string
           created_at: string
           department: string | null
@@ -1260,6 +1480,8 @@ export type Database = {
         Insert: {
           bank_account?: string | null
           bank_name?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id: string
           created_at?: string
           department?: string | null
@@ -1277,6 +1499,8 @@ export type Database = {
         Update: {
           bank_account?: string | null
           bank_name?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id?: string
           created_at?: string
           department?: string | null
@@ -2554,6 +2778,8 @@ export type Database = {
       members: {
         Row: {
           assigned_trainer_id: string | null
+          biometric_enrolled: boolean | null
+          biometric_photo_url: string | null
           branch_id: string
           created_at: string
           created_by: string | null
@@ -2572,6 +2798,8 @@ export type Database = {
         }
         Insert: {
           assigned_trainer_id?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id: string
           created_at?: string
           created_by?: string | null
@@ -2590,6 +2818,8 @@ export type Database = {
         }
         Update: {
           assigned_trainer_id?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id?: string
           created_at?: string
           created_by?: string | null

@@ -4,7 +4,7 @@ import {
   Settings, ClipboardList, Megaphone, BarChart3, Wallet, Clock,
   Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, 
   Briefcase, MessageSquare, Tags, Activity, UtensilsCrossed, Target, 
-  Bell, Snowflake, UserCog, TrendingUp, Heart
+  Bell, Snowflake, UserCog, TrendingUp, Heart, Router
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -194,6 +194,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {

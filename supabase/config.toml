@@ -29,3 +29,15 @@ verify_jwt = false
 
 [functions.seed-test-data]
 verify_jwt = false
+
+[functions.device-access-event]
+verify_jwt = false
+
+[functions.device-heartbeat]
+verify_jwt = false
+
+[functions.device-sync-data]
+verify_jwt = false
+
+[functions.device-trigger-relay]
+verify_jwt = true
