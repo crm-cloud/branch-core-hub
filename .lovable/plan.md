@@ -1,442 +1,389 @@
 
 
-# Hardware Management & Biometric Sync Module Implementation Plan
+# Complete Incline Gym System Enhancement Plan
 
 ## Executive Summary
 
-This plan implements a complete Turnstile & Face ID Integration system for Incline Gym, enabling hardware management of Android-based access control terminals with facial recognition capabilities. The system bridges the web management software with SMDT-compatible Android terminals.
+Based on comprehensive audit, this plan addresses 6 key areas: Biometric Avatar Upload workflow, Role Management improvements, Dashboard Identity enhancements, POS & Inventory improvements, Device Management layout fixes, and Communication Template Manager. Most core infrastructure is already in place - this plan fills the remaining gaps.
 
 ---
 
-## SDK Analysis (From Uploaded Documents)
+## Current State Analysis
 
-The uploaded SDK documentation reveals the following key APIs for the Android terminals:
+### Already Working (No Changes Needed)
 
-### Relay Control (Turnstile Gate)
-- `setRelayIoMode(int mode, int delay)` - Configure auto-close mode (0=manual, 1=auto-close after X seconds)
-- `setRelayIoValue(int value)` - Open (1) or Close (0) the relay/turnstile gate
-- `getRelayIoMode()` - Get current relay state
-
-### LED Indicators  
-- `setLedLighted(String ledColor, boolean lighted)` - Control LED colors (WHITE, RED, GREEN)
-
-### Wiegand Protocol
-- `smdtSendCard(String idCard, int transformat)` - Send card data via Wiegand 26/34
-- `smdtReadWiegandData()` - Read incoming card data (blocking method)
-
-### Camera
-- `smdtGetCameraVidPid(int cameraId)` - Get camera identification for face recognition
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Member Avatar Upload | Fully Integrated | `MemberAvatarUpload` component in `AddMemberDrawer`, uploads to `avatars` bucket |
+| Biometric Sync Service | Fully Integrated | `biometricService.ts` queues sync to devices, updates `biometric_enrolled` flag |
+| Role Management (user_roles table) | Fully Integrated | `AdminRoles.tsx` allows adding/removing roles, uses separate `user_roles` table |
+| POS Inventory Deduction | Fully Integrated | `storeService.ts` decrements `inventory` table on sale |
+| POS Invoice Generation | Fully Integrated | Creates invoice, payment record, and invoice items |
+| Member Code Search in POS | Fully Integrated | Uses `search_members` RPC for code, name, phone, email search |
+| Device Management Page | Fully Integrated | `DeviceManagement.tsx` with AddDeviceDrawer, EditDeviceDrawer, LiveAccessLog |
+| Templates Database Table | Already Exists | `templates` table with name, type, subject, content, variables |
+| Broadcast Drawer | Exists | `BroadcastDrawer.tsx` sends messages but uses hardcoded templates |
 
 ---
 
-## Database Schema
+## Issues Requiring Implementation
 
-### New Tables Required
+### Issue 1: Staff/Trainer Avatar Upload Missing
 
-```sql
--- 1. Device Registry Table
-CREATE TABLE IF NOT EXISTS access_devices (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-  device_name TEXT NOT NULL,
-  ip_address INET NOT NULL,
-  mac_address TEXT,
-  device_type TEXT NOT NULL DEFAULT 'turnstile', -- 'turnstile', 'face_terminal', 'card_reader'
-  model TEXT,
-  firmware_version TEXT,
-  serial_number TEXT,
-  relay_mode INTEGER DEFAULT 1, -- 0=manual, 1=auto-close
-  relay_delay INTEGER DEFAULT 5, -- seconds for auto-close
-  is_online BOOLEAN DEFAULT false,
-  last_heartbeat TIMESTAMPTZ,
-  last_sync TIMESTAMPTZ,
-  config JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(ip_address)
-);
+**Current State:** 
+- `AddMemberDrawer.tsx` (line 176-184) has `MemberAvatarUpload` component
+- `AddTrainerDrawer.tsx` and `AddEmployeeDrawer.tsx` do NOT have avatar upload
 
--- 2. Device Access Events (Live Log)
-CREATE TABLE IF NOT EXISTS device_access_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id UUID REFERENCES access_devices(id) ON DELETE SET NULL,
-  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-  member_id UUID REFERENCES members(id) ON DELETE SET NULL,
-  staff_id UUID REFERENCES employees(id) ON DELETE SET NULL,
-  event_type TEXT NOT NULL, -- 'face_recognized', 'card_swipe', 'manual_trigger', 'denied'
-  access_granted BOOLEAN NOT NULL DEFAULT false,
-  denial_reason TEXT, -- 'expired', 'frozen', 'not_found', 'no_photo'
-  confidence_score DECIMAL(5,2), -- Face recognition confidence (0-100)
-  photo_url TEXT, -- Snapshot from terminal camera
-  response_sent TEXT, -- 'OPEN', 'DENIED', 'ERROR'
-  device_message TEXT, -- Message displayed on terminal
-  processed_at TIMESTAMPTZ DEFAULT now(),
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+**Problem:** Trainers and staff cannot upload photos for biometric enrollment
 
--- 3. Biometric Sync Queue
-CREATE TABLE IF NOT EXISTS biometric_sync_queue (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id UUID REFERENCES members(id) ON DELETE CASCADE,
-  staff_id UUID REFERENCES employees(id) ON DELETE CASCADE,
-  device_id UUID REFERENCES access_devices(id) ON DELETE CASCADE,
-  sync_type TEXT NOT NULL, -- 'add', 'update', 'delete'
-  photo_url TEXT NOT NULL,
-  person_uuid TEXT NOT NULL, -- UUID sent to device for matching
-  person_name TEXT NOT NULL,
-  status TEXT DEFAULT 'pending', -- 'pending', 'syncing', 'completed', 'failed'
-  retry_count INTEGER DEFAULT 0,
-  error_message TEXT,
-  queued_at TIMESTAMPTZ DEFAULT now(),
-  processed_at TIMESTAMPTZ,
-  UNIQUE(member_id, device_id),
-  UNIQUE(staff_id, device_id)
-);
+**Solution:** Add avatar upload to trainer and employee creation workflows
 
--- 4. Add biometric_enrolled flag to members
-ALTER TABLE members ADD COLUMN IF NOT EXISTS biometric_enrolled BOOLEAN DEFAULT false;
-ALTER TABLE members ADD COLUMN IF NOT EXISTS biometric_photo_url TEXT;
+**Files to Modify:**
+- `src/components/trainers/AddTrainerDrawer.tsx` - Add `StaffAvatarUpload` component
+- `src/components/trainers/EditTrainerDrawer.tsx` - Add avatar in edit workflow
+- `src/components/employees/AddEmployeeDrawer.tsx` - Add `StaffAvatarUpload` component
+- `src/components/employees/EditEmployeeDrawer.tsx` - Add avatar in edit workflow
 
--- 5. Add biometric_enrolled flag to employees  
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_enrolled BOOLEAN DEFAULT false;
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS biometric_photo_url TEXT;
-```
-
-### RLS Policies
-
-```sql
--- Enable RLS
-ALTER TABLE access_devices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE device_access_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE biometric_sync_queue ENABLE ROW LEVEL SECURITY;
-
--- Policies for access_devices (Admin/Manager only)
-CREATE POLICY "Managers can view branch devices" ON access_devices
-  FOR SELECT USING (
-    public.has_any_role(auth.uid(), ARRAY['owner', 'admin']::app_role[])
-    OR public.manages_branch(auth.uid(), branch_id)
-  );
-
-CREATE POLICY "Admins can manage devices" ON access_devices
-  FOR ALL USING (public.has_any_role(auth.uid(), ARRAY['owner', 'admin']::app_role[]));
-
--- Device access events (Staff+ can view)
-CREATE POLICY "Staff can view access events" ON device_access_events
-  FOR SELECT USING (
-    public.has_any_role(auth.uid(), ARRAY['owner', 'admin', 'manager', 'staff']::app_role[])
-  );
-```
-
----
-
-## New Files to Create
-
-### 1. Device Management Service
-**File:** `src/services/deviceService.ts`
-
+**Technical Details:**
 ```typescript
-// Core functions:
-// - fetchDevices(branchId?) - Get all registered devices
-// - addDevice(device) - Register new device
-// - updateDevice(id, updates) - Update device settings
-// - deleteDevice(id) - Remove device
-// - triggerRelay(deviceId) - Remote open turnstile
-// - checkDeviceStatus(deviceId) - Ping device heartbeat
-// - getAccessEvents(branchId, filters) - Fetch live access log
-```
+// Import existing StaffAvatarUpload
+import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 
-### 2. Biometric Sync Service  
-**File:** `src/services/biometricService.ts`
+// Add state
+const [avatarUrl, setAvatarUrl] = useState('');
 
-```typescript
-// Core functions:
-// - queueMemberSync(memberId, deviceIds) - Add member to sync queue
-// - queueStaffSync(staffId, deviceIds) - Add staff to sync queue
-// - processSyncQueue() - Background job processor
-// - getSyncStatus(memberId|staffId) - Check enrollment status
-// - removeBiometricData(personId, deviceIds) - Delete from devices
-```
+// Add to form (before name fields)
+<div className="flex justify-center pb-2">
+  <StaffAvatarUpload
+    avatarUrl={avatarUrl}
+    name={newUserFormData.full_name || 'New Staff'}
+    onAvatarChange={setAvatarUrl}
+    size="lg"
+  />
+</div>
 
-### 3. Device Registry Page
-**File:** `src/pages/DeviceManagement.tsx`
-
-Features:
-- Device list with status indicators (Online/Offline)
-- Add Device button → Side Drawer
-- Edit device settings → Side Drawer
-- Remote Trigger button per device
-- Bulk sync members to devices
-- Real-time heartbeat status
-
-### 4. Add/Edit Device Drawer
-**File:** `src/components/devices/AddDeviceDrawer.tsx`
-
-Fields:
-- Device Name (required)
-- IP Address (required, validated)
-- Branch Location (dropdown from branches)
-- Device Type (Turnstile, Face Terminal, Card Reader)
-- Model / Serial Number
-- Relay Mode (Manual / Auto-close)
-- Auto-close Delay (1-63 seconds)
-
-### 5. Live Access Log Widget
-**File:** `src/components/devices/LiveAccessLog.tsx`
-
-Features:
-- Real-time feed using Supabase Realtime subscriptions
-- Shows: Photo thumbnail, Name, Time, Access Result (Granted/Denied)
-- Color-coded badges for access results
-- Click to view full event details
-- Embedded in Admin Dashboard
-
-### 6. Edge Function: Access Event Handler
-**File:** `supabase/functions/device-access-event/index.ts`
-
-```typescript
-// POST /api/device/access-event
-// Receives: { device_id, person_uuid, confidence, photo_base64 }
-// 
-// Logic:
-// 1. Validate device exists and is online
-// 2. Look up person_uuid in members/employees
-// 3. If member: Check membership status (active, expired, frozen)
-// 4. Return: { action: "OPEN"|"DENIED", message: "...", led_color: "GREEN"|"RED" }
-// 5. Log event to device_access_events table
-// 6. If OPEN: Call member_check_in RPC to log attendance
-```
-
-### 7. Edge Function: Device Heartbeat
-**File:** `supabase/functions/device-heartbeat/index.ts`
-
-```typescript
-// POST /api/device/heartbeat
-// Updates device last_heartbeat and is_online status
-// Called every 30s from Android terminal
-```
-
-### 8. Edge Function: Biometric Sync Endpoint
-**File:** `supabase/functions/device-sync-data/index.ts`
-
-```typescript
-// GET /api/device/sync-data?device_id=xxx
-// Returns pending sync items for a specific device
-// Includes: { person_uuid, name, photo_url, action: "add"|"delete" }
+// Pass to create-staff-user edge function
+avatarUrl: avatarUrl || null,
 ```
 
 ---
 
-## UI Integration Points
+### Issue 2: Biometric Sync Trigger on Photo Upload
 
-### Dashboard Widget
-Add "Live Access" card to Admin Dashboard (`src/pages/Dashboard.tsx`):
-- Shows last 5 access events with photos
-- Quick link to full Device Management page
-- Live counter of "Currently In Gym"
+**Current State:** 
+- `biometricService.ts` has `queueMemberSync` and `queueStaffSync` functions
+- These are NOT called automatically when photos are uploaded
 
-### Member Profile Integration
-Update `src/components/members/MemberProfileDrawer.tsx`:
-- Add "Biometric Status" badge (Enrolled / Not Enrolled)
-- Add "Sync to Devices" button to manually trigger enrollment
-- Show last access event for this member
+**Problem:** Users must manually trigger sync; should be automatic
 
-### Settings Integration
-Add "Access Control" section to Settings:
-- Default relay mode for new devices
-- Default auto-close delay
-- Enable/disable biometric requirement
+**Solution:** Add automatic biometric sync after avatar upload
 
----
+**Files to Modify:**
+- `src/components/members/MemberAvatarUpload.tsx` - Call `queueMemberSync` after upload
+- `src/components/common/StaffAvatarUpload.tsx` - Call `queueStaffSync` after upload
+- `src/components/members/EditProfileDrawer.tsx` - Trigger sync when photo changes
 
-## Workflow Diagrams
+**Technical Details:**
+```typescript
+// After successful upload in MemberAvatarUpload.tsx
+import { queueMemberSync } from '@/services/biometricService';
 
-### Access Control Flow
-
-```text
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Android        │     │  Supabase        │     │  Incline Web    │
-│  Terminal       │     │  Edge Function   │     │  Dashboard      │
-└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
-         │                       │                        │
-         │  1. Face Detected     │                        │
-         │  POST /access-event   │                        │
-         │ ───────────────────>  │                        │
-         │                       │  2. Lookup member_uuid │
-         │                       │  3. Check membership   │
-         │                       │                        │
-         │  4. Response:         │                        │
-         │  {action: "OPEN",     │                        │
-         │   led: "GREEN"}       │                        │
-         │ <───────────────────  │                        │
-         │                       │                        │
-         │  5. Open Relay        │                        │
-         │  setRelayIoValue(1)   │                        │
-         │                       │  6. Insert event log   │
-         │                       │ ──────────────────────>│
-         │                       │                        │
-         │                       │  7. Realtime update    │
-         │                       │ ──────────────────────>│
-         │                       │                        │
-         │                       │        8. Live log     │
-         │                       │        shows entry     │
-         └───────────────────────┴────────────────────────┘
-```
-
-### Biometric Enrollment Flow
-
-```text
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Web App        │     │  Supabase        │     │  Android        │
-│  (Staff)        │     │  Database        │     │  Terminal       │
-└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
-         │                       │                        │
-         │  1. Upload avatar     │                        │
-         │  to member-photos     │                        │
-         │ ───────────────────>  │                        │
-         │                       │                        │
-         │  2. Click "Sync to    │                        │
-         │     Devices"          │                        │
-         │ ───────────────────>  │                        │
-         │                       │                        │
-         │  3. Insert to         │                        │
-         │  biometric_sync_queue │                        │
-         │ ───────────────────>  │                        │
-         │                       │                        │
-         │                       │  4. Terminal polls     │
-         │                       │  GET /sync-data        │
-         │                       │ <───────────────────── │
-         │                       │                        │
-         │                       │  5. Return pending     │
-         │                       │  sync items            │
-         │                       │ ──────────────────────>│
-         │                       │                        │
-         │                       │  6. Download photo     │
-         │                       │  Register face         │
-         │                       │ <───────────────────── │
-         │                       │                        │
-         │                       │  7. Mark as completed  │
-         │                       │ <───────────────────── │
-         └───────────────────────┴────────────────────────┘
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: Database & Core Services (Day 1)
-1. Create database migration with all new tables
-2. Implement `deviceService.ts` with CRUD operations
-3. Implement `biometricService.ts` with sync queue logic
-4. Create device-heartbeat edge function
-
-### Phase 2: Device Access Edge Function (Day 2)
-1. Implement `device-access-event` edge function
-2. Full membership validation logic
-3. Automatic attendance logging
-4. LED color and message response generation
-
-### Phase 3: Device Management UI (Day 3)
-1. Create DeviceManagement.tsx page
-2. Add AddDeviceDrawer.tsx component
-3. Add EditDeviceDrawer.tsx component
-4. Integrate remote trigger functionality
-
-### Phase 4: Live Access Log & Dashboard (Day 4)
-1. Create LiveAccessLog.tsx component
-2. Add Supabase Realtime subscription
-3. Embed widget in Admin Dashboard
-4. Add access stats to dashboard cards
-
-### Phase 5: Member/Staff Biometric Sync (Day 5)
-1. Update MemberProfileDrawer with biometric status
-2. Add "Sync to Devices" button
-3. Implement sync queue processing
-4. Update AddMemberDrawer to auto-queue sync
-
-### Phase 6: Testing & Integration (Day 6)
-1. Test access event flow end-to-end
-2. Test denial scenarios (expired, frozen)
-3. Verify attendance logging accuracy
-4. Performance test with multiple devices
-
----
-
-## Technical Specifications
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/device-access-event` | POST | Receive face recognition events |
-| `/device-heartbeat` | POST | Device status heartbeat |
-| `/device-sync-data` | GET | Get pending biometric sync items |
-| `/device-trigger-relay` | POST | Remote open turnstile gate |
-
-### Access Event Request Format
-
-```json
-{
-  "device_id": "uuid",
-  "person_uuid": "member-uuid-or-staff-uuid",
-  "confidence": 95.5,
-  "photo_base64": "optional-snapshot",
-  "timestamp": "2026-01-29T08:00:00Z"
+// After line 76 (onAvatarChange)
+if (userId) {
+  try {
+    await queueMemberSync(userId, publicUrl, name);
+    toast.success('Photo queued for device sync');
+  } catch (err) {
+    console.warn('Biometric sync queued failed:', err);
+  }
 }
 ```
 
-### Access Event Response Format
+---
 
-```json
-{
-  "action": "OPEN",           // or "DENIED"
-  "message": "Welcome, John!", // Display on terminal
-  "led_color": "GREEN",        // LED to illuminate
-  "relay_delay": 5,            // Auto-close seconds
-  "person_name": "John Doe",
-  "member_code": "BR1-00023",
-  "plan_name": "Premium Annual",
-  "days_remaining": 280
+### Issue 3: Dashboard Identity Enhancement
+
+**Current State:**
+- Dashboard (line 221) shows `Welcome back, {first_name}!`
+- Member code and role badge are NOT prominently displayed in header
+- Role badges are at the bottom of the page (lines 348-363)
+
+**Problem:** User identity (member code) and role should be visible in header
+
+**Solution:** Enhance AppHeader with member code and role badge
+
+**Files to Modify:**
+- `src/components/layout/AppHeader.tsx` - Add member code and role badge display
+- `src/pages/MemberDashboard.tsx` - Show member code prominently (if exists)
+
+**Technical Details for AppHeader:**
+```typescript
+// In AppHeader, enhance the user menu label (lines 83-90)
+<DropdownMenuLabel className="font-normal">
+  <div className="flex flex-col space-y-1">
+    <div className="flex items-center gap-2">
+      <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
+      {/* Role Badge - moved to top */}
+      <Badge variant="secondary" className="text-xs capitalize">
+        {primaryRole?.role || primaryRole}
+      </Badge>
+    </div>
+    {/* Member Code if exists */}
+    {memberCode && (
+      <p className="text-xs font-mono text-primary">{memberCode}</p>
+    )}
+    <p className="text-xs leading-none text-muted-foreground">{profile?.email}</p>
+  </div>
+</DropdownMenuLabel>
+```
+
+**Additional Query in AppHeader:**
+```typescript
+// Fetch member code if user is a member
+const { data: memberData } = useQuery({
+  queryKey: ['user-member-code', user?.id],
+  queryFn: async () => {
+    if (!user?.id) return null;
+    const { data } = await supabase
+      .from('members')
+      .select('member_code')
+      .eq('user_id', user.id)
+      .single();
+    return data?.member_code;
+  },
+  enabled: !!user?.id && roles.some(r => (r.role || r) === 'member'),
+});
+```
+
+---
+
+### Issue 4: Real-time Attendance Feed on Dashboard
+
+**Current State:**
+- Dashboard shows "Recent Activity" with check-ins from `member_attendance` table
+- Uses standard query, NOT real-time subscription
+
+**Problem:** Activity feed doesn't update automatically when turnstile events occur
+
+**Solution:** Add Supabase Realtime subscription for live attendance feed
+
+**Files to Modify:**
+- `src/pages/Dashboard.tsx` - Add realtime subscription for `device_access_events`
+- `src/components/devices/LiveAccessLog.tsx` - Already has realtime (can embed in Dashboard)
+
+**Technical Details:**
+```typescript
+// Add to Dashboard.tsx
+import { LiveAccessLog } from '@/components/devices/LiveAccessLog';
+
+// Replace static "Recent Activity" card with LiveAccessLog
+<Card className="border-border/50 md:col-span-2">
+  <CardHeader>
+    <CardTitle className="text-lg">Live Access Feed</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <LiveAccessLog maxItems={8} showHeader={false} />
+  </CardContent>
+</Card>
+```
+
+---
+
+### Issue 5: POS Split Payments Support
+
+**Current State:**
+- POS supports single payment method (cash, card, wallet, upi)
+- No split payment capability
+
+**Problem:** Cannot handle "half cash, half card" scenarios
+
+**Solution:** Add split payment UI and backend support
+
+**Files to Modify:**
+- `src/pages/POS.tsx` - Add split payment toggle and amount inputs
+- `src/services/storeService.ts` - Modify `createPOSSale` to accept multiple payments
+
+**Technical Details:**
+```typescript
+// Add state for split payments
+const [splitPayment, setSplitPayment] = useState(false);
+const [payments, setPayments] = useState<{method: string; amount: number}[]>([
+  { method: 'cash', amount: 0 }
+]);
+
+// UI for split payment
+{splitPayment ? (
+  <div className="space-y-2">
+    {payments.map((p, idx) => (
+      <div key={idx} className="flex gap-2">
+        <Select value={p.method} onValueChange={...}>
+          ...payment method options
+        </Select>
+        <Input type="number" value={p.amount} onChange={...} />
+        <Button variant="ghost" onClick={() => removePayment(idx)}>
+          <Trash2 />
+        </Button>
+      </div>
+    ))}
+    <Button variant="outline" onClick={addPayment}>Add Payment Method</Button>
+  </div>
+) : (
+  // existing single payment select
+)}
+```
+
+---
+
+### Issue 6: Communication Template Manager
+
+**Current State:**
+- `templates` table exists with proper schema
+- `messageTemplates.ts` has hardcoded templates
+- `BroadcastDrawer` doesn't fetch from database
+
+**Problem:** Templates are not managed in Settings, broadcast doesn't use saved templates
+
+**Solution:** Create Template Manager in Settings and link to Broadcast
+
+**Files to Create:**
+- `src/components/settings/TemplateManager.tsx` - CRUD for templates
+
+**Files to Modify:**
+- `src/pages/Settings.tsx` - Add "Templates" tab
+- `src/components/announcements/BroadcastDrawer.tsx` - Add template selector from database
+
+**Technical Details for TemplateManager:**
+```typescript
+// Template Manager component
+export function TemplateManager() {
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [showEditor, setShowEditor] = useState(false);
+
+  // Fetch templates from database
+  const { data: templates } = useQuery({
+    queryKey: ['communication-templates'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('templates')
+        .select('*')
+        .order('type', { ascending: true });
+      return data;
+    },
+  });
+
+  // Create/Update mutation
+  // Delete mutation
+  
+  // Template editor with variable support
+  // Variables: {{member_name}}, {{days_left}}, {{member_code}}, {{plan_name}}, {{end_date}}
 }
 ```
 
-### Denial Reasons
+**Enhanced BroadcastDrawer:**
+```typescript
+// Add template selector
+const { data: savedTemplates = [] } = useQuery({
+  queryKey: ['broadcast-templates', broadcastData.type],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('type', broadcastData.type)
+      .eq('is_active', true);
+    return data;
+  },
+});
 
-| Code | Message | LED |
-|------|---------|-----|
-| `expired` | "Membership Expired - See Reception" | RED |
-| `frozen` | "Membership Frozen" | RED |
-| `not_found` | "Not Registered" | RED |
-| `no_active_plan` | "No Active Plan" | RED |
-| `wrong_branch` | "Wrong Branch" | RED |
+// Template dropdown
+<Select onValueChange={(templateId) => {
+  const template = savedTemplates.find(t => t.id === templateId);
+  if (template) {
+    setBroadcastData({ ...broadcastData, message: template.content });
+  }
+}}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select template (optional)" />
+  </SelectTrigger>
+  <SelectContent>
+    {savedTemplates.map(t => (
+      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+```
+
+---
+
+## Implementation Summary
+
+| Task | Priority | Complexity | Files |
+|------|----------|------------|-------|
+| Staff/Trainer Avatar Upload | High | Low | AddTrainerDrawer, AddEmployeeDrawer, EditTrainerDrawer, EditEmployeeDrawer |
+| Auto Biometric Sync on Upload | High | Low | MemberAvatarUpload, StaffAvatarUpload |
+| Dashboard Identity Enhancement | Medium | Low | AppHeader, add member code + role badge |
+| Live Attendance Feed | Medium | Low | Dashboard (embed LiveAccessLog) |
+| POS Split Payments | Medium | Medium | POS.tsx, storeService.ts |
+| Template Manager in Settings | Medium | Medium | New TemplateManager.tsx, Settings.tsx |
+| Broadcast Template Integration | Medium | Low | BroadcastDrawer.tsx |
 
 ---
 
 ## Files Summary
 
-### New Files (12 total)
+### New Files (1 total)
 
 | File | Type | Description |
 |------|------|-------------|
-| `src/services/deviceService.ts` | Service | Device CRUD and control |
-| `src/services/biometricService.ts` | Service | Biometric sync queue |
-| `src/pages/DeviceManagement.tsx` | Page | Device registry UI |
-| `src/components/devices/AddDeviceDrawer.tsx` | Component | Add device form |
-| `src/components/devices/EditDeviceDrawer.tsx` | Component | Edit device form |
-| `src/components/devices/LiveAccessLog.tsx` | Component | Real-time access feed |
-| `src/components/devices/DeviceStatusBadge.tsx` | Component | Online/Offline indicator |
-| `supabase/functions/device-access-event/index.ts` | Edge Function | Access validation |
-| `supabase/functions/device-heartbeat/index.ts` | Edge Function | Device status |
-| `supabase/functions/device-sync-data/index.ts` | Edge Function | Biometric sync |
-| `supabase/functions/device-trigger-relay/index.ts` | Edge Function | Remote trigger |
-| `supabase/migrations/xxx_access_devices.sql` | Migration | Database schema |
+| `src/components/settings/TemplateManager.tsx` | Component | CRUD for communication templates |
 
-### Modified Files (5 total)
+### Modified Files (10 total)
 
 | File | Changes |
 |------|---------|
-| `src/pages/Dashboard.tsx` | Add Live Access widget |
-| `src/components/members/MemberProfileDrawer.tsx` | Add biometric status |
-| `src/components/members/AddMemberDrawer.tsx` | Auto-queue biometric sync |
-| `src/config/menu.ts` | Add Device Management route |
-| `src/App.tsx` | Add DeviceManagement route |
+| `src/components/trainers/AddTrainerDrawer.tsx` | Add StaffAvatarUpload component |
+| `src/components/trainers/EditTrainerDrawer.tsx` | Add avatar editing |
+| `src/components/employees/AddEmployeeDrawer.tsx` | Add StaffAvatarUpload component |
+| `src/components/employees/EditEmployeeDrawer.tsx` | Add avatar editing |
+| `src/components/members/MemberAvatarUpload.tsx` | Auto-queue biometric sync |
+| `src/components/common/StaffAvatarUpload.tsx` | Auto-queue biometric sync |
+| `src/components/layout/AppHeader.tsx` | Add member code and prominent role badge |
+| `src/pages/Dashboard.tsx` | Embed LiveAccessLog for real-time feed |
+| `src/pages/Settings.tsx` | Add "Templates" tab |
+| `src/components/announcements/BroadcastDrawer.tsx` | Add database template selector |
+
+### No Changes Needed (Already Working)
+
+- Role Management (user_roles table properly used in AdminRoles.tsx)
+- POS Inventory Sync (storeService.ts decrements inventory on sale)
+- POS Member Search (uses search_members RPC)
+- Device Management Layout (properly wrapped in AppLayout)
+- POS Invoice & Payment Generation (fully integrated)
+
+---
+
+## Technical Notes
+
+### Avatar Storage Buckets
+- `avatars` bucket (public) - For general profile photos
+- `member-photos` bucket (private) - For biometric-grade member photos
+
+### Biometric Sync Flow
+1. User uploads photo via MemberAvatarUpload/StaffAvatarUpload
+2. Photo uploaded to storage bucket
+3. `queueMemberSync` or `queueStaffSync` called
+4. Entry added to `biometric_sync_queue` table with status `pending`
+5. Android terminal polls `device-sync-data` edge function
+6. Terminal downloads photo, registers face
+7. Terminal reports completion, status updated to `completed`
+8. `biometric_enrolled` flag set to `true` on member/employee
+
+### Template Variables Supported
+- `{{member_name}}` - Full name
+- `{{member_code}}` - Unique member ID (e.g., INC-0001)
+- `{{days_left}}` - Days until membership expiry
+- `{{end_date}}` - Membership end date
+- `{{plan_name}}` - Current membership plan
+- `{{amount}}` - Payment amount (for invoices)
+- `{{invoice_number}}` - Invoice reference
 
