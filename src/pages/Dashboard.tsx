@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useBranches } from '@/hooks/useBranches';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import LiveAccessLog from '@/components/devices/LiveAccessLog';
 import { 
   Users, 
   CreditCard, 
@@ -19,7 +20,8 @@ import {
   AlertCircle,
   UserPlus,
   Clock,
-  Receipt
+  Receipt,
+  Activity
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 
@@ -309,37 +311,16 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-3">
           <MembershipDistribution data={membershipData} />
           
-          {/* Recent Activity */}
+          {/* Live Access Log - Real-time Attendance Feed */}
           <Card className="border-border/50 md:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5 text-success" />
+                Live Access Feed
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentActivities.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">No recent activity</p>
-                ) : (
-                  recentActivities.map((activity, index) => (
-                    <div key={index} className="flex items-center gap-4">
-                      <div className={`p-2 rounded-full ${
-                        activity.type === 'checkin' ? 'bg-success/10' : 'bg-accent/10'
-                      }`}>
-                        {activity.type === 'checkin' ? (
-                          <UserCheck className="h-4 w-4 text-success" />
-                        ) : (
-                          <CreditCard className="h-4 w-4 text-accent" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{activity.message}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(activity.time), 'MMM dd, HH:mm')}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+              <LiveAccessLog />
             </CardContent>
           </Card>
         </div>

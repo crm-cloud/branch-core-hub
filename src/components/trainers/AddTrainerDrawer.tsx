@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useCreateTrainer } from '@/hooks/useTrainers';
 import { UserPlus, Link } from 'lucide-react';
+import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 
 const SALARY_TYPES = [
   { value: 'hourly', label: 'Hourly Rate' },
@@ -35,6 +36,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [activeTab, setActiveTab] = useState<'new' | 'link'>('new');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
   const createTrainer = useCreateTrainer();
 
   // Form data for linking existing user
@@ -203,6 +205,7 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   };
 
   const resetForms = () => {
+    setAvatarUrl('');
     setLinkFormData({
       user_id: '',
       specializations: '',
@@ -346,6 +349,16 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
               <div className="p-3 rounded-lg bg-info/10 border border-info/30 text-sm">
                 <p className="text-info font-medium">Create New User</p>
                 <p className="text-muted-foreground">This will create a new user account and trainer profile.</p>
+              </div>
+
+              {/* Avatar Upload */}
+              <div className="flex justify-center pb-2">
+                <StaffAvatarUpload
+                  avatarUrl={avatarUrl}
+                  name={newUserFormData.full_name || 'New Trainer'}
+                  onAvatarChange={setAvatarUrl}
+                  size="lg"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

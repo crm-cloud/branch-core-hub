@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Camera, Loader2, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { queueMemberSync } from '@/services/biometricService';
 
 interface MemberAvatarUploadProps {
+  memberId?: string;
   avatarUrl?: string;
   name: string;
   userId?: string;
@@ -18,10 +20,11 @@ export function MemberAvatarUpload({
   avatarUrl,
   name,
   userId,
+  memberId,
   onAvatarChange,
   size = 'md',
   disabled = false,
-}: MemberAvatarUploadProps) {
+}: MemberAvatarUploadProps & { memberId?: string }) {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +77,16 @@ export function MemberAvatarUpload({
 
       onAvatarChange(publicUrl);
       toast.success('Avatar uploaded successfully');
+
+      // Auto-queue biometric sync if memberId is available
+      if (memberId) {
+        try {
+          await queueMemberSync(memberId, publicUrl, name);
+          toast.success('Photo queued for device sync');
+        } catch (err) {
+          console.warn('Biometric sync queue failed:', err);
+        }
+      }
     } catch (error: any) {
       toast.error('Failed to upload avatar');
       console.error('Upload error:', error);
