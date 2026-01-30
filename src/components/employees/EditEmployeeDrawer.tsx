@@ -8,6 +8,8 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
+import { queueStaffSync } from '@/services/biometricService';
 
 interface EditEmployeeDrawerProps {
   open: boolean;
@@ -29,6 +31,7 @@ const SALARY_TYPES = [
 export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmployeeDrawerProps) {
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
   
   const [formData, setFormData] = useState({
     department: '',
@@ -41,8 +44,26 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
     is_active: true,
   });
 
+  // Handle avatar changes and queue biometric sync
+  const handleAvatarChange = async (url: string) => {
+    setAvatarUrl(url);
+    if (url && employee?.id) {
+      // Update profile avatar
+      if (employee.user_id) {
+        await supabase.from('profiles').update({ avatar_url: url }).eq('id', employee.user_id);
+      }
+      // Queue biometric sync
+      try {
+        await queueStaffSync(employee.id, url, employee.profile?.full_name || 'Employee');
+      } catch (err) {
+        console.warn('Biometric sync queue failed:', err);
+      }
+    }
+  };
+
   useEffect(() => {
     if (employee) {
+      setAvatarUrl(employee.profile?.avatar_url || employee.biometric_photo_url || '');
       setFormData({
         department: employee.department || '',
         position: employee.position || '',
@@ -102,6 +123,16 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          {/* Avatar Upload */}
+          <div className="flex justify-center pb-2">
+            <StaffAvatarUpload
+              avatarUrl={avatarUrl}
+              name={employee?.profile?.full_name || 'Employee'}
+              onAvatarChange={handleAvatarChange}
+              size="lg"
+            />
+          </div>
+
           {/* Active Status */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
             <div>

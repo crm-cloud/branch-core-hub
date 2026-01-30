@@ -10,6 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUpdateTrainer } from '@/hooks/useTrainers';
+import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
+import { queueStaffSync } from '@/services/biometricService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface EditTrainerDrawerProps {
   open: boolean;
@@ -33,6 +36,7 @@ const SALARY_TYPES = [
 export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDrawerProps) {
   const updateTrainer = useUpdateTrainer();
   
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [formData, setFormData] = useState({
     bio: '',
     hourly_rate: 0,
@@ -48,8 +52,26 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
   
   const [newCertification, setNewCertification] = useState('');
 
+  // Handle avatar changes and queue biometric sync
+  const handleAvatarChange = async (url: string) => {
+    setAvatarUrl(url);
+    if (url && trainer?.id) {
+      // Update profile avatar
+      if (trainer.user_id) {
+        await supabase.from('profiles').update({ avatar_url: url }).eq('id', trainer.user_id);
+      }
+      // Queue biometric sync
+      try {
+        await queueStaffSync(trainer.id, url, trainer.profile_name || 'Trainer');
+      } catch (err) {
+        console.warn('Biometric sync queue failed:', err);
+      }
+    }
+  };
+
   useEffect(() => {
     if (trainer) {
+      setAvatarUrl(trainer.profile_avatar || trainer.biometric_photo_url || '');
       setFormData({
         bio: trainer.bio || '',
         hourly_rate: trainer.hourly_rate || 0,
@@ -131,6 +153,16 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          {/* Avatar Upload */}
+          <div className="flex justify-center pb-2">
+            <StaffAvatarUpload
+              avatarUrl={avatarUrl}
+              name={trainer?.profile_name || 'Trainer'}
+              onAvatarChange={handleAvatarChange}
+              size="lg"
+            />
+          </div>
+
           {/* Active Status */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
             <div>

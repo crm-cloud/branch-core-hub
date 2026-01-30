@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MessageSquare, Phone, Mail, Send } from 'lucide-react';
+import { MessageSquare, Phone, Mail, Send, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 interface BroadcastDrawerProps {
   open: boolean;
@@ -19,7 +21,34 @@ export function BroadcastDrawer({ open, onOpenChange, initialType = 'whatsapp', 
     type: initialType,
     message: initialMessage,
     audience: 'all',
+    templateId: '',
   });
+
+  // Fetch saved templates from database
+  const { data: savedTemplates = [] } = useQuery({
+    queryKey: ['broadcast-templates', broadcastData.type],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('templates')
+        .select('id, name, content, subject')
+        .eq('type', broadcastData.type)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const handleTemplateSelect = (templateId: string) => {
+    const template = savedTemplates.find((t: any) => t.id === templateId);
+    if (template) {
+      setBroadcastData({
+        ...broadcastData,
+        templateId,
+        message: template.content,
+      });
+    }
+  };
 
   const handleBroadcast = () => {
     if (!broadcastData.message.trim()) {
@@ -28,7 +57,7 @@ export function BroadcastDrawer({ open, onOpenChange, initialType = 'whatsapp', 
     }
     toast.success(`Broadcast initiated via ${broadcastData.type}`);
     onOpenChange(false);
-    setBroadcastData({ type: 'whatsapp', message: '', audience: 'all' });
+    setBroadcastData({ type: 'whatsapp', message: '', audience: 'all', templateId: '' });
   };
 
   return (
@@ -42,7 +71,7 @@ export function BroadcastDrawer({ open, onOpenChange, initialType = 'whatsapp', 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Channel</Label>
-            <Select value={broadcastData.type} onValueChange={(v: 'sms' | 'email' | 'whatsapp') => setBroadcastData({ ...broadcastData, type: v })}>
+            <Select value={broadcastData.type} onValueChange={(v: 'sms' | 'email' | 'whatsapp') => setBroadcastData({ ...broadcastData, type: v, templateId: '', message: '' })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -70,6 +99,34 @@ export function BroadcastDrawer({ open, onOpenChange, initialType = 'whatsapp', 
           </div>
 
           <div className="space-y-2">
+            <Label>Use Template (Optional)</Label>
+            <Select value={broadcastData.templateId} onValueChange={handleTemplateSelect}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a saved template..." />
+              </SelectTrigger>
+              <SelectContent>
+                {savedTemplates.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    No templates found for {broadcastData.type}
+                  </div>
+                ) : (
+                  savedTemplates.map((t: any) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        {t.name}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Manage templates in Settings → Templates
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label>Audience</Label>
             <Select value={broadcastData.audience} onValueChange={(v) => setBroadcastData({ ...broadcastData, audience: v })}>
               <SelectTrigger>
@@ -92,6 +149,9 @@ export function BroadcastDrawer({ open, onOpenChange, initialType = 'whatsapp', 
               placeholder="Enter your message..."
               rows={6}
             />
+            <p className="text-xs text-muted-foreground">
+              Use variables like {'{{member_name}}'}, {'{{days_left}}'}, {'{{plan_name}}'}
+            </p>
           </div>
         </div>
 

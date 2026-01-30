@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, Database } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, Database, MessageSquare } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -11,6 +11,7 @@ import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
 import { DemoDataSettings } from '@/components/settings/DemoDataSettings';
+import { TemplateManager } from '@/components/settings/TemplateManager';
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,7 +33,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9 h-auto p-1">
+          <TabsList className="grid w-full grid-cols-10 h-auto p-1">
             <TabsTrigger value="organization" className="flex items-center gap-2 py-2">
               <SettingsIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Organization</span>
@@ -48,6 +49,10 @@ export default function SettingsPage() {
             <TabsTrigger value="referrals" className="flex items-center gap-2 py-2">
               <Gift className="h-4 w-4" />
               <span className="hidden sm:inline">Referrals</span>
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-2 py-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">Templates</span>
             </TabsTrigger>
             <TabsTrigger value="integrations" className="flex items-center gap-2 py-2">
               <Plug className="h-4 w-4" />
@@ -75,6 +80,7 @@ export default function SettingsPage() {
           <TabsContent value="branches"><BranchSettings /></TabsContent>
           <TabsContent value="benefits"><BenefitSettingsComponent /></TabsContent>
           <TabsContent value="referrals"><ReferralSettings /></TabsContent>
+          <TabsContent value="templates"><TemplateManager /></TabsContent>
           <TabsContent value="integrations"><IntegrationSettings /></TabsContent>
           <TabsContent value="notifications"><NotificationSettings /></TabsContent>
           <TabsContent value="security"><SecuritySettings /></TabsContent>

@@ -10,6 +10,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useBranches } from '@/hooks/useBranches';
 import { UserPlus, Link } from 'lucide-react';
+import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 
 interface AddEmployeeDrawerProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
   const { data: branches = [] } = useBranches();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'new' | 'link'>('new');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   // Form data for linking existing user
   const [linkFormData, setLinkFormData] = useState({
@@ -221,6 +223,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
   };
 
   const resetForms = () => {
+    setAvatarUrl('');
     setLinkFormData({
       user_id: '',
       branch_id: '',
@@ -272,6 +275,16 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
               <div className="p-3 rounded-lg bg-info/10 border border-info/30 text-sm">
                 <p className="text-info font-medium">Create New User</p>
                 <p className="text-muted-foreground">This will create a new user account and employee record.</p>
+              </div>
+
+              {/* Avatar Upload */}
+              <div className="flex justify-center pb-2">
+                <StaffAvatarUpload
+                  avatarUrl={avatarUrl}
+                  name={newUserFormData.full_name || 'New Employee'}
+                  onAvatarChange={setAvatarUrl}
+                  size="lg"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

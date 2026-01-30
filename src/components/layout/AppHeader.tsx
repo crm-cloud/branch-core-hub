@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,9 +21,11 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export function AppHeader() {
-  const { profile, signOut, roles } = useAuth();
+  const { profile, signOut, roles, user } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
 
@@ -36,9 +39,24 @@ export function AppHeader() {
     setIsDark(!isDark);
   };
 
-  const primaryRole = roles[0] || 'user';
+  const primaryRole = roles[0];
+  const primaryRoleString = typeof primaryRole === 'string' ? primaryRole : primaryRole?.role || 'user';
+  const isMember = roles.some(r => (typeof r === 'string' ? r : r?.role) === 'member');
 
-  // openSearch function removed - GlobalSearch has its own trigger
+  // Fetch member code if user is a member
+  const { data: memberCode } = useQuery({
+    queryKey: ['user-member-code', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from('members')
+        .select('member_code')
+        .eq('user_id', user.id)
+        .single();
+      return data?.member_code;
+    },
+    enabled: !!user?.id && isMember,
+  });
 
   return (
     <>
@@ -50,6 +68,11 @@ export function AppHeader() {
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2">
+        {/* Role Badge - visible in header */}
+        <Badge variant="secondary" className="capitalize text-xs hidden md:flex">
+          {primaryRoleString}
+        </Badge>
+
         {/* Theme Toggle */}
         <Button
           variant="ghost"
@@ -82,11 +105,16 @@ export function AppHeader() {
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {primaryRoleString}
+                  </Badge>
+                </div>
+                {memberCode && (
+                  <p className="text-xs font-mono text-primary font-semibold">{memberCode}</p>
+                )}
                 <p className="text-xs leading-none text-muted-foreground">{profile?.email}</p>
-                <p className="text-xs leading-none text-accent capitalize mt-1">
-                  {typeof primaryRole === 'string' ? primaryRole : primaryRole?.role || 'user'}
-                </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
