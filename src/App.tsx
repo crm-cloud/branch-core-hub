@@ -84,6 +84,7 @@ import StaffDashboard from "./pages/StaffDashboard";
 // Admin pages
 import AdminRoles from "./pages/AdminRoles";
 import DeviceManagement from "./pages/DeviceManagement";
+import ApprovalQueue from "./pages/ApprovalQueue";
 
 const queryClient = new QueryClient();
 
@@ -170,7 +171,7 @@ const App = () => (
             <Route path="/all-bookings" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AllBookingsPage /></ProtectedRoute>} />
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
             <Route path="/devices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DeviceManagement /></ProtectedRoute>} />
-
+            <Route path="/approvals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ApprovalQueue /></ProtectedRoute>} />
             {/* Admin user/role management */}
             <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
 

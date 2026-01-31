@@ -164,6 +164,7 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'CRM & Engagement',
     items: [
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },

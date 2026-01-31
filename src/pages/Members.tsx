@@ -9,25 +9,29 @@ import { AddMemberDrawer } from '@/components/members/AddMemberDrawer';
 import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershipDrawer';
 import { PurchasePTDrawer } from '@/components/members/PurchasePTDrawer';
 import { MemberProfileDrawer } from '@/components/members/MemberProfileDrawer';
+import { QuickFreezeDialog } from '@/components/members/QuickFreezeDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { 
   Search, Plus, Users, UserCheck, UserX, CreditCard, Dumbbell, 
-  Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal
+  Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
 import { useState, useMemo } from 'react';
 import { differenceInDays, format } from 'date-fns';
 
 export default function MembersPage() {
+  const queryClient = useQueryClient();
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchasePTOpen, setPurchasePTOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [quickFreezeOpen, setQuickFreezeOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [selectedMembershipForFreeze, setSelectedMembershipForFreeze] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const { data: branches = [] } = useBranches();
@@ -147,10 +151,17 @@ export default function MembersPage() {
     ? membersWithMemberships 
     : membersWithMemberships.filter((m: any) => m.status === statusFilter);
 
+  // Count frozen memberships
+  const frozenCount = membersWithMemberships.filter((m: any) => {
+    const frozenMembership = m.memberships?.find((ms: any) => ms.status === 'frozen');
+    return frozenMembership;
+  }).length;
+
   const stats = {
     total: membersWithMemberships.length,
     active: membersWithMemberships.filter((m: any) => m.status === 'active').length,
     inactive: membersWithMemberships.filter((m: any) => m.status === 'inactive').length,
+    frozen: frozenCount,
     expiringSoon: membersWithMemberships.filter((m: any) => {
       const activeMembership = m.memberships?.find((ms: any) => ms.status === 'active');
       if (!activeMembership) return false;
@@ -217,6 +228,15 @@ export default function MembersPage() {
     setPurchasePTOpen(true);
   };
 
+  const handleQuickFreeze = (member: any) => {
+    const activeMembership = getActiveMembership(member.memberships);
+    if (activeMembership) {
+      setSelectedMember(member);
+      setSelectedMembershipForFreeze(activeMembership);
+      setQuickFreezeOpen(true);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -241,7 +261,7 @@ export default function MembersPage() {
         </div>
 
         {/* Stats Row - Enhanced Design */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
           <Card className="relative overflow-hidden border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('all')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -284,6 +304,20 @@ export default function MembersPage() {
                 </div>
               </div>
               {statusFilter === 'inactive' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted-foreground" />}
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-l-4 border-l-info hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Frozen</p>
+                  <p className="text-3xl font-bold text-info">{stats.frozen}</p>
+                </div>
+                <div className="h-12 w-12 rounded-full bg-info/10 flex items-center justify-center">
+                  <Snowflake className="h-6 w-6 text-info" />
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -434,10 +468,20 @@ export default function MembersPage() {
                                     {activeMembership ? 'Renew Plan' : 'Add Plan'}
                                   </DropdownMenuItem>
                                   {activeMembership && (
-                                    <DropdownMenuItem onClick={() => handlePurchasePT(member)}>
-                                      <Dumbbell className="h-4 w-4 mr-2" />
-                                      Buy PT Package
-                                    </DropdownMenuItem>
+                                    <>
+                                      <DropdownMenuItem onClick={() => handlePurchasePT(member)}>
+                                        <Dumbbell className="h-4 w-4 mr-2" />
+                                        Buy PT Package
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => handleQuickFreeze(member)}
+                                        disabled={activeMembership.status === 'frozen'}
+                                      >
+                                        <Snowflake className="h-4 w-4 mr-2" />
+                                        Quick Freeze
+                                      </DropdownMenuItem>
+                                    </>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -490,6 +534,15 @@ export default function MembersPage() {
               onPurchaseMembership={() => { setProfileOpen(false); setPurchaseOpen(true); }}
               onPurchasePT={() => { setProfileOpen(false); setPurchasePTOpen(true); }}
             />
+            {selectedMembershipForFreeze && (
+              <QuickFreezeDialog
+                open={quickFreezeOpen}
+                onOpenChange={setQuickFreezeOpen}
+                member={selectedMember}
+                activeMembership={selectedMembershipForFreeze}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['members'] })}
+              />
+            )}
           </>
         )}
       </div>
