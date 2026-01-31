@@ -1,5 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
+import { Clock, AlertTriangle, CheckCircle, ClipboardList } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface ChartData {
   name: string;
@@ -91,9 +95,33 @@ interface MembershipDistributionProps {
   data: ChartData[];
 }
 
-const COLORS = ['hsl(var(--accent))', 'hsl(var(--success))', 'hsl(var(--warning))', 'hsl(var(--info))'];
+const COLORS = [
+  'hsl(var(--accent))', 
+  'hsl(var(--success))', 
+  'hsl(var(--warning))', 
+  'hsl(var(--info))',
+  'hsl(var(--primary))',
+  'hsl(var(--destructive))',
+  '#8884d8',
+  '#82ca9d'
+];
 
 export function MembershipDistribution({ data }: MembershipDistributionProps) {
+  if (!data || data.length === 0) {
+    return (
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Membership Distribution</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+            No active memberships
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="border-border/50">
       <CardHeader>
@@ -106,12 +134,11 @@ export function MembershipDistribution({ data }: MembershipDistributionProps) {
               <Pie
                 data={data}
                 cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={5}
+                cy="45%"
+                innerRadius={50}
+                outerRadius={80}
+                paddingAngle={3}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
               >
                 {data.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -123,10 +150,203 @@ export function MembershipDistribution({ data }: MembershipDistributionProps) {
                   border: '1px solid hsl(var(--border))',
                   borderRadius: '8px',
                 }}
+                formatter={(value: number, name: string) => [`${value} members`, name]}
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36}
+                formatter={(value: string, entry: any) => (
+                  <span className="text-xs text-foreground">
+                    {value} ({entry.payload.value})
+                  </span>
+                )}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Hourly Attendance Chart
+interface HourlyAttendanceChartProps {
+  data: { hour: string; checkins: number }[];
+}
+
+export function HourlyAttendanceChart({ data }: HourlyAttendanceChartProps) {
+  const hasData = data.some(d => d.checkins > 0);
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Clock className="h-5 w-5 text-accent" />
+          Today's Check-ins by Hour
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {!hasData ? (
+          <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+            No check-ins recorded today
+          </div>
+        ) : (
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="hour" className="text-xs fill-muted-foreground" tick={{ fontSize: 10 }} />
+                <YAxis className="text-xs fill-muted-foreground" allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="checkins" 
+                  stroke="hsl(var(--success))" 
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(var(--success))' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Revenue Snapshot Widget
+interface RevenueSnapshotWidgetProps {
+  data?: { collected: number; pending: number; overdue: number };
+}
+
+export function RevenueSnapshotWidget({ data }: RevenueSnapshotWidgetProps) {
+  const total = (data?.collected || 0) + (data?.pending || 0) + (data?.overdue || 0);
+  const collectedPct = total > 0 ? ((data?.collected || 0) / total) * 100 : 0;
+  const pendingPct = total > 0 ? ((data?.pending || 0) / total) * 100 : 0;
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">Revenue Snapshot</CardTitle>
+        <p className="text-xs text-muted-foreground">This month</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {total === 0 ? (
+          <div className="text-center text-muted-foreground py-4">
+            No invoices this month
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Collected</span>
+                <span className="font-medium text-success">₹{(data?.collected || 0).toLocaleString()}</span>
+              </div>
+              <Progress value={collectedPct} className="h-2" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Pending</span>
+                <span className="font-medium text-warning">₹{(data?.pending || 0).toLocaleString()}</span>
+              </div>
+              <Progress value={pendingPct} className="h-2 bg-muted [&>div]:bg-warning" />
+            </div>
+            {(data?.overdue || 0) > 0 && (
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-destructive">Overdue</span>
+                <span className="font-medium text-destructive">₹{(data?.overdue || 0).toLocaleString()}</span>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Expiring Members Widget
+interface ExpiringMembersWidgetProps {
+  data: { memberId: string; memberCode: string; memberName: string; hoursRemaining: number; planName: string }[];
+}
+
+export function ExpiringMembersWidget({ data }: ExpiringMembersWidgetProps) {
+  const navigate = useNavigate();
+
+  return (
+    <Card className="border-border/50 border-l-4 border-l-destructive">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          Expiring in 48 Hours
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <div className="flex items-center gap-2 text-success text-sm py-4">
+            <CheckCircle className="h-4 w-4" />
+            No memberships expiring soon
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.map((member, idx) => (
+              <div 
+                key={idx} 
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => navigate('/members')}
+              >
+                <div>
+                  <p className="text-sm font-medium">{member.memberName}</p>
+                  <p className="text-xs text-muted-foreground">{member.planName}</p>
+                </div>
+                <Badge variant="destructive" className="text-xs">
+                  {member.hoursRemaining}h left
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Pending Approvals Widget
+interface PendingApprovalsWidgetProps {
+  count: number;
+}
+
+export function PendingApprovalsWidget({ count }: PendingApprovalsWidgetProps) {
+  const navigate = useNavigate();
+
+  return (
+    <Card 
+      className="border-border/50 cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => navigate('/approvals')}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Pending Approvals</p>
+            <p className="text-2xl font-bold">{count}</p>
+          </div>
+          <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
+            <ClipboardList className="h-6 w-6 text-warning" />
+          </div>
+        </div>
+        {count === 0 ? (
+          <p className="text-xs text-success mt-2 flex items-center gap-1">
+            <CheckCircle className="h-3 w-3" />
+            All caught up!
+          </p>
+        ) : (
+          <p className="text-xs text-warning mt-2">Click to review</p>
+        )}
       </CardContent>
     </Card>
   );

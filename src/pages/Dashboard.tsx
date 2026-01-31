@@ -3,9 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/ui/stat-card';
 import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { RevenueChart, AttendanceChart, MembershipDistribution } from '@/components/dashboard/DashboardCharts';
+import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, RevenueSnapshotWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { useBranches } from '@/hooks/useBranches';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,15 +14,15 @@ import {
   CreditCard, 
   UserCheck, 
   Dumbbell, 
-  TrendingUp, 
   Calendar,
   AlertCircle,
   UserPlus,
   Clock,
   Receipt,
-  Activity
+  Activity,
+  Snowflake
 } from 'lucide-react';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'date-fns';
 
 export default function DashboardPage() {
   const { profile, roles, user } = useAuth();
@@ -49,6 +48,11 @@ export default function DashboardPage() {
       let activeMembersQuery = supabase.from('members').select('id', { count: 'exact' }).eq('status', 'active');
       if (branchFilter) activeMembersQuery = activeMembersQuery.eq('branch_id', branchFilter);
       const { count: activeMembers } = await activeMembersQuery;
+
+      // Frozen memberships count
+      let frozenQuery = supabase.from('memberships').select('id', { count: 'exact' }).eq('status', 'frozen');
+      if (branchFilter) frozenQuery = frozenQuery.eq('branch_id', branchFilter);
+      const { count: frozenMemberships } = await frozenQuery;
 
       // Today's attendance
       let attendanceQuery = supabase.from('member_attendance').select('id', { count: 'exact' }).gte('check_in', today);
@@ -93,9 +97,15 @@ export default function DashboardPage() {
       if (branchFilter) classesQuery = classesQuery.eq('branch_id', branchFilter);
       const { count: todayClasses } = await classesQuery;
 
+      // Pending approvals
+      let approvalsQuery = supabase.from('approval_requests').select('id', { count: 'exact' }).eq('status', 'pending');
+      if (branchFilter) approvalsQuery = approvalsQuery.eq('branch_id', branchFilter);
+      const { count: pendingApprovals } = await approvalsQuery;
+
       return {
         totalMembers: totalMembers || 0,
         activeMembers: activeMembers || 0,
+        frozenMemberships: frozenMemberships || 0,
         todayCheckins: todayCheckins || 0,
         currentlyIn: currentlyIn || 0,
         monthlyRevenue,
@@ -105,6 +115,7 @@ export default function DashboardPage() {
         pendingAmount,
         activeTrainers: activeTrainers || 0,
         todayClasses: todayClasses || 0,
+        pendingApprovals: pendingApprovals || 0,
       };
     },
   });
@@ -176,40 +187,91 @@ export default function DashboardPage() {
     },
   });
 
-  // Recent activities
-  const { data: recentActivities = [] } = useQuery({
-    queryKey: ['recent-activities', branchFilter],
+  // Hourly attendance for today
+  const { data: hourlyAttendanceData = [] } = useQuery({
+    queryKey: ['hourly-attendance', branchFilter],
     enabled: !!user,
     queryFn: async () => {
-      const activities: any[] = [];
-      
-      // Recent check-ins
-      let checkinQuery = supabase.from('member_attendance').select('id, check_in, members(member_code)').order('check_in', { ascending: false }).limit(5);
-      if (branchFilter) checkinQuery = checkinQuery.eq('branch_id', branchFilter);
-      const { data: checkins } = await checkinQuery;
-      
-      checkins?.forEach((c: any) => {
-        activities.push({
-          type: 'checkin',
-          message: `${c.members?.member_code || 'Member'} checked in`,
-          time: c.check_in,
-        });
+      const today = new Date().toISOString().split('T')[0];
+      let query = supabase.from('member_attendance').select('check_in').gte('check_in', today);
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
+      const { data } = await query;
+
+      // Group by hour
+      const hourCounts: Record<number, number> = {};
+      for (let i = 5; i <= 22; i++) hourCounts[i] = 0;
+
+      data?.forEach((a: any) => {
+        const hour = new Date(a.check_in).getHours();
+        if (hour >= 5 && hour <= 22) {
+          hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+        }
       });
 
-      // Recent payments
-      let paymentQuery = supabase.from('payments').select('id, amount, payment_date').order('payment_date', { ascending: false }).limit(3);
-      if (branchFilter) paymentQuery = paymentQuery.eq('branch_id', branchFilter);
-      const { data: paymentList } = await paymentQuery;
-      
-      paymentList?.forEach((p: any) => {
-        activities.push({
-          type: 'payment',
-          message: `Payment of ₹${p.amount.toLocaleString()} received`,
-          time: p.payment_date,
-        });
-      });
+      return Object.entries(hourCounts).map(([hour, count]) => ({
+        hour: `${hour}:00`,
+        checkins: count,
+      }));
+    },
+  });
 
-      return activities.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8);
+  // Revenue snapshot (collected vs pending)
+  const { data: revenueSnapshot } = useQuery({
+    queryKey: ['revenue-snapshot', branchFilter],
+    enabled: !!user,
+    queryFn: async () => {
+      const monthStart = startOfMonth(new Date()).toISOString();
+      const today = new Date().toISOString().split('T')[0];
+
+      // Collected this month
+      let collectedQuery = supabase.from('payments').select('amount').gte('payment_date', monthStart);
+      if (branchFilter) collectedQuery = collectedQuery.eq('branch_id', branchFilter);
+      const { data: collected } = await collectedQuery;
+      const collectedAmount = collected?.reduce((sum, p) => sum + p.amount, 0) || 0;
+
+      // Pending invoices
+      let pendingQuery = supabase.from('invoices').select('total_amount, amount_paid').eq('status', 'pending');
+      if (branchFilter) pendingQuery = pendingQuery.eq('branch_id', branchFilter);
+      const { data: pending } = await pendingQuery;
+      const pendingAmount = pending?.reduce((sum, i) => sum + (i.total_amount - (i.amount_paid || 0)), 0) || 0;
+
+      // Overdue invoices
+      let overdueQuery = supabase.from('invoices').select('total_amount, amount_paid').eq('status', 'overdue');
+      if (branchFilter) overdueQuery = overdueQuery.eq('branch_id', branchFilter);
+      const { data: overdue } = await overdueQuery;
+      const overdueAmount = overdue?.reduce((sum, i) => sum + (i.total_amount - (i.amount_paid || 0)), 0) || 0;
+
+      return { collected: collectedAmount, pending: pendingAmount, overdue: overdueAmount };
+    },
+  });
+
+  // Expiring in 48 hours
+  const { data: expiringMembers = [] } = useQuery({
+    queryKey: ['expiring-48h', branchFilter],
+    enabled: !!user,
+    queryFn: async () => {
+      const now = new Date();
+      const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      const today = now.toISOString().split('T')[0];
+
+      let query = supabase
+        .from('memberships')
+        .select('id, end_date, member_id, members(member_code, profiles:user_id(full_name)), membership_plans(name)')
+        .eq('status', 'active')
+        .gte('end_date', today)
+        .lte('end_date', in48h)
+        .limit(5);
+
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
+      const { data } = await query;
+
+      return (data || []).map((m: any) => ({
+        memberId: m.member_id,
+        memberCode: m.members?.member_code,
+        memberName: m.members?.profiles?.full_name || 'Unknown',
+        hoursRemaining: differenceInHours(new Date(m.end_date), now),
+        planName: m.membership_plans?.name || 'N/A',
+      }));
     },
   });
 
@@ -307,6 +369,14 @@ export default function DashboardPage() {
           <AttendanceChart data={attendanceData} />
         </div>
 
+        {/* CRM Widgets Row */}
+        <div className="grid gap-6 md:grid-cols-4">
+          <HourlyAttendanceChart data={hourlyAttendanceData} />
+          <RevenueSnapshotWidget data={revenueSnapshot} />
+          <ExpiringMembersWidget data={expiringMembers} />
+          <PendingApprovalsWidget count={stats?.pendingApprovals || 0} />
+        </div>
+
         {/* Bottom Row */}
         <div className="grid gap-6 md:grid-cols-3">
           <MembershipDistribution data={membershipData} />
@@ -324,24 +394,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* User Roles */}
-        {roles.length > 0 && (
-          <Card className="border-border/50">
-            <CardHeader>
-              <CardTitle className="text-lg">Your Roles</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {roles.map((r, i) => (
-                  <Badge key={i} className="bg-accent/10 text-accent border-accent/20 capitalize">
-                    {r.role}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </AppLayout>
   );
