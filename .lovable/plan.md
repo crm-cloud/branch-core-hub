@@ -1,317 +1,205 @@
 
 
-# Complete Incline Gym System Enhancement Plan
+# Approval Portal & Dashboard Enhancement Plan for Incline Gym
 
 ## Executive Summary
 
-Based on comprehensive audit, this plan addresses 6 key areas: Biometric Avatar Upload workflow, Role Management improvements, Dashboard Identity enhancements, POS & Inventory improvements, Device Management layout fixes, and Communication Template Manager. Most core infrastructure is already in place - this plan fills the remaining gaps.
+This plan implements a comprehensive Request-Response architecture for membership lifecycle management, enhanced dashboards with CRM widgets, and improved data synchronization across the system. Most core infrastructure already exists - this plan fills the remaining UI/UX gaps and adds missing features.
 
 ---
 
 ## Current State Analysis
 
-### Already Working (No Changes Needed)
+### Already Implemented (No Changes Needed)
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Member Avatar Upload | Fully Integrated | `MemberAvatarUpload` component in `AddMemberDrawer`, uploads to `avatars` bucket |
-| Biometric Sync Service | Fully Integrated | `biometricService.ts` queues sync to devices, updates `biometric_enrolled` flag |
-| Role Management (user_roles table) | Fully Integrated | `AdminRoles.tsx` allows adding/removing roles, uses separate `user_roles` table |
-| POS Inventory Deduction | Fully Integrated | `storeService.ts` decrements `inventory` table on sale |
-| POS Invoice Generation | Fully Integrated | Creates invoice, payment record, and invoice items |
-| Member Code Search in POS | Fully Integrated | Uses `search_members` RPC for code, name, phone, email search |
-| Device Management Page | Fully Integrated | `DeviceManagement.tsx` with AddDeviceDrawer, EditDeviceDrawer, LiveAccessLog |
-| Templates Database Table | Already Exists | `templates` table with name, type, subject, content, variables |
-| Broadcast Drawer | Exists | `BroadcastDrawer.tsx` sends messages but uses hardcoded templates |
+| Approval Requests Table | Database exists with proper schema | `approval_requests` table with types: membership_freeze, membership_transfer, refund, discount, complimentary, expense, contract |
+| Freeze Approval Flow | Fully implemented | `FreezeMembershipDrawer.tsx` creates approval request, `ApprovalRequestsDrawer.tsx` processes approve/reject |
+| Member Request Portal | Exists | `MemberRequests.tsx` at `/my-requests` allows members to submit freeze & trainer change requests |
+| Turnstile Frozen Handling | Correctly implemented | `device-access-event` edge function returns "Membership Frozen" denial via `validate_member_checkin` RPC |
+| Admin Menu with Devices | Properly configured | `menu.ts` includes Devices under Operations for owner/admin/manager roles |
+| Dashboard with Live Access | Already embedded | `Dashboard.tsx` includes `LiveAccessLog` component for real-time attendance feed |
+| Frozen Members Analytics | Included in Inactive count | Members page shows inactive count which includes frozen members |
 
 ---
 
 ## Issues Requiring Implementation
 
-### Issue 1: Staff/Trainer Avatar Upload Missing
+### Issue 1: Staff "Quick Freeze" Button Missing
 
-**Current State:** 
-- `AddMemberDrawer.tsx` (line 176-184) has `MemberAvatarUpload` component
-- `AddTrainerDrawer.tsx` and `AddEmployeeDrawer.tsx` do NOT have avatar upload
+**Current State:** Staff can only freeze via the approval flow in member profile drawer
 
-**Problem:** Trainers and staff cannot upload photos for biometric enrollment
+**Problem:** Staff need ability to bypass approval queue and apply immediate freeze for operational efficiency
 
-**Solution:** Add avatar upload to trainer and employee creation workflows
+**Solution:** Add "Quick Freeze" action to Members table dropdown menu
 
-**Files to Modify:**
-- `src/components/trainers/AddTrainerDrawer.tsx` - Add `StaffAvatarUpload` component
-- `src/components/trainers/EditTrainerDrawer.tsx` - Add avatar in edit workflow
-- `src/components/employees/AddEmployeeDrawer.tsx` - Add `StaffAvatarUpload` component
-- `src/components/employees/EditEmployeeDrawer.tsx` - Add avatar in edit workflow
+**File to Modify:** `src/pages/Members.tsx`
 
 **Technical Details:**
+- Add dropdown menu item "Quick Freeze" with snowflake icon
+- Opens a simplified dialog (not the full approval drawer)
+- Directly updates membership status to 'frozen' and creates freeze history record
+- Only visible to staff/manager/admin roles
+- Logs the action in audit trail
+
 ```typescript
-// Import existing StaffAvatarUpload
-import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
-
-// Add state
-const [avatarUrl, setAvatarUrl] = useState('');
-
-// Add to form (before name fields)
-<div className="flex justify-center pb-2">
-  <StaffAvatarUpload
-    avatarUrl={avatarUrl}
-    name={newUserFormData.full_name || 'New Staff'}
-    onAvatarChange={setAvatarUrl}
-    size="lg"
-  />
-</div>
-
-// Pass to create-staff-user edge function
-avatarUrl: avatarUrl || null,
+// Add to dropdown menu (after "Buy PT Package")
+<DropdownMenuItem 
+  onClick={() => handleQuickFreeze(member)}
+  disabled={!activeMembership || activeMembership.status === 'frozen'}
+>
+  <Snowflake className="h-4 w-4 mr-2" />
+  Quick Freeze
+</DropdownMenuItem>
 ```
 
 ---
 
-### Issue 2: Biometric Sync Trigger on Photo Upload
+### Issue 2: Dedicated Manager Approval Queue Page Missing
 
-**Current State:** 
-- `biometricService.ts` has `queueMemberSync` and `queueStaffSync` functions
-- These are NOT called automatically when photos are uploaded
+**Current State:** `ApprovalRequestsDrawer.tsx` exists as a drawer, not a dedicated page
 
-**Problem:** Users must manually trigger sync; should be automatic
+**Problem:** Managers need a dedicated `/approvals` page with better visibility, not hidden in a drawer
 
-**Solution:** Add automatic biometric sync after avatar upload
-
-**Files to Modify:**
-- `src/components/members/MemberAvatarUpload.tsx` - Call `queueMemberSync` after upload
-- `src/components/common/StaffAvatarUpload.tsx` - Call `queueStaffSync` after upload
-- `src/components/members/EditProfileDrawer.tsx` - Trigger sync when photo changes
-
-**Technical Details:**
-```typescript
-// After successful upload in MemberAvatarUpload.tsx
-import { queueMemberSync } from '@/services/biometricService';
-
-// After line 76 (onAvatarChange)
-if (userId) {
-  try {
-    await queueMemberSync(userId, publicUrl, name);
-    toast.success('Photo queued for device sync');
-  } catch (err) {
-    console.warn('Biometric sync queued failed:', err);
-  }
-}
-```
-
----
-
-### Issue 3: Dashboard Identity Enhancement
-
-**Current State:**
-- Dashboard (line 221) shows `Welcome back, {first_name}!`
-- Member code and role badge are NOT prominently displayed in header
-- Role badges are at the bottom of the page (lines 348-363)
-
-**Problem:** User identity (member code) and role should be visible in header
-
-**Solution:** Enhance AppHeader with member code and role badge
-
-**Files to Modify:**
-- `src/components/layout/AppHeader.tsx` - Add member code and role badge display
-- `src/pages/MemberDashboard.tsx` - Show member code prominently (if exists)
-
-**Technical Details for AppHeader:**
-```typescript
-// In AppHeader, enhance the user menu label (lines 83-90)
-<DropdownMenuLabel className="font-normal">
-  <div className="flex flex-col space-y-1">
-    <div className="flex items-center gap-2">
-      <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
-      {/* Role Badge - moved to top */}
-      <Badge variant="secondary" className="text-xs capitalize">
-        {primaryRole?.role || primaryRole}
-      </Badge>
-    </div>
-    {/* Member Code if exists */}
-    {memberCode && (
-      <p className="text-xs font-mono text-primary">{memberCode}</p>
-    )}
-    <p className="text-xs leading-none text-muted-foreground">{profile?.email}</p>
-  </div>
-</DropdownMenuLabel>
-```
-
-**Additional Query in AppHeader:**
-```typescript
-// Fetch member code if user is a member
-const { data: memberData } = useQuery({
-  queryKey: ['user-member-code', user?.id],
-  queryFn: async () => {
-    if (!user?.id) return null;
-    const { data } = await supabase
-      .from('members')
-      .select('member_code')
-      .eq('user_id', user.id)
-      .single();
-    return data?.member_code;
-  },
-  enabled: !!user?.id && roles.some(r => (r.role || r) === 'member'),
-});
-```
-
----
-
-### Issue 4: Real-time Attendance Feed on Dashboard
-
-**Current State:**
-- Dashboard shows "Recent Activity" with check-ins from `member_attendance` table
-- Uses standard query, NOT real-time subscription
-
-**Problem:** Activity feed doesn't update automatically when turnstile events occur
-
-**Solution:** Add Supabase Realtime subscription for live attendance feed
-
-**Files to Modify:**
-- `src/pages/Dashboard.tsx` - Add realtime subscription for `device_access_events`
-- `src/components/devices/LiveAccessLog.tsx` - Already has realtime (can embed in Dashboard)
-
-**Technical Details:**
-```typescript
-// Add to Dashboard.tsx
-import { LiveAccessLog } from '@/components/devices/LiveAccessLog';
-
-// Replace static "Recent Activity" card with LiveAccessLog
-<Card className="border-border/50 md:col-span-2">
-  <CardHeader>
-    <CardTitle className="text-lg">Live Access Feed</CardTitle>
-  </CardHeader>
-  <CardContent>
-    <LiveAccessLog maxItems={8} showHeader={false} />
-  </CardContent>
-</Card>
-```
-
----
-
-### Issue 5: POS Split Payments Support
-
-**Current State:**
-- POS supports single payment method (cash, card, wallet, upi)
-- No split payment capability
-
-**Problem:** Cannot handle "half cash, half card" scenarios
-
-**Solution:** Add split payment UI and backend support
-
-**Files to Modify:**
-- `src/pages/POS.tsx` - Add split payment toggle and amount inputs
-- `src/services/storeService.ts` - Modify `createPOSSale` to accept multiple payments
-
-**Technical Details:**
-```typescript
-// Add state for split payments
-const [splitPayment, setSplitPayment] = useState(false);
-const [payments, setPayments] = useState<{method: string; amount: number}[]>([
-  { method: 'cash', amount: 0 }
-]);
-
-// UI for split payment
-{splitPayment ? (
-  <div className="space-y-2">
-    {payments.map((p, idx) => (
-      <div key={idx} className="flex gap-2">
-        <Select value={p.method} onValueChange={...}>
-          ...payment method options
-        </Select>
-        <Input type="number" value={p.amount} onChange={...} />
-        <Button variant="ghost" onClick={() => removePayment(idx)}>
-          <Trash2 />
-        </Button>
-      </div>
-    ))}
-    <Button variant="outline" onClick={addPayment}>Add Payment Method</Button>
-  </div>
-) : (
-  // existing single payment select
-)}
-```
-
----
-
-### Issue 6: Communication Template Manager
-
-**Current State:**
-- `templates` table exists with proper schema
-- `messageTemplates.ts` has hardcoded templates
-- `BroadcastDrawer` doesn't fetch from database
-
-**Problem:** Templates are not managed in Settings, broadcast doesn't use saved templates
-
-**Solution:** Create Template Manager in Settings and link to Broadcast
+**Solution:** Create dedicated Approval Queue page and add to sidebar
 
 **Files to Create:**
-- `src/components/settings/TemplateManager.tsx` - CRUD for templates
+- `src/pages/ApprovalQueue.tsx` - Dedicated full-page approval dashboard
 
 **Files to Modify:**
-- `src/pages/Settings.tsx` - Add "Templates" tab
-- `src/components/announcements/BroadcastDrawer.tsx` - Add template selector from database
+- `src/config/menu.ts` - Add "Approvals" menu item under CRM & Engagement
+- `src/App.tsx` - Add route
 
-**Technical Details for TemplateManager:**
+**Technical Details:**
 ```typescript
-// Template Manager component
-export function TemplateManager() {
-  const [templates, setTemplates] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [showEditor, setShowEditor] = useState(false);
-
-  // Fetch templates from database
-  const { data: templates } = useQuery({
-    queryKey: ['communication-templates'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('templates')
-        .select('*')
-        .order('type', { ascending: true });
-      return data;
-    },
-  });
-
-  // Create/Update mutation
-  // Delete mutation
-  
-  // Template editor with variable support
-  // Variables: {{member_name}}, {{days_left}}, {{member_code}}, {{plan_name}}, {{end_date}}
-}
+// New page features:
+// 1. Stats cards at top: Pending | Approved Today | Rejected Today
+// 2. Tabbed interface: Pending | All Requests | My Decisions
+// 3. Bulk approve/reject for similar requests
+// 4. Filter by type: Freeze, Transfer, Refund, Discount, etc.
+// 5. Search by member name or code
+// 6. Real-time updates via Supabase subscription
 ```
 
-**Enhanced BroadcastDrawer:**
-```typescript
-// Add template selector
-const { data: savedTemplates = [] } = useQuery({
-  queryKey: ['broadcast-templates', broadcastData.type],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('templates')
-      .select('*')
-      .eq('type', broadcastData.type)
-      .eq('is_active', true);
-    return data;
-  },
-});
+---
 
-// Template dropdown
-<Select onValueChange={(templateId) => {
-  const template = savedTemplates.find(t => t.id === templateId);
-  if (template) {
-    setBroadcastData({ ...broadcastData, message: template.content });
-  }
-}}>
-  <SelectTrigger>
-    <SelectValue placeholder="Select template (optional)" />
-  </SelectTrigger>
-  <SelectContent>
-    {savedTemplates.map(t => (
-      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-    ))}
-  </SelectContent>
-</Select>
+### Issue 3: Dashboard "Your Roles" Widget Should Be Removed
+
+**Current State:** Dashboard shows "Your Roles" card at bottom (lines 328-344)
+
+**Problem:** Redundant - role is now displayed in AppHeader profile dropdown
+
+**Solution:** Remove the "Your Roles" card from Dashboard
+
+**File to Modify:** `src/pages/Dashboard.tsx`
+
+**Technical Details:**
+- Remove lines 328-344 (the roles card)
+- The role badge is already prominently displayed in AppHeader
+
+---
+
+### Issue 4: Membership Distribution Chart Labels Truncated
+
+**Current State:** Pie chart shows labels with format `${name} ${percent}%`
+
+**Problem:** Long plan names get cut off; no legend for reference
+
+**Solution:** Enhance chart with proper legend below the pie
+
+**File to Modify:** `src/components/dashboard/DashboardCharts.tsx`
+
+**Technical Details:**
+```typescript
+// Update MembershipDistribution component:
+// 1. Add Legend component from recharts
+// 2. Position legend at bottom
+// 3. Show plan name with count (not just percentage)
+// 4. Use distinct colors (expand COLORS array to 8 colors)
+// 5. Add empty state: "No active memberships"
 ```
+
+---
+
+### Issue 5: New CRM Dashboard Widgets Needed
+
+**Current State:** Dashboard has basic stats and existing charts
+
+**Problem:** Missing advanced CRM widgets for peak hours, revenue tracking, facility usage, and urgent expiries
+
+**Solution:** Add 4 new widgets to Dashboard
+
+**File to Modify:** `src/pages/Dashboard.tsx`
+
+**Technical Details:**
+
+**Widget 1: Hourly Attendance (Check-ins per Hour)**
+```typescript
+// Query member_attendance grouped by hour for today
+// Display as line chart showing peak gym times
+// Hours on X-axis (6AM-10PM), check-ins on Y-axis
+```
+
+**Widget 2: Revenue Snapshot (Pending vs Collected)**
+```typescript
+// Query invoices for current month
+// Calculate: Collected, Pending, Overdue amounts
+// Display as horizontal progress bar with 3 segments
+```
+
+**Widget 3: Expiring in 48 Hours (Critical List)**
+```typescript
+// Query memberships WHERE end_date <= now() + 48 hours AND status = 'active'
+// Display top 5 as list with member name, code, hours remaining
+// Click to open member profile
+```
+
+**Widget 4: Pending Approvals Counter**
+```typescript
+// Query approval_requests WHERE status = 'pending'
+// Show count with badge
+// Click to open Approval Queue page
+```
+
+---
+
+### Issue 6: Frozen Members Not Explicitly Shown in Analytics
+
+**Current State:** Frozen members are grouped with "inactive" in member stats
+
+**Problem:** Frozen is different from inactive - need separate visibility
+
+**Solution:** Add "Frozen" stat card to Members page and Dashboard
+
+**Files to Modify:**
+- `src/pages/Members.tsx` - Add frozen count to stats grid
+- `src/pages/Dashboard.tsx` - Add frozen count query
+
+**Technical Details:**
+```typescript
+// Add to stats query
+const { count: frozenMembers } = await supabase
+  .from('memberships')
+  .select('id', { count: 'exact' })
+  .eq('status', 'frozen');
+```
+
+---
+
+### Issue 7: Trainer Change Approval Type Missing from Enum
+
+**Current State:** `MemberRequests.tsx` uses 'complimentary' as workaround for trainer change
+
+**Problem:** No dedicated `trainer_change` approval type in database enum
+
+**Solution:** Add proper handling for trainer change requests OR migrate to use existing `complimentary` type consistently
+
+**Database Change:** Add `trainer_change` to approval_type enum (optional - can use reference_type instead)
+
+**Files to Modify:**
+- `src/components/approvals/ApprovalRequestsDrawer.tsx` - Add handler for trainer_change reference_type
+- Process trainer change: Update `members.assigned_trainer_id`
 
 ---
 
@@ -319,71 +207,168 @@ const { data: savedTemplates = [] } = useQuery({
 
 | Task | Priority | Complexity | Files |
 |------|----------|------------|-------|
-| Staff/Trainer Avatar Upload | High | Low | AddTrainerDrawer, AddEmployeeDrawer, EditTrainerDrawer, EditEmployeeDrawer |
-| Auto Biometric Sync on Upload | High | Low | MemberAvatarUpload, StaffAvatarUpload |
-| Dashboard Identity Enhancement | Medium | Low | AppHeader, add member code + role badge |
-| Live Attendance Feed | Medium | Low | Dashboard (embed LiveAccessLog) |
-| POS Split Payments | Medium | Medium | POS.tsx, storeService.ts |
-| Template Manager in Settings | Medium | Medium | New TemplateManager.tsx, Settings.tsx |
-| Broadcast Template Integration | Medium | Low | BroadcastDrawer.tsx |
+| Quick Freeze Button | High | Medium | Members.tsx, new QuickFreezeDialog component |
+| Dedicated Approval Queue Page | High | Medium | New ApprovalQueue.tsx, menu.ts, App.tsx |
+| Remove "Your Roles" Widget | Low | Trivial | Dashboard.tsx |
+| Fix Membership Pie Chart Legend | Medium | Low | DashboardCharts.tsx |
+| Add Hourly Attendance Widget | Medium | Medium | Dashboard.tsx |
+| Add Revenue Snapshot Widget | Medium | Medium | Dashboard.tsx |
+| Add Expiring 48h Widget | High | Low | Dashboard.tsx |
+| Add Pending Approvals Widget | Medium | Low | Dashboard.tsx |
+| Add Frozen Count to Stats | Medium | Low | Members.tsx, Dashboard.tsx |
+| Trainer Change Approval Handler | Medium | Medium | ApprovalRequestsDrawer.tsx |
 
 ---
 
 ## Files Summary
 
-### New Files (1 total)
+### New Files (2 total)
 
 | File | Type | Description |
 |------|------|-------------|
-| `src/components/settings/TemplateManager.tsx` | Component | CRUD for communication templates |
+| `src/pages/ApprovalQueue.tsx` | Page | Full-page approval management with tabs, filters, bulk actions |
+| `src/components/members/QuickFreezeDialog.tsx` | Component | Simplified dialog for staff to immediately freeze a membership |
 
-### Modified Files (10 total)
+### Modified Files (6 total)
 
 | File | Changes |
 |------|---------|
-| `src/components/trainers/AddTrainerDrawer.tsx` | Add StaffAvatarUpload component |
-| `src/components/trainers/EditTrainerDrawer.tsx` | Add avatar editing |
-| `src/components/employees/AddEmployeeDrawer.tsx` | Add StaffAvatarUpload component |
-| `src/components/employees/EditEmployeeDrawer.tsx` | Add avatar editing |
-| `src/components/members/MemberAvatarUpload.tsx` | Auto-queue biometric sync |
-| `src/components/common/StaffAvatarUpload.tsx` | Auto-queue biometric sync |
-| `src/components/layout/AppHeader.tsx` | Add member code and prominent role badge |
-| `src/pages/Dashboard.tsx` | Embed LiveAccessLog for real-time feed |
-| `src/pages/Settings.tsx` | Add "Templates" tab |
-| `src/components/announcements/BroadcastDrawer.tsx` | Add database template selector |
-
-### No Changes Needed (Already Working)
-
-- Role Management (user_roles table properly used in AdminRoles.tsx)
-- POS Inventory Sync (storeService.ts decrements inventory on sale)
-- POS Member Search (uses search_members RPC)
-- Device Management Layout (properly wrapped in AppLayout)
-- POS Invoice & Payment Generation (fully integrated)
+| `src/pages/Members.tsx` | Add Quick Freeze action to dropdown, add frozen count stat card |
+| `src/pages/Dashboard.tsx` | Remove "Your Roles", add 4 new CRM widgets, add frozen count query |
+| `src/components/dashboard/DashboardCharts.tsx` | Enhance pie chart with proper legend, empty states |
+| `src/components/approvals/ApprovalRequestsDrawer.tsx` | Add trainer_change handling |
+| `src/config/menu.ts` | Add "Approvals" menu item |
+| `src/App.tsx` | Add /approvals route |
 
 ---
 
-## Technical Notes
+## Workflow Diagrams
 
-### Avatar Storage Buckets
-- `avatars` bucket (public) - For general profile photos
-- `member-photos` bucket (private) - For biometric-grade member photos
+### Member-Initiated Freeze Request Flow
 
-### Biometric Sync Flow
-1. User uploads photo via MemberAvatarUpload/StaffAvatarUpload
-2. Photo uploaded to storage bucket
-3. `queueMemberSync` or `queueStaffSync` called
-4. Entry added to `biometric_sync_queue` table with status `pending`
-5. Android terminal polls `device-sync-data` edge function
-6. Terminal downloads photo, registers face
-7. Terminal reports completion, status updated to `completed`
-8. `biometric_enrolled` flag set to `true` on member/employee
+```text
+Member Portal                 Database                    Manager Dashboard
+[Request Freeze] ─────────► [approval_requests] ◄──────── [View Pending]
+      │                         status: pending                │
+      │                              │                         │
+      │                              ▼                         │
+      │                     [Manager Reviews]                  │
+      │                              │                         │
+      ├─────────────────────────────┬──────────────────────────┤
+      ▼                             ▼                          ▼
+  [Approved]                    [Rejected]                [Notification]
+      │                              │                         │
+      ▼                              ▼                         │
+[membership_freeze_history] [Status: rejected]                 │
+[memberships.status=frozen]        │                           │
+      │                             └───────────────────────────┤
+      ▼                                                        ▼
+[Turnstile: DENIED]                               [Member sees decision]
+```
 
-### Template Variables Supported
-- `{{member_name}}` - Full name
-- `{{member_code}}` - Unique member ID (e.g., INC-0001)
-- `{{days_left}}` - Days until membership expiry
-- `{{end_date}}` - Membership end date
-- `{{plan_name}}` - Current membership plan
-- `{{amount}}` - Payment amount (for invoices)
-- `{{invoice_number}}` - Invoice reference
+### Staff Quick Freeze Flow (Bypass Approval)
+
+```text
+Staff View (Members Page)
+[Click Quick Freeze] ─► [Confirm Dialog] ─► [Direct Update]
+        │                      │                   │
+        │                      │                   ├─► memberships.status = 'frozen'
+        │                      │                   ├─► membership_freeze_history INSERT
+        │                      │                   └─► audit_logs INSERT
+        │                      │                            │
+        │                      │                            ▼
+        │                      │                   [Turnstile: DENIED immediately]
+        │                      │
+        └──────────────────────┴─► [Toast: "Membership frozen"]
+```
+
+---
+
+## Technical Specifications
+
+### Quick Freeze Dialog Props
+```typescript
+interface QuickFreezeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  member: {
+    id: string;
+    member_code: string;
+    profiles?: { full_name: string };
+  };
+  activeMembership: {
+    id: string;
+    end_date: string;
+    membership_plans?: { name: string };
+  };
+  onSuccess: () => void;
+}
+```
+
+### Approval Queue Page Features
+```typescript
+// Tab structure
+type ApprovalTab = 'pending' | 'approved' | 'rejected' | 'all';
+
+// Filters
+interface ApprovalFilters {
+  type: ApprovalType | 'all';
+  dateRange: { start: Date; end: Date } | null;
+  searchTerm: string;
+}
+
+// Bulk actions (for pending tab only)
+type BulkAction = 'approve' | 'reject';
+```
+
+### New Dashboard Widgets Data Structure
+```typescript
+// Hourly Attendance
+interface HourlyAttendance {
+  hour: string; // "6 AM", "7 AM", etc.
+  checkins: number;
+}
+
+// Revenue Snapshot
+interface RevenueSnapshot {
+  collected: number;
+  pending: number;
+  overdue: number;
+  total: number;
+}
+
+// Expiring Soon
+interface ExpiringMember {
+  memberId: string;
+  memberCode: string;
+  memberName: string;
+  hoursRemaining: number;
+  planName: string;
+}
+```
+
+---
+
+## Data Synchronization Verification
+
+### Turnstile Access Control (Already Working)
+The `device-access-event` edge function correctly handles frozen status:
+- Calls `validate_member_checkin` RPC
+- Returns `{ action: 'DENIED', message: 'Membership Frozen', led_color: 'RED' }`
+- Logs event to `device_access_events` with `denial_reason: 'frozen'`
+
+### Analytics Accuracy (Needs Enhancement)
+- Currently: Frozen counted as "Inactive" 
+- After: Add explicit "Frozen" stat card showing count from `memberships WHERE status = 'frozen'`
+
+---
+
+## Empty States for New Widgets
+
+| Widget | Empty State Message |
+|--------|-------------------|
+| Hourly Attendance | "No check-ins recorded today" |
+| Revenue Snapshot | "No invoices this month" |
+| Expiring 48h | "No memberships expiring soon" |
+| Pending Approvals | "All caught up!" with checkmark icon |
 
