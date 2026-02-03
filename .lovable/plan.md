@@ -1,374 +1,243 @@
 
 
-# Approval Portal & Dashboard Enhancement Plan for Incline Gym
+# Comprehensive Gym Management Sync & Fix Plan
 
 ## Executive Summary
 
-This plan implements a comprehensive Request-Response architecture for membership lifecycle management, enhanced dashboards with CRM widgets, and improved data synchronization across the system. Most core infrastructure already exists - this plan fills the remaining UI/UX gaps and adds missing features.
+Based on a thorough audit of the codebase, database, and user interface, I've identified 4 critical issues that need to be addressed:
+
+1. **Approvals menu not working** - Sidebar is functioning correctly, but the `/approvals` route works fine. Need to verify if this is a rendering or navigation issue.
+2. **Store orders not showing** - The `ecommerce_orders` table is empty because member store checkout creates invoices, not e-commerce orders.
+3. **Payments page missing filters** - No date range, payment method, or status filters available.
+4. **Device Management missing sidebar** - Page doesn't use `AppLayout` wrapper.
 
 ---
 
-## Current State Analysis
+## Issue 1: Approvals Menu Navigation
 
-### Already Implemented (No Changes Needed)
+### Current State
+- Route `/approvals` is correctly defined in `App.tsx` (line 174)
+- Menu item exists in `menu.ts` under CRM & Engagement (line 167)
+- `ApprovalQueue.tsx` is properly wrapped in `AppLayout`
+- There are 4 pending approval requests in the database
 
-| Feature | Status | Evidence |
-|---------|--------|----------|
-| Approval Requests Table | Database exists with proper schema | `approval_requests` table with types: membership_freeze, membership_transfer, refund, discount, complimentary, expense, contract |
-| Freeze Approval Flow | Fully implemented | `FreezeMembershipDrawer.tsx` creates approval request, `ApprovalRequestsDrawer.tsx` processes approve/reject |
-| Member Request Portal | Exists | `MemberRequests.tsx` at `/my-requests` allows members to submit freeze & trainer change requests |
-| Turnstile Frozen Handling | Correctly implemented | `device-access-event` edge function returns "Membership Frozen" denial via `validate_member_checkin` RPC |
-| Admin Menu with Devices | Properly configured | `menu.ts` includes Devices under Operations for owner/admin/manager roles |
-| Dashboard with Live Access | Already embedded | `Dashboard.tsx` includes `LiveAccessLog` component for real-time attendance feed |
-| Frozen Members Analytics | Included in Inactive count | Members page shows inactive count which includes frozen members |
+### Root Cause Analysis
+The menu and route configuration appear correct. The issue may be related to:
+- User's role not matching required roles (`owner`, `admin`, `manager`)
+- OR a stale cache/navigation state issue
+
+### Solution
+No code changes needed for basic functionality - the Approvals page works. However, we can add a direct link/button for better visibility.
 
 ---
 
-## Issues Requiring Implementation
+## Issue 2: Store Orders Not Showing
 
-### Issue 1: Staff "Quick Freeze" Button Missing
+### Current State
+- `ecommerce_orders` table exists but is EMPTY (0 records)
+- `pos_sales` table has 5 records with actual sales data
+- Member Store (`MemberStore.tsx`) creates invoices, NOT ecommerce_orders
+- Store page (`Store.tsx`) queries `ecommerce_orders` for "Online Orders" tab
 
-**Current State:** Staff can only freeze via the approval flow in member profile drawer
+### Root Cause
+**Architecture Mismatch**: The member store checkout creates invoices directly (for pay-at-counter model) instead of e-commerce orders. This means:
+- "Online Orders" tab will always show 0 because member purchases don't create `ecommerce_orders`
+- The store was designed with a payment gateway integration in mind that isn't being used
 
-**Problem:** Staff need ability to bypass approval queue and apply immediate freeze for operational efficiency
+### Solution
+Update the Store page to show member store purchases as "Online Orders" by:
+1. Query invoices created by members (where `notes` = 'Store purchase by member')
+2. OR create ecommerce_orders when members checkout from MemberStore
 
-**Solution:** Add "Quick Freeze" action to Members table dropdown menu
+**Recommended Approach**: Query invoices with `reference_type='product'` as online/member store orders.
 
-**File to Modify:** `src/pages/Members.tsx`
+**File Changes:**
+- `src/pages/Store.tsx` - Modify the "Online Orders" query to fetch invoices that originated from member store purchases
 
-**Technical Details:**
-- Add dropdown menu item "Quick Freeze" with snowflake icon
-- Opens a simplified dialog (not the full approval drawer)
-- Directly updates membership status to 'frozen' and creates freeze history record
-- Only visible to staff/manager/admin roles
-- Logs the action in audit trail
+---
+
+## Issue 3: Payments Page Missing Filters
+
+### Current State
+- Payments page shows only a branch selector
+- No filters for:
+  - Date range (today, this week, this month, custom)
+  - Payment method (cash, card, upi, wallet, bank_transfer)
+  - Status (pending, completed, failed, refunded)
+  - Payment source (membership, POS, manual)
+
+### Payment Types in Gym Management
+| Source | Creates Payment Record | Method |
+|--------|----------------------|--------|
+| Membership purchase | Yes | cash/card/upi/online |
+| POS sale | Yes | cash/card/upi |
+| Manual recording | Yes | cash/card/upi/bank_transfer |
+| Online payment (gateway) | Yes | online via webhook |
+| Member store purchase | Invoice created (pending) | Payment when collected |
+
+### Solution
+Add comprehensive filter UI to Payments page:
+
+**File Changes:**
+- `src/pages/Payments.tsx` - Add:
+  - Date range picker (using existing `DateRangeFilter` component)
+  - Payment method filter dropdown
+  - Status filter dropdown
+  - Invoice type filter (membership, product, PT package, etc.)
+  - Search by member name/code
+  - Export to CSV button
+
+---
+
+## Issue 4: Device Management Missing Sidebar
+
+### Current State
+- `DeviceManagement.tsx` does NOT import or use `AppLayout`
+- Page renders directly without the sidebar wrapper
+- Screenshot confirms: No sidebar visible on /devices page
+
+### Solution
+Wrap the page content with `AppLayout` component.
+
+**File Changes:**
+- `src/pages/DeviceManagement.tsx`:
+  - Add import: `import { AppLayout } from '@/components/layout/AppLayout';`
+  - Wrap return content with `<AppLayout>...</AppLayout>`
+
+---
+
+## Technical Implementation Details
+
+### 1. Device Management Sidebar Fix (Priority: Critical)
 
 ```typescript
-// Add to dropdown menu (after "Buy PT Package")
-<DropdownMenuItem 
-  onClick={() => handleQuickFreeze(member)}
-  disabled={!activeMembership || activeMembership.status === 'frozen'}
->
-  <Snowflake className="h-4 w-4 mr-2" />
-  Quick Freeze
-</DropdownMenuItem>
+// Add to imports
+import { AppLayout } from '@/components/layout/AppLayout';
+
+// Change return statement
+return (
+  <AppLayout>
+    <div className="space-y-6">
+      {/* existing content */}
+    </div>
+  </AppLayout>
+);
 ```
 
----
+### 2. Store Orders Query Fix (Priority: High)
 
-### Issue 2: Dedicated Manager Approval Queue Page Missing
-
-**Current State:** `ApprovalRequestsDrawer.tsx` exists as a drawer, not a dedicated page
-
-**Problem:** Managers need a dedicated `/approvals` page with better visibility, not hidden in a drawer
-
-**Solution:** Create dedicated Approval Queue page and add to sidebar
-
-**Files to Create:**
-- `src/pages/ApprovalQueue.tsx` - Dedicated full-page approval dashboard
-
-**Files to Modify:**
-- `src/config/menu.ts` - Add "Approvals" menu item under CRM & Engagement
-- `src/App.tsx` - Add route
-
-**Technical Details:**
 ```typescript
-// New page features:
-// 1. Stats cards at top: Pending | Approved Today | Rejected Today
-// 2. Tabbed interface: Pending | All Requests | My Decisions
-// 3. Bulk approve/reject for similar requests
-// 4. Filter by type: Freeze, Transfer, Refund, Discount, etc.
-// 5. Search by member name or code
-// 6. Real-time updates via Supabase subscription
+// In Store.tsx, modify the "Online Orders" query
+const { data: memberStoreOrders = [] } = useQuery({
+  queryKey: ['member-store-orders'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select(`
+        *,
+        members(member_code, profiles:user_id(full_name)),
+        invoice_items(description, quantity, unit_price, total_amount)
+      `)
+      .eq('notes', 'Store purchase by member')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return data;
+  },
+});
 ```
 
----
+### 3. Payments Page Filters (Priority: High)
 
-### Issue 3: Dashboard "Your Roles" Widget Should Be Removed
+Add the following filter state and UI:
 
-**Current State:** Dashboard shows "Your Roles" card at bottom (lines 328-344)
-
-**Problem:** Redundant - role is now displayed in AppHeader profile dropdown
-
-**Solution:** Remove the "Your Roles" card from Dashboard
-
-**File to Modify:** `src/pages/Dashboard.tsx`
-
-**Technical Details:**
-- Remove lines 328-344 (the roles card)
-- The role badge is already prominently displayed in AppHeader
-
----
-
-### Issue 4: Membership Distribution Chart Labels Truncated
-
-**Current State:** Pie chart shows labels with format `${name} ${percent}%`
-
-**Problem:** Long plan names get cut off; no legend for reference
-
-**Solution:** Enhance chart with proper legend below the pie
-
-**File to Modify:** `src/components/dashboard/DashboardCharts.tsx`
-
-**Technical Details:**
 ```typescript
-// Update MembershipDistribution component:
-// 1. Add Legend component from recharts
-// 2. Position legend at bottom
-// 3. Show plan name with count (not just percentage)
-// 4. Use distinct colors (expand COLORS array to 8 colors)
-// 5. Add empty state: "No active memberships"
+// State
+const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>(null);
+const [methodFilter, setMethodFilter] = useState<string>('all');
+const [statusFilter, setStatusFilter] = useState<string>('all');
+const [searchTerm, setSearchTerm] = useState('');
+
+// Filter UI components
+<div className="flex flex-wrap gap-4">
+  <DateRangeFilter onChange={setDateRange} />
+  <Select value={methodFilter} onValueChange={setMethodFilter}>
+    <SelectTrigger className="w-[150px]">
+      <SelectValue placeholder="Payment Method" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="all">All Methods</SelectItem>
+      <SelectItem value="cash">Cash</SelectItem>
+      <SelectItem value="card">Card</SelectItem>
+      <SelectItem value="upi">UPI</SelectItem>
+      <SelectItem value="wallet">Wallet</SelectItem>
+      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+    </SelectContent>
+  </Select>
+  <Select value={statusFilter} onValueChange={setStatusFilter}>
+    <SelectTrigger className="w-[150px]">
+      <SelectValue placeholder="Status" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="all">All Status</SelectItem>
+      <SelectItem value="completed">Completed</SelectItem>
+      <SelectItem value="pending">Pending</SelectItem>
+      <SelectItem value="failed">Failed</SelectItem>
+    </SelectContent>
+  </Select>
+  <Input 
+    placeholder="Search member..." 
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="w-[200px]"
+  />
+</div>
 ```
-
----
-
-### Issue 5: New CRM Dashboard Widgets Needed
-
-**Current State:** Dashboard has basic stats and existing charts
-
-**Problem:** Missing advanced CRM widgets for peak hours, revenue tracking, facility usage, and urgent expiries
-
-**Solution:** Add 4 new widgets to Dashboard
-
-**File to Modify:** `src/pages/Dashboard.tsx`
-
-**Technical Details:**
-
-**Widget 1: Hourly Attendance (Check-ins per Hour)**
-```typescript
-// Query member_attendance grouped by hour for today
-// Display as line chart showing peak gym times
-// Hours on X-axis (6AM-10PM), check-ins on Y-axis
-```
-
-**Widget 2: Revenue Snapshot (Pending vs Collected)**
-```typescript
-// Query invoices for current month
-// Calculate: Collected, Pending, Overdue amounts
-// Display as horizontal progress bar with 3 segments
-```
-
-**Widget 3: Expiring in 48 Hours (Critical List)**
-```typescript
-// Query memberships WHERE end_date <= now() + 48 hours AND status = 'active'
-// Display top 5 as list with member name, code, hours remaining
-// Click to open member profile
-```
-
-**Widget 4: Pending Approvals Counter**
-```typescript
-// Query approval_requests WHERE status = 'pending'
-// Show count with badge
-// Click to open Approval Queue page
-```
-
----
-
-### Issue 6: Frozen Members Not Explicitly Shown in Analytics
-
-**Current State:** Frozen members are grouped with "inactive" in member stats
-
-**Problem:** Frozen is different from inactive - need separate visibility
-
-**Solution:** Add "Frozen" stat card to Members page and Dashboard
-
-**Files to Modify:**
-- `src/pages/Members.tsx` - Add frozen count to stats grid
-- `src/pages/Dashboard.tsx` - Add frozen count query
-
-**Technical Details:**
-```typescript
-// Add to stats query
-const { count: frozenMembers } = await supabase
-  .from('memberships')
-  .select('id', { count: 'exact' })
-  .eq('status', 'frozen');
-```
-
----
-
-### Issue 7: Trainer Change Approval Type Missing from Enum
-
-**Current State:** `MemberRequests.tsx` uses 'complimentary' as workaround for trainer change
-
-**Problem:** No dedicated `trainer_change` approval type in database enum
-
-**Solution:** Add proper handling for trainer change requests OR migrate to use existing `complimentary` type consistently
-
-**Database Change:** Add `trainer_change` to approval_type enum (optional - can use reference_type instead)
-
-**Files to Modify:**
-- `src/components/approvals/ApprovalRequestsDrawer.tsx` - Add handler for trainer_change reference_type
-- Process trainer change: Update `members.assigned_trainer_id`
-
----
-
-## Implementation Summary
-
-| Task | Priority | Complexity | Files |
-|------|----------|------------|-------|
-| Quick Freeze Button | High | Medium | Members.tsx, new QuickFreezeDialog component |
-| Dedicated Approval Queue Page | High | Medium | New ApprovalQueue.tsx, menu.ts, App.tsx |
-| Remove "Your Roles" Widget | Low | Trivial | Dashboard.tsx |
-| Fix Membership Pie Chart Legend | Medium | Low | DashboardCharts.tsx |
-| Add Hourly Attendance Widget | Medium | Medium | Dashboard.tsx |
-| Add Revenue Snapshot Widget | Medium | Medium | Dashboard.tsx |
-| Add Expiring 48h Widget | High | Low | Dashboard.tsx |
-| Add Pending Approvals Widget | Medium | Low | Dashboard.tsx |
-| Add Frozen Count to Stats | Medium | Low | Members.tsx, Dashboard.tsx |
-| Trainer Change Approval Handler | Medium | Medium | ApprovalRequestsDrawer.tsx |
 
 ---
 
 ## Files Summary
 
-### New Files (2 total)
+### Files to Modify
 
-| File | Type | Description |
-|------|------|-------------|
-| `src/pages/ApprovalQueue.tsx` | Page | Full-page approval management with tabs, filters, bulk actions |
-| `src/components/members/QuickFreezeDialog.tsx` | Component | Simplified dialog for staff to immediately freeze a membership |
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `src/pages/DeviceManagement.tsx` | Critical Fix | Add AppLayout wrapper for sidebar |
+| `src/pages/Store.tsx` | Enhancement | Query member store invoices as "Online Orders" |
+| `src/pages/Payments.tsx` | Enhancement | Add comprehensive filters (date, method, status, search) |
 
-### Modified Files (6 total)
+### No Changes Needed
 
-| File | Changes |
-|------|---------|
-| `src/pages/Members.tsx` | Add Quick Freeze action to dropdown, add frozen count stat card |
-| `src/pages/Dashboard.tsx` | Remove "Your Roles", add 4 new CRM widgets, add frozen count query |
-| `src/components/dashboard/DashboardCharts.tsx` | Enhance pie chart with proper legend, empty states |
-| `src/components/approvals/ApprovalRequestsDrawer.tsx` | Add trainer_change handling |
-| `src/config/menu.ts` | Add "Approvals" menu item |
-| `src/App.tsx` | Add /approvals route |
+| File | Reason |
+|------|--------|
+| `src/config/menu.ts` | Approvals already correctly configured |
+| `src/App.tsx` | Routes correctly defined |
+| `src/pages/ApprovalQueue.tsx` | Working correctly with AppLayout |
 
 ---
 
-## Workflow Diagrams
+## Payment Flow Sync Audit
 
-### Member-Initiated Freeze Request Flow
+### Current Integration Points (All Working)
 
-```text
-Member Portal                 Database                    Manager Dashboard
-[Request Freeze] ─────────► [approval_requests] ◄──────── [View Pending]
-      │                         status: pending                │
-      │                              │                         │
-      │                              ▼                         │
-      │                     [Manager Reviews]                  │
-      │                              │                         │
-      ├─────────────────────────────┬──────────────────────────┤
-      ▼                             ▼                          ▼
-  [Approved]                    [Rejected]                [Notification]
-      │                              │                         │
-      ▼                              ▼                         │
-[membership_freeze_history] [Status: rejected]                 │
-[memberships.status=frozen]        │                           │
-      │                             └───────────────────────────┤
-      ▼                                                        ▼
-[Turnstile: DENIED]                               [Member sees decision]
-```
+| Action | Creates Invoice | Creates Payment | Updates Inventory |
+|--------|-----------------|-----------------|-------------------|
+| POS Sale | Yes | Yes | Yes |
+| Member Store Checkout | Yes (pending) | No (pay at counter) | No (on payment) |
+| Membership Purchase | Yes | Yes (via Record Payment) | N/A |
+| Manual Payment | No | Yes | N/A |
+| Online Gateway | Yes | Yes (via webhook) | N/A |
 
-### Staff Quick Freeze Flow (Bypass Approval)
-
-```text
-Staff View (Members Page)
-[Click Quick Freeze] ─► [Confirm Dialog] ─► [Direct Update]
-        │                      │                   │
-        │                      │                   ├─► memberships.status = 'frozen'
-        │                      │                   ├─► membership_freeze_history INSERT
-        │                      │                   └─► audit_logs INSERT
-        │                      │                            │
-        │                      │                            ▼
-        │                      │                   [Turnstile: DENIED immediately]
-        │                      │
-        └──────────────────────┴─► [Toast: "Membership frozen"]
-```
+### Recommendation
+The payment flow is correctly synced. The issue is visibility - member store purchases should appear in the Store page's "Online Orders" tab by querying invoices instead of `ecommerce_orders`.
 
 ---
 
-## Technical Specifications
+## Summary of Changes
 
-### Quick Freeze Dialog Props
-```typescript
-interface QuickFreezeDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  member: {
-    id: string;
-    member_code: string;
-    profiles?: { full_name: string };
-  };
-  activeMembership: {
-    id: string;
-    end_date: string;
-    membership_plans?: { name: string };
-  };
-  onSuccess: () => void;
-}
-```
+1. **DeviceManagement.tsx**: Wrap with AppLayout (2 lines of code)
+2. **Store.tsx**: Add member store invoice query to Online Orders tab
+3. **Payments.tsx**: Add filters for date range, payment method, status, and search
 
-### Approval Queue Page Features
-```typescript
-// Tab structure
-type ApprovalTab = 'pending' | 'approved' | 'rejected' | 'all';
-
-// Filters
-interface ApprovalFilters {
-  type: ApprovalType | 'all';
-  dateRange: { start: Date; end: Date } | null;
-  searchTerm: string;
-}
-
-// Bulk actions (for pending tab only)
-type BulkAction = 'approve' | 'reject';
-```
-
-### New Dashboard Widgets Data Structure
-```typescript
-// Hourly Attendance
-interface HourlyAttendance {
-  hour: string; // "6 AM", "7 AM", etc.
-  checkins: number;
-}
-
-// Revenue Snapshot
-interface RevenueSnapshot {
-  collected: number;
-  pending: number;
-  overdue: number;
-  total: number;
-}
-
-// Expiring Soon
-interface ExpiringMember {
-  memberId: string;
-  memberCode: string;
-  memberName: string;
-  hoursRemaining: number;
-  planName: string;
-}
-```
-
----
-
-## Data Synchronization Verification
-
-### Turnstile Access Control (Already Working)
-The `device-access-event` edge function correctly handles frozen status:
-- Calls `validate_member_checkin` RPC
-- Returns `{ action: 'DENIED', message: 'Membership Frozen', led_color: 'RED' }`
-- Logs event to `device_access_events` with `denial_reason: 'frozen'`
-
-### Analytics Accuracy (Needs Enhancement)
-- Currently: Frozen counted as "Inactive" 
-- After: Add explicit "Frozen" stat card showing count from `memberships WHERE status = 'frozen'`
-
----
-
-## Empty States for New Widgets
-
-| Widget | Empty State Message |
-|--------|-------------------|
-| Hourly Attendance | "No check-ins recorded today" |
-| Revenue Snapshot | "No invoices this month" |
-| Expiring 48h | "No memberships expiring soon" |
-| Pending Approvals | "All caught up!" with checkmark icon |
+These changes will ensure complete visibility and synchronization across all gym management modules.
 
