@@ -4,16 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingBag, Package, ShoppingCart, DollarSign, TrendingUp, ExternalLink, AlertTriangle, Boxes } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ShoppingBag, Package, ShoppingCart, ExternalLink, AlertTriangle, Boxes } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 export default function StorePage() {
-  const queryClient = useQueryClient();
 
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['store-products'],
@@ -28,15 +25,18 @@ export default function StorePage() {
     },
   });
 
-  const { data: orders = [], isLoading: ordersLoading } = useQuery({
-    queryKey: ['ecommerce-orders'],
+  // Fetch member store orders from invoices (not ecommerce_orders)
+  const { data: memberStoreOrders = [], isLoading: ordersLoading } = useQuery({
+    queryKey: ['member-store-orders'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('ecommerce_orders')
+        .from('invoices')
         .select(`
           *,
-          members(member_code, profiles:user_id(full_name))
+          members(member_code, profiles:user_id(full_name)),
+          invoice_items(description, quantity, unit_price, total_amount, reference_type)
         `)
+        .eq('notes', 'Store purchase by member')
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -87,23 +87,6 @@ export default function StorePage() {
     },
   });
 
-  const updateOrderStatus = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'confirmed' | 'returned' }) => {
-      const { error } = await supabase
-        .from('ecommerce_orders')
-        .update({ status })
-        .eq('id', orderId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success('Order status updated');
-      queryClient.invalidateQueries({ queryKey: ['ecommerce-orders'] });
-    },
-    onError: () => {
-      toast.error('Failed to update order status');
-    },
-  });
-
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pending: 'bg-yellow-500/10 text-yellow-500',
@@ -117,12 +100,12 @@ export default function StorePage() {
   };
 
   // Calculate stats
-  const onlineOrdersTotal = orders
-    .filter((o: any) => o.status === 'delivered')
+  const onlineOrdersTotal = memberStoreOrders
+    .filter((o: any) => o.status === 'paid')
     .reduce((sum: number, o: any) => sum + o.total_amount, 0);
   
   const posTotal = posSales.reduce((sum: number, s: any) => sum + s.total_amount, 0);
-  const pendingOrders = orders.filter((o: any) => o.status === 'pending').length;
+  const pendingOrders = memberStoreOrders.filter((o: any) => o.status === 'pending' || o.status === 'partial').length;
   const todayPosSales = posSales.filter((s: any) => {
     const today = new Date().toISOString().split('T')[0];
     return s.sale_date?.startsWith(today);
@@ -223,7 +206,7 @@ export default function StorePage() {
             </TabsTrigger>
             <TabsTrigger value="online-orders" className="gap-2">
               <ShoppingBag className="h-4 w-4" />
-              Online Orders ({orders.length})
+              Member Store Orders ({memberStoreOrders.length})
             </TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
           </TabsList>
@@ -285,11 +268,11 @@ export default function StorePage() {
             </Card>
           </TabsContent>
 
-          {/* Online Orders Tab */}
+          {/* Member Store Orders Tab */}
           <TabsContent value="online-orders" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Online Orders</CardTitle>
+                <CardTitle>Member Store Orders</CardTitle>
               </CardHeader>
               <CardContent>
                 {ordersLoading ? (
@@ -300,50 +283,32 @@ export default function StorePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Order #</TableHead>
-                        <TableHead>Customer</TableHead>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Member</TableHead>
                         <TableHead>Items</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {orders.map((order: any) => (
+                      {memberStoreOrders.map((order: any) => (
                         <TableRow key={order.id}>
-                          <TableCell className="font-mono">{order.order_number}</TableCell>
-                          <TableCell>{order.members?.profiles?.full_name || 'Guest'}</TableCell>
-                          <TableCell>{(order.items as any[])?.length || 0} items</TableCell>
+                          <TableCell className="font-mono">{order.invoice_number}</TableCell>
+                          <TableCell>{order.members?.profiles?.full_name || order.members?.member_code || 'Guest'}</TableCell>
+                          <TableCell>{(order.invoice_items as any[])?.length || 0} items</TableCell>
                           <TableCell className="font-medium">₹{order.total_amount.toLocaleString()}</TableCell>
                           <TableCell>
                             <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                           </TableCell>
-                          <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                          <TableCell>
-                            <Select
-                              value={order.status}
-                              onValueChange={(status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled') => updateOrderStatus.mutate({ orderId: order.id, status })}
-                            >
-                              <SelectTrigger className="w-[120px] h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="processing">Processing</SelectItem>
-                                <SelectItem value="shipped">Shipped</SelectItem>
-                                <SelectItem value="delivered">Delivered</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
+                          <TableCell>{format(new Date(order.created_at), 'dd MMM yyyy HH:mm')}</TableCell>
                         </TableRow>
                       ))}
-                      {orders.length === 0 && (
+                      {memberStoreOrders.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            No online orders yet
+                            No member store orders yet
                           </TableCell>
                         </TableRow>
                       )}
