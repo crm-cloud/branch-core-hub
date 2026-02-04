@@ -232,6 +232,8 @@ export type Database = {
       audit_logs: {
         Row: {
           action: string
+          action_description: string | null
+          actor_name: string | null
           branch_id: string | null
           created_at: string
           id: string
@@ -245,6 +247,8 @@ export type Database = {
         }
         Insert: {
           action: string
+          action_description?: string | null
+          actor_name?: string | null
           branch_id?: string | null
           created_at?: string
           id?: string
@@ -258,6 +262,8 @@ export type Database = {
         }
         Update: {
           action?: string
+          action_description?: string | null
+          actor_name?: string | null
           branch_id?: string | null
           created_at?: string
           id?: string
@@ -1633,6 +1639,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      exercises: {
+        Row: {
+          calories_per_minute: number | null
+          created_at: string | null
+          difficulty: string | null
+          equipment_type: string | null
+          id: string
+          image_url: string | null
+          instructions: string | null
+          is_active: boolean | null
+          name: string
+          target_muscle: string
+          video_url: string | null
+        }
+        Insert: {
+          calories_per_minute?: number | null
+          created_at?: string | null
+          difficulty?: string | null
+          equipment_type?: string | null
+          id?: string
+          image_url?: string | null
+          instructions?: string | null
+          is_active?: boolean | null
+          name: string
+          target_muscle: string
+          video_url?: string | null
+        }
+        Update: {
+          calories_per_minute?: number | null
+          created_at?: string | null
+          difficulty?: string | null
+          equipment_type?: string | null
+          id?: string
+          image_url?: string | null
+          instructions?: string | null
+          is_active?: boolean | null
+          name?: string
+          target_muscle?: string
+          video_url?: string | null
+        }
+        Relationships: []
       }
       expense_categories: {
         Row: {
