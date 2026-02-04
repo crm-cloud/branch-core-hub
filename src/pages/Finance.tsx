@@ -4,22 +4,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { StatCard } from '@/components/ui/stat-card';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   TrendingUp, TrendingDown, Wallet, 
-  ArrowUpRight, ArrowDownRight, FileText, Building2 
+  ArrowUpRight, ArrowDownRight, FileText, Building2, Plus, Clock, CheckCircle, XCircle, Download
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { AddExpenseDrawer } from '@/components/finance/AddExpenseDrawer';
+import { toast } from 'sonner';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
 export default function FinancePage() {
+  const queryClient = useQueryClient();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [expenseTab, setExpenseTab] = useState<string>('approved');
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
@@ -77,7 +83,7 @@ export default function FinancePage() {
     },
   });
 
-  // Fetch expense data
+  // Fetch approved expense data
   const { data: expenseData = [] } = useQuery({
     queryKey: ['finance-expenses', selectedBranch, dateRange],
     queryFn: async () => {
@@ -97,6 +103,98 @@ export default function FinancePage() {
       return data || [];
     },
   });
+
+  // Fetch pending expenses for approval
+  const { data: pendingExpenses = [] } = useQuery({
+    queryKey: ['pending-expenses', selectedBranch],
+    queryFn: async () => {
+      let query = supabase
+        .from('expenses')
+        .select('*, category:expense_categories(name)')
+        .eq('status', 'pending');
+
+      if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Approve/Reject expense mutations
+  const approveExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const { error } = await supabase
+        .from('expenses')
+        .update({ status: 'approved', approved_at: new Date().toISOString() })
+        .eq('id', expenseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Expense approved');
+      queryClient.invalidateQueries({ queryKey: ['finance-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-expenses'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to approve expense');
+    },
+  });
+
+  const rejectExpenseMutation = useMutation({
+    mutationFn: async (expenseId: string) => {
+      const { error } = await supabase
+        .from('expenses')
+        .update({ status: 'rejected' })
+        .eq('id', expenseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Expense rejected');
+      queryClient.invalidateQueries({ queryKey: ['pending-expenses'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to reject expense');
+    },
+  });
+
+  // Export function
+  const exportToCSV = () => {
+    const incomeRows = combinedIncomeData.map((p: any) => ({
+      Type: 'Income',
+      Date: format(new Date(p.date), 'yyyy-MM-dd'),
+      Description: p.type,
+      Category: p.payment_method || '-',
+      Amount: p.amount,
+    }));
+    
+    const expenseRows = expenseData.map((e: any) => ({
+      Type: 'Expense',
+      Date: format(new Date(e.expense_date), 'yyyy-MM-dd'),
+      Description: e.description,
+      Category: e.category?.name || 'Uncategorized',
+      Amount: -e.amount,
+    }));
+    
+    const allRows = [...incomeRows, ...expenseRows].sort((a, b) => 
+      new Date(b.Date).getTime() - new Date(a.Date).getTime()
+    );
+    
+    const headers = ['Type', 'Date', 'Description', 'Category', 'Amount'];
+    const csv = [
+      headers.join(','),
+      ...allRows.map(r => headers.map(h => `"${r[h as keyof typeof r]}"`).join(',')),
+      '',
+      `"Net Profit","","","","${netProfit}"`,
+    ].join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `financial-report-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    toast.success('Financial report exported');
+  };
 
   // Calculate totals - Include POS sales that don't have invoice_id (legacy)
   const posSalesWithoutPayment = posSalesData.filter((sale: any) => !sale.invoice_id);
@@ -165,6 +263,9 @@ export default function FinancePage() {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
   };
 
+  // Get first branch for expense drawer
+  const defaultBranchId = branches[0]?.id || '';
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -175,6 +276,14 @@ export default function FinancePage() {
             <p className="text-muted-foreground">Track income, expenses and financial health</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setAddExpenseOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Expense
+            </Button>
+            <Button variant="outline" onClick={exportToCSV}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
               <SelectTrigger className="w-[200px]">
                 <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -338,48 +447,128 @@ export default function FinancePage() {
           <TabsContent value="expenses">
             <Card>
               <CardHeader>
-                <CardTitle>Expense Transactions</CardTitle>
-                <CardDescription>All approved expenses</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Expense Transactions</CardTitle>
+                    <CardDescription>Manage expense submissions and approvals</CardDescription>
+                  </div>
+                  <Tabs value={expenseTab} onValueChange={setExpenseTab}>
+                    <TabsList>
+                      <TabsTrigger value="pending" className="gap-2">
+                        <Clock className="h-4 w-4" />
+                        Pending ({pendingExpenses.length})
+                      </TabsTrigger>
+                      <TabsTrigger value="approved" className="gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        Approved ({expenseData.length})
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenseData.slice(0, 20).map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell>{format(new Date(expense.expense_date), 'MMM d, yyyy')}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{expense.category?.name || 'Uncategorized'}</Badge>
-                        </TableCell>
-                        <TableCell>{expense.description}</TableCell>
-                        <TableCell>{expense.vendor || '-'}</TableCell>
-                        <TableCell className="text-right font-medium text-red-600">
-                          -{formatCurrency(expense.amount)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {expenseData.length === 0 && (
+                {expenseTab === 'pending' ? (
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          No expense transactions found
-                        </TableCell>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingExpenses.map((expense: any) => (
+                        <TableRow key={expense.id}>
+                          <TableCell>{format(new Date(expense.expense_date), 'MMM d, yyyy')}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{expense.category?.name || 'Uncategorized'}</Badge>
+                          </TableCell>
+                          <TableCell>{expense.description}</TableCell>
+                          <TableCell>{expense.vendor || '-'}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(expense.amount)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => approveExpenseMutation.mutate(expense.id)}
+                                disabled={approveExpenseMutation.isPending}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-1" />
+                                Approve
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => rejectExpenseMutation.mutate(expense.id)}
+                                disabled={rejectExpenseMutation.isPending}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {pendingExpenses.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            No pending expenses
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {expenseData.slice(0, 20).map((expense) => (
+                        <TableRow key={expense.id}>
+                          <TableCell>{format(new Date(expense.expense_date), 'MMM d, yyyy')}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{expense.category?.name || 'Uncategorized'}</Badge>
+                          </TableCell>
+                          <TableCell>{expense.description}</TableCell>
+                          <TableCell>{expense.vendor || '-'}</TableCell>
+                          <TableCell className="text-right font-medium text-red-600">
+                            -{formatCurrency(expense.amount)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {expenseData.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                            No expense transactions found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+
+      <AddExpenseDrawer
+        open={addExpenseOpen}
+        onOpenChange={setAddExpenseOpen}
+        branchId={selectedBranch !== 'all' ? selectedBranch : defaultBranchId}
+      />
     </AppLayout>
   );
 }

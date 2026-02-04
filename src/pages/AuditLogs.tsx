@@ -325,7 +325,24 @@ export default function AuditLogsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {logs.data.map((log: any) => (
+                {logs.data.map((log: any) => {
+                  // Generate human-readable description
+                  const humanDescription = log.action_description || (() => {
+                    const actorName = log.actor_name || 'Unknown User';
+                    const recordName = log.new_data?.name || 
+                                       log.new_data?.full_name || 
+                                       log.new_data?.member_code || 
+                                       log.new_data?.invoice_number ||
+                                       log.new_data?.title ||
+                                       log.old_data?.name ||
+                                       log.old_data?.member_code ||
+                                       log.record_id?.substring(0, 8) || 'record';
+                    const actionVerb = log.action === 'INSERT' ? 'created' : 
+                                       log.action === 'UPDATE' ? 'updated' : 'deleted';
+                    return `${actorName} ${actionVerb} ${log.table_name} "${recordName}"`;
+                  })();
+                  
+                  return (
                   <Collapsible key={log.id} open={expandedRows.has(log.id)}>
                     <div className="border rounded-lg">
                       <CollapsibleTrigger asChild>
@@ -342,26 +359,11 @@ export default function AuditLogsPage() {
                             <Badge className={`${getActionColor(log.action)} font-mono text-xs px-2`}>
                               {getActionIcon(log.action)} {log.action}
                             </Badge>
-                            <span className="font-mono text-sm font-medium">{log.table_name}</span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground font-mono">
-                                {log.record_id?.substring(0, 8) || '—'}
-                              </span>
-                              {log.record_id && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-5 w-5"
-                                  onClick={(e) => { e.stopPropagation(); copyToClipboard(log.record_id); }}
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
+                            <span className="text-sm">{humanDescription}</span>
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            {log.ip_address && (
-                              <span className="hidden md:inline font-mono text-xs">{log.ip_address}</span>
+                            {log.actor_name && (
+                              <span className="hidden md:inline text-xs bg-muted px-2 py-1 rounded">{log.actor_name}</span>
                             )}
                             <span title={format(new Date(log.created_at), 'PPpp')}>
                               {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
@@ -376,21 +378,37 @@ export default function AuditLogsPage() {
                               <h4 className="font-medium text-sm mb-2">Details</h4>
                               <dl className="space-y-1 text-sm">
                                 <div className="flex justify-between">
-                                  <dt className="text-muted-foreground">Full Record ID:</dt>
-                                  <dd className="font-mono">{log.record_id || '—'}</dd>
+                                  <dt className="text-muted-foreground">Table:</dt>
+                                  <dd className="font-mono">{log.table_name}</dd>
                                 </div>
                                 <div className="flex justify-between">
-                                  <dt className="text-muted-foreground">IP Address:</dt>
-                                  <dd className="font-mono">{log.ip_address || '—'}</dd>
+                                  <dt className="text-muted-foreground">Record ID:</dt>
+                                  <dd className="font-mono flex items-center gap-1">
+                                    {log.record_id?.substring(0, 8) || '—'}
+                                    {log.record_id && (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-5 w-5"
+                                        onClick={(e) => { e.stopPropagation(); copyToClipboard(log.record_id); }}
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </dd>
+                                </div>
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Actor:</dt>
+                                  <dd>{log.actor_name || 'System'}</dd>
                                 </div>
                                 <div className="flex justify-between">
                                   <dt className="text-muted-foreground">Time:</dt>
                                   <dd>{format(new Date(log.created_at), 'PPpp')}</dd>
                                 </div>
-                                {log.user_agent && (
-                                  <div className="flex flex-col">
-                                    <dt className="text-muted-foreground">User Agent:</dt>
-                                    <dd className="text-xs truncate">{log.user_agent}</dd>
+                                {log.ip_address && (
+                                  <div className="flex justify-between">
+                                    <dt className="text-muted-foreground">IP Address:</dt>
+                                    <dd className="font-mono">{log.ip_address}</dd>
                                   </div>
                                 )}
                               </dl>
@@ -409,7 +427,7 @@ export default function AuditLogsPage() {
                       </CollapsibleContent>
                     </div>
                   </Collapsible>
-                ))}
+                );})}
               </div>
             )}
 

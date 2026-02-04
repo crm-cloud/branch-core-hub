@@ -34,6 +34,7 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
     branch_id: product?.branch_id || '',
     is_active: product?.is_active ?? true,
     image_url: product?.image_url || '',
+    initial_quantity: '',
   });
   const [uploading, setUploading] = useState(false);
   const [imagePreview, setImagePreview] = useState(product?.image_url || '');
@@ -105,13 +106,41 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
       if (isEditing) {
         return updateProduct(product.id, payload);
       } else {
-        return createProduct(payload as any);
+        const newProduct = await createProduct(payload as any);
+        
+        // Create inventory record with initial quantity
+        if (formData.initial_quantity && Number(formData.initial_quantity) > 0) {
+          const quantity = Number(formData.initial_quantity);
+          const branchId = formData.branch_id || branches[0]?.id;
+          
+          if (branchId) {
+            // Create inventory record
+            await supabase.from('inventory').insert({
+              product_id: newProduct.id,
+              branch_id: branchId,
+              quantity: quantity,
+              min_quantity: 5, // Default low stock threshold
+            });
+            
+            // Record initial stock movement
+            await supabase.from('stock_movements').insert({
+              product_id: newProduct.id,
+              branch_id: branchId,
+              movement_type: 'initial',
+              quantity: quantity,
+              notes: 'Initial stock on product creation',
+            });
+          }
+        }
+        
+        return newProduct;
       }
     },
     onSuccess: () => {
-      toast.success(isEditing ? 'Product updated' : 'Product created');
+      toast.success(isEditing ? 'Product updated' : 'Product created with inventory');
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       onOpenChange(false);
       resetForm();
     },
@@ -132,6 +161,7 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
       branch_id: '',
       is_active: true,
       image_url: '',
+      initial_quantity: '',
     });
     setImagePreview('');
   };
@@ -298,6 +328,22 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
                 </SelectContent>
               </Select>
             </div>
+
+            {!isEditing && (
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="initial_quantity">Initial Stock Quantity *</Label>
+                <Input
+                  id="initial_quantity"
+                  type="number"
+                  min="0"
+                  value={formData.initial_quantity}
+                  onChange={(e) => setFormData({ ...formData, initial_quantity: e.target.value })}
+                  placeholder="50"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">Set the starting inventory for this product</p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
