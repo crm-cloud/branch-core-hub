@@ -14,6 +14,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+const safeFormatDate = (value: any, fmt: string = 'dd MMM yyyy', fallback: string = '-') => {
+  if (!value) return fallback;
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return fallback;
+    return format(date, fmt);
+  } catch {
+    return fallback;
+  }
+};
 import {
   Search,
   CheckCircle,
@@ -220,7 +231,7 @@ export default function ApprovalQueuePage() {
         <div className="space-y-1 text-sm">
           <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>
           <p><span className="text-muted-foreground">Duration:</span> {data.daysFrozen} days</p>
-          <p><span className="text-muted-foreground">Period:</span> {format(new Date(data.startDate), 'dd MMM')} - {format(new Date(data.endDate), 'dd MMM yyyy')}</p>
+          <p><span className="text-muted-foreground">Period:</span> {safeFormatDate(data.startDate, 'dd MMM', 'Pending')} - {safeFormatDate(data.endDate, 'dd MMM yyyy', 'Pending')}</p>
           {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
         </div>
       );
@@ -383,7 +394,7 @@ export default function ApprovalQueuePage() {
                               </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {format(new Date(request.created_at), 'dd MMM yyyy, HH:mm')}
+                              {safeFormatDate(request.created_at, 'dd MMM yyyy, HH:mm')}
                             </p>
                           </CardHeader>
                           <CardContent className="space-y-3">

@@ -342,14 +342,20 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="fitnessGoals">Fitness Goals</Label>
-            <Textarea
-              id="fitnessGoals"
-              value={formData.fitnessGoals}
-              onChange={(e) => setFormData({ ...formData, fitnessGoals: e.target.value })}
-              placeholder="e.g., Weight loss, muscle building..."
-              rows={2}
-            />
+            <Label htmlFor="fitnessGoals">Fitness Goal</Label>
+            <Select value={formData.fitnessGoals} onValueChange={(v) => setFormData({ ...formData, fitnessGoals: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select fitness goal" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Weight Loss">Weight Loss</SelectItem>
+                <SelectItem value="Muscle Gain">Muscle Gain</SelectItem>
+                <SelectItem value="Endurance">Endurance</SelectItem>
+                <SelectItem value="General Fitness">General Fitness</SelectItem>
+                <SelectItem value="Flexibility">Flexibility</SelectItem>
+                <SelectItem value="Body Recomposition">Body Recomposition</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
