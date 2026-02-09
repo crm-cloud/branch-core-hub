@@ -32,7 +32,7 @@ export default function POSPage() {
     queryFn: async () => {
       let query = supabase
         .from('products')
-        .select('*, product_categories(name)')
+        .select('*, product_categories(name), inventory(quantity, min_quantity, branch_id)')
         .eq('is_active', true)
         .order('name');
       
@@ -167,7 +167,23 @@ export default function POSPage() {
     },
   });
 
+  const getStock = (product: any): number | null => {
+    const inv = product.inventory?.[0];
+    if (!inv) return null; // No inventory tracked
+    return inv.quantity ?? 0;
+  };
+
+  const getMinStock = (product: any): number => {
+    return product.inventory?.[0]?.min_quantity ?? 5;
+  };
+
   const addToCart = (product: any) => {
+    const stock = getStock(product);
+    const existingQty = cart.find((item) => item.product.id === product.id)?.quantity || 0;
+    if (stock !== null && existingQty + 1 > stock) {
+      toast.error(`Only ${stock} in stock for ${product.name}`);
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -299,25 +315,42 @@ export default function POSPage() {
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-                {filteredProducts.map((product: any) => (
-                  <Card
-                    key={product.id}
-                    className="cursor-pointer hover:border-primary transition-colors"
-                    onClick={() => addToCart(product)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="aspect-square bg-muted rounded flex items-center justify-center mb-3 overflow-hidden">
-                        {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
-                        ) : (
-                          <Package className="h-8 w-8 text-muted-foreground" />
+                {filteredProducts.map((product: any) => {
+                  const stock = getStock(product);
+                  const isOutOfStock = stock !== null && stock <= 0;
+                  const isLowStock = stock !== null && stock > 0 && stock < getMinStock(product);
+
+                  return (
+                    <Card
+                      key={product.id}
+                      className={`transition-colors ${isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary'} ${isLowStock ? 'border-warning/50' : ''}`}
+                      onClick={() => !isOutOfStock && addToCart(product)}
+                    >
+                      <CardContent className="p-4 relative">
+                        {isOutOfStock && (
+                          <Badge variant="destructive" className="absolute top-2 right-2 text-xs">Out of Stock</Badge>
                         )}
-                      </div>
-                      <h3 className="font-medium text-sm truncate">{product.name}</h3>
-                      <p className="text-lg font-bold text-primary">₹{product.price}</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                        {isLowStock && (
+                          <Badge className="absolute top-2 right-2 text-xs bg-warning text-warning-foreground">Low: {stock}</Badge>
+                        )}
+                        <div className="aspect-square bg-muted rounded flex items-center justify-center mb-3 overflow-hidden">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
+                          ) : (
+                            <Package className="h-8 w-8 text-muted-foreground" />
+                          )}
+                        </div>
+                        <h3 className="font-medium text-sm truncate">{product.name}</h3>
+                        <div className="flex items-center justify-between">
+                          <p className="text-lg font-bold text-primary">₹{product.price}</p>
+                          {stock !== null && !isOutOfStock && (
+                            <span className="text-xs text-muted-foreground">{stock} left</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
                 {filteredProducts.length === 0 && (
                   <div className="col-span-full text-center py-8 text-muted-foreground">
                     No products found

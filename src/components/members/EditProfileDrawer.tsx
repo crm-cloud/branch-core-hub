@@ -7,7 +7,8 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, User, Phone, Mail, AlertCircle, Camera } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, User, Phone, Mail, AlertCircle, Camera, Target } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface EditProfileDrawerProps {
@@ -27,7 +28,8 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
     phone: '',
     email: '',
     emergency_contact_name: '',
-    emergency_contact_phone: ''
+    emergency_contact_phone: '',
+    fitness_goals: ''
   });
 
   useEffect(() => {
@@ -37,11 +39,12 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
         phone: profile.phone || '',
         email: profile.email || '',
         emergency_contact_name: profile.emergency_contact_name || '',
-        emergency_contact_phone: profile.emergency_contact_phone || ''
+        emergency_contact_phone: profile.emergency_contact_phone || '',
+        fitness_goals: member?.fitness_goals || ''
       });
       setAvatarUrl(profile.avatar_url || null);
     }
-  }, [profile]);
+  }, [profile, member]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -95,6 +98,14 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
         .eq('id', member.user_id);
 
       if (error) throw error;
+
+      // Update fitness goals on member record
+      if (member?.id) {
+        await supabase
+          .from('members')
+          .update({ fitness_goals: formData.fitness_goals || null })
+          .eq('id', member.id);
+      }
 
       toast.success('Profile updated successfully');
       queryClient.invalidateQueries({ queryKey: ['members'] });
@@ -200,6 +211,31 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
                   />
                 </div>
               </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Fitness Goal */}
+          <div className="space-y-4">
+            <h4 className="font-medium flex items-center gap-2">
+              <Target className="h-4 w-4" /> Fitness Goal
+            </h4>
+            <div className="space-y-2">
+              <Label htmlFor="fitness_goals">Goal</Label>
+              <Select value={formData.fitness_goals} onValueChange={(v) => setFormData({ ...formData, fitness_goals: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select fitness goal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Weight Loss">Weight Loss</SelectItem>
+                  <SelectItem value="Muscle Gain">Muscle Gain</SelectItem>
+                  <SelectItem value="Endurance">Endurance</SelectItem>
+                  <SelectItem value="General Fitness">General Fitness</SelectItem>
+                  <SelectItem value="Flexibility">Flexibility</SelectItem>
+                  <SelectItem value="Body Recomposition">Body Recomposition</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
