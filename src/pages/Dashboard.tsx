@@ -3,24 +3,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/ui/stat-card';
 import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, RevenueSnapshotWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
+import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, AccountsReceivableWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
+import { OccupancyGauge } from '@/components/dashboard/OccupancyGauge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useBranches } from '@/hooks/useBranches';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import LiveAccessLog from '@/components/devices/LiveAccessLog';
 import { 
-  Users, 
-  CreditCard, 
-  UserCheck, 
+  UserPlus, 
   Dumbbell, 
   Calendar,
-  AlertCircle,
-  UserPlus,
-  Clock,
-  Receipt,
   Activity,
-  Snowflake
+  ClipboardList
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'date-fns';
 
@@ -81,12 +77,6 @@ export default function DashboardPage() {
       if (branchFilter) leadsQuery = leadsQuery.eq('branch_id', branchFilter);
       const { count: newLeads } = await leadsQuery;
 
-      // Pending invoices
-      let invoicesQuery = supabase.from('invoices').select('id, total_amount', { count: 'exact' }).eq('status', 'pending');
-      if (branchFilter) invoicesQuery = invoicesQuery.eq('branch_id', branchFilter);
-      const { data: pendingInvoices, count: pendingInvoiceCount } = await invoicesQuery;
-      const pendingAmount = pendingInvoices?.reduce((sum, i) => sum + i.total_amount, 0) || 0;
-
       // Active trainers
       let trainersQuery = supabase.from('trainers').select('id', { count: 'exact' }).eq('is_active', true);
       if (branchFilter) trainersQuery = trainersQuery.eq('branch_id', branchFilter);
@@ -111,8 +101,6 @@ export default function DashboardPage() {
         monthlyRevenue,
         expiringMemberships: expiringMemberships || 0,
         newLeads: newLeads || 0,
-        pendingInvoiceCount: pendingInvoiceCount || 0,
-        pendingAmount,
         activeTrainers: activeTrainers || 0,
         todayClasses: todayClasses || 0,
         pendingApprovals: pendingApprovals || 0,
@@ -197,7 +185,6 @@ export default function DashboardPage() {
       if (branchFilter) query = query.eq('branch_id', branchFilter);
       const { data } = await query;
 
-      // Group by hour
       const hourCounts: Record<number, number> = {};
       for (let i = 5; i <= 22; i++) hourCounts[i] = 0;
 
@@ -215,33 +202,30 @@ export default function DashboardPage() {
     },
   });
 
-  // Revenue snapshot (collected vs pending)
-  const { data: revenueSnapshot } = useQuery({
-    queryKey: ['revenue-snapshot', branchFilter],
+  // Accounts Receivable query
+  const { data: receivablesData } = useQuery({
+    queryKey: ['accounts-receivable', branchFilter],
     enabled: !!user,
     queryFn: async () => {
-      const monthStart = startOfMonth(new Date()).toISOString();
-      const today = new Date().toISOString().split('T')[0];
-
-      // Collected this month
-      let collectedQuery = supabase.from('payments').select('amount').gte('payment_date', monthStart);
-      if (branchFilter) collectedQuery = collectedQuery.eq('branch_id', branchFilter);
-      const { data: collected } = await collectedQuery;
-      const collectedAmount = collected?.reduce((sum, p) => sum + p.amount, 0) || 0;
-
-      // Pending invoices
-      let pendingQuery = supabase.from('invoices').select('total_amount, amount_paid').eq('status', 'pending');
-      if (branchFilter) pendingQuery = pendingQuery.eq('branch_id', branchFilter);
-      const { data: pending } = await pendingQuery;
-      const pendingAmount = pending?.reduce((sum, i) => sum + (i.total_amount - (i.amount_paid || 0)), 0) || 0;
-
-      // Overdue invoices
-      let overdueQuery = supabase.from('invoices').select('total_amount, amount_paid').eq('status', 'overdue');
-      if (branchFilter) overdueQuery = overdueQuery.eq('branch_id', branchFilter);
-      const { data: overdue } = await overdueQuery;
-      const overdueAmount = overdue?.reduce((sum, i) => sum + (i.total_amount - (i.amount_paid || 0)), 0) || 0;
-
-      return { collected: collectedAmount, pending: pendingAmount, overdue: overdueAmount };
+      let query = supabase
+        .from('invoices')
+        .select('id, total_amount, amount_paid, status, member_id, members(member_code, user_id, profiles:user_id(full_name))')
+        .in('status', ['pending', 'overdue'])
+        .order('total_amount', { ascending: false })
+        .limit(5);
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
+      const { data } = await query;
+      const items = (data || [])
+        .map((inv: any) => ({
+          id: inv.id,
+          memberName: inv.members?.profiles?.full_name || 'Unknown',
+          memberCode: inv.members?.member_code || '',
+          owed: (inv.total_amount || 0) - (inv.amount_paid || 0),
+          status: inv.status,
+        }))
+        .filter((r: any) => r.owed > 0);
+      const totalOutstanding = items.reduce((sum: number, r: any) => sum + r.owed, 0);
+      return { items, totalOutstanding };
     },
   });
 
@@ -281,7 +265,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-800">
               Welcome back, {profile?.full_name?.split(' ')[0] || 'Admin'}!
             </h1>
             <p className="text-muted-foreground">
@@ -296,52 +280,41 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Primary Stats Row */}
+        {/* Hero Gradient Card */}
+        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
+              <p className="text-white/70 text-sm mt-1">Real-time overview of your business</p>
+            </div>
+            <div className="grid grid-cols-3 gap-8">
+              <div className="text-center">
+                <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
+                <p className="text-white/70 text-xs mt-1">Total Members</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
+                <p className="text-white/70 text-xs mt-1">Revenue This Month</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">{stats?.expiringMemberships || 0}</p>
+                {(stats?.expiringMemberships || 0) > 0 && (
+                  <Badge className="bg-pink-500 text-white text-xs mt-1 border-0">Action Needed</Badge>
+                )}
+                <p className="text-white/70 text-xs mt-1">Expiring Soon</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Secondary Stats Row */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard
-            title="Total Members"
-            value={stats?.totalMembers || 0}
-            icon={Users}
-            description={`${stats?.activeMembers || 0} active`}
-            variant="default"
-          />
-          <StatCard
-            title="Today's Check-ins"
-            value={stats?.todayCheckins || 0}
-            icon={UserCheck}
-            description={`${stats?.currentlyIn || 0} currently in gym`}
-            variant="accent"
-          />
-          <StatCard
-            title="Monthly Revenue"
-            value={`₹${(stats?.monthlyRevenue || 0).toLocaleString()}`}
-            icon={CreditCard}
-            variant="success"
-          />
           <StatCard
             title="New Leads"
             value={stats?.newLeads || 0}
             icon={UserPlus}
             description="This month"
             variant="info"
-          />
-        </div>
-
-        {/* Secondary Stats Row */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-          <StatCard
-            title="Expiring Soon"
-            value={stats?.expiringMemberships || 0}
-            icon={AlertCircle}
-            description="Next 7 days"
-            variant="warning"
-          />
-          <StatCard
-            title="Pending Invoices"
-            value={stats?.pendingInvoiceCount || 0}
-            icon={Receipt}
-            description={`₹${(stats?.pendingAmount || 0).toLocaleString()}`}
-            variant="destructive"
           />
           <StatCard
             title="Active Trainers"
@@ -356,10 +329,10 @@ export default function DashboardPage() {
             variant="accent"
           />
           <StatCard
-            title="Currently In Gym"
-            value={stats?.currentlyIn || 0}
-            icon={Clock}
-            variant="success"
+            title="Pending Approvals"
+            value={stats?.pendingApprovals || 0}
+            icon={ClipboardList}
+            variant="warning"
           />
         </div>
 
@@ -371,18 +344,20 @@ export default function DashboardPage() {
 
         {/* CRM Widgets Row */}
         <div className="grid gap-6 md:grid-cols-4">
+          <OccupancyGauge currentlyIn={stats?.currentlyIn || 0} />
           <HourlyAttendanceChart data={hourlyAttendanceData} />
-          <RevenueSnapshotWidget data={revenueSnapshot} />
+          <AccountsReceivableWidget
+            data={receivablesData?.items || []}
+            totalOutstanding={receivablesData?.totalOutstanding || 0}
+          />
           <ExpiringMembersWidget data={expiringMembers} />
-          <PendingApprovalsWidget count={stats?.pendingApprovals || 0} />
         </div>
 
         {/* Bottom Row */}
         <div className="grid gap-6 md:grid-cols-3">
           <MembershipDistribution data={membershipData} />
           
-          {/* Live Access Log - Real-time Attendance Feed */}
-          <Card className="border-border/50 md:col-span-2">
+          <Card className="shadow-lg rounded-2xl border-0 md:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Activity className="h-5 w-5 text-success" />

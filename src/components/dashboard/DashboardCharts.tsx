@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts';
-import { Clock, AlertTriangle, CheckCircle, ClipboardList } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, ClipboardList, IndianRupee } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ChartData {
@@ -262,56 +262,56 @@ export function HourlyAttendanceChart({ data }: HourlyAttendanceChartProps) {
   );
 }
 
-// Revenue Snapshot Widget
-interface RevenueSnapshotWidgetProps {
-  data?: { collected: number; pending: number; overdue: number };
+// Accounts Receivable Widget (replaces Revenue Snapshot)
+interface AccountsReceivableWidgetProps {
+  data: { id: string; memberName: string; memberCode: string; owed: number; status: string }[];
+  totalOutstanding: number;
 }
 
-export function RevenueSnapshotWidget({ data }: RevenueSnapshotWidgetProps) {
-  const total = (data?.collected || 0) + (data?.pending || 0) + (data?.overdue || 0);
-  const collectedPct = total > 0 ? ((data?.collected || 0) / total) * 100 : 0;
-  const pendingPct = total > 0 ? ((data?.pending || 0) / total) * 100 : 0;
+export function AccountsReceivableWidget({ data, totalOutstanding }: AccountsReceivableWidgetProps) {
+  const navigate = useNavigate();
 
   return (
-    <Card className="border-border/50">
+    <Card className="shadow-lg rounded-2xl border-0">
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Revenue Snapshot</CardTitle>
-        <p className="text-xs text-muted-foreground">This month</p>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <IndianRupee className="h-5 w-5 text-destructive" />
+          Accounts Receivable
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {total === 0 ? (
-          <div className="text-center text-muted-foreground py-4">
-            No invoices this month
+      <CardContent className="space-y-3">
+        <div className="bg-destructive/10 rounded-xl p-3 text-center">
+          <p className="text-xs text-muted-foreground">Total Outstanding</p>
+          <p className="text-2xl font-bold text-destructive">₹{totalOutstanding.toLocaleString()}</p>
+        </div>
+        {data.length === 0 ? (
+          <div className="flex items-center gap-2 text-success text-sm py-4 justify-center">
+            <CheckCircle className="h-4 w-4" />
+            No pending dues
           </div>
         ) : (
-          <>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Collected</span>
-                <span className="font-medium text-success">₹{(data?.collected || 0).toLocaleString()}</span>
+          <div className="space-y-2">
+            {data.map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => navigate('/invoices')}
+              >
+                <div>
+                  <p className="text-sm font-medium">{member.memberName}</p>
+                  <p className="text-xs text-muted-foreground">{member.memberCode}</p>
+                </div>
+                <Badge variant={member.status === 'overdue' ? 'destructive' : 'secondary'} className="text-xs">
+                  ₹{member.owed.toLocaleString()}
+                </Badge>
               </div>
-              <Progress value={collectedPct} className="h-2" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Pending</span>
-                <span className="font-medium text-warning">₹{(data?.pending || 0).toLocaleString()}</span>
-              </div>
-              <Progress value={pendingPct} className="h-2 bg-muted [&>div]:bg-warning" />
-            </div>
-            {(data?.overdue || 0) > 0 && (
-              <div className="flex justify-between text-sm border-t pt-2">
-                <span className="text-destructive">Overdue</span>
-                <span className="font-medium text-destructive">₹{(data?.overdue || 0).toLocaleString()}</span>
-              </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
-
 // Expiring Members Widget
 interface ExpiringMembersWidgetProps {
   data: { memberId: string; memberCode: string; memberName: string; hoursRemaining: number; planName: string }[];
