@@ -2836,7 +2836,7 @@ export type Database = {
           id: string
           joined_at: string
           lead_id: string | null
-          member_code: string
+          member_code: string | null
           notes: string | null
           referred_by: string | null
           source: string | null
@@ -2856,7 +2856,7 @@ export type Database = {
           id?: string
           joined_at?: string
           lead_id?: string | null
-          member_code: string
+          member_code?: string | null
           notes?: string | null
           referred_by?: string | null
           source?: string | null
@@ -2876,7 +2876,7 @@ export type Database = {
           id?: string
           joined_at?: string
           lead_id?: string | null
-          member_code?: string
+          member_code?: string | null
           notes?: string | null
           referred_by?: string | null
           source?: string | null
