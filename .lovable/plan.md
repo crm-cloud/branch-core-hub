@@ -1,196 +1,149 @@
 
-# Dashboard Vuexy Overhaul & Logic Fixes
 
-## Overview
-Complete visual overhaul of the Dashboard page to match Vuexy admin template aesthetics, with structural changes to widgets and a critical fix for the pending invoices/accounts receivable logic.
+# Vuexy-Style Redesign: Finance, Analytics, Store + System Audit
 
----
-
-## Part 1: Global Card Styling
-
-**File: `src/components/ui/stat-card.tsx`**
-- Update the Card className to use `rounded-xl border-none shadow-lg shadow-indigo-100`
-- Bolder headings with `font-bold text-slate-800` for value text
-
-**File: `src/components/ui/card.tsx`**
-- No global changes here (would break other pages). Instead, apply Vuexy styles per-component on Dashboard.
+This is a large scope request. To keep things manageable and error-free, the work is split into clear phases.
 
 ---
 
-## Part 2: Hero Card (Replace Top Stat Row)
+## Phase 1: Finance Page Redesign (`/finance`)
 
-**File: `src/pages/Dashboard.tsx`**
+**Reference:** Image 1 (Vuexy Revenue Report with Earning/Expense bar chart + Budget card)
 
-**Delete:** The two stat card grids (lines 300-364) -- "Total Members", "Today's Check-ins", "Monthly Revenue", "New Leads", "Expiring Soon", "Pending Invoices", "Active Trainers", "Today's Classes", "Currently In Gym".
+### Changes to `src/pages/Finance.tsx`:
 
-**Replace with:**
+**A. Revenue Report Chart (Replace current charts row)**
+- Replace the two side-by-side pie/bar charts with a single wide "Revenue Report" card
+- Use a Recharts `BarChart` showing monthly Earning (violet bars going up) and Expense (orange bars going down, negative values)
+- Data: Query payments grouped by month for earnings, expenses grouped by month for expenses
+- Vuexy styling: `rounded-2xl border-none shadow-lg shadow-indigo-100`
 
-### A. Hero Gradient Card
-A full-width card with `bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg text-white`:
-- Left: "Gym Health" title in large white text with a subtitle
-- Right: 3-column grid showing:
-  - Total Members (white, large number)
-  - Revenue this Month (white, formatted currency)
-  - Expiring Soon (with pink/red badge if > 0)
+**B. Budget Summary Card (Right side of Revenue Report)**
+- A smaller card next to the Revenue Report showing:
+  - Year selector dropdown (current year)
+  - Total revenue number (large, bold)
+  - "Budget: X" subtitle
+  - A small sparkline (Recharts `LineChart` with no axes)
+- This replaces the flat stat cards at top
 
-### B. Secondary Stats Row (Compact)
-A smaller row of 4 cards below the hero for: New Leads, Active Trainers, Today's Classes, Pending Approvals. These keep the `StatCard` component but with updated `rounded-xl border-none shadow-lg shadow-indigo-100` styling.
+**C. Transactions Timeline (Replace income table)**
+- Inspired by image 4 (Vuexy Transactions list)
+- Show recent transactions as a timeline list with:
+  - Icon based on payment method (card, bank, cash, wallet)
+  - Description text
+  - Amount in green (income) or red (expense)
+- Styled as a compact card alongside the invoice table
 
----
-
-## Part 3: Live Occupancy Gauge (Replace Redundant Widgets)
-
-**Delete:** "Currently In Gym" and "Today's Check-ins" stat cards (already removed in Part 2).
-
-**Add:** A new `OccupancyGauge` component in `src/components/dashboard/OccupancyGauge.tsx`:
-- Semi-circle gauge (using Recharts `PieChart` with `startAngle={180}` / `endAngle={0}`)
-- Shows `currentlyIn / 50 Capacity`
-- Color: Green (`#10b981`) if occupancy < 50%, Orange (`#f59e0b`) if > 80%, otherwise blue
-- Placed in the CRM widgets row alongside other charts
-
----
-
-## Part 4: Accounts Receivable Widget (Fix Pending Invoices Logic)
-
-**Replace:** The `RevenueSnapshotWidget` in `DashboardCharts.tsx` with a new `AccountsReceivableWidget`.
-
-**File: `src/components/dashboard/DashboardCharts.tsx`**
-
-**Query Logic (in `Dashboard.tsx`):**
-```sql
-SELECT i.id, i.total_amount, i.amount_paid, i.status,
-       m.member_code, p.full_name
-FROM invoices i
-JOIN members m ON m.id = i.member_id
-JOIN profiles p ON p.id = m.user_id
-WHERE i.status IN ('pending', 'overdue')
-  AND (i.total_amount - COALESCE(i.amount_paid, 0)) > 0
-ORDER BY (i.total_amount - i.amount_paid) DESC
-LIMIT 5
-```
-
-**Widget UI:**
-- Title: "Accounts Receivable"
-- Total outstanding amount at top (SUM of total_amount - amount_paid)
-- List of members who owe money with name, amount owed, and a "View" button linking to `/invoices`
-- Styled with `shadow-lg rounded-2xl border-0`
+**D. Keep existing functionality intact:**
+- Add Expense drawer, CSV export, branch filter, date range filter
+- Approve/reject expense mutations
+- Income and expense tabs (restyle only)
 
 ---
 
-## Part 5: Notification System Verification
+## Phase 2: Analytics Page Redesign (`/analytics`)
 
-The notification bell already has:
-- Realtime subscription (added in previous iteration)
-- Database triggers for new member and payment events
-- Red badge with unread count
-- Scrollable dropdown
+**Reference:** Image 2 (Vuexy Analytics dashboard with Traffic hero card, Earning Reports, Support Tracker)
 
-**No changes needed** -- the notification system was fixed in the previous iteration. It should be working. If there are issues, they would be related to the triggers or realtime publication (already enabled).
+### Changes to `src/pages/Analytics.tsx`:
+
+**A. Hero Card (Replace stat cards row)**
+- Full-width violet gradient card (like the "Traffic" card in Vuexy)
+- Title: "Gym Analytics" with key metric badges:
+  - Total Members, Total Revenue, Collection Rate, Pending Dues
+- Styled: `bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl`
+
+**B. Earning Reports Widget (Replace Monthly Revenue bar chart)**
+- Inspired by Vuexy "Earning Reports" card
+- Weekly/Monthly bar chart with earnings data
+- Below the chart: 3 summary items with colored progress bars:
+  - Earnings (total collected)
+  - Profit (revenue - expenses)
+  - Expense (total expenses)
+- This requires fetching expense data (new query)
+
+**C. Member Retention Tracker (Replace Collection Status pie)**
+- Inspired by Vuexy "Support Tracker" semi-circle gauge
+- Show member retention rate as a donut/gauge
+- Metrics: Active Members, Expired Members, Frozen Members
+- Semi-circle or donut with percentage in center
+
+**D. Keep existing charts:**
+- Membership Growth (area chart) -- restyle card only
+- Revenue by Plan (bar chart) -- restyle card only
 
 ---
 
-## Part 6: Dashboard Layout Restructure
+## Phase 3: Store Page Redesign (`/store`)
 
-**File: `src/pages/Dashboard.tsx`** -- New layout order:
+**Reference:** Image 3 (Vuexy eCommerce with congratulations card, stats row, Profit/Expenses/Leads cards) and Image 4 (Transactions + Invoice table)
 
-```
-1. Header (Welcome + Branch Selector)
-2. Hero Gradient Card (Total Members, Revenue, Expiring)
-3. Secondary Stats Row (4 cards: Leads, Trainers, Classes, Approvals)
-4. Charts Row (Revenue Chart + Attendance Chart) -- unchanged
-5. CRM Widgets Row:
-   - Occupancy Gauge (NEW)
-   - Hourly Attendance Chart
-   - Accounts Receivable (NEW, replaces Revenue Snapshot)
-   - Expiring Members Widget
-6. Bottom Row:
-   - Membership Distribution (donut) -- unchanged
-   - Live Access Feed (timeline) -- unchanged
-```
+### Changes to `src/pages/Store.tsx`:
+
+**A. Hero Card (Replace 5-column stat row)**
+- "Store Overview" gradient card or a "Congratulations" style card with today's best seller info
+- Stats row below with 4 icon-based stat chips: Sales count, Customers, Products, Revenue
+
+**B. Profit/Expenses/Leads Row (3 cards)**
+- Card 1: "Profit" -- line chart sparkline with total and percentage trend
+- Card 2: "Stock Value" -- donut gauge showing utilization percentage
+- Card 3: "Low Stock Alert" -- count with warning styling
+
+**C. Transactions + Invoice Table (Replace tabs)**
+- Left: Transactions timeline (recent POS sales as a timeline list)
+- Right: Invoice-style table with search, status filter, pagination
+- Styled like image 4 with clean table rows and colored status icons
+
+**D. Keep existing functionality:**
+- POS link, Products link, all queries intact
 
 ---
 
-## Files to Create/Modify
+## Phase 4: Comprehensive System Audit
+
+### Click Handlers & Forms Audit:
+1. **AddExpenseDrawer** - Verify form submission, validation, and branch_id handling
+2. **Store POS link** - Verify navigation works
+3. **CSV Export** - Verify blob download works
+4. **Approve/Reject buttons** - Verify mutation error handling
+5. **Date range filter** - Verify query reactivity
+
+### Logic Gap Fixes:
+1. **Finance:** The `combinedIncomeData` merges POS sales without payment records -- verify no double-counting with `posSalesWithoutPayment` filter
+2. **Analytics:** The `pendingAmount` calculation uses `total_amount` not `total_amount - amount_paid` -- fix to use outstanding balance
+3. **Store:** The member store orders query filters by `notes = 'Store purchase by member'` which is fragile -- add fallback
+4. **Store:** No pagination on POS history (limited to 100) -- add "Load More" or pagination
+
+### Styling Consistency:
+- Apply `rounded-xl border-none shadow-lg shadow-indigo-100` to all Card components on these 3 pages
+- Use `font-bold text-slate-800` for all headings
+- Consistent Vuexy color palette: violet for primary, orange for expenses, green for profit
+
+---
+
+## Files to Modify
 
 | File | Action |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Major restructure: hero card, remove redundant stats, new layout |
-| `src/components/dashboard/DashboardCharts.tsx` | Add `AccountsReceivableWidget`, remove `RevenueSnapshotWidget` |
-| `src/components/dashboard/OccupancyGauge.tsx` | **NEW** - Semi-circle gauge component |
-| `src/components/ui/stat-card.tsx` | Update default card styling to Vuexy (rounded-xl, shadow-lg) |
+| `src/pages/Finance.tsx` | Major UI restructure: Revenue Report chart, Transactions timeline, Budget card |
+| `src/pages/Analytics.tsx` | Hero card, Earning Reports widget, Retention tracker, Vuexy styling |
+| `src/pages/Store.tsx` | Hero card, Profit/Stock cards, Transactions timeline, Invoice table |
+
+## Technical Notes
+
+- All charts use Recharts (already installed)
+- No new dependencies needed
+- No database changes needed -- all data is already available via existing queries
+- Analytics page needs one new query for expenses to calculate Profit in the Earning Reports widget
+- The Analytics `pendingAmount` logic will be fixed: `SUM(total_amount) - SUM(COALESCE(amount_paid, 0))` for pending/partial invoices
 
 ---
 
-## Technical Details
+## Important: Scope Management
 
-### Hero Card Component (inline in Dashboard.tsx)
-```tsx
-<div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-    <div>
-      <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
-      <p className="text-white/70 text-sm mt-1">Real-time overview of your business</p>
-    </div>
-    <div className="grid grid-cols-3 gap-6">
-      <div className="text-center">
-        <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
-        <p className="text-white/70 text-xs mt-1">Total Members</p>
-      </div>
-      <div className="text-center">
-        <p className="text-3xl font-bold">Rs.{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
-        <p className="text-white/70 text-xs mt-1">Revenue This Month</p>
-      </div>
-      <div className="text-center">
-        <p className="text-3xl font-bold">{stats?.expiringMemberships || 0}</p>
-        {(stats?.expiringMemberships || 0) > 0 && (
-          <Badge className="bg-pink-500 text-white text-xs mt-1">Action Needed</Badge>
-        )}
-        <p className="text-white/70 text-xs mt-1">Expiring Soon</p>
-      </div>
-    </div>
-  </div>
-</div>
-```
+This is a large change touching 3 pages. To minimize risk:
+- Each page will be updated independently
+- Existing query logic and data fetching will be preserved
+- Only the rendering/UI layer changes for most parts
+- Logic fixes (Analytics pending amount, Store query fragility) are surgical
 
-### Occupancy Gauge
-```tsx
-// Semi-circle using Recharts PieChart
-// startAngle={180}, endAngle={0}
-// Two cells: filled (current) + empty (remaining capacity)
-// Center text: "X / 50"
-// Color based on percentage threshold
-```
-
-### Accounts Receivable Query (new in Dashboard.tsx)
-```tsx
-const { data: receivables = [] } = useQuery({
-  queryKey: ['accounts-receivable', branchFilter],
-  enabled: !!user,
-  queryFn: async () => {
-    let query = supabase
-      .from('invoices')
-      .select('id, total_amount, amount_paid, status, member_id, members(member_code, user_id, profiles:user_id(full_name))')
-      .in('status', ['pending', 'overdue'])
-      .order('total_amount', { ascending: false })
-      .limit(5);
-    if (branchFilter) query = query.eq('branch_id', branchFilter);
-    const { data } = await query;
-    return (data || [])
-      .map((inv: any) => ({
-        id: inv.id,
-        memberName: inv.members?.profiles?.full_name || 'Unknown',
-        memberCode: inv.members?.member_code || '',
-        owed: (inv.total_amount || 0) - (inv.amount_paid || 0),
-        status: inv.status,
-      }))
-      .filter((r: any) => r.owed > 0);
-  },
-});
-```
-
-### StatCard Vuexy Update
-```tsx
-// Line 46 change:
-// FROM: 'border-border/50 transition-all hover:shadow-md'
-// TO:   'rounded-xl border-none shadow-lg shadow-indigo-100 transition-all hover:shadow-xl'
-```
