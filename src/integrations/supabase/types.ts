@@ -2096,7 +2096,7 @@ export type Database = {
           discount_amount: number | null
           due_date: string | null
           id: string
-          invoice_number: string
+          invoice_number: string | null
           member_id: string | null
           next_reminder_at: string | null
           notes: string | null
@@ -2121,7 +2121,7 @@ export type Database = {
           discount_amount?: number | null
           due_date?: string | null
           id?: string
-          invoice_number: string
+          invoice_number?: string | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
@@ -2146,7 +2146,7 @@ export type Database = {
           discount_amount?: number | null
           due_date?: string | null
           id?: string
-          invoice_number?: string
+          invoice_number?: string | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
