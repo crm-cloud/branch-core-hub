@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,6 +11,7 @@ import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle2
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead } from '@/services/notificationService';
+import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 
 const typeIcons = {
@@ -34,6 +35,29 @@ export function NotificationBell() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
+  // Realtime subscription for instant notifications
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('user-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['notification-count'] });
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ['notification-count', user?.id],
     queryFn: () => fetchUnreadCount(user!.id),
