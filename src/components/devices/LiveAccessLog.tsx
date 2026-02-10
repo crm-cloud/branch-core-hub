@@ -65,81 +65,67 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
   };
 
   return (
-    <Card className="h-full">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            Live Access Log
-          </CardTitle>
-          <Badge variant="outline" className="text-xs">
-            Real-time
-          </Badge>
-        </div>
-        <CardDescription>
-          Recent access attempts at turnstiles
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className="h-[400px]">
-          {liveEvents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Activity className="h-10 w-10 mb-3 opacity-50" />
-              <p className="text-sm">No access events yet</p>
-              <p className="text-xs mt-1">Events will appear here in real-time</p>
-            </div>
-          ) : (
-            <div className="divide-y">
+    <div className="h-full">
+      <ScrollArea className="h-[400px] pr-2">
+        {liveEvents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Activity className="h-10 w-10 mb-3 opacity-50" />
+            <p className="text-sm">No access events yet</p>
+            <p className="text-xs mt-1">Events will appear here in real-time</p>
+          </div>
+        ) : (
+          <div className="relative ml-4">
+            {/* Vertical timeline line */}
+            <div className="absolute left-[7px] top-3 bottom-3 w-0.5 bg-border" />
+
+            <div className="space-y-4">
               {liveEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
-                >
-                  <Avatar className="h-10 w-10">
+                <div key={event.id} className="relative flex items-start gap-4 pl-6">
+                  {/* Timeline dot */}
+                  <div
+                    className={`absolute left-0 top-2 w-[15px] h-[15px] rounded-full border-2 border-background z-10 ${
+                      event.access_granted ? 'bg-green-500' : 'bg-destructive'
+                    }`}
+                  />
+
+                  {/* Avatar */}
+                  <Avatar className="h-9 w-9 shrink-0">
                     {event.photo_url ? (
                       <AvatarImage src={event.photo_url} alt="Access photo" />
                     ) : null}
-                    <AvatarFallback>
-                      <User className="h-5 w-5" />
+                    <AvatarFallback className="text-xs">
+                      <User className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                  
+
+                  {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {getEventIcon(event.access_granted)}
-                      <span className="font-medium text-sm truncate">
+                    <p className="text-sm">
+                      <span className="font-semibold">
                         {event.member?.member_code || event.device_message || 'Unknown'}
                       </span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      {getEventBadge(event)}
-                      {event.denial_reason && (
-                        <span className="text-xs text-muted-foreground truncate">
-                          {event.denial_reason}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="text-right shrink-0">
-                    <p className="text-xs text-muted-foreground">
-                      {event.created_at 
-                        ? formatDistanceToNow(new Date(event.created_at), { addSuffix: true })
-                        : 'Just now'}
+                      <span className="text-muted-foreground ml-1">
+                        {event.access_granted ? 'checked in' : 'denied'}
+                      </span>
                     </p>
-                    {event.confidence_score && (
-                      <p className="text-xs text-muted-foreground">
-                        {event.confidence_score}% match
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {event.denial_reason || event.event_type || 'Turnstile'}
+                    </p>
                   </div>
+
+                  {/* Time */}
+                  <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
+                    {event.created_at
+                      ? formatDistanceToNow(new Date(event.created_at), { addSuffix: true })
+                      : 'Just now'}
+                  </span>
                 </div>
               ))}
             </div>
-          )}
-        </ScrollArea>
-      </CardContent>
-    </Card>
+          </div>
+        )}
+      </ScrollArea>
+    </div>
   );
 };
 
