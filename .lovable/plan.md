@@ -1,140 +1,177 @@
 
+# Dashboard Widgets and Notification System Overhaul
 
-# Fix: Member Creation 422 Error
+## Part 1: Membership Distribution Donut Chart (Vuexy Style Upgrade)
 
-## Root Cause
+The existing `MembershipDistribution` component in `DashboardCharts.tsx` already renders a donut/pie chart. It will be restyled to match the Vuexy aesthetic:
 
-Two issues are causing member creation to fail:
+- Add `shadow-lg rounded-2xl` card styling with clean white background
+- Move the legend from bottom to the right side of the chart using `layout="vertical" align="right" verticalAlign="middle"`
+- Add colored dots in the legend with percentage labels (e.g., "Gold 40%")
+- Increase chart size and add a center label showing total count
+- Use more vibrant Vuexy-inspired colors (purple, cyan, green, amber palette)
 
-### Issue 1: Edge function sends empty string for member_code
-Line 144 of `supabase/functions/create-member-user/index.ts` explicitly sets `member_code: ''`. Even though we updated the trigger to fire on empty strings, the service-role client bypasses triggers in some cases, and there may still be a record with `member_code = ''` causing the unique constraint violation.
+**File:** `src/components/dashboard/DashboardCharts.tsx` (modify `MembershipDistribution` component, lines 94-170)
 
-**Fix:** Change `member_code: ''` to omit the field entirely (or set it to `null`), so the database trigger generates it automatically.
+## Part 2: Live Access Feed Timeline Restyle
 
-### Issue 2: Orphaned auth users from failed attempts
-Previous failed attempts created auth users (e.g., `7dbecfed-7dd2-482d-8f5b-cf8f4d42a5b3`) but the member insert failed afterward. When retrying with the same email, the function returns 422 "email already exists." The function should handle this gracefully by reusing the existing auth user or cleaning up.
+The existing `LiveAccessLog` component will be restyled from a flat list to a Vuexy-style "Activity Timeline" design:
 
-**Fix:** Instead of rejecting duplicate emails outright, check if the user already exists AND has a member record. If they have an orphaned auth account (no member record), reuse that user ID.
+- Replace the `divide-y` list layout with a vertical timeline structure
+- Add a continuous vertical gray line on the left (`border-l-2 border-gray-200`)
+- Each entry gets a colored circular node on the line (green = granted, red = denied)
+- Content layout: member avatar, bold name + action text, gray subtext for location/device
+- Right-aligned relative time ("2 mins ago")
+- Remove the outer Card wrapper since Dashboard.tsx already wraps it in a Card
+
+**File:** `src/components/devices/LiveAccessLog.tsx` (restyle the render output, lines 67-143)
+
+## Part 3: Notification System - Realtime Subscription
+
+The database table `notifications` already exists with the correct schema (id, user_id, title, message, type, is_read, created_at, etc.) and has RLS policies configured. However, realtime is NOT enabled.
+
+### 3A: Enable Realtime on notifications table
+
+**Database migration:**
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+```
+
+### 3B: Add Realtime Subscription to NotificationBell
+
+Update `NotificationBell.tsx` to subscribe to Supabase Realtime `INSERT` events on the `notifications` table filtered by user_id. When a new notification arrives:
+- Increment the unread count badge instantly
+- Invalidate the notifications query so the dropdown refreshes
+- Show a toast for important notification types (error/warning)
+
+**File:** `src/components/notifications/NotificationBell.tsx` - Add a `useEffect` with `supabase.channel('notifications')` subscription
+
+### 3C: Auto-generate Notifications via Database Triggers
+
+Create database triggers that automatically insert into the `notifications` table when key events occur:
+
+1. **New Member Registration** - Trigger on `members` INSERT: notifies all owner/admin users at that branch
+2. **Payment Received** - Trigger on `payments` INSERT: notifies owner/admin users with amount and member info
+3. **Membership Expiring** - This requires a scheduled/cron approach (not a trigger). Instead, we add a check in the dashboard query that creates notifications for memberships expiring within 3 days if no notification has been sent yet.
+
+**Database migration:** Create trigger functions for member registration and payment received events. These will insert rows into `notifications` for users with owner/admin roles at the relevant branch.
+
+```sql
+-- Trigger function: new member notification
+CREATE OR REPLACE FUNCTION notify_new_member() RETURNS trigger ...
+  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
+  SELECT ur.user_id, NEW.branch_id, 'New Member Registered', ...
+  FROM user_roles ur WHERE ur.role IN ('owner','admin');
+
+-- Trigger function: payment received notification  
+CREATE OR REPLACE FUNCTION notify_payment_received() RETURNS trigger ...
+  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
+  SELECT ur.user_id, NEW.branch_id, 'Payment Received', ...
+  FROM user_roles ur WHERE ur.role IN ('owner','admin');
+```
+
+**Note on Low Stock:** This is best handled at the application level when stock is decremented, not via a trigger, since it requires checking threshold logic. This can be added as a follow-up.
 
 ---
 
 ## Files to Modify
 
-### 1. `supabase/functions/create-member-user/index.ts`
-
-**Change 1 (line 144):** Remove `member_code` from the insert so the trigger generates it:
-```typescript
-// Before:
-member_code: '', // Will be generated by trigger
-
-// After: (remove the line entirely, or use null)
-// member_code is omitted -- generated by DB trigger
-```
-
-**Change 2 (lines 80-89):** Instead of rejecting when email exists, check if that user already has a member record. If not, reuse the orphaned auth user:
-```text
-1. Look up existing auth user by email
-2. If found, check if a member record exists for that user_id
-3. If member exists -> return 422 "member already exists"
-4. If no member record -> reuse the existing user_id (skip auth.createUser)
-5. If no auth user at all -> create new user as before
-```
-
-### 2. Database cleanup (migration)
-Clean up any remaining records with empty member_code:
-```sql
-DELETE FROM members WHERE member_code = '' AND user_id IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM memberships WHERE member_id = members.id);
-```
-
----
+| File | Change |
+|------|--------|
+| `src/components/dashboard/DashboardCharts.tsx` | Restyle `MembershipDistribution` - Vuexy donut with right-side legend, shadow-lg card |
+| `src/components/devices/LiveAccessLog.tsx` | Restyle to vertical timeline layout with colored dots and avatars |
+| `src/components/notifications/NotificationBell.tsx` | Add Supabase Realtime subscription for instant badge updates |
+| Database migration | Enable realtime on notifications; create trigger functions for new member + payment events |
 
 ## Technical Details
 
-### Updated edge function logic (create-member-user/index.ts)
-
-```typescript
-// Line 80-106: Replace the email check block with:
-const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-const existingUser = existingUsers?.users?.find(
-  u => u.email?.toLowerCase() === email.toLowerCase()
-);
-
-let userId: string;
-
-if (existingUser) {
-  // Check if member record already exists
-  const { data: existingMember } = await supabaseAdmin
-    .from('members')
-    .select('id')
-    .eq('user_id', existingUser.id)
-    .maybeSingle();
-
-  if (existingMember) {
-    return new Response(
-      JSON.stringify({ error: 'A member with this email already exists', code: 'email_exists' }),
-      { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Orphaned auth user -- reuse it
-  userId = existingUser.id;
-
-  // Update their profile
-  await supabaseAdmin.from('profiles').update({
-    full_name: fullName,
-    phone: phone || null,
-    gender: gender || null,
-    date_of_birth: dateOfBirth || null,
-    address: address || null,
-    emergency_contact_name: emergencyContactName || null,
-    emergency_contact_phone: emergencyContactPhone || null,
-    must_set_password: true,
-  }).eq('id', userId);
-
-  // Ensure member role exists
-  await supabaseAdmin.from('user_roles')
-    .upsert({ user_id: userId, role: 'member' }, { onConflict: 'user_id,role' });
-
-} else {
-  // Create new auth user
-  const tempPassword = crypto.randomUUID().slice(0, 12);
-  const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email, password: tempPassword, email_confirm: true,
-    user_metadata: { full_name: fullName },
-  });
-  if (createError) throw createError;
-  userId = authData.user.id;
-
-  // Update profile
-  await supabaseAdmin.from('profiles').update({ ... }).eq('id', userId);
-
-  // Assign role
-  await supabaseAdmin.from('user_roles').insert({ user_id: userId, role: 'member' });
-}
-
-// Line 139-153: Insert member WITHOUT member_code
-const { data: member, error: memberError } = await supabaseAdmin
-  .from('members')
-  .insert({
-    user_id: userId,
-    branch_id: branchId,
-    // member_code omitted -- generated by trigger
-    status: 'active',
-    source: source || 'walk-in',
-    fitness_goals: fitnessGoals || null,
-    health_conditions: healthConditions || null,
-    referred_by: referredBy || null,
-    created_by: createdBy || callingUser.id,
-  })
-  .select('id, member_code')
-  .single();
+### MembershipDistribution Restyle
+```tsx
+// Key changes:
+// - Card gets: className="shadow-lg rounded-2xl border-0"
+// - PieChart layout changes to side-by-side (chart left, legend right)
+// - Legend: layout="vertical" align="right" verticalAlign="middle"
+// - Add percentage calculation in legend labels
+// - innerRadius={60} outerRadius={90} for better donut look
 ```
 
-## Summary
+### LiveAccessLog Timeline
+```tsx
+// Key changes:
+// - Remove outer Card (parent already provides it)
+// - Each event wrapped in a flex with:
+//   - Left: relative div with vertical line + colored dot node
+//   - Right: avatar + name (bold) + action + time
+// - Vertical line: absolute border-l-2 spanning full height
+// - Dot: w-3 h-3 rounded-full, green-500 or red-500 based on access_granted
+```
 
-| File | Change |
-|------|--------|
-| `supabase/functions/create-member-user/index.ts` | Remove `member_code: ''`, add orphaned-user reuse logic |
-| Database migration | Clean up any stuck empty member_code records |
+### NotificationBell Realtime
+```tsx
+// Add useEffect:
+useEffect(() => {
+  if (!user?.id) return;
+  const channel = supabase
+    .channel('user-notifications')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${user.id}`,
+    }, () => {
+      queryClient.invalidateQueries({ queryKey: ['notification-count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    })
+    .subscribe();
+  return () => { supabase.removeChannel(channel); };
+}, [user?.id]);
+```
 
+### Database Triggers
+```sql
+-- New member notification trigger
+CREATE OR REPLACE FUNCTION public.notify_new_member()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
+DECLARE
+  member_name TEXT;
+BEGIN
+  SELECT p.full_name INTO member_name FROM profiles p WHERE p.id = NEW.user_id;
+  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
+  SELECT ur.user_id, NEW.branch_id,
+    'New Member Registered',
+    'New member registration: ' || COALESCE(member_name, 'Unknown'),
+    'info', 'member'
+  FROM user_roles ur
+  WHERE ur.role IN ('owner', 'admin')
+    AND ur.user_id != COALESCE(NEW.user_id, '00000000-0000-0000-0000-000000000000'::uuid);
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER trigger_notify_new_member
+  AFTER INSERT ON members FOR EACH ROW
+  EXECUTE FUNCTION notify_new_member();
+
+-- Payment received notification trigger
+CREATE OR REPLACE FUNCTION public.notify_payment_received()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
+DECLARE
+  member_name TEXT;
+BEGIN
+  SELECT p.full_name INTO member_name
+  FROM members m JOIN profiles p ON p.id = m.user_id
+  WHERE m.id = NEW.member_id;
+  
+  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
+  SELECT ur.user_id, NEW.branch_id,
+    'Payment Received',
+    'Payment of Rs.' || NEW.amount || ' received from ' || COALESCE(member_name, 'a member'),
+    'success', 'payment'
+  FROM user_roles ur
+  WHERE ur.role IN ('owner', 'admin');
+  RETURN NEW;
+END; $$;
+
+CREATE TRIGGER trigger_notify_payment_received
+  AFTER INSERT ON payments FOR EACH ROW
+  EXECUTE FUNCTION notify_payment_received();
+```
