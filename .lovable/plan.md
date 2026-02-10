@@ -1,177 +1,196 @@
 
-# Dashboard Widgets and Notification System Overhaul
+# Dashboard Vuexy Overhaul & Logic Fixes
 
-## Part 1: Membership Distribution Donut Chart (Vuexy Style Upgrade)
-
-The existing `MembershipDistribution` component in `DashboardCharts.tsx` already renders a donut/pie chart. It will be restyled to match the Vuexy aesthetic:
-
-- Add `shadow-lg rounded-2xl` card styling with clean white background
-- Move the legend from bottom to the right side of the chart using `layout="vertical" align="right" verticalAlign="middle"`
-- Add colored dots in the legend with percentage labels (e.g., "Gold 40%")
-- Increase chart size and add a center label showing total count
-- Use more vibrant Vuexy-inspired colors (purple, cyan, green, amber palette)
-
-**File:** `src/components/dashboard/DashboardCharts.tsx` (modify `MembershipDistribution` component, lines 94-170)
-
-## Part 2: Live Access Feed Timeline Restyle
-
-The existing `LiveAccessLog` component will be restyled from a flat list to a Vuexy-style "Activity Timeline" design:
-
-- Replace the `divide-y` list layout with a vertical timeline structure
-- Add a continuous vertical gray line on the left (`border-l-2 border-gray-200`)
-- Each entry gets a colored circular node on the line (green = granted, red = denied)
-- Content layout: member avatar, bold name + action text, gray subtext for location/device
-- Right-aligned relative time ("2 mins ago")
-- Remove the outer Card wrapper since Dashboard.tsx already wraps it in a Card
-
-**File:** `src/components/devices/LiveAccessLog.tsx` (restyle the render output, lines 67-143)
-
-## Part 3: Notification System - Realtime Subscription
-
-The database table `notifications` already exists with the correct schema (id, user_id, title, message, type, is_read, created_at, etc.) and has RLS policies configured. However, realtime is NOT enabled.
-
-### 3A: Enable Realtime on notifications table
-
-**Database migration:**
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-```
-
-### 3B: Add Realtime Subscription to NotificationBell
-
-Update `NotificationBell.tsx` to subscribe to Supabase Realtime `INSERT` events on the `notifications` table filtered by user_id. When a new notification arrives:
-- Increment the unread count badge instantly
-- Invalidate the notifications query so the dropdown refreshes
-- Show a toast for important notification types (error/warning)
-
-**File:** `src/components/notifications/NotificationBell.tsx` - Add a `useEffect` with `supabase.channel('notifications')` subscription
-
-### 3C: Auto-generate Notifications via Database Triggers
-
-Create database triggers that automatically insert into the `notifications` table when key events occur:
-
-1. **New Member Registration** - Trigger on `members` INSERT: notifies all owner/admin users at that branch
-2. **Payment Received** - Trigger on `payments` INSERT: notifies owner/admin users with amount and member info
-3. **Membership Expiring** - This requires a scheduled/cron approach (not a trigger). Instead, we add a check in the dashboard query that creates notifications for memberships expiring within 3 days if no notification has been sent yet.
-
-**Database migration:** Create trigger functions for member registration and payment received events. These will insert rows into `notifications` for users with owner/admin roles at the relevant branch.
-
-```sql
--- Trigger function: new member notification
-CREATE OR REPLACE FUNCTION notify_new_member() RETURNS trigger ...
-  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
-  SELECT ur.user_id, NEW.branch_id, 'New Member Registered', ...
-  FROM user_roles ur WHERE ur.role IN ('owner','admin');
-
--- Trigger function: payment received notification  
-CREATE OR REPLACE FUNCTION notify_payment_received() RETURNS trigger ...
-  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
-  SELECT ur.user_id, NEW.branch_id, 'Payment Received', ...
-  FROM user_roles ur WHERE ur.role IN ('owner','admin');
-```
-
-**Note on Low Stock:** This is best handled at the application level when stock is decremented, not via a trigger, since it requires checking threshold logic. This can be added as a follow-up.
+## Overview
+Complete visual overhaul of the Dashboard page to match Vuexy admin template aesthetics, with structural changes to widgets and a critical fix for the pending invoices/accounts receivable logic.
 
 ---
 
-## Files to Modify
+## Part 1: Global Card Styling
 
-| File | Change |
+**File: `src/components/ui/stat-card.tsx`**
+- Update the Card className to use `rounded-xl border-none shadow-lg shadow-indigo-100`
+- Bolder headings with `font-bold text-slate-800` for value text
+
+**File: `src/components/ui/card.tsx`**
+- No global changes here (would break other pages). Instead, apply Vuexy styles per-component on Dashboard.
+
+---
+
+## Part 2: Hero Card (Replace Top Stat Row)
+
+**File: `src/pages/Dashboard.tsx`**
+
+**Delete:** The two stat card grids (lines 300-364) -- "Total Members", "Today's Check-ins", "Monthly Revenue", "New Leads", "Expiring Soon", "Pending Invoices", "Active Trainers", "Today's Classes", "Currently In Gym".
+
+**Replace with:**
+
+### A. Hero Gradient Card
+A full-width card with `bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg text-white`:
+- Left: "Gym Health" title in large white text with a subtitle
+- Right: 3-column grid showing:
+  - Total Members (white, large number)
+  - Revenue this Month (white, formatted currency)
+  - Expiring Soon (with pink/red badge if > 0)
+
+### B. Secondary Stats Row (Compact)
+A smaller row of 4 cards below the hero for: New Leads, Active Trainers, Today's Classes, Pending Approvals. These keep the `StatCard` component but with updated `rounded-xl border-none shadow-lg shadow-indigo-100` styling.
+
+---
+
+## Part 3: Live Occupancy Gauge (Replace Redundant Widgets)
+
+**Delete:** "Currently In Gym" and "Today's Check-ins" stat cards (already removed in Part 2).
+
+**Add:** A new `OccupancyGauge` component in `src/components/dashboard/OccupancyGauge.tsx`:
+- Semi-circle gauge (using Recharts `PieChart` with `startAngle={180}` / `endAngle={0}`)
+- Shows `currentlyIn / 50 Capacity`
+- Color: Green (`#10b981`) if occupancy < 50%, Orange (`#f59e0b`) if > 80%, otherwise blue
+- Placed in the CRM widgets row alongside other charts
+
+---
+
+## Part 4: Accounts Receivable Widget (Fix Pending Invoices Logic)
+
+**Replace:** The `RevenueSnapshotWidget` in `DashboardCharts.tsx` with a new `AccountsReceivableWidget`.
+
+**File: `src/components/dashboard/DashboardCharts.tsx`**
+
+**Query Logic (in `Dashboard.tsx`):**
+```sql
+SELECT i.id, i.total_amount, i.amount_paid, i.status,
+       m.member_code, p.full_name
+FROM invoices i
+JOIN members m ON m.id = i.member_id
+JOIN profiles p ON p.id = m.user_id
+WHERE i.status IN ('pending', 'overdue')
+  AND (i.total_amount - COALESCE(i.amount_paid, 0)) > 0
+ORDER BY (i.total_amount - i.amount_paid) DESC
+LIMIT 5
+```
+
+**Widget UI:**
+- Title: "Accounts Receivable"
+- Total outstanding amount at top (SUM of total_amount - amount_paid)
+- List of members who owe money with name, amount owed, and a "View" button linking to `/invoices`
+- Styled with `shadow-lg rounded-2xl border-0`
+
+---
+
+## Part 5: Notification System Verification
+
+The notification bell already has:
+- Realtime subscription (added in previous iteration)
+- Database triggers for new member and payment events
+- Red badge with unread count
+- Scrollable dropdown
+
+**No changes needed** -- the notification system was fixed in the previous iteration. It should be working. If there are issues, they would be related to the triggers or realtime publication (already enabled).
+
+---
+
+## Part 6: Dashboard Layout Restructure
+
+**File: `src/pages/Dashboard.tsx`** -- New layout order:
+
+```
+1. Header (Welcome + Branch Selector)
+2. Hero Gradient Card (Total Members, Revenue, Expiring)
+3. Secondary Stats Row (4 cards: Leads, Trainers, Classes, Approvals)
+4. Charts Row (Revenue Chart + Attendance Chart) -- unchanged
+5. CRM Widgets Row:
+   - Occupancy Gauge (NEW)
+   - Hourly Attendance Chart
+   - Accounts Receivable (NEW, replaces Revenue Snapshot)
+   - Expiring Members Widget
+6. Bottom Row:
+   - Membership Distribution (donut) -- unchanged
+   - Live Access Feed (timeline) -- unchanged
+```
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| `src/components/dashboard/DashboardCharts.tsx` | Restyle `MembershipDistribution` - Vuexy donut with right-side legend, shadow-lg card |
-| `src/components/devices/LiveAccessLog.tsx` | Restyle to vertical timeline layout with colored dots and avatars |
-| `src/components/notifications/NotificationBell.tsx` | Add Supabase Realtime subscription for instant badge updates |
-| Database migration | Enable realtime on notifications; create trigger functions for new member + payment events |
+| `src/pages/Dashboard.tsx` | Major restructure: hero card, remove redundant stats, new layout |
+| `src/components/dashboard/DashboardCharts.tsx` | Add `AccountsReceivableWidget`, remove `RevenueSnapshotWidget` |
+| `src/components/dashboard/OccupancyGauge.tsx` | **NEW** - Semi-circle gauge component |
+| `src/components/ui/stat-card.tsx` | Update default card styling to Vuexy (rounded-xl, shadow-lg) |
+
+---
 
 ## Technical Details
 
-### MembershipDistribution Restyle
+### Hero Card Component (inline in Dashboard.tsx)
 ```tsx
-// Key changes:
-// - Card gets: className="shadow-lg rounded-2xl border-0"
-// - PieChart layout changes to side-by-side (chart left, legend right)
-// - Legend: layout="vertical" align="right" verticalAlign="middle"
-// - Add percentage calculation in legend labels
-// - innerRadius={60} outerRadius={90} for better donut look
+<div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+    <div>
+      <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
+      <p className="text-white/70 text-sm mt-1">Real-time overview of your business</p>
+    </div>
+    <div className="grid grid-cols-3 gap-6">
+      <div className="text-center">
+        <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
+        <p className="text-white/70 text-xs mt-1">Total Members</p>
+      </div>
+      <div className="text-center">
+        <p className="text-3xl font-bold">Rs.{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
+        <p className="text-white/70 text-xs mt-1">Revenue This Month</p>
+      </div>
+      <div className="text-center">
+        <p className="text-3xl font-bold">{stats?.expiringMemberships || 0}</p>
+        {(stats?.expiringMemberships || 0) > 0 && (
+          <Badge className="bg-pink-500 text-white text-xs mt-1">Action Needed</Badge>
+        )}
+        <p className="text-white/70 text-xs mt-1">Expiring Soon</p>
+      </div>
+    </div>
+  </div>
+</div>
 ```
 
-### LiveAccessLog Timeline
+### Occupancy Gauge
 ```tsx
-// Key changes:
-// - Remove outer Card (parent already provides it)
-// - Each event wrapped in a flex with:
-//   - Left: relative div with vertical line + colored dot node
-//   - Right: avatar + name (bold) + action + time
-// - Vertical line: absolute border-l-2 spanning full height
-// - Dot: w-3 h-3 rounded-full, green-500 or red-500 based on access_granted
+// Semi-circle using Recharts PieChart
+// startAngle={180}, endAngle={0}
+// Two cells: filled (current) + empty (remaining capacity)
+// Center text: "X / 50"
+// Color based on percentage threshold
 ```
 
-### NotificationBell Realtime
+### Accounts Receivable Query (new in Dashboard.tsx)
 ```tsx
-// Add useEffect:
-useEffect(() => {
-  if (!user?.id) return;
-  const channel = supabase
-    .channel('user-notifications')
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'notifications',
-      filter: `user_id=eq.${user.id}`,
-    }, () => {
-      queryClient.invalidateQueries({ queryKey: ['notification-count'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    })
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-}, [user?.id]);
+const { data: receivables = [] } = useQuery({
+  queryKey: ['accounts-receivable', branchFilter],
+  enabled: !!user,
+  queryFn: async () => {
+    let query = supabase
+      .from('invoices')
+      .select('id, total_amount, amount_paid, status, member_id, members(member_code, user_id, profiles:user_id(full_name))')
+      .in('status', ['pending', 'overdue'])
+      .order('total_amount', { ascending: false })
+      .limit(5);
+    if (branchFilter) query = query.eq('branch_id', branchFilter);
+    const { data } = await query;
+    return (data || [])
+      .map((inv: any) => ({
+        id: inv.id,
+        memberName: inv.members?.profiles?.full_name || 'Unknown',
+        memberCode: inv.members?.member_code || '',
+        owed: (inv.total_amount || 0) - (inv.amount_paid || 0),
+        status: inv.status,
+      }))
+      .filter((r: any) => r.owed > 0);
+  },
+});
 ```
 
-### Database Triggers
-```sql
--- New member notification trigger
-CREATE OR REPLACE FUNCTION public.notify_new_member()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE
-  member_name TEXT;
-BEGIN
-  SELECT p.full_name INTO member_name FROM profiles p WHERE p.id = NEW.user_id;
-  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
-  SELECT ur.user_id, NEW.branch_id,
-    'New Member Registered',
-    'New member registration: ' || COALESCE(member_name, 'Unknown'),
-    'info', 'member'
-  FROM user_roles ur
-  WHERE ur.role IN ('owner', 'admin')
-    AND ur.user_id != COALESCE(NEW.user_id, '00000000-0000-0000-0000-000000000000'::uuid);
-  RETURN NEW;
-END; $$;
-
-CREATE TRIGGER trigger_notify_new_member
-  AFTER INSERT ON members FOR EACH ROW
-  EXECUTE FUNCTION notify_new_member();
-
--- Payment received notification trigger
-CREATE OR REPLACE FUNCTION public.notify_payment_received()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE
-  member_name TEXT;
-BEGIN
-  SELECT p.full_name INTO member_name
-  FROM members m JOIN profiles p ON p.id = m.user_id
-  WHERE m.id = NEW.member_id;
-  
-  INSERT INTO notifications (user_id, branch_id, title, message, type, category)
-  SELECT ur.user_id, NEW.branch_id,
-    'Payment Received',
-    'Payment of Rs.' || NEW.amount || ' received from ' || COALESCE(member_name, 'a member'),
-    'success', 'payment'
-  FROM user_roles ur
-  WHERE ur.role IN ('owner', 'admin');
-  RETURN NEW;
-END; $$;
-
-CREATE TRIGGER trigger_notify_payment_received
-  AFTER INSERT ON payments FOR EACH ROW
-  EXECUTE FUNCTION notify_payment_received();
+### StatCard Vuexy Update
+```tsx
+// Line 46 change:
+// FROM: 'border-border/50 transition-all hover:shadow-md'
+// TO:   'rounded-xl border-none shadow-lg shadow-indigo-100 transition-all hover:shadow-xl'
 ```
