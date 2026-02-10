@@ -79,75 +79,115 @@ Deno.serve(async (req) => {
 
     // Check if user with this email already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
-    const existingUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())
-    
+    const existingUser = existingUsers?.users?.find(
+      (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+    )
+
+    let userId: string
+
     if (existingUser) {
-      return new Response(
-        JSON.stringify({ error: 'A user with this email already exists', code: 'email_exists' }),
-        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+      // Check if a member record already exists for this auth user
+      const { data: existingMember } = await supabaseAdmin
+        .from('members')
+        .select('id')
+        .eq('user_id', existingUser.id)
+        .maybeSingle()
 
-    // Generate a temporary password
-    const tempPassword = crypto.randomUUID().slice(0, 12)
+      if (existingMember) {
+        return new Response(
+          JSON.stringify({ error: 'A member with this email already exists', code: 'email_exists' }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
 
-    // Create the user with email confirmed
-    const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: { full_name: fullName }
-    })
+      // Orphaned auth user (no member record) -- reuse it
+      console.log('Reusing orphaned auth user:', existingUser.id)
+      userId = existingUser.id
 
-    if (createError) {
-      console.error('Auth create error:', createError)
-      throw createError
-    }
+      // Update their profile
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          full_name: fullName,
+          phone: phone || null,
+          gender: gender || null,
+          date_of_birth: dateOfBirth || null,
+          address: address || null,
+          emergency_contact_name: emergencyContactName || null,
+          emergency_contact_phone: emergencyContactPhone || null,
+          must_set_password: true,
+        })
+        .eq('id', userId)
 
-    console.log('User created:', authData.user.id)
+      // Ensure member role exists
+      await supabaseAdmin
+        .from('user_roles')
+        .upsert(
+          { user_id: userId, role: 'member' },
+          { onConflict: 'user_id,role' }
+        )
 
-    // Update profile with all details
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .update({ 
-        full_name: fullName, 
-        phone: phone || null,
-        gender: gender || null,
-        date_of_birth: dateOfBirth || null,
-        address: address || null,
-        emergency_contact_name: emergencyContactName || null,
-        emergency_contact_phone: emergencyContactPhone || null,
-        must_set_password: true 
+    } else {
+      // Create new auth user
+      const tempPassword = crypto.randomUUID().slice(0, 12)
+
+      const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
       })
-      .eq('id', authData.user.id)
 
-    if (profileError) {
-      console.error('Profile update error:', profileError)
+      if (createError) {
+        console.error('Auth create error:', createError)
+        throw createError
+      }
+
+      console.log('User created:', authData.user.id)
+      userId = authData.user.id
+
+      // Update profile with all details
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          full_name: fullName,
+          phone: phone || null,
+          gender: gender || null,
+          date_of_birth: dateOfBirth || null,
+          address: address || null,
+          emergency_contact_name: emergencyContactName || null,
+          emergency_contact_phone: emergencyContactPhone || null,
+          must_set_password: true,
+        })
+        .eq('id', userId)
+
+      if (profileError) {
+        console.error('Profile update error:', profileError)
+      }
+
+      // Assign member role
+      const { error: roleError } = await supabaseAdmin
+        .from('user_roles')
+        .insert({ user_id: userId, role: 'member' })
+
+      if (roleError) {
+        console.error('Role insert error:', roleError)
+        throw roleError
+      }
     }
 
-    // Assign member role
-    const { error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .insert({ user_id: authData.user.id, role: 'member' })
-
-    if (roleError) {
-      console.error('Role insert error:', roleError)
-      throw roleError
-    }
-
-    // Create member record with all fields including created_by
+    // Create member record -- member_code is omitted so the DB trigger generates it
     const { data: member, error: memberError } = await supabaseAdmin
       .from('members')
       .insert({
-        user_id: authData.user.id,
+        user_id: userId,
         branch_id: branchId,
-        member_code: '', // Will be generated by trigger
         status: 'active',
         source: source || 'walk-in',
         fitness_goals: fitnessGoals || null,
         health_conditions: healthConditions || null,
         referred_by: referredBy || null,
-        created_by: createdBy || callingUser.id, // Track who created this member
+        created_by: createdBy || callingUser.id,
       })
       .select('id, member_code')
       .single()
@@ -160,12 +200,12 @@ Deno.serve(async (req) => {
     console.log('Member created:', member.id)
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        userId: authData.user.id,
+      JSON.stringify({
+        success: true,
+        userId: userId,
         memberId: member.id,
         memberCode: member.member_code,
-        message: 'Member created successfully. They will set their password on first login.'
+        message: 'Member created successfully. They will set their password on first login.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
