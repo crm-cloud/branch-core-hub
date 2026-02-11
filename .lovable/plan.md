@@ -1,85 +1,146 @@
 
 
-# Sidebar Regrouping + Analytics POS/eCommerce Widgets
-
-## Part 1: Sidebar Menu Regrouping
-
-**File: `src/config/menu.ts`** -- Rearrange `adminMenuConfig` sections and items only. No items added or removed, just reordered.
-
-New order:
-
-| Section | Items (in order) |
-|---------|-----------------|
-| **Main** | Dashboard, Analytics |
-| **Members & Leads** | Leads, Members, Attendance, Plans, Referrals, Feedback |
-| **Training & Bookings** | Classes, PT Sessions, Trainers, All Bookings, Benefit Tracking, AI Fitness |
-| **E-Commerce & Sales** | POS, Products, Categories, Store Orders |
-| **Finance** | Overview, Invoices, Payments |
-| **Operations & Comm** | WhatsApp Chat, Announcements, Equipment, Lockers, Devices |
-| **Admin & HR** | HRM, Employees, Staff Attendance, Tasks, Approvals, Audit Logs, Settings |
-
-Key moves:
-- Analytics moves from "Administration" to "Main"
-- Leads moves from "CRM & Engagement" up to "Members & Leads"
-- Referrals moves from "CRM & Engagement" to "Members & Leads"
-- All Bookings, Benefit Tracking move from "Operations" to "Training & Bookings"
-- WhatsApp Chat, Announcements move from "CRM & Engagement" to "Operations & Comm"
-- Tasks, Approvals move from "CRM & Engagement" to "Admin & HR"
-- Sign Out remains at the bottom (handled by `AppSidebar.tsx`, not the menu config)
-
-No changes needed to `AppSidebar.tsx` -- it already renders a Sign Out button at the bottom.
+# Audit Report: Branch Manager, Broadcast, and Automated Reminders
 
 ---
 
-## Part 2: Analytics Page -- POS/eCommerce Widgets
+## Audit 1: Edit Branch -- Manager Selection
 
-**File: `src/pages/Analytics.tsx`** -- Add three new widgets after the existing charts.
+### Current State
+The `EditBranchDrawer` queries `user_roles` for users with roles `manager`, `admin`, or `owner` and displays them in a Select dropdown. This part **works correctly**.
 
-### Widget A: "Earning Reports" (Weekly)
-- Matches the Vuexy reference card exactly
-- A `BarChart` showing daily earnings for the current week (Mon-Sun)
-- Query: payments from current week grouped by day of week
-- Below the chart: 3 summary rows with icons and trend percentages:
-  - **Net Profit** (revenue - expenses) with green trend arrow
-  - **Total Income** (total payments collected) with green trend arrow
-  - **Total Expenses** (approved expenses) with orange trend arrow
-- Each row shows: icon, label, subtitle, amount, and percentage change
-- Card style: `rounded-2xl border-none shadow-lg shadow-indigo-100`
+### Bug Found: Current Manager Not Pre-Selected
+When editing a branch, `managerId` is always initialized to `''` (empty string). The drawer **never fetches the current manager** from `branch_managers` table, so the user cannot see who the current manager is. It always shows "No change".
 
-### Widget B: "Popular Products"
-- Shows top-selling products by quantity sold
-- Query: `invoice_items` grouped by `product_id`, joined with `products` table for name/price
-- Displays a list with product name, item code/SKU, price, and units sold
-- Subtitle: "Total X items sold"
-- Card style matches Vuexy reference
-
-### Widget C: "Recent Store Orders"
-- Renamed from Vuexy's "Orders by Countries"
-- Shows recent invoices that are POS/store sales
-- Tabs: "New", "Processing", "Completed" (mapped to invoice statuses)
-- Each row shows: status icon (colored dot), member name, amount, date
-- Query: invoices with `invoice_type = 'pos_sale'` or store-related, ordered by date
-
-### New queries needed:
-```text
-1. Weekly earnings: payments from startOfWeek to endOfWeek, grouped by day
-2. Popular products: invoice_items joined with products, grouped, sorted by quantity DESC, LIMIT 5
-3. Recent store orders: invoices where type is POS/store, with member info, LIMIT 10
-```
+### Fix
+- Add a query to fetch the current primary manager from `branch_managers` for this branch.
+- Pre-populate `formData.managerId` with that user's ID so the Select shows the current manager on load.
+- Also show a label like "Current: John Doe" next to the field.
 
 ---
 
-## Files to Modify
+## Audit 2: Broadcast Drawer / Communication Hub
 
-| File | Change |
+### Current State
+The `BroadcastDrawer` has channel selection (WhatsApp/SMS/Email), template loading from the `templates` table, audience filtering, and a message textarea. Templates load correctly per channel type.
+
+### Bugs / Gaps Found
+
+**Gap 1: Broadcast does NOT actually send messages.**
+The `handleBroadcast` function only shows a toast saying "Broadcast initiated" -- it never calls any API, edge function, or communication service. No messages are sent. No `communication_logs` entry is created.
+
+**Gap 2: No recipient resolution.**
+Even if sending worked, the drawer never fetches the list of members matching the audience (all/active/expiring/expired). It doesn't know who to send to.
+
+**Gap 3: WhatsApp/SMS are client-side only.**
+`communicationService.sendWhatsApp()` opens `wa.me` links (one at a time, not bulk). `sendSMS()` opens the device SMS app. Neither supports bulk broadcast.
+
+**Gap 4: Email is a no-op.**
+`communicationService.sendEmail()` just logs to console and writes a communication_log. No actual email sending (no Resend/SMTP integration).
+
+### Fix Plan
+1. Create a `send-broadcast` edge function that:
+   - Accepts channel, message, audience filter, and branch_id
+   - Queries members matching the audience
+   - For WhatsApp: uses WhatsApp Business API (requires user to set up API key)
+   - For Email: uses Resend (requires RESEND_API_KEY)
+   - For SMS: uses configured SMS provider (requires API key)
+   - Logs each message to `communication_logs`
+2. Update `handleBroadcast` to call this edge function
+3. Show a progress/confirmation with count of recipients before sending
+
+**Important:** SMS, Email, and WhatsApp bulk sending all require external API keys. The system needs to prompt the user to configure these in Settings > Integrations before broadcast will work.
+
+---
+
+## Audit 3: Automated Reminders (Payment, Birthday, Renewals, Classes, Benefits)
+
+### Current State: NOTHING IS AUTOMATED
+
+There are **zero** edge functions for automated reminders. Here is the gap analysis:
+
+| Reminder Type | Database Support | Edge Function | Trigger/Cron | Status |
+|--------------|-----------------|---------------|-------------|--------|
+| Payment due soon (3 days before) | `payment_reminders` table exists | NONE | NONE | NOT WORKING |
+| Payment on due date | `payment_reminders` table exists | NONE | NONE | NOT WORKING |
+| Payment overdue (3 days after) | `payment_reminders` table exists | NONE | NONE | NOT WORKING |
+| Birthday wishes | `profiles.date_of_birth` column exists | NONE | NONE | NOT WORKING |
+| Membership renewal/expiry | `memberships.end_date` exists | NONE | NONE | NOT WORKING |
+| Class booking reminder | `classes.scheduled_at` exists | NONE | NONE | NOT WORKING |
+| Benefit slot reminder | `benefit_bookings.booking_date` exists | NONE | NONE | NOT WORKING |
+| PT session reminder | `pt_sessions.scheduled_at` exists | NONE | NONE | NOT WORKING |
+
+### What Needs to Be Built
+
+**A. `send-reminders` Edge Function** -- A single scheduled function that:
+1. Queries `payment_reminders` where `status = 'pending'` and `scheduled_for <= now()`
+2. Queries `memberships` expiring in 7/3/1 days
+3. Queries `profiles` with birthday = today
+4. Queries `classes` and `pt_sessions` scheduled tomorrow
+5. Queries `benefit_bookings` for tomorrow
+6. For each match, sends notification via configured channel and logs to `communication_logs`
+
+**B. Cron Schedule** -- This function needs to run on a schedule (e.g., daily at 8 AM). Lovable Cloud does not support cron jobs natively. Options:
+- Use an external cron service (e.g., cron-job.org) to call the edge function daily
+- Or build a "Run Reminders" button in the admin panel for manual triggering
+
+**C. Notification Creation** -- Each reminder should also insert into the `notifications` table so the in-app bell shows them.
+
+**D. Channel Configuration Prerequisite** -- Before any of this works, the user must configure:
+- Resend API key for email (in secrets)
+- WhatsApp Business API credentials
+- SMS provider API key
+
+---
+
+## Implementation Plan
+
+### Step 1: Fix Branch Manager Pre-Selection
+- File: `src/components/branches/EditBranchDrawer.tsx`
+- Add query: fetch current manager from `branch_managers` where `branch_id` matches and `is_primary = true`
+- Set `formData.managerId` in the `useEffect` when branch data loads
+
+### Step 2: Fix Broadcast to Actually Send
+- Create: `supabase/functions/send-broadcast/index.ts`
+  - Accepts: `{ channel, message, audience, branch_id }`
+  - Resolves audience to member list with phone/email
+  - Placeholder send logic (logs to `communication_logs` with status)
+  - Real sending when API keys are configured
+- Update: `src/components/announcements/BroadcastDrawer.tsx`
+  - Call the edge function instead of just showing a toast
+  - Show recipient count before sending
+  - Show sending progress
+
+### Step 3: Create Automated Reminders Engine
+- Create: `supabase/functions/send-reminders/index.ts`
+  - Processes all reminder types (payment, birthday, renewal, class, PT, benefit)
+  - Uses templates from `templates` table when available
+  - Inserts into `notifications` table for in-app alerts
+  - Logs to `communication_logs`
+- Update: Add a "Run Reminders" button in Settings or Dashboard for manual trigger
+- Future: External cron integration for daily automated execution
+
+### Step 4: Communication Service Integration
+- Update: `src/services/communicationService.ts`
+  - Add `sendBulkEmail()` method calling edge function
+  - Add `sendBulkSMS()` method calling edge function
+  - Remove client-side-only `sendSMS()` and `sendWhatsApp()` workarounds
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| `src/config/menu.ts` | Rearrange `adminMenuConfig` sections and item order |
-| `src/pages/Analytics.tsx` | Add 3 new widgets: Earning Reports (weekly), Popular Products, Recent Store Orders |
+| `src/components/branches/EditBranchDrawer.tsx` | Fix: pre-select current manager |
+| `src/components/announcements/BroadcastDrawer.tsx` | Fix: actually send broadcast via edge function |
+| `supabase/functions/send-broadcast/index.ts` | NEW: bulk message sending |
+| `supabase/functions/send-reminders/index.ts` | NEW: automated reminder processing |
+| `src/services/communicationService.ts` | Update: add bulk send methods |
 
-## Technical Notes
+## Prerequisites (User Action Required)
+- For email sending: User must provide a **Resend API key**
+- For SMS: User must configure an SMS provider API key
+- For WhatsApp bulk: User must have WhatsApp Business API access
+- Without these keys, broadcast and reminders will only create in-app notifications (bell icon) and log entries, but won't deliver external messages
 
-- No new dependencies needed
-- No database changes needed
-- The weekly earnings chart reuses existing `payments` table data but with a different time filter (current week vs. 12 months)
-- Popular Products query uses `invoice_items` table which already tracks product sales
-- The existing Earning Reports widget (monthly bar chart) will be kept but renamed to "Monthly Revenue" to differentiate from the new weekly one
