@@ -1,116 +1,88 @@
 
 
-# Discount Coupons Management Page
+# Reset All Database Tables
 
 ---
 
-## Overview
+## Approach
 
-A new **Discount Coupons** page under E-Commerce and Sales for admins/managers to create, edit, view usage analytics, and share coupons via broadcast. The page uses the existing `discount_codes` table and follows the Vuexy-inspired design with side drawers for create/edit.
-
----
-
-## Page Layout
-
-### Top Section: Stats Cards
-Four stat cards showing:
-- **Total Coupons** (active count)
-- **Total Redemptions** (sum of `times_used`)
-- **Active Coupons** (is_active = true and not expired)
-- **Expired Coupons** (valid_until < today)
-
-### Main Section: Coupons Table
-A data table with columns:
-- **Code** (bold, monospace styled)
-- **Type** (percentage / fixed badge)
-- **Value** (e.g., "20%" or "Rs 500")
-- **Usage** (times_used / max_uses or "Unlimited")
-- **Valid Until** (date with color coding: red if expired, amber if expiring within 7 days)
-- **Status** (Active / Inactive / Expired badge)
-- **Actions** (Edit, Share, Toggle Active)
-
-Search bar + filter by status (All / Active / Expired / Inactive).
-
-### Side Drawers
-1. **Add Coupon Drawer** - Create new discount code with fields:
-   - Code (auto-generate option + manual entry)
-   - Discount Type (Percentage / Fixed Amount)
-   - Discount Value
-   - Minimum Purchase Amount
-   - Maximum Uses (optional, blank = unlimited)
-   - Valid From / Valid Until dates
-   - Branch (optional, blank = all branches)
-   - Active toggle
-
-2. **Edit Coupon Drawer** - Same fields, pre-filled with existing data
-
-3. **Coupon Detail Drawer** - Shows:
-   - Coupon info summary
-   - Usage history (who used it, when) -- uses `invoice_items` or `invoices` where the discount was applied
-   - Share button that opens BroadcastDrawer with pre-filled coupon message
-
-### Share via Broadcast
-A "Share" button on each coupon row opens the existing `BroadcastDrawer` with a pre-filled message like:
-> "Use code **SUMMER20** to get 20% off your next purchase! Valid until July 31."
+Create a one-click "Reset All Data" button in the existing Demo Data settings page that calls a new edge function to truncate all public tables. Using `TRUNCATE ... CASCADE` handles foreign key dependencies automatically.
 
 ---
 
-## Database Changes
+## Implementation
 
-Add a `description` column and a `created_by` column to `discount_codes` for better tracking:
+### 1. New Edge Function: `reset-all-data`
 
-```sql
-ALTER TABLE public.discount_codes
-  ADD COLUMN IF NOT EXISTS description TEXT,
-  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
+A backend function that:
+- Requires authentication and owner/admin role check
+- Runs `TRUNCATE` with `CASCADE` on all public tables **except** `profiles`, `user_roles`, and `branches` (to preserve auth-linked data and the base branch)
+- Optionally truncates those too if a `full_reset=true` flag is passed
+- Uses the service role key for elevated permissions
+
+Tables to truncate (in one CASCADE statement):
+```
+members, memberships, membership_plans, plan_benefits,
+member_attendance, membership_freeze_history, membership_free_days,
+invoices, invoice_items, payments, payment_transactions, payment_reminders,
+pos_sales, ecommerce_orders, products, product_categories, inventory, stock_movements,
+trainers, trainer_availability, trainer_commissions, trainer_change_requests,
+pt_packages, pt_sessions, member_pt_packages,
+classes, class_bookings, class_waitlist,
+equipment, equipment_maintenance,
+lockers, locker_assignments,
+leads, lead_followups,
+employees, contracts, staff_attendance, payroll_rules,
+expenses, expense_categories,
+announcements, notifications, notification_preferences,
+approval_requests, audit_logs, communication_logs,
+feedback, tasks, templates,
+benefit_types, benefit_packages, benefit_settings, benefit_slots, benefit_bookings, benefit_usage, member_benefit_credits,
+diet_plans, diet_templates, fitness_plan_templates, member_fitness_plans, member_measurements,
+exercises, workout_plans, workout_templates, ai_plan_logs,
+discount_codes, referrals, referral_rewards, referral_settings,
+wallets, wallet_transactions,
+access_devices, device_access_events, biometric_sync_queue,
+whatsapp_messages, settings, integration_settings,
+branch_settings, branch_managers, staff_branches,
+member_branch_history, expense_category_templates,
+permissions, role_permissions
 ```
 
-No new tables needed -- the existing `discount_codes` table covers all requirements.
+Then optionally: `profiles, user_roles` (full reset).
+
+### 2. Update DemoDataSettings.tsx
+
+Add a red "Reset All Data" button above the existing "Load Demo Data" button with:
+- A confirmation dialog (AlertDialog) requiring the user to type "RESET" to confirm
+- Loading state while the function runs
+- Success/error feedback via toast
 
 ---
 
-## Files to Create/Modify
+## Files
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/DiscountCoupons.tsx` | **Create** | Main page with stats, table, search, filters |
-| `src/components/coupons/AddCouponDrawer.tsx` | **Create** | Side drawer for creating new coupons |
-| `src/components/coupons/EditCouponDrawer.tsx` | **Create** | Side drawer for editing existing coupons |
-| `src/components/coupons/CouponDetailDrawer.tsx` | **Create** | Side drawer showing usage details + share button |
-| `src/config/menu.ts` | **Edit** | Add "Discount Coupons" entry under E-Commerce and Sales |
-| `src/App.tsx` | **Edit** | Add route `/discount-coupons` |
+| File | Action |
+|------|--------|
+| `supabase/functions/reset-all-data/index.ts` | **Create** - Edge function to truncate all tables |
+| `src/components/settings/DemoDataSettings.tsx` | **Edit** - Add Reset All Data button with confirmation |
 
 ---
 
 ## Technical Details
 
-### Menu Entry (menu.ts)
-Add to `E-Commerce & Sales` section (after Store Orders):
-```
-{ label: 'Discount Coupons', href: '/discount-coupons', icon: Tags, roles: ['owner', 'admin', 'manager'] }
-```
-
-### Route (App.tsx)
-```
-import DiscountCouponsPage from "./pages/DiscountCoupons";
-// In routes:
-<Route path="/discount-coupons" element={<ProtectedRoute ...><DiscountCouponsPage /></ProtectedRoute>} />
+### Edge Function (`reset-all-data/index.ts`)
+```text
+- POST only, requires Authorization header
+- Validates caller has owner role via service role client
+- Executes: TRUNCATE table1, table2, ... RESTART IDENTITY CASCADE
+- If full_reset=true in body, also truncates profiles and user_roles
+- Returns { success: true, tables_cleared: count }
 ```
 
-### AddCouponDrawer
-- Auto-generate code: random 8-char alphanumeric (e.g., `SAVE20XY`)
-- Validation: code uniqueness check via DB query before insert
-- Insert into `discount_codes` with `created_by: user.id`
-
-### CouponDetailDrawer - Usage Tracking
-Query invoices where `discount_code` matches the coupon code (the `MemberStore.tsx` checkout stores the applied discount info). Display a timeline of:
-- Member name (from profiles via member)
-- Date used
-- Order total and discount amount
-
-### Share Button
-Opens `BroadcastDrawer` with `initialMessage` set to a formatted coupon promo message including code, value, and expiry.
-
-### POS Integration
-The POS page (`POS.tsx`) currently has no discount code input. Add a promo code field to the POS cart section (similar to MemberStore) so staff can apply coupons for walk-in customers. This reuses the same `discount_codes` table validation logic.
+### DemoDataSettings.tsx Changes
+- Add AlertDialog with text input confirmation ("Type RESET to confirm")
+- Red destructive button: "Reset All Data"
+- On confirm: calls `supabase.functions.invoke('reset-all-data')`
+- After success, show toast and optionally prompt to reload demo data
 
