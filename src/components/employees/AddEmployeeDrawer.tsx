@@ -158,57 +158,25 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
     setIsSubmitting(true);
     try {
-      // Create user via edge function
-      const { data: userData, error: createError } = await supabase.functions.invoke('admin-create-user', {
+      // Create user via edge function (handles user creation, employee record, role, branch assignment)
+      const { data: result, error: createError } = await supabase.functions.invoke('create-staff-user', {
         body: {
           email: newUserFormData.email,
           password: newUserFormData.password,
-          full_name: newUserFormData.full_name,
+          fullName: newUserFormData.full_name,
           phone: newUserFormData.phone,
+          role: newUserFormData.role,
+          branchId: newUserFormData.branch_id,
+          department: newUserFormData.department || undefined,
+          position: newUserFormData.position || undefined,
+          salary: newUserFormData.salary ? Number(newUserFormData.salary) : undefined,
+          salaryType: newUserFormData.salary_type,
+          hireDate: newUserFormData.hire_date,
         },
       });
 
       if (createError) throw createError;
-      if (!userData?.user?.id) throw new Error('Failed to create user');
-
-      const userId = userData.user.id;
-      const branch = branches.find((b: any) => b.id === newUserFormData.branch_id);
-      const employeeCode = generateEmployeeCode(branch?.code || 'XX');
-
-      // Create employee record
-      const { error: empError } = await supabase.from('employees').insert({
-        user_id: userId,
-        branch_id: newUserFormData.branch_id,
-        employee_code: employeeCode,
-        department: newUserFormData.department || null,
-        position: newUserFormData.position || null,
-        hire_date: newUserFormData.hire_date,
-        salary: newUserFormData.salary ? Number(newUserFormData.salary) : null,
-        salary_type: newUserFormData.salary_type,
-        is_active: true,
-      });
-
-      if (empError) throw empError;
-
-      // Assign role
-      await supabase.from('user_roles').insert({
-        user_id: userId,
-        role: newUserFormData.role,
-      });
-
-      // Add to staff_branches
-      await supabase.from('staff_branches').insert({
-        user_id: userId,
-        branch_id: newUserFormData.branch_id,
-      });
-
-      // If manager, add to branch_managers
-      if (newUserFormData.role === 'manager') {
-        await supabase.from('branch_managers').insert({
-          user_id: userId,
-          branch_id: newUserFormData.branch_id,
-        });
-      }
+      if (result?.error) throw new Error(result.error);
 
       toast.success('Employee created successfully');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
