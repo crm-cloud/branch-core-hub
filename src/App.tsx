@@ -85,6 +85,7 @@ import StaffDashboard from "./pages/StaffDashboard";
 import AdminRoles from "./pages/AdminRoles";
 import DeviceManagement from "./pages/DeviceManagement";
 import ApprovalQueue from "./pages/ApprovalQueue";
+import DiscountCouponsPage from "./pages/DiscountCoupons";
 
 const queryClient = new QueryClient();
 
@@ -172,6 +173,7 @@ const App = () => (
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
             <Route path="/devices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DeviceManagement /></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ApprovalQueue /></ProtectedRoute>} />
+            <Route path="/discount-coupons" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DiscountCouponsPage /></ProtectedRoute>} />
             {/* Admin user/role management */}
             <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
 
