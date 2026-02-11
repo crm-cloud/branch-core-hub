@@ -11,7 +11,7 @@ import { InvoiceDetailDrawer } from '@/components/members/InvoiceDetailDrawer';
 import { FileText, AlertCircle, Loader2, CheckCircle, Eye, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { initializePayment, openRazorpayCheckout } from '@/services/paymentService';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -20,7 +20,7 @@ export default function MyInvoices() {
   const { member, isLoading: memberLoading } = useMemberData();
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -50,7 +50,7 @@ export default function MyInvoices() {
 
   const handlePayNow = (invoice: any) => {
     setInvoiceToPay(invoice);
-    setPayDialogOpen(true);
+    setPaySheetOpen(true);
     setDetailOpen(false);
   };
 
@@ -81,7 +81,7 @@ export default function MyInvoices() {
         async (response: any) => {
           // Payment successful
           toast.success('Payment successful!');
-          setPayDialogOpen(false);
+          setPaySheetOpen(false);
           setInvoiceToPay(null);
           refetch();
         },
@@ -262,14 +262,14 @@ export default function MyInvoices() {
       />
 
       {/* Pay Dialog */}
-      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Pay Invoice</DialogTitle>
-            <DialogDescription>
+      <Sheet open={paySheetOpen} onOpenChange={setPaySheetOpen}>
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>Pay Invoice</SheetTitle>
+            <SheetDescription>
               Invoice: {invoiceToPay?.invoice_number}
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
           <div className="py-4">
             <div className="text-center space-y-4">
               <div className="p-4 bg-muted rounded-lg">
@@ -308,13 +308,13 @@ export default function MyInvoices() {
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setPaySheetOpen(false)}>
               Close
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
