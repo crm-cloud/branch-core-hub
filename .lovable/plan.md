@@ -1,90 +1,72 @@
 
 
-# Member Dashboard Audit: Fixes for Store Checkout, Requests, and RLS
+# Member Dashboard Audit: Request History, Pay Invoice, and Button State Fixes
 
 ---
 
-## Issue 1: Store Checkout 403 Error (CRITICAL)
+## Bug 1: Request History Shows "No requests yet" (CRITICAL)
 
-**Root Cause:** The `invoices` table RLS policies only allow INSERT for staff/admin/manager roles. Members have only a SELECT policy. When a member clicks "Place Order" in the store, the INSERT into `invoices` is blocked with a 403 Forbidden error. The same issue applies to `invoice_items` -- members cannot insert line items either.
+**Root Cause:** Two issues combine to hide requests:
 
-**Fix:** Add two new RLS policies via a database migration:
+1. **`requested_by` is never set.** The INSERT mutations in `MemberRequests.tsx` do not include `requested_by: user.id`. The column defaults to NULL. The RLS SELECT policy requires `requested_by = auth.uid()`, so the member can never see their own requests -- the WHERE clause `NULL = auth.uid()` always evaluates to false.
 
-```text
-Policy 1: "Members can create store invoices"
-  Table: invoices
-  Operation: INSERT
-  Condition: member_id matches the authenticated member's ID
+2. **Wrong label mapping.** Trainer change requests are stored with `approval_type: 'complimentary'` (because `trainer_change` is not in the DB enum). The `getRequestTypeLabel` function checks for `'trainer_change'` which never matches the stored value.
 
-Policy 2: "Members can create invoice items for own invoices"
-  Table: invoice_items
-  Operation: INSERT
-  Condition: invoice_id belongs to an invoice owned by the authenticated member
-```
-
-Additionally, the `MemberStore.tsx` checkout code manually generates invoice numbers (line 95), but the database has a trigger (`generate_invoice_number`) that auto-generates them. The manual generation should be removed -- just pass `invoice_number: ''` and let the trigger handle it.
+**Fix:**
+- Add `requested_by: user!.id` to both `submitFreezeRequest` and `submitTrainerChangeRequest` mutations.
+- Fix `getRequestTypeLabel` to also check `reference_type` field (which IS set to `'trainer_change'`), or map `'complimentary'` with `reference_type === 'trainer_change'` to the correct label.
 
 ---
 
-## Issue 2: Request Dialogs Use Dialog Instead of Sheet
+## Bug 2: "Request Trainer Change" Button Not Disabled When Pending
 
-**Current:** `MemberRequests.tsx` uses `<Dialog>` for both "Request Freeze" and "Request Trainer Change" forms. This violates the system-wide side-drawer policy.
+**Current:** The button has no disabled logic at all (line 230). It should be disabled when a pending trainer change request already exists.
 
-**Fix:** Replace both `<Dialog>` components with `<Sheet>` (side drawer) components:
-- Import `Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter` from `@/components/ui/sheet`
-- Remove Dialog imports
-- Convert both freeze and trainer change forms to right-side sheets
-- Keep all form logic (state, mutation handlers) unchanged
+**Fix:** Check `requests` array for any item with `reference_type === 'trainer_change'` and `status === 'pending'`. If found, disable the button and show "Request Pending" text.
 
 ---
 
-## Issue 3: Member Store -- Additional Checkout Improvements
+## Bug 3: Pay Invoice Uses Dialog Instead of Side Drawer
 
-The checkout flow currently just creates an invoice and redirects to `/my-invoices`. For a better experience:
-- After placing the order, show a success message with the invoice number
-- The "Pay at the front desk" note is already there (good)
-- No payment gateway integration needed for in-store pickup orders
+**Current:** `MyInvoices.tsx` (line 265) uses `<Dialog>` for the payment flow. This violates the system-wide side-drawer policy.
+
+**Fix:** Replace `Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter` with `Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter` (right-side drawer). Keep all payment logic (Razorpay + pay-at-desk options) unchanged.
+
+---
+
+## Bug 4: No Rewards Points Redemption
+
+This is a **new feature** that does not currently exist in the system. The `wallet_transactions` and `loyalty_points` tables would need to be checked/created. This is out of scope for the current audit fix but noted for a future implementation pass.
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| **Database migration** | Add INSERT policies for `invoices` and `invoice_items` for members |
-| `src/pages/MemberRequests.tsx` | Replace Dialog with Sheet for freeze and trainer change forms |
-| `src/pages/MemberStore.tsx` | Remove manual invoice number generation (let DB trigger handle it) |
+| File | Changes |
+|------|---------|
+| `src/pages/MemberRequests.tsx` | Add `requested_by` to both mutations; disable trainer button on pending; fix label mapping |
+| `src/pages/MyInvoices.tsx` | Replace Dialog with Sheet for pay invoice flow |
 
 ---
 
 ## Technical Details
 
-### Migration SQL
+### MemberRequests.tsx
 
 ```text
--- Allow members to create invoices for themselves (store purchases)
-CREATE POLICY "Members can create store invoices" ON public.invoices
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    member_id = public.get_member_id(auth.uid())
-  );
-
--- Allow members to add items to their own invoices
-CREATE POLICY "Members can create own invoice items" ON public.invoice_items
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    invoice_id IN (
-      SELECT id FROM public.invoices
-      WHERE member_id = public.get_member_id(auth.uid())
-    )
-  );
+1. Both mutations: add `requested_by: user!.id` (get `user` from useAuth())
+2. Trainer button: add `disabled` prop checking for pending trainer request
+3. getRequestTypeLabel: use request object's reference_type when approval_type is 'complimentary'
+   - Pass full request to label function, or check reference_type alongside approval_type
 ```
 
-### MemberRequests.tsx Changes
-- Replace `Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter` with `Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter`
-- Change `side="right"` on SheetContent
-- Rename state variables: `freezeDialogOpen` to `freezeSheetOpen`, `trainerDialogOpen` to `trainerSheetOpen`
+### MyInvoices.tsx
 
-### MemberStore.tsx Changes
-- Line 95: Remove manual invoice number generation
-- Pass empty string for `invoice_number` so the database trigger generates it automatically
+```text
+1. Replace Dialog imports with Sheet imports
+2. Rename payDialogOpen -> paySheetOpen
+3. DialogContent -> SheetContent side="right"
+4. DialogHeader/Title/Description/Footer -> Sheet equivalents
+5. All payment logic stays identical
+```
+
