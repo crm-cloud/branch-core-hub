@@ -4,6 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -23,7 +35,8 @@ import {
   Trophy,
   Lock,
   Megaphone,
-  Utensils
+  Utensils,
+  Trash2
 } from 'lucide-react';
 
 interface SeedResult {
@@ -60,6 +73,9 @@ interface SeedResult {
 export function DemoDataSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SeedResult | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
 
   const handleLoadDemoData = async () => {
     setIsLoading(true);
@@ -88,6 +104,34 @@ export function DemoDataSettings() {
     }
   };
 
+  const handleResetAllData = async () => {
+    if (resetConfirmText !== 'RESET') return;
+    
+    setShowResetDialog(false);
+    setIsResetting(true);
+    setResetConfirmText('');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-all-data', {
+        body: { full_reset: false },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(data.message || `All data reset successfully! ${data.tables_cleared} tables cleared.`);
+        setResult(null);
+      } else {
+        toast.error(data?.error || 'Failed to reset data');
+      }
+    } catch (error: any) {
+      console.error('Error resetting data:', error);
+      toast.error(error.message || 'Failed to reset data');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const dataCategories = [
     { icon: Building2, label: 'Branch & Settings', description: 'Main branch with complete configuration' },
     { icon: Users, label: 'Users & Roles', description: 'Owner, Manager, Staff, Trainers, Members' },
@@ -107,6 +151,50 @@ export function DemoDataSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Reset All Data Card */}
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <Trash2 className="h-5 w-5" />
+            Reset All Data
+          </CardTitle>
+          <CardDescription>
+            Clear all data from the database to start fresh. User accounts, roles, and branches will be preserved.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20 mb-4">
+            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-destructive">Danger Zone</p>
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete all members, memberships, invoices, payments, attendance records, 
+                and all other operational data. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={() => setShowResetDialog(true)}
+            disabled={isResetting}
+            size="lg"
+            className="w-full"
+          >
+            {isResetting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Resetting All Data...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Reset All Data
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -189,7 +277,6 @@ export function DemoDataSettings() {
               <CardContent>
                 {result.success && result.data ? (
                   <div className="space-y-4">
-                    {/* Summary */}
                     <div>
                       <h4 className="text-sm font-medium mb-2">Created Data Summary:</h4>
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
@@ -204,7 +291,6 @@ export function DemoDataSettings() {
 
                     <Separator />
 
-                    {/* Credentials */}
                     <div>
                       <h4 className="text-sm font-medium mb-2">Test Credentials:</h4>
                       <p className="text-xs text-muted-foreground mb-3">
@@ -233,6 +319,47 @@ export function DemoDataSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reset Confirmation Dialog */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">Reset All Data</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                This will permanently delete <strong>all operational data</strong> including members, 
+                memberships, invoices, payments, attendance, classes, and more.
+              </p>
+              <p>
+                Your user accounts, roles, and branches will be preserved.
+              </p>
+              <div className="pt-2">
+                <Label htmlFor="reset-confirm" className="text-sm font-medium">
+                  Type <span className="font-mono font-bold text-destructive">RESET</span> to confirm:
+                </Label>
+                <Input
+                  id="reset-confirm"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="Type RESET here"
+                  className="mt-2"
+                  autoComplete="off"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setResetConfirmText('')}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetAllData}
+              disabled={resetConfirmText !== 'RESET'}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reset All Data
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
