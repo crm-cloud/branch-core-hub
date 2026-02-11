@@ -60,6 +60,30 @@ export const communicationService = {
     return data;
   },
 
+  // Broadcast via edge function
+  async sendBroadcast(params: {
+    channel: 'email' | 'sms' | 'whatsapp';
+    message: string;
+    audience: string;
+    branch_id: string;
+    subject?: string;
+  }) {
+    const { data, error } = await supabase.functions.invoke('send-broadcast', {
+      body: params,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // Run automated reminders via edge function
+  async runReminders() {
+    const { data, error } = await supabase.functions.invoke('send-reminders', {
+      body: {},
+    });
+    if (error) throw error;
+    return data;
+  },
+
   // WhatsApp integration (opens WhatsApp with pre-filled message)
   sendWhatsApp(phone: string, message: string) {
     const formattedPhone = phone.replace(/\D/g, '');
@@ -81,7 +105,6 @@ export const communicationService = {
       status: 'sent',
     });
     
-    // In a real implementation, this would call an edge function
     console.log('Email sent to:', to);
     return { success: true };
   },

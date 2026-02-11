@@ -3,10 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Mail, Bell, Save } from 'lucide-react';
+import { Mail, Bell, Save, Play, Loader2, Clock } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchPreferences, upsertPreferences } from '@/services/notificationService';
+import { communicationService } from '@/services/communicationService';
 import { toast } from 'sonner';
 
 export function NotificationSettings() {
@@ -181,12 +183,85 @@ export function NotificationSettings() {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            <CardTitle>Automated Reminders</CardTitle>
+          </div>
+          <CardDescription>
+            Manually trigger all pending reminders (payments, birthdays, membership expiry, class/PT/benefit bookings).
+            For automated daily execution, set up an external cron service to call the reminders endpoint.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline">Payment Due</Badge>
+            <Badge variant="outline">Birthdays</Badge>
+            <Badge variant="outline">Membership Expiry</Badge>
+            <Badge variant="outline">Class Reminders</Badge>
+            <Badge variant="outline">PT Sessions</Badge>
+            <Badge variant="outline">Benefit Bookings</Badge>
+          </div>
+          <RunRemindersButton />
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
           <Save className="h-4 w-4 mr-2" />
           {saveMutation.isPending ? 'Saving...' : 'Save Preferences'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function RunRemindersButton() {
+  const [isRunning, setIsRunning] = useState(false);
+  const [lastResult, setLastResult] = useState<any>(null);
+
+  const handleRun = async () => {
+    setIsRunning(true);
+    try {
+      const result = await communicationService.runReminders();
+      setLastResult(result);
+      if (result.total_processed > 0) {
+        toast.success(`Processed ${result.total_processed} reminders`);
+      } else {
+        toast.info('No pending reminders found');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to run reminders');
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Button onClick={handleRun} disabled={isRunning} variant="outline">
+        {isRunning ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Running...</>
+        ) : (
+          <><Play className="mr-2 h-4 w-4" /> Run Reminders Now</>
+        )}
+      </Button>
+      {lastResult && (
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>Last run: {lastResult.total_processed} processed</p>
+          {lastResult.details && (
+            <div className="flex flex-wrap gap-2">
+              {lastResult.details.payment_reminders > 0 && <Badge variant="secondary">Payments: {lastResult.details.payment_reminders}</Badge>}
+              {lastResult.details.birthday_wishes > 0 && <Badge variant="secondary">Birthdays: {lastResult.details.birthday_wishes}</Badge>}
+              {lastResult.details.membership_expiry > 0 && <Badge variant="secondary">Expiry: {lastResult.details.membership_expiry}</Badge>}
+              {lastResult.details.class_reminders > 0 && <Badge variant="secondary">Classes: {lastResult.details.class_reminders}</Badge>}
+              {lastResult.details.pt_reminders > 0 && <Badge variant="secondary">PT: {lastResult.details.pt_reminders}</Badge>}
+              {lastResult.details.benefit_reminders > 0 && <Badge variant="secondary">Benefits: {lastResult.details.benefit_reminders}</Badge>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
