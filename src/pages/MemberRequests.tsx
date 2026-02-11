@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function MemberRequests() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [freezeReason, setFreezeReason] = useState('');
@@ -46,6 +48,7 @@ export default function MemberRequests() {
           reference_type: 'member',
           reference_id: member!.id,
           branch_id: member!.branch_id,
+          requested_by: user!.id,
           request_data: {
             membership_id: activeMembership?.id,
             reason: freezeReason,
@@ -71,10 +74,11 @@ export default function MemberRequests() {
       const { error } = await supabase
         .from('approval_requests')
         .insert({
-          approval_type: 'complimentary' as const, // Using complimentary as generic request type
+          approval_type: 'complimentary' as const,
           reference_type: 'trainer_change',
           reference_id: member!.id,
           branch_id: member!.branch_id,
+          requested_by: user!.id,
           request_data: {
             current_trainer_id: member!.assigned_trainer_id,
             reason: trainerChangeReason,
@@ -128,18 +132,24 @@ export default function MemberRequests() {
     }
   };
 
-  const getRequestTypeLabel = (type: string) => {
-    switch (type) {
+  const getRequestTypeLabel = (request: any) => {
+    if (request.reference_type === 'trainer_change') return 'Trainer Change';
+    switch (request.approval_type) {
       case 'membership_freeze':
         return 'Membership Freeze';
       case 'membership_unfreeze':
         return 'Membership Unfreeze';
-      case 'trainer_change':
-        return 'Trainer Change';
       default:
-        return type;
+        return request.approval_type;
     }
   };
+
+  const hasPendingTrainerRequest = requests.some(
+    (r: any) => r.reference_type === 'trainer_change' && r.status === 'pending'
+  );
+  const hasPendingFreezeRequest = requests.some(
+    (r: any) => r.approval_type === 'membership_freeze' && r.status === 'pending'
+  );
 
   return (
     <AppLayout>
@@ -168,10 +178,10 @@ export default function MemberRequests() {
                   <Button
                     className="w-full"
                     variant="outline"
-                    disabled={!activeMembership || activeMembership.status === 'frozen'}
+                    disabled={!activeMembership || activeMembership.status === 'frozen' || hasPendingFreezeRequest}
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Request Freeze
+                    {hasPendingFreezeRequest ? 'Request Pending' : 'Request Freeze'}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right">
@@ -227,9 +237,9 @@ export default function MemberRequests() {
             <CardContent>
               <Sheet open={trainerSheetOpen} onOpenChange={setTrainerSheetOpen}>
                 <SheetTrigger asChild>
-                  <Button className="w-full" variant="outline">
+                   <Button className="w-full" variant="outline" disabled={hasPendingTrainerRequest}>
                     <Plus className="h-4 w-4 mr-2" />
-                    {member.assigned_trainer_id ? 'Request Trainer Change' : 'Request Trainer'}
+                    {hasPendingTrainerRequest ? 'Request Pending' : (member.assigned_trainer_id ? 'Request Trainer Change' : 'Request Trainer')}
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right">
@@ -288,7 +298,7 @@ export default function MemberRequests() {
                     <CardContent className="py-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="font-semibold">{getRequestTypeLabel(request.approval_type)}</h4>
+                          <h4 className="font-semibold">{getRequestTypeLabel(request)}</h4>
                           <p className="text-sm text-muted-foreground">
                             Submitted on {format(new Date(request.created_at), 'dd MMM yyyy')}
                           </p>
