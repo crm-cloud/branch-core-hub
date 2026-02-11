@@ -1,72 +1,95 @@
 
 
-# Member Dashboard Audit: Request History, Pay Invoice, and Button State Fixes
+# Critical Fix: Membership Freeze Logic and UI State
 
 ---
 
-## Bug 1: Request History Shows "No requests yet" (CRITICAL)
+## Root Cause Analysis
 
-**Root Cause:** Two issues combine to hide requests:
+### Bug 1: Freeze Approval Does Nothing (CRITICAL)
+The member's freeze request in `MemberRequests.tsx` stores the membership ID as `membership_id` in `request_data`:
+```
+request_data: { membership_id: activeMembership?.id, reason: freezeReason }
+```
+But the approval handler in `ApprovalQueue.tsx` reads it as `requestData.membershipId` (camelCase). This key mismatch means the `.eq('id', undefined)` update silently does nothing -- the membership status never changes to `frozen`.
 
-1. **`requested_by` is never set.** The INSERT mutations in `MemberRequests.tsx` do not include `requested_by: user.id`. The column defaults to NULL. The RLS SELECT policy requires `requested_by = auth.uid()`, so the member can never see their own requests -- the WHERE clause `NULL = auth.uid()` always evaluates to false.
+### Bug 2: Member UI Can't See Frozen Memberships
+`useMemberData.ts` queries memberships with `.eq('status', 'active')`. When a membership IS frozen, `activeMembership` returns `null`. The UI thinks the member has no membership at all, so it never shows the frozen state.
 
-2. **Wrong label mapping.** Trainer change requests are stored with `approval_type: 'complimentary'` (because `trainer_change` is not in the DB enum). The `getRequestTypeLabel` function checks for `'trainer_change'` which never matches the stored value.
+### Bug 3: No Unfreeze Flow for Members
+There is no way for a member to request an unfreeze. The card always shows "Request Freeze" regardless of state.
 
-**Fix:**
-- Add `requested_by: user!.id` to both `submitFreezeRequest` and `submitTrainerChangeRequest` mutations.
-- Fix `getRequestTypeLabel` to also check `reference_type` field (which IS set to `'trainer_change'`), or map `'complimentary'` with `reference_type === 'trainer_change'` to the correct label.
-
----
-
-## Bug 2: "Request Trainer Change" Button Not Disabled When Pending
-
-**Current:** The button has no disabled logic at all (line 230). It should be disabled when a pending trainer change request already exists.
-
-**Fix:** Check `requests` array for any item with `reference_type === 'trainer_change'` and `status === 'pending'`. If found, disable the button and show "Request Pending" text.
+### Check-in (Already Working)
+The database function `validate_member_checkin` already checks for frozen status and returns "Membership is currently frozen". No changes needed here.
 
 ---
 
-## Bug 3: Pay Invoice Uses Dialog Instead of Side Drawer
+## Fix Plan
 
-**Current:** `MyInvoices.tsx` (line 265) uses `<Dialog>` for the payment flow. This violates the system-wide side-drawer policy.
+### Fix 1: Data Key Mismatch (MemberRequests.tsx)
+Change `membership_id` to `membershipId` in the freeze request `request_data` so the approval handler can find it. This is a one-line fix.
 
-**Fix:** Replace `Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter` with `Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter` (right-side drawer). Keep all payment logic (Razorpay + pay-at-desk options) unchanged.
+### Fix 2: Query Frozen Memberships (useMemberData.ts)  
+Change the membership query from `.eq('status', 'active')` to `.in('status', ['active', 'frozen'])` so the hook returns frozen memberships too. The `activeMembership` object will then correctly reflect `status: 'frozen'`.
 
----
+### Fix 3: Conditional Freeze/Unfreeze Card (MemberRequests.tsx)
+Update the Freeze Membership card with conditional rendering:
+- **If membership is active**: Show current card (snowflake icon, "Freeze Membership" title, "Request Freeze" button)
+- **If membership is frozen**: Show a blue-tinted card with:
+  - Snowflake icon + "Membership Frozen" title
+  - Description: "Your membership is currently paused. You do not have gym access."
+  - A "Paused" badge on the card
+  - Button: "Request Unfreeze" which submits an unfreeze approval request
 
-## Bug 4: No Rewards Points Redemption
+### Fix 4: Unfreeze Request Submission (MemberRequests.tsx)
+Add a new mutation `submitUnfreezeRequest` that inserts into `approval_requests` with `approval_type: 'membership_freeze'` and `reference_type: 'membership_unfreeze'` so the approval queue can distinguish it.
 
-This is a **new feature** that does not currently exist in the system. The `wallet_transactions` and `loyalty_points` tables would need to be checked/created. This is out of scope for the current audit fix but noted for a future implementation pass.
+### Fix 5: Handle Unfreeze Approval (ApprovalQueue.tsx)
+Add logic in the approval handler: when `reference_type === 'membership_unfreeze'` is approved, call the `resumeFromFreeze` logic (update membership status back to `active` and recalculate end date).
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/pages/MemberRequests.tsx` | Add `requested_by` to both mutations; disable trainer button on pending; fix label mapping |
-| `src/pages/MyInvoices.tsx` | Replace Dialog with Sheet for pay invoice flow |
+| File | Change |
+|------|--------|
+| `src/pages/MemberRequests.tsx` | Fix `membership_id` to `membershipId` in request_data; add frozen state conditional UI; add unfreeze mutation |
+| `src/hooks/useMemberData.ts` | Change `.eq('status', 'active')` to `.in('status', ['active', 'frozen'])` |
+| `src/pages/ApprovalQueue.tsx` | Add unfreeze approval handler that resumes membership |
 
 ---
 
 ## Technical Details
 
-### MemberRequests.tsx
-
+### useMemberData.ts (line 59)
 ```text
-1. Both mutations: add `requested_by: user!.id` (get `user` from useAuth())
-2. Trainer button: add `disabled` prop checking for pending trainer request
-3. getRequestTypeLabel: use request object's reference_type when approval_type is 'complimentary'
-   - Pass full request to label function, or check reference_type alongside approval_type
+Before: .eq('status', 'active')
+After:  .in('status', ['active', 'frozen'])
 ```
 
-### MyInvoices.tsx
-
+### MemberRequests.tsx - request_data fix (line 53)
 ```text
-1. Replace Dialog imports with Sheet imports
-2. Rename payDialogOpen -> paySheetOpen
-3. DialogContent -> SheetContent side="right"
-4. DialogHeader/Title/Description/Footer -> Sheet equivalents
-5. All payment logic stays identical
+Before: membership_id: activeMembership?.id
+After:  membershipId: activeMembership?.id
 ```
+
+### MemberRequests.tsx - Freeze card conditional rendering
+```text
+IF activeMembership?.status === 'frozen':
+  - Card background: blue-tinted border (border-blue-300)
+  - Title: "Membership Frozen" with Snowflake icon
+  - Badge: "Paused" in blue
+  - Description: "Your membership is currently paused. You do not have gym access."
+  - Button: "Request Unfreeze" (disabled if pending unfreeze exists)
+
+ELSE (active):
+  - Current card as-is
+```
+
+### ApprovalQueue.tsx - Unfreeze handler
+When approved and `reference_type === 'membership_unfreeze'`:
+1. Get the membership from `requestData.membershipId`
+2. Query `membership_freeze_history` for total frozen days
+3. Calculate new end_date = original_end_date + total_frozen_days
+4. Update membership: `status: 'active'`, `end_date: newEndDate`
 
