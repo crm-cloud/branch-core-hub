@@ -8,12 +8,13 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { useBenefitTypes, useCreateBenefitType } from '@/hooks/useBenefitTypes';
+import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { toast } from 'sonner';
-import { Plus, Loader2 } from 'lucide-react';
+import { Loader2, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface AddPlanDrawerProps {
   open: boolean;
@@ -31,15 +32,10 @@ type BenefitConfig = {
 export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerProps) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [addBenefitDialogOpen, setAddBenefitDialogOpen] = useState(false);
-  const [newBenefitName, setNewBenefitName] = useState('');
-  const [newBenefitCode, setNewBenefitCode] = useState('');
-  const [newBenefitIcon, setNewBenefitIcon] = useState('🎁');
+  const navigate = useNavigate();
 
   // Fetch dynamic benefit types from database (fully database-driven, no static fallback)
   const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(branchId);
-  const createBenefitType = useCreateBenefitType();
-
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -94,36 +90,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
       ...prev,
       [id]: { ...prev[id], [field]: value }
     }));
-  };
-
-  const handleAddBenefitType = async () => {
-    if (!newBenefitName.trim() || !newBenefitCode.trim()) {
-      toast.error('Please fill in name and code');
-      return;
-    }
-
-    if (!branchId) {
-      toast.error('Please select a branch first');
-      return;
-    }
-
-    try {
-      await createBenefitType.mutateAsync({
-        name: newBenefitName.trim(),
-        code: newBenefitCode.trim().toLowerCase().replace(/\s+/g, '_'),
-        icon: newBenefitIcon,
-        branch_id: branchId,
-        is_bookable: false,
-      });
-
-      toast.success('Benefit type added');
-      setAddBenefitDialogOpen(false);
-      setNewBenefitName('');
-      setNewBenefitCode('');
-      setNewBenefitIcon('🎁');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to add benefit type');
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -349,17 +315,18 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                     Select benefits and set as <span className="font-medium text-primary">Unlimited</span> or <span className="font-medium text-primary">Limited</span> (e.g., Sauna = 3/month)
                   </p>
                 </div>
-                {branchId && (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setAddBenefitDialogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Custom
-                  </Button>
-                )}
+              <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    onOpenChange(false);
+                    navigate('/settings?tab=benefits');
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Manage in Settings
+                </Button>
               </div>
 
               {isLoadingBenefits ? (
@@ -373,10 +340,13 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                     type="button" 
                     variant="outline" 
                     size="sm"
-                    onClick={() => setAddBenefitDialogOpen(true)}
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate('/settings?tab=benefits');
+                    }}
                   >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add Your First Benefit Type
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Create Benefit Types in Settings
                   </Button>
                 </div>
               ) : (
@@ -484,53 +454,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         </SheetContent>
       </Sheet>
 
-      {/* Add Benefit Type Dialog */}
-      <Dialog open={addBenefitDialogOpen} onOpenChange={setAddBenefitDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Custom Benefit Type</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Benefit Name *</Label>
-              <Input
-                value={newBenefitName}
-                onChange={(e) => {
-                  setNewBenefitName(e.target.value);
-                  setNewBenefitCode(e.target.value.toLowerCase().replace(/\s+/g, '_'));
-                }}
-                placeholder="e.g., Ice Bath, Cryotherapy"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Code *</Label>
-              <Input
-                value={newBenefitCode}
-                onChange={(e) => setNewBenefitCode(e.target.value)}
-                placeholder="e.g., ice_bath"
-              />
-              <p className="text-xs text-muted-foreground">Unique identifier (lowercase, underscores)</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Icon (Emoji)</Label>
-              <Input
-                value={newBenefitIcon}
-                onChange={(e) => setNewBenefitIcon(e.target.value)}
-                placeholder="🎁"
-                className="w-20"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddBenefitDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddBenefitType} disabled={createBenefitType.isPending}>
-              {createBenefitType.isPending ? 'Adding...' : 'Add Benefit'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
