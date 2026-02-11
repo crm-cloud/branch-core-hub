@@ -19,8 +19,12 @@ export default function MemberRequests() {
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [freezeReason, setFreezeReason] = useState('');
   const [trainerChangeReason, setTrainerChangeReason] = useState('');
+  const [unfreezeReason, setUnfreezeReason] = useState('');
   const [freezeSheetOpen, setFreezeSheetOpen] = useState(false);
   const [trainerSheetOpen, setTrainerSheetOpen] = useState(false);
+  const [unfreezeSheetOpen, setUnfreezeSheetOpen] = useState(false);
+
+  const isFrozen = activeMembership?.status === 'frozen';
 
   // Fetch existing requests
   const { data: requests = [], isLoading: requestsLoading } = useQuery({
@@ -50,7 +54,7 @@ export default function MemberRequests() {
           branch_id: member!.branch_id,
           requested_by: user!.id,
           request_data: {
-            membership_id: activeMembership?.id,
+            membershipId: activeMembership?.id,
             reason: freezeReason,
             requested_at: new Date().toISOString(),
           },
@@ -98,6 +102,36 @@ export default function MemberRequests() {
     },
   });
 
+  // Submit unfreeze request
+  const submitUnfreezeRequest = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('approval_requests')
+        .insert({
+          approval_type: 'membership_freeze' as const,
+          reference_type: 'membership_unfreeze',
+          reference_id: member!.id,
+          branch_id: member!.branch_id,
+          requested_by: user!.id,
+          request_data: {
+            membershipId: activeMembership?.id,
+            reason: unfreezeReason,
+            requested_at: new Date().toISOString(),
+          },
+        });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Unfreeze request submitted');
+      setUnfreezeSheetOpen(false);
+      setUnfreezeReason('');
+      queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+    },
+    onError: () => {
+      toast.error('Failed to submit request');
+    },
+  });
+
   if (memberLoading || requestsLoading) {
     return (
       <AppLayout>
@@ -134,11 +168,10 @@ export default function MemberRequests() {
 
   const getRequestTypeLabel = (request: any) => {
     if (request.reference_type === 'trainer_change') return 'Trainer Change';
+    if (request.reference_type === 'membership_unfreeze') return 'Membership Unfreeze';
     switch (request.approval_type) {
       case 'membership_freeze':
         return 'Membership Freeze';
-      case 'membership_unfreeze':
-        return 'Membership Unfreeze';
       default:
         return request.approval_type;
     }
@@ -148,7 +181,10 @@ export default function MemberRequests() {
     (r: any) => r.reference_type === 'trainer_change' && r.status === 'pending'
   );
   const hasPendingFreezeRequest = requests.some(
-    (r: any) => r.approval_type === 'membership_freeze' && r.status === 'pending'
+    (r: any) => r.approval_type === 'membership_freeze' && r.reference_type !== 'membership_unfreeze' && r.status === 'pending'
+  );
+  const hasPendingUnfreezeRequest = requests.some(
+    (r: any) => r.reference_type === 'membership_unfreeze' && r.status === 'pending'
   );
 
   return (
@@ -161,65 +197,119 @@ export default function MemberRequests() {
 
         {/* Quick Actions */}
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Freeze Request */}
-          <Card className="border-border/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Snowflake className="h-5 w-5" />
-                Freeze Membership
-              </CardTitle>
-              <CardDescription>
-                Temporarily pause your membership while you're away
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Sheet open={freezeSheetOpen} onOpenChange={setFreezeSheetOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    disabled={!activeMembership || activeMembership.status === 'frozen' || hasPendingFreezeRequest}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    {hasPendingFreezeRequest ? 'Request Pending' : 'Request Freeze'}
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right">
-                  <SheetHeader>
-                    <SheetTitle>Request Membership Freeze</SheetTitle>
-                  </SheetHeader>
-                  <div className="space-y-4 py-4">
-                    <div>
-                      <label className="text-sm font-medium">Reason for freeze</label>
-                      <Textarea
-                        placeholder="e.g., Traveling for work, Medical reasons, etc."
-                        value={freezeReason}
-                        onChange={(e) => setFreezeReason(e.target.value)}
-                        className="mt-2"
-                      />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Your request will be reviewed by the management. You'll be notified once approved.
-                    </p>
-                  </div>
-                  <SheetFooter>
+          {/* Freeze / Unfreeze Card */}
+          {isFrozen ? (
+            <Card className="border-info/50 bg-info/5">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-info">
+                    <Snowflake className="h-5 w-5" />
+                    Membership Frozen
+                  </CardTitle>
+                  <Badge className="bg-info/10 text-info">Paused</Badge>
+                </div>
+                <CardDescription>
+                  Your membership is currently paused. You do not have gym access.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Sheet open={unfreezeSheetOpen} onOpenChange={setUnfreezeSheetOpen}>
+                  <SheetTrigger asChild>
                     <Button
+                      className="w-full"
                       variant="outline"
-                      onClick={() => setFreezeSheetOpen(false)}
+                      disabled={hasPendingUnfreezeRequest}
                     >
-                      Cancel
+                      <Plus className="h-4 w-4 mr-2" />
+                      {hasPendingUnfreezeRequest ? 'Unfreeze Request Pending' : 'Request Unfreeze'}
                     </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right">
+                    <SheetHeader>
+                      <SheetTitle>Request Membership Unfreeze</SheetTitle>
+                    </SheetHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium">Reason for unfreeze</label>
+                        <Textarea
+                          placeholder="e.g., Back from travel, Ready to resume training, etc."
+                          value={unfreezeReason}
+                          onChange={(e) => setUnfreezeReason(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Your request will be reviewed by the management. Once approved, your membership will resume and the end date will be extended.
+                      </p>
+                    </div>
+                    <SheetFooter>
+                      <Button variant="outline" onClick={() => setUnfreezeSheetOpen(false)}>Cancel</Button>
+                      <Button
+                        onClick={() => submitUnfreezeRequest.mutate()}
+                        disabled={!unfreezeReason || submitUnfreezeRequest.isPending}
+                      >
+                        Submit Request
+                      </Button>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Snowflake className="h-5 w-5" />
+                  Freeze Membership
+                </CardTitle>
+                <CardDescription>
+                  Temporarily pause your membership while you're away
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Sheet open={freezeSheetOpen} onOpenChange={setFreezeSheetOpen}>
+                  <SheetTrigger asChild>
                     <Button
-                      onClick={() => submitFreezeRequest.mutate()}
-                      disabled={!freezeReason || submitFreezeRequest.isPending}
+                      className="w-full"
+                      variant="outline"
+                      disabled={!activeMembership || hasPendingFreezeRequest}
                     >
-                      Submit Request
+                      <Plus className="h-4 w-4 mr-2" />
+                      {hasPendingFreezeRequest ? 'Request Pending' : 'Request Freeze'}
                     </Button>
-                  </SheetFooter>
-                </SheetContent>
-              </Sheet>
-            </CardContent>
-          </Card>
+                  </SheetTrigger>
+                  <SheetContent side="right">
+                    <SheetHeader>
+                      <SheetTitle>Request Membership Freeze</SheetTitle>
+                    </SheetHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm font-medium">Reason for freeze</label>
+                        <Textarea
+                          placeholder="e.g., Traveling for work, Medical reasons, etc."
+                          value={freezeReason}
+                          onChange={(e) => setFreezeReason(e.target.value)}
+                          className="mt-2"
+                        />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Your request will be reviewed by the management. You'll be notified once approved.
+                      </p>
+                    </div>
+                    <SheetFooter>
+                      <Button variant="outline" onClick={() => setFreezeSheetOpen(false)}>Cancel</Button>
+                      <Button
+                        onClick={() => submitFreezeRequest.mutate()}
+                        disabled={!freezeReason || submitFreezeRequest.isPending}
+                      >
+                        Submit Request
+                      </Button>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Trainer Change Request */}
           <Card className="border-border/50">

@@ -156,7 +156,7 @@ export default function ApprovalQueuePage() {
 
       // Handle specific approval types
       if (approved) {
-        if (request.approval_type === 'membership_freeze') {
+        if (request.approval_type === 'membership_freeze' && request.reference_type !== 'membership_unfreeze') {
           // Update freeze history status
           await supabase
             .from('membership_freeze_history')
@@ -167,13 +167,50 @@ export default function ApprovalQueuePage() {
             })
             .eq('id', request.reference_id);
 
-          // Apply freeze if start date is today or earlier
-          const freezeStart = new Date(requestData.startDate);
-          if (freezeStart <= new Date()) {
+          // Apply freeze - update membership status to frozen
+          if (requestData.membershipId) {
             await supabase
               .from('memberships')
               .update({ status: 'frozen' })
               .eq('id', requestData.membershipId);
+          }
+        } else if (request.reference_type === 'membership_unfreeze') {
+          // Handle unfreeze - resume membership
+          if (requestData.membershipId) {
+            // Get the membership to calculate new end date
+            const { data: membership } = await supabase
+              .from('memberships')
+              .select('*')
+              .eq('id', requestData.membershipId)
+              .single();
+
+            if (membership) {
+              // Get freeze history to calculate total frozen days
+              const { data: freezeHistory } = await supabase
+                .from('membership_freeze_history')
+                .select('*')
+                .eq('membership_id', requestData.membershipId)
+                .eq('status', 'approved');
+
+              // Calculate total frozen days
+              const totalFrozenDays = (freezeHistory || []).reduce((sum: number, f: any) => {
+                const start = new Date(f.start_date);
+                const end = f.end_date ? new Date(f.end_date) : new Date();
+                return sum + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+              }, 0);
+
+              // Extend end date by frozen days
+              const originalEnd = new Date(membership.end_date);
+              originalEnd.setDate(originalEnd.getDate() + totalFrozenDays);
+
+              await supabase
+                .from('memberships')
+                .update({
+                  status: 'active',
+                  end_date: originalEnd.toISOString().split('T')[0],
+                })
+                .eq('id', requestData.membershipId);
+            }
           }
         } else if (request.reference_type === 'trainer_change') {
           // Handle trainer change - update member's assigned trainer
