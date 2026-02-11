@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.device-trigger-relay]
 verify_jwt = true
+
+[functions.send-broadcast]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false

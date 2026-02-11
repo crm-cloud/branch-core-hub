@@ -34,6 +34,22 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     managerId: '',
   });
 
+  // Fetch the current primary manager for this branch
+  const { data: currentManager } = useQuery({
+    queryKey: ['branch-manager', branch?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branch_managers')
+        .select('user_id, profiles:user_id (full_name)')
+        .eq('branch_id', branch.id)
+        .eq('is_primary', true)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: open && !!branch?.id,
+  });
+
   useEffect(() => {
     if (branch) {
       setFormData({
@@ -49,10 +65,10 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
         opening_time: branch.opening_time || '06:00',
         closing_time: branch.closing_time || '22:00',
         is_active: branch.is_active ?? true,
-        managerId: '',
+        managerId: currentManager?.user_id || '',
       });
     }
-  }, [branch]);
+  }, [branch, currentManager]);
 
   const { data: potentialManagers = [] } = useQuery({
     queryKey: ['potential-managers'],
@@ -246,12 +262,17 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
 
           <div className="space-y-2">
             <Label htmlFor="manager">Branch Manager</Label>
+            {currentManager && (
+              <p className="text-xs text-muted-foreground">
+                Current: <span className="font-medium text-foreground">{(currentManager as any).profiles?.full_name || 'Unknown'}</span>
+              </p>
+            )}
             <Select
               value={formData.managerId || "none"}
               onValueChange={(v) => setFormData({ ...formData, managerId: v === "none" ? "" : v })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a manager (optional)" />
+                <SelectValue placeholder="Select a manager" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No change</SelectItem>
