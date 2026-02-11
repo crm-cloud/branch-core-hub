@@ -9,6 +9,7 @@ export interface BenefitSettings {
   id: string;
   branch_id: string;
   benefit_type: BenefitType;
+  benefit_type_id?: string | null;
   is_slot_booking_enabled: boolean;
   slot_duration_minutes: number;
   booking_opens_hours_before: number;
@@ -86,7 +87,42 @@ export async function getBenefitSettings(branchId: string): Promise<BenefitSetti
   return data || [];
 }
 
-export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & { branch_id: string; benefit_type: BenefitType }): Promise<BenefitSettings> {
+export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & { branch_id: string; benefit_type: BenefitType; benefit_type_id?: string }): Promise<BenefitSettings> {
+  // If benefit_type_id is provided, try to upsert using it (for custom types)
+  if (setting.benefit_type_id) {
+    // Check if a record already exists for this branch + benefit_type_id
+    const { data: existing } = await supabase
+      .from("benefit_settings")
+      .select("id")
+      .eq("branch_id", setting.branch_id)
+      .eq("benefit_type_id", setting.benefit_type_id)
+      .maybeSingle();
+
+    if (existing) {
+      // Update existing record
+      const { id: _id, ...updateData } = setting;
+      const { data, error } = await supabase
+        .from("benefit_settings")
+        .update(updateData)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      // Insert new record with 'other' as fallback enum value for custom types
+      const insertData = { ...setting, benefit_type: (setting.benefit_type || 'other') as BenefitType };
+      const { data, error } = await supabase
+        .from("benefit_settings")
+        .insert(insertData)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  // Fallback: original upsert for standard enum types
   const { data, error } = await supabase
     .from("benefit_settings")
     .upsert(setting, { onConflict: "branch_id,benefit_type" })

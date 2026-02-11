@@ -27,6 +27,7 @@ function getIconComponent(iconName: string | null) {
 interface BenefitSettingFormProps {
   branchId: string;
   benefitType: BenefitType;
+  benefitTypeId?: string;
   label: string;
   icon: React.ReactNode;
   initialSettings?: {
@@ -44,7 +45,7 @@ interface BenefitSettingFormProps {
   };
 }
 
-function BenefitSettingForm({ branchId, benefitType, label, icon, initialSettings }: BenefitSettingFormProps) {
+function BenefitSettingForm({ branchId, benefitType, benefitTypeId, label, icon, initialSettings }: BenefitSettingFormProps) {
   const [isEnabled, setIsEnabled] = useState(initialSettings?.is_slot_booking_enabled ?? false);
   const [duration, setDuration] = useState(initialSettings?.slot_duration_minutes ?? 30);
   const [bookingOpens, setBookingOpens] = useState(initialSettings?.booking_opens_hours_before ?? 24);
@@ -64,6 +65,7 @@ function BenefitSettingForm({ branchId, benefitType, label, icon, initialSetting
       await upsertSetting.mutateAsync({
         branch_id: branchId,
         benefit_type: benefitType,
+        benefit_type_id: benefitTypeId,
         is_slot_booking_enabled: isEnabled,
         slot_duration_minutes: duration,
         booking_opens_hours_before: bookingOpens,
@@ -264,8 +266,10 @@ export function BenefitSettingsComponent() {
     return <div className="text-center py-8">Loading settings...</div>;
   }
   
-  const getSettingsForType = (benefitType: BenefitType) => {
-    return settings?.find((s) => s.benefit_type === benefitType);
+  const getSettingsForType = (benefitCode: string, benefitTypeId: string) => {
+    // Try matching by benefit_type_id first (for custom types), then fall back to enum code
+    return settings?.find((s) => s.benefit_type_id === benefitTypeId) 
+      || settings?.find((s) => s.benefit_type === benefitCode);
   };
   
   return (
@@ -289,10 +293,11 @@ export function BenefitSettingsComponent() {
               <BenefitSettingForm
                 key={bt.id}
                 branchId={branchId}
-                benefitType={bt.code as BenefitType}
+                benefitType={(bt.code as BenefitType) || ('other' as BenefitType)}
+                benefitTypeId={bt.id}
                 label={bt.name}
                 icon={getIconComponent(bt.icon)}
-                initialSettings={getSettingsForType(bt.code as BenefitType)}
+                initialSettings={getSettingsForType(bt.code, bt.id)}
               />
             ))}
           </div>

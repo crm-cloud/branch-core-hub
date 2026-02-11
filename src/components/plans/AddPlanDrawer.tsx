@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
@@ -13,8 +12,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { toast } from 'sonner';
-import { Loader2, ExternalLink } from 'lucide-react';
+import { Loader2, ExternalLink, Plus, X, Infinity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getBenefitIcon } from '@/lib/benefitIcons';
 
 interface AddPlanDrawerProps {
   open: boolean;
@@ -22,11 +22,14 @@ interface AddPlanDrawerProps {
   branchId?: string;
 }
 
-type BenefitConfig = {
-  enabled: boolean;
-  frequency: 'unlimited' | 'daily' | 'weekly' | 'monthly' | 'per_membership';
+type SelectedBenefit = {
+  benefitTypeId: string;
+  code: string;
+  name: string;
+  icon: string;
+  isUnlimited: boolean;
   limit: number;
-  benefitTypeId?: string; // Reference to benefit_types table
+  frequency: 'daily' | 'weekly' | 'monthly' | 'per_membership';
 };
 
 export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerProps) {
@@ -34,7 +37,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch dynamic benefit types from database (fully database-driven, no static fallback)
   const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(branchId);
   const [formData, setFormData] = useState({
     name: '',
@@ -51,45 +53,34 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
     free_locker_size: 'medium',
   });
 
-  // Use database benefit types only (fully dynamic)
-  const benefitOptions: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = 
-    dbBenefitTypes.map(bt => ({
-      id: bt.code,
-      label: bt.name,
-      icon: bt.icon || '🎁',
+  const [selectedBenefits, setSelectedBenefits] = useState<SelectedBenefit[]>([]);
+
+  const availableBenefits = dbBenefitTypes.filter(
+    bt => !selectedBenefits.some(sb => sb.benefitTypeId === bt.id)
+  );
+
+  const addBenefit = (benefitTypeId: string) => {
+    const bt = dbBenefitTypes.find(b => b.id === benefitTypeId);
+    if (!bt) return;
+    setSelectedBenefits(prev => [...prev, {
+      benefitTypeId: bt.id,
       code: bt.code,
-      benefitTypeId: bt.id
-    }));
-
-  const [benefits, setBenefits] = useState<Record<string, BenefitConfig>>({});
-
-  // Initialize benefits when benefit options change
-  useEffect(() => {
-    setBenefits(
-      Object.fromEntries(benefitOptions.map(b => [
-        b.id, 
-        { 
-          enabled: false, 
-          frequency: 'unlimited' as const, 
-          limit: 0,
-          benefitTypeId: b.benefitTypeId
-        }
-      ]))
-    );
-  }, [dbBenefitTypes]);
-
-  const toggleBenefit = (id: string) => {
-    setBenefits(prev => ({
-      ...prev,
-      [id]: { ...prev[id], enabled: !prev[id]?.enabled }
-    }));
+      name: bt.name,
+      icon: bt.icon || 'Sparkles',
+      isUnlimited: true,
+      limit: 1,
+      frequency: 'per_membership',
+    }]);
   };
 
-  const updateBenefitConfig = (id: string, field: 'frequency' | 'limit', value: any) => {
-    setBenefits(prev => ({
-      ...prev,
-      [id]: { ...prev[id], [field]: value }
-    }));
+  const removeBenefit = (benefitTypeId: string) => {
+    setSelectedBenefits(prev => prev.filter(b => b.benefitTypeId !== benefitTypeId));
+  };
+
+  const updateBenefit = (benefitTypeId: string, updates: Partial<SelectedBenefit>) => {
+    setSelectedBenefits(prev => prev.map(b => 
+      b.benefitTypeId === benefitTypeId ? { ...b, ...updates } : b
+    ));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,7 +92,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
 
     setIsSubmitting(true);
     try {
-      // Create the plan
       const { data: planData, error: planError } = await supabase.from('membership_plans').insert({
         name: formData.name,
         description: formData.description || null,
@@ -120,22 +110,18 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
 
       if (planError) throw planError;
 
-      // Create the benefits
-      const enabledBenefits = Object.entries(benefits)
-        .filter(([_, config]) => config.enabled)
-        .map(([benefitType, config]) => ({
-          plan_id: planData.id,
-          benefit_type: benefitType as any,
-          benefit_type_id: config.benefitTypeId || null,
-          frequency: config.frequency as any,
-          limit_count: config.frequency === 'unlimited' ? null : config.limit,
-        }));
+      const benefitsToInsert = selectedBenefits.map(b => ({
+        plan_id: planData.id,
+        benefit_type: b.code as any,
+        benefit_type_id: b.benefitTypeId,
+        frequency: (b.isUnlimited ? 'unlimited' : b.frequency) as any,
+        limit_count: b.isUnlimited ? null : b.limit,
+      }));
 
-      if (enabledBenefits.length > 0) {
+      if (benefitsToInsert.length > 0) {
         const { error: benefitsError } = await supabase
           .from('plan_benefits')
-          .insert(enabledBenefits);
-        
+          .insert(benefitsToInsert);
         if (benefitsError) throw benefitsError;
       }
 
@@ -143,22 +129,12 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
       queryClient.invalidateQueries({ queryKey: ['plans'] });
       onOpenChange(false);
       
-      // Reset form
       setFormData({
-        name: '',
-        description: '',
-        price: 0,
-        discounted_price: '',
-        duration_days: 30,
-        admission_fee: 0,
-        max_freeze_days: 0,
-        is_transferable: false,
-        is_active: true,
-        is_visible_to_members: true,
-        includes_free_locker: false,
-        free_locker_size: 'medium',
+        name: '', description: '', price: 0, discounted_price: '', duration_days: 30,
+        admission_fee: 0, max_freeze_days: 0, is_transferable: false, is_active: true,
+        is_visible_to_members: true, includes_free_locker: false, free_locker_size: 'medium',
       });
-      setBenefits(Object.fromEntries(benefitOptions.map(b => [b.id, { enabled: false, frequency: 'unlimited' as const, limit: 0, benefitTypeId: b.benefitTypeId }])));
+      setSelectedBenefits([]);
     } catch (error: any) {
       console.error('Error creating plan:', error);
       toast.error(error.message || 'Failed to create plan');
@@ -168,156 +144,175 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
   };
 
   return (
-    <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Add Membership Plan</SheetTitle>
-            <SheetDescription>Create a new membership plan with benefits</SheetDescription>
-          </SheetHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Add Membership Plan</SheetTitle>
+          <SheetDescription>Create a new membership plan with benefits</SheetDescription>
+        </SheetHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Plan Name *</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Monthly Basic, Annual Premium, etc."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Plan description..."
+              rows={2}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Plan Name *</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Monthly Basic, Annual Premium, etc."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Plan description..."
-                rows={2}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Price (₹) *</Label>
-                <Input
-                  type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Discounted Price (₹)</Label>
-                <Input
-                  type="number"
-                  value={formData.discounted_price}
-                  onChange={(e) => setFormData({ ...formData, discounted_price: e.target.value })}
-                  placeholder="Optional"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Duration (days) *</Label>
-                <Input
-                  type="number"
-                  value={formData.duration_days}
-                  onChange={(e) => setFormData({ ...formData, duration_days: Number(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Admission Fee (₹)</Label>
-                <Input
-                  type="number"
-                  value={formData.admission_fee}
-                  onChange={(e) => setFormData({ ...formData, admission_fee: Number(e.target.value) })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Max Freeze Days</Label>
+              <Label>Price (₹) *</Label>
               <Input
                 type="number"
-                value={formData.max_freeze_days}
-                onChange={(e) => setFormData({ ...formData, max_freeze_days: Number(e.target.value) })}
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
               />
             </div>
+            <div className="space-y-2">
+              <Label>Discounted Price (₹)</Label>
+              <Input
+                type="number"
+                value={formData.discounted_price}
+                onChange={(e) => setFormData({ ...formData, discounted_price: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
 
-            <div className="flex items-center justify-between py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Duration (days) *</Label>
+              <Input
+                type="number"
+                value={formData.duration_days}
+                onChange={(e) => setFormData({ ...formData, duration_days: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Admission Fee (₹)</Label>
+              <Input
+                type="number"
+                value={formData.admission_fee}
+                onChange={(e) => setFormData({ ...formData, admission_fee: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Max Freeze Days</Label>
+            <Input
+              type="number"
+              value={formData.max_freeze_days}
+              onChange={(e) => setFormData({ ...formData, max_freeze_days: Number(e.target.value) })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <Label>Transferable</Label>
+              <p className="text-xs text-muted-foreground">Allow membership transfer</p>
+            </div>
+            <Switch
+              checked={formData.is_transferable}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_transferable: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <Label>Active</Label>
+              <p className="text-xs text-muted-foreground">Show plan in purchase options</p>
+            </div>
+            <Switch
+              checked={formData.is_active}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <Label>Visible to Members</Label>
+              <p className="text-xs text-muted-foreground">Show on member dashboard for self-purchase</p>
+            </div>
+            <Switch
+              checked={formData.is_visible_to_members ?? true}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_visible_to_members: checked })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <Label>Includes Free Locker</Label>
+              <p className="text-xs text-muted-foreground">Member gets a complimentary locker</p>
+            </div>
+            <Switch
+              checked={formData.includes_free_locker}
+              onCheckedChange={(checked) => setFormData({ ...formData, includes_free_locker: checked })}
+            />
+          </div>
+
+          {formData.includes_free_locker && (
+            <div className="space-y-2 ml-4 p-3 border rounded-lg bg-muted/30">
+              <Label>Locker Size</Label>
+              <Select
+                value={formData.free_locker_size}
+                onValueChange={(v) => setFormData({ ...formData, free_locker_size: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="small">Small</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="large">Large</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* ===== PLAN BENEFITS ===== */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
               <div>
-                <Label>Transferable</Label>
-                <p className="text-xs text-muted-foreground">Allow membership transfer</p>
+                <Label className="text-base font-semibold">Plan Benefits</Label>
+                <p className="text-sm text-muted-foreground">Add benefits with quantity for the membership duration</p>
               </div>
-              <Switch
-                checked={formData.is_transferable}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_transferable: checked })}
-              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate('/settings?tab=benefits');
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                Manage Types
+              </Button>
             </div>
 
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <Label>Active</Label>
-                <p className="text-xs text-muted-foreground">Show plan in purchase options</p>
+            {isLoadingBenefits ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-              <Switch
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <Label>Visible to Members</Label>
-                <p className="text-xs text-muted-foreground">Show on member dashboard for self-purchase</p>
-              </div>
-              <Switch
-                checked={formData.is_visible_to_members ?? true}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_visible_to_members: checked })}
-              />
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <Label>Includes Free Locker</Label>
-                <p className="text-xs text-muted-foreground">Member gets a complimentary locker</p>
-              </div>
-              <Switch
-                checked={formData.includes_free_locker}
-                onCheckedChange={(checked) => setFormData({ ...formData, includes_free_locker: checked })}
-              />
-            </div>
-
-            {formData.includes_free_locker && (
-              <div className="space-y-2 ml-4 p-3 border rounded-lg bg-muted/30">
-                <Label>Locker Size</Label>
-                <Select
-                  value={formData.free_locker_size}
-                  onValueChange={(v) => setFormData({ ...formData, free_locker_size: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="small">Small</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="large">Large</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-base font-semibold">Plan Benefits</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Select benefits and set as <span className="font-medium text-primary">Unlimited</span> or <span className="font-medium text-primary">Limited</span> (e.g., Sauna = 3/month)
-                  </p>
-                </div>
-              <Button 
-                  type="button" 
-                  variant="outline" 
+            ) : dbBenefitTypes.length === 0 ? (
+              <div className="text-center py-6 border rounded-lg bg-muted/30">
+                <p className="text-muted-foreground mb-3">No benefit types created yet</p>
+                <Button
+                  type="button"
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     onOpenChange(false);
@@ -325,135 +320,132 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                   }}
                 >
                   <ExternalLink className="h-4 w-4 mr-1" />
-                  Manage in Settings
+                  Create Benefit Types in Settings
                 </Button>
               </div>
-
-              {isLoadingBenefits ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : benefitOptions.length === 0 ? (
-                <div className="text-center py-8 border rounded-lg bg-muted/30">
-                  <p className="text-muted-foreground mb-3">No benefit types created yet</p>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      onOpenChange(false);
-                      navigate('/settings?tab=benefits');
-                    }}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Create Benefit Types in Settings
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                  {benefitOptions.map((benefit) => (
-                    <div key={benefit.id} className="border rounded-lg p-3">
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={benefit.id}
-                          checked={benefits[benefit.id]?.enabled || false}
-                          onCheckedChange={() => toggleBenefit(benefit.id)}
-                        />
-                        <label htmlFor={benefit.id} className="flex-1 cursor-pointer">
-                          <span className="mr-2">{benefit.icon}</span>
-                          {benefit.label}
-                        </label>
+            ) : (
+              <>
+                {/* Add Benefit Dropdown */}
+                {availableBenefits.length > 0 && (
+                  <Select onValueChange={(v) => addBenefit(v)}>
+                    <SelectTrigger className="w-full">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Plus className="h-4 w-4" />
+                        <span>Add a benefit...</span>
                       </div>
-                      
-                      {benefits[benefit.id]?.enabled && (
-                        <div className="mt-3 ml-6 space-y-2">
-                          <div className="flex items-center gap-4">
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBenefits.map(bt => {
+                        const IconComp = getBenefitIcon(bt.code);
+                        return (
+                          <SelectItem key={bt.id} value={bt.id}>
                             <div className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                id={`${benefit.id}-unlimited`}
-                                name={`${benefit.id}-type`}
-                                checked={benefits[benefit.id]?.frequency === 'unlimited'}
-                                onChange={() => updateBenefitConfig(benefit.id, 'frequency', 'unlimited')}
-                                className="h-4 w-4 text-primary"
-                              />
-                              <label htmlFor={`${benefit.id}-unlimited`} className="text-sm font-medium cursor-pointer">
-                                ♾️ Unlimited
-                              </label>
+                              <IconComp className="h-4 w-4" />
+                              {bt.name}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                id={`${benefit.id}-limited`}
-                                name={`${benefit.id}-type`}
-                                checked={benefits[benefit.id]?.frequency !== 'unlimited'}
-                                onChange={() => updateBenefitConfig(benefit.id, 'frequency', 'monthly')}
-                                className="h-4 w-4 text-primary"
-                              />
-                              <label htmlFor={`${benefit.id}-limited`} className="text-sm font-medium cursor-pointer">
-                                🔢 Limited
-                              </label>
-                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Selected Benefits List */}
+                <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                  {selectedBenefits.map(benefit => {
+                    const IconComp = getBenefitIcon(benefit.code);
+                    return (
+                      <div key={benefit.benefitTypeId} className="border rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-medium">
+                            <IconComp className="h-4 w-4 text-primary" />
+                            {benefit.name}
                           </div>
-                          
-                          {benefits[benefit.id]?.frequency !== 'unlimited' && (
-                            <div className="grid grid-cols-2 gap-2 p-2 bg-muted/50 rounded-md">
-                              <div>
-                                <Label className="text-xs text-muted-foreground">How many times?</Label>
-                                <Input
-                                  type="number"
-                                  className="h-8"
-                                  value={benefits[benefit.id]?.limit || 1}
-                                  onChange={(e) => updateBenefitConfig(benefit.id, 'limit', Number(e.target.value))}
-                                  min={1}
-                                  placeholder="e.g., 3"
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Per period</Label>
-                                <Select
-                                  value={benefits[benefit.id]?.frequency || 'monthly'}
-                                  onValueChange={(v) => updateBenefitConfig(benefit.id, 'frequency', v)}
-                                >
-                                  <SelectTrigger className="h-8">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="daily">Day</SelectItem>
-                                    <SelectItem value="weekly">Week</SelectItem>
-                                    <SelectItem value="monthly">Month</SelectItem>
-                                    <SelectItem value="per_membership">Total Pool (Full Duration)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <p className="col-span-2 text-xs text-muted-foreground">
-                                {benefits[benefit.id]?.frequency === 'per_membership' 
-                                  ? `Total: ${benefits[benefit.id]?.limit || 1} session(s) for entire membership (${formData.duration_days} days)`
-                                  : `Example: ${benefits[benefit.id]?.limit || 1} time(s) per ${benefits[benefit.id]?.frequency === 'daily' ? 'day' : benefits[benefit.id]?.frequency === 'weekly' ? 'week' : 'month'}`
-                                }
-                              </p>
-                            </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeBenefit(benefit.benefitTypeId)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={benefit.isUnlimited ? 'unlimited' : 'limited'}
+                            onValueChange={(v) => updateBenefit(benefit.benefitTypeId, { isUnlimited: v === 'unlimited' })}
+                          >
+                            <SelectTrigger className="h-8 w-[130px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unlimited">
+                                <div className="flex items-center gap-1">
+                                  <Infinity className="h-3.5 w-3.5" /> Unlimited
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="limited">Limited</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          {!benefit.isUnlimited && (
+                            <>
+                              <Input
+                                type="number"
+                                className="h-8 w-[70px]"
+                                value={benefit.limit}
+                                onChange={(e) => updateBenefit(benefit.benefitTypeId, { limit: Number(e.target.value) || 1 })}
+                                min={1}
+                              />
+                              <Select
+                                value={benefit.frequency}
+                                onValueChange={(v) => updateBenefit(benefit.benefitTypeId, { frequency: v as any })}
+                              >
+                                <SelectTrigger className="h-8 flex-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="per_membership">Entire Membership</SelectItem>
+                                  <SelectItem value="daily">Per Day</SelectItem>
+                                  <SelectItem value="weekly">Per Week</SelectItem>
+                                  <SelectItem value="monthly">Per Month</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </>
                           )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        {!benefit.isUnlimited && benefit.frequency === 'per_membership' && (
+                          <p className="text-xs text-muted-foreground">
+                            Total: {benefit.limit} session(s) for entire membership ({formData.duration_days} days)
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
 
-            <SheetFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Creating...' : 'Create Plan'}
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
+                {selectedBenefits.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    No benefits added yet. Use the dropdown above to add benefits.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
-    </>
+          <SheetFooter className="pt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Plan'}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }
