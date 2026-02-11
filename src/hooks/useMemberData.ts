@@ -55,7 +55,7 @@ export function useMemberData() {
           plan:membership_plans(id, name, duration_days, price, max_freeze_days)
         `)
         .eq('member_id', member!.id)
-        .eq('status', 'active')
+        .in('status', ['active', 'frozen'])
         .order('end_date', { ascending: false })
         .limit(1)
         .maybeSingle();
