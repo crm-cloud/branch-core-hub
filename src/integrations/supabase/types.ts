@@ -1392,6 +1392,8 @@ export type Database = {
           branch_id: string | null
           code: string
           created_at: string | null
+          created_by: string | null
+          description: string | null
           discount_type: string
           discount_value: number
           id: string
@@ -1406,6 +1408,8 @@ export type Database = {
           branch_id?: string | null
           code: string
           created_at?: string | null
+          created_by?: string | null
+          description?: string | null
           discount_type?: string
           discount_value?: number
           id?: string
@@ -1420,6 +1424,8 @@ export type Database = {
           branch_id?: string | null
           code?: string
           created_at?: string | null
+          created_by?: string | null
+          description?: string | null
           discount_type?: string
           discount_value?: number
           id?: string

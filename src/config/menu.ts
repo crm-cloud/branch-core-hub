@@ -172,6 +172,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Products', href: '/products', icon: Package, roles: ['owner', 'admin', 'manager'] },
       { label: 'Categories', href: '/product-categories', icon: Tags, roles: ['owner', 'admin', 'manager'] },
       { label: 'Store Orders', href: '/store', icon: ShoppingBag, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Discount Coupons', href: '/discount-coupons', icon: Tags, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
