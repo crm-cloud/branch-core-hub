@@ -91,14 +91,13 @@ export default function MemberStore() {
     mutationFn: async () => {
       if (!member || cart.length === 0) throw new Error('Cart is empty');
       
-      // Generate invoice number
-      const invoiceNumber = `INV-${member.branch?.code || 'GYM'}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      // Let the database trigger generate the invoice number
       
       // Create invoice
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
-          invoice_number: invoiceNumber,
+          invoice_number: '',
           member_id: member.id,
           branch_id: member.branch_id,
           subtotal: cartTotal,
