@@ -137,42 +137,36 @@ export const staffMenuConfig: MenuSection[] = [
 // Admin/Manager/Owner menu (full access)
 export const adminMenuConfig: MenuSection[] = [
   {
-    title: 'Core',
+    title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
-    title: 'Member Management',
+    title: 'Members & Leads',
     items: [
+      { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager'] },
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager'] },
       { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
-    title: 'Training & Classes',
+    title: 'Training & Bookings',
     items: [
       { label: 'Classes', href: '/classes', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
+      { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager', 'staff'] },
       { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
-    title: 'CRM & Engagement',
-    items: [
-      { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
-      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
-    ],
-  },
-  {
-    title: 'E-commerce',
+    title: 'E-Commerce & Sales',
     items: [
       { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['owner', 'admin', 'manager'] },
       { label: 'Products', href: '/products', icon: Package, roles: ['owner', 'admin', 'manager'] },
@@ -189,22 +183,23 @@ export const adminMenuConfig: MenuSection[] = [
     ],
   },
   {
-    title: 'Operations',
+    title: 'Operations & Comm',
     items: [
-      { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager', 'staff'] },
+      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
-    title: 'Administration',
+    title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
       { label: 'Employees', href: '/employees', icon: Users, roles: ['owner', 'admin', 'manager'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Audit Logs', href: '/audit-logs', icon: ClipboardList, roles: ['owner', 'admin'] },
       { label: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
     ],
