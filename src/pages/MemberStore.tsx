@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check } from 'lucide-react';
+import { useWallet } from '@/hooks/useWallet';
+import { debitWallet } from '@/services/walletService';
+import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check, Tag, Wallet, Gift, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,14 +19,44 @@ interface CartItem {
   quantity: number;
 }
 
+interface AppliedDiscount {
+  code: string;
+  type: string;
+  value: number;
+  discountAmount: number;
+}
+
 export default function MemberStore() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { member, isLoading: memberLoading } = useMemberData();
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [promoCode, setPromoCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
+  const [useWalletBalance, setUseWalletBalance] = useState(false);
+  const [applyingPromo, setApplyingPromo] = useState(false);
 
-  // Fetch products - don't require inventory (show all active products)
+  // Wallet data
+  const { data: wallet } = useWallet(member?.id || '');
+  const walletBalance = wallet?.balance || 0;
+
+  // Fetch unclaimed referral rewards
+  const { data: unclaimedRewards = [] } = useQuery({
+    queryKey: ['unclaimed-rewards', member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('referral_rewards')
+        .select('*')
+        .eq('member_id', member!.id)
+        .eq('is_claimed', false);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['store-products', member?.branch_id],
     enabled: !!member,
@@ -39,7 +72,6 @@ export default function MemberStore() {
 
       if (error) throw error;
       
-      // Filter to show inventory for this branch or no inventory data
       return (data || []).map(product => ({
         ...product,
         inventory: product.inventory?.filter((inv: any) => inv.branch_id === member!.branch_id) || []
@@ -86,14 +118,119 @@ export default function MemberStore() {
   const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Checkout mutation - creates invoice for member
+  // Calculate discounts
+  const discountAmount = appliedDiscount?.discountAmount || 0;
+  const afterDiscount = Math.max(0, cartTotal - discountAmount);
+  const walletDeduction = useWalletBalance ? Math.min(walletBalance, afterDiscount) : 0;
+  const finalAmount = Math.max(0, afterDiscount - walletDeduction);
+
+  // Apply promo code
+  const applyPromoCode = async () => {
+    if (!promoCode.trim()) return;
+    setApplyingPromo(true);
+    try {
+      const { data, error } = await supabase
+        .from('discount_codes')
+        .select('*')
+        .eq('code', promoCode.trim().toUpperCase())
+        .eq('is_active', true)
+        .single();
+
+      if (error || !data) {
+        toast.error('Invalid or expired promo code');
+        return;
+      }
+
+      // Validate
+      if (data.valid_until && new Date(data.valid_until) < new Date()) {
+        toast.error('This promo code has expired');
+        return;
+      }
+      if (data.max_uses && data.times_used >= data.max_uses) {
+        toast.error('This promo code has reached its usage limit');
+        return;
+      }
+      if (data.min_purchase && cartTotal < Number(data.min_purchase)) {
+        toast.error(`Minimum purchase of ₹${data.min_purchase} required`);
+        return;
+      }
+
+      const discAmt = data.discount_type === 'percentage'
+        ? (cartTotal * Number(data.discount_value)) / 100
+        : Number(data.discount_value);
+
+      setAppliedDiscount({
+        code: data.code,
+        type: data.discount_type,
+        value: Number(data.discount_value),
+        discountAmount: Math.min(discAmt, cartTotal),
+      });
+      toast.success(`Promo code "${data.code}" applied!`);
+    } catch {
+      toast.error('Failed to validate promo code');
+    } finally {
+      setApplyingPromo(false);
+    }
+  };
+
+  const removePromo = () => {
+    setAppliedDiscount(null);
+    setPromoCode('');
+  };
+
+  // Claim referral reward to wallet
+  const claimReward = useMutation({
+    mutationFn: async (rewardId: string) => {
+      const reward = unclaimedRewards.find(r => r.id === rewardId);
+      if (!reward) throw new Error('Reward not found');
+
+      // Mark as claimed
+      await supabase
+        .from('referral_rewards')
+        .update({ is_claimed: true, claimed_at: new Date().toISOString() })
+        .eq('id', rewardId);
+
+      // Credit wallet using the service
+      const { creditWallet } = await import('@/services/walletService');
+      await creditWallet(member!.id, reward.reward_value, 'Referral reward redeemed', 'referral_reward', rewardId);
+    },
+    onSuccess: () => {
+      toast.success('Reward credited to your wallet!');
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['unclaimed-rewards'] });
+    },
+    onError: () => toast.error('Failed to redeem reward'),
+  });
+
+  // Checkout mutation
   const checkout = useMutation({
     mutationFn: async () => {
       if (!member || cart.length === 0) throw new Error('Cart is empty');
       
-      // Let the database trigger generate the invoice number
-      
-      // Create invoice
+      // Debit wallet first if applicable
+      if (walletDeduction > 0) {
+        await debitWallet(member.id, walletDeduction, 'Store purchase - wallet payment');
+      }
+
+      // Increment promo code usage
+      if (appliedDiscount) {
+        const { data: codeData } = await supabase
+          .from('discount_codes')
+          .select('times_used')
+          .eq('code', appliedDiscount.code)
+          .single();
+        if (codeData) {
+          await supabase
+            .from('discount_codes')
+            .update({ times_used: (codeData.times_used || 0) + 1 })
+            .eq('code', appliedDiscount.code);
+        }
+      }
+
+      // Create invoice for the final amount (after wallet + discount)
+      const invoiceAmount = finalAmount;
+      const invoiceStatus = invoiceAmount <= 0 ? 'paid' : 'pending';
+
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
@@ -101,9 +238,15 @@ export default function MemberStore() {
           member_id: member.id,
           branch_id: member.branch_id,
           subtotal: cartTotal,
-          total_amount: cartTotal,
-          status: 'pending',
-          notes: 'Store purchase by member',
+          discount_amount: discountAmount,
+          amount_paid: walletDeduction,
+          total_amount: finalAmount,
+          status: invoiceStatus as any,
+          notes: [
+            'Store purchase by member',
+            appliedDiscount ? `Promo: ${appliedDiscount.code} (-₹${discountAmount})` : '',
+            walletDeduction > 0 ? `Wallet: -₹${walletDeduction}` : '',
+          ].filter(Boolean).join(' | '),
         })
         .select()
         .single();
@@ -130,10 +273,17 @@ export default function MemberStore() {
       return invoice;
     },
     onSuccess: (invoice) => {
-      toast.success(`Order placed! Invoice: ${invoice.invoice_number}`);
+      const msg = finalAmount <= 0
+        ? 'Order placed & paid via wallet!'
+        : `Order placed! Invoice: ${invoice.invoice_number}`;
+      toast.success(msg);
       setCart([]);
+      setAppliedDiscount(null);
+      setPromoCode('');
+      setUseWalletBalance(false);
       queryClient.invalidateQueries({ queryKey: ['member-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['my-pending-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
       navigate('/my-invoices');
     },
     onError: (error: any) => {
@@ -162,7 +312,6 @@ export default function MemberStore() {
     );
   }
 
-  // Helper to determine stock display
   const getStockDisplay = (product: any) => {
     const hasInventory = product.inventory && product.inventory.length > 0;
     const stock = hasInventory ? product.inventory[0].quantity : null;
@@ -192,6 +341,35 @@ export default function MemberStore() {
           )}
         </div>
 
+        {/* Unclaimed Rewards Banner */}
+        {unclaimedRewards.length > 0 && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <Gift className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <p className="font-medium">You have {unclaimedRewards.length} unclaimed referral reward{unclaimedRewards.length > 1 ? 's' : ''}!</p>
+                  <p className="text-sm text-muted-foreground">Redeem to add credits to your wallet</p>
+                </div>
+                <div className="flex gap-2">
+                  {unclaimedRewards.slice(0, 3).map(reward => (
+                    <Button
+                      key={reward.id}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => claimReward.mutate(reward.id)}
+                      disabled={claimReward.isPending}
+                    >
+                      <Gift className="h-3 w-3 mr-1" />
+                      Redeem ₹{reward.reward_value}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -218,7 +396,7 @@ export default function MemberStore() {
                 {filteredProducts.map((product: any) => {
                   const stockInfo = getStockDisplay(product);
                   const cartItem = cart.find(item => item.product.id === product.id);
-                  const maxQty = stockInfo.stock ?? 999; // No limit if no inventory tracking
+                  const maxQty = stockInfo.stock ?? 999;
 
                   return (
                     <Card key={product.id} className="border-border/50">
@@ -247,29 +425,16 @@ export default function MemberStore() {
                         <div className="mt-4">
                           {cartItem ? (
                             <div className="flex items-center justify-between">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => updateQuantity(product.id, -1)}
-                              >
+                              <Button variant="outline" size="icon" onClick={() => updateQuantity(product.id, -1)}>
                                 <Minus className="h-4 w-4" />
                               </Button>
                               <span className="font-semibold">{cartItem.quantity}</span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => updateQuantity(product.id, 1)}
-                                disabled={cartItem.quantity >= maxQty}
-                              >
+                              <Button variant="outline" size="icon" onClick={() => updateQuantity(product.id, 1)} disabled={cartItem.quantity >= maxQty}>
                                 <Plus className="h-4 w-4" />
                               </Button>
                             </div>
                           ) : (
-                            <Button
-                              className="w-full"
-                              onClick={() => addToCart(product)}
-                              disabled={!stockInfo.canAdd}
-                            >
+                            <Button className="w-full" onClick={() => addToCart(product)} disabled={!stockInfo.canAdd}>
                               {stockInfo.canAdd ? 'Add to Cart' : 'Out of Stock'}
                             </Button>
                           )}
@@ -282,8 +447,8 @@ export default function MemberStore() {
             )}
           </div>
 
-          {/* Cart */}
-          <div>
+          {/* Cart & Checkout */}
+          <div className="space-y-4">
             <Card className="border-border/50 sticky top-4">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -299,6 +464,7 @@ export default function MemberStore() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* Cart Items */}
                     {cart.map((item) => (
                       <div key={item.product.id} className="flex items-center justify-between">
                         <div>
@@ -309,23 +475,93 @@ export default function MemberStore() {
                         </div>
                         <div className="text-right">
                           <p className="font-semibold">₹{(item.product.price * item.quantity).toLocaleString()}</p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => removeFromCart(item.product.id)}
-                          >
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeFromCart(item.product.id)}>
                             Remove
                           </Button>
                         </div>
                       </div>
                     ))}
-                    <div className="border-t pt-4">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total</span>
+
+                    {/* Promo Code */}
+                    <div className="border-t pt-4 space-y-3">
+                      <p className="text-sm font-medium flex items-center gap-1">
+                        <Tag className="h-4 w-4" /> Promo Code
+                      </p>
+                      {appliedDiscount ? (
+                        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-md px-3 py-2">
+                          <div>
+                            <p className="text-sm font-medium text-primary">{appliedDiscount.code}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {appliedDiscount.type === 'percentage' ? `${appliedDiscount.value}% off` : `₹${appliedDiscount.value} off`}
+                            </p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={removePromo}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Enter code"
+                            value={promoCode}
+                            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                            className="flex-1"
+                          />
+                          <Button variant="outline" onClick={applyPromoCode} disabled={applyingPromo || !promoCode.trim()}>
+                            {applyingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Wallet Balance */}
+                    {walletBalance > 0 && (
+                      <div className="border-t pt-4">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <Checkbox
+                            checked={useWalletBalance}
+                            onCheckedChange={(checked) => setUseWalletBalance(!!checked)}
+                          />
+                          <div className="flex items-center gap-2 flex-1">
+                            <Wallet className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium">Use Wallet Balance</p>
+                              <p className="text-xs text-muted-foreground">₹{walletBalance.toLocaleString()} available</p>
+                            </div>
+                          </div>
+                          {useWalletBalance && (
+                            <span className="text-sm font-medium text-primary">-₹{walletDeduction.toLocaleString()}</span>
+                          )}
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Order Summary */}
+                    <div className="border-t pt-4 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
                         <span>₹{cartTotal.toLocaleString()}</span>
                       </div>
+                      {discountAmount > 0 && (
+                        <div className="flex justify-between text-sm text-primary">
+                          <span>Discount ({appliedDiscount?.code})</span>
+                          <span>-₹{discountAmount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {walletDeduction > 0 && (
+                        <div className="flex justify-between text-sm text-primary">
+                          <span>Wallet</span>
+                          <span>-₹{walletDeduction.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                        <span>{finalAmount <= 0 ? 'Amount Due' : 'To Pay'}</span>
+                        <span className={finalAmount <= 0 ? 'text-success' : ''}>
+                          {finalAmount <= 0 ? 'Fully Covered' : `₹${finalAmount.toLocaleString()}`}
+                        </span>
+                      </div>
                     </div>
+
                     <Button 
                       className="w-full" 
                       size="lg"
@@ -340,12 +576,14 @@ export default function MemberStore() {
                       ) : (
                         <>
                           <Check className="h-4 w-4 mr-2" />
-                          Place Order
+                          {finalAmount <= 0 ? 'Place Order (Paid)' : 'Place Order'}
                         </>
                       )}
                     </Button>
                     <p className="text-xs text-center text-muted-foreground">
-                      An invoice will be generated. Pay at the front desk.
+                      {finalAmount <= 0
+                        ? 'Order will be marked as paid automatically.'
+                        : 'An invoice will be generated. Pay at the front desk.'}
                     </p>
                   </div>
                 )}

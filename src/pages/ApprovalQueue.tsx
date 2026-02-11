@@ -153,6 +153,8 @@ export default function ApprovalQueuePage() {
       if (approvalError) throw approvalError;
 
       const requestData = request.request_data as any;
+      // Handle both camelCase (new) and snake_case (old) key formats
+      const membershipId = requestData.membershipId || requestData.membership_id;
 
       // Handle specific approval types
       if (approved) {
@@ -168,20 +170,20 @@ export default function ApprovalQueuePage() {
             .eq('id', request.reference_id);
 
           // Apply freeze - update membership status to frozen
-          if (requestData.membershipId) {
+          if (membershipId) {
             await supabase
               .from('memberships')
               .update({ status: 'frozen' })
-              .eq('id', requestData.membershipId);
+              .eq('id', membershipId);
           }
         } else if (request.reference_type === 'membership_unfreeze') {
           // Handle unfreeze - resume membership
-          if (requestData.membershipId) {
+          if (membershipId) {
             // Get the membership to calculate new end date
             const { data: membership } = await supabase
               .from('memberships')
               .select('*')
-              .eq('id', requestData.membershipId)
+              .eq('id', membershipId)
               .single();
 
             if (membership) {
@@ -189,7 +191,7 @@ export default function ApprovalQueuePage() {
               const { data: freezeHistory } = await supabase
                 .from('membership_freeze_history')
                 .select('*')
-                .eq('membership_id', requestData.membershipId)
+                .eq('membership_id', membershipId)
                 .eq('status', 'approved');
 
               // Calculate total frozen days
@@ -209,7 +211,7 @@ export default function ApprovalQueuePage() {
                   status: 'active',
                   end_date: originalEnd.toISOString().split('T')[0],
                 })
-                .eq('id', requestData.membershipId);
+                .eq('id', membershipId);
             }
           }
         } else if (request.reference_type === 'trainer_change') {
