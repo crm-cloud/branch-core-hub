@@ -1,51 +1,60 @@
 
 
-# Critical Fix: Membership Freeze Logic and UI State
+# Fix: Freeze Not Applying + Member Checkout with Wallet/Promo Codes
 
 ---
 
-## Root Cause Analysis
+## Issue 1: Freeze Approval Not Updating Membership (CRITICAL)
 
-### Bug 1: Freeze Approval Does Nothing (CRITICAL)
-The member's freeze request in `MemberRequests.tsx` stores the membership ID as `membership_id` in `request_data`:
+**Root Cause:** The approval handler in `ApprovalQueue.tsx` (line 171) reads `requestData.membershipId` (camelCase). However, the OLD freeze requests (submitted before the recent fix) stored the key as `membership_id` (snake_case). These old requests were approved but the membership update silently failed because `requestData.membershipId` was `undefined`.
+
+Looking at the DB data:
+- Arjun's two approved freeze requests have `request_data: { membership_id: "57c0968a..." }` (snake_case)
+- His membership (id: `57c0968a...`) still shows `status: active`
+
+**Fix (ApprovalQueue.tsx line 171):**
+Change the membershipId extraction to handle both key formats:
 ```
-request_data: { membership_id: activeMembership?.id, reason: freezeReason }
+const membershipId = requestData.membershipId || requestData.membership_id;
 ```
-But the approval handler in `ApprovalQueue.tsx` reads it as `requestData.membershipId` (camelCase). This key mismatch means the `.eq('id', undefined)` update silently does nothing -- the membership status never changes to `frozen`.
+Apply this same fix at lines 171, 179, 184, and 212 -- everywhere `requestData.membershipId` is used.
 
-### Bug 2: Member UI Can't See Frozen Memberships
-`useMemberData.ts` queries memberships with `.eq('status', 'active')`. When a membership IS frozen, `activeMembership` returns `null`. The UI thinks the member has no membership at all, so it never shows the frozen state.
-
-### Bug 3: No Unfreeze Flow for Members
-There is no way for a member to request an unfreeze. The card always shows "Request Freeze" regardless of state.
-
-### Check-in (Already Working)
-The database function `validate_member_checkin` already checks for frozen status and returns "Membership is currently frozen". No changes needed here.
+**Data Fix:** Run a one-time SQL update to freeze Arjun's membership since the approval was already recorded:
+```sql
+UPDATE memberships SET status = 'frozen' WHERE id = '57c0968a-9e31-45cd-8576-2f26ec5fcede';
+```
 
 ---
 
-## Fix Plan
+## Issue 2: Member Store Checkout Page with Wallet + Promo Codes
 
-### Fix 1: Data Key Mismatch (MemberRequests.tsx)
-Change `membership_id` to `membershipId` in the freeze request `request_data` so the approval handler can find it. This is a one-line fix.
+**Current State:** The store has a basic cart that creates an invoice and redirects to `/my-invoices`. No discount codes or wallet balance usage.
 
-### Fix 2: Query Frozen Memberships (useMemberData.ts)  
-Change the membership query from `.eq('status', 'active')` to `.in('status', ['active', 'frozen'])` so the hook returns frozen memberships too. The `activeMembership` object will then correctly reflect `status: 'frozen'`.
+**Existing Infrastructure:**
+- `wallets` table exists (balance, total_credited, total_debited)
+- `wallet_transactions` table exists
+- `referral_rewards` table exists (reward_value, is_claimed)
+- `walletService.ts` has full credit/debit/payWithWallet functions
+- `useWallet.ts` hook exists
 
-### Fix 3: Conditional Freeze/Unfreeze Card (MemberRequests.tsx)
-Update the Freeze Membership card with conditional rendering:
-- **If membership is active**: Show current card (snowflake icon, "Freeze Membership" title, "Request Freeze" button)
-- **If membership is frozen**: Show a blue-tinted card with:
-  - Snowflake icon + "Membership Frozen" title
-  - Description: "Your membership is currently paused. You do not have gym access."
-  - A "Paused" badge on the card
-  - Button: "Request Unfreeze" which submits an unfreeze approval request
+**Plan:** Enhance the cart/checkout section of `MemberStore.tsx` to add:
 
-### Fix 4: Unfreeze Request Submission (MemberRequests.tsx)
-Add a new mutation `submitUnfreezeRequest` that inserts into `approval_requests` with `approval_type: 'membership_freeze'` and `reference_type: 'membership_unfreeze'` so the approval queue can distinguish it.
+1. **Promo/Discount Code Input:**
+   - Add a text input + "Apply" button in the cart section
+   - Create a new `discount_codes` table via migration with columns: `id, code, discount_type (percentage/fixed), discount_value, min_purchase, max_uses, times_used, valid_from, valid_until, is_active, branch_id`
+   - Validate the code against this table (active, not expired, usage not exceeded, min purchase met)
+   - Show discount line item in cart summary
 
-### Fix 5: Handle Unfreeze Approval (ApprovalQueue.tsx)
-Add logic in the approval handler: when `reference_type === 'membership_unfreeze'` is approved, call the `resumeFromFreeze` logic (update membership status back to `active` and recalculate end date).
+2. **Wallet Balance Display & Usage:**
+   - Show wallet balance in the cart section using `useWallet` hook
+   - Add a toggle/checkbox: "Use Wallet Balance (Rs X available)"
+   - Calculate: `finalAmount = cartTotal - discount - walletAmount`
+   - On checkout, debit wallet first, then create invoice for remaining balance
+
+3. **Referral Rewards Redemption:**
+   - Check for unclaimed referral rewards for this member
+   - Show available rewards with "Redeem" option
+   - Redeeming credits the reward value to the wallet, then it can be used at checkout
 
 ---
 
@@ -53,43 +62,61 @@ Add logic in the approval handler: when `reference_type === 'membership_unfreeze
 
 | File | Change |
 |------|--------|
-| `src/pages/MemberRequests.tsx` | Fix `membership_id` to `membershipId` in request_data; add frozen state conditional UI; add unfreeze mutation |
-| `src/hooks/useMemberData.ts` | Change `.eq('status', 'active')` to `.in('status', ['active', 'frozen'])` |
-| `src/pages/ApprovalQueue.tsx` | Add unfreeze approval handler that resumes membership |
+| `src/pages/ApprovalQueue.tsx` | Fix membershipId extraction to handle both camelCase and snake_case |
+| `src/pages/MemberStore.tsx` | Add wallet balance display, promo code input, discount calculation, wallet payment at checkout |
+| **Database migration** | Create `discount_codes` table; fix Arjun's membership status |
 
 ---
 
 ## Technical Details
 
-### useMemberData.ts (line 59)
-```text
-Before: .eq('status', 'active')
-After:  .in('status', ['active', 'frozen'])
+### ApprovalQueue.tsx Fix
+At every occurrence of `requestData.membershipId` (lines 171, 179, 184, 212):
+```
+const membershipId = requestData.membershipId || requestData.membership_id;
+```
+Then use `membershipId` variable instead of `requestData.membershipId`.
+
+### Migration SQL
+```sql
+-- Fix Arjun's stuck membership
+UPDATE memberships SET status = 'frozen' WHERE id = '57c0968a-9e31-45cd-8576-2f26ec5fcede';
+
+-- Create discount_codes table
+CREATE TABLE public.discount_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT NOT NULL UNIQUE,
+  discount_type TEXT NOT NULL DEFAULT 'percentage' CHECK (discount_type IN ('percentage', 'fixed')),
+  discount_value NUMERIC NOT NULL DEFAULT 0,
+  min_purchase NUMERIC DEFAULT 0,
+  max_uses INTEGER,
+  times_used INTEGER DEFAULT 0,
+  valid_from DATE DEFAULT CURRENT_DATE,
+  valid_until DATE,
+  is_active BOOLEAN DEFAULT true,
+  branch_id UUID REFERENCES branches(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE discount_codes ENABLE ROW LEVEL SECURITY;
+
+-- Staff can manage discount codes
+CREATE POLICY "Staff can manage discount codes" ON discount_codes
+  FOR ALL TO authenticated
+  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager']::app_role[]));
+
+-- Members can read active codes (for validation)
+CREATE POLICY "Members can read active discount codes" ON discount_codes
+  FOR SELECT TO authenticated
+  USING (is_active = true);
 ```
 
-### MemberRequests.tsx - request_data fix (line 53)
-```text
-Before: membership_id: activeMembership?.id
-After:  membershipId: activeMembership?.id
-```
-
-### MemberRequests.tsx - Freeze card conditional rendering
-```text
-IF activeMembership?.status === 'frozen':
-  - Card background: blue-tinted border (border-blue-300)
-  - Title: "Membership Frozen" with Snowflake icon
-  - Badge: "Paused" in blue
-  - Description: "Your membership is currently paused. You do not have gym access."
-  - Button: "Request Unfreeze" (disabled if pending unfreeze exists)
-
-ELSE (active):
-  - Current card as-is
-```
-
-### ApprovalQueue.tsx - Unfreeze handler
-When approved and `reference_type === 'membership_unfreeze'`:
-1. Get the membership from `requestData.membershipId`
-2. Query `membership_freeze_history` for total frozen days
-3. Calculate new end_date = original_end_date + total_frozen_days
-4. Update membership: `status: 'active'`, `end_date: newEndDate`
+### MemberStore.tsx Checkout Enhancements
+Add to the cart section:
+1. Wallet balance display (query via `useWallet(member.id)`)
+2. Promo code input field with "Apply" button
+3. Discount summary line (shows applied discount)
+4. "Use Wallet Balance" checkbox with amount input
+5. Updated total calculation: `Total - Discount - Wallet = Amount Due`
+6. On place order: debit wallet amount, create invoice for remainder (or mark paid if fully covered)
 
