@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { Snowflake, User, Clock, AlertCircle, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
@@ -17,8 +17,8 @@ export default function MemberRequests() {
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [freezeReason, setFreezeReason] = useState('');
   const [trainerChangeReason, setTrainerChangeReason] = useState('');
-  const [freezeDialogOpen, setFreezeDialogOpen] = useState(false);
-  const [trainerDialogOpen, setTrainerDialogOpen] = useState(false);
+  const [freezeSheetOpen, setFreezeSheetOpen] = useState(false);
+  const [trainerSheetOpen, setTrainerSheetOpen] = useState(false);
 
   // Fetch existing requests
   const { data: requests = [], isLoading: requestsLoading } = useQuery({
@@ -56,7 +56,7 @@ export default function MemberRequests() {
     },
     onSuccess: () => {
       toast.success('Freeze request submitted');
-      setFreezeDialogOpen(false);
+      setFreezeSheetOpen(false);
       setFreezeReason('');
       queryClient.invalidateQueries({ queryKey: ['my-requests'] });
     },
@@ -85,7 +85,7 @@ export default function MemberRequests() {
     },
     onSuccess: () => {
       toast.success('Trainer change request submitted');
-      setTrainerDialogOpen(false);
+      setTrainerSheetOpen(false);
       setTrainerChangeReason('');
       queryClient.invalidateQueries({ queryKey: ['my-requests'] });
     },
@@ -163,8 +163,8 @@ export default function MemberRequests() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Dialog open={freezeDialogOpen} onOpenChange={setFreezeDialogOpen}>
-                <DialogTrigger asChild>
+              <Sheet open={freezeSheetOpen} onOpenChange={setFreezeSheetOpen}>
+                <SheetTrigger asChild>
                   <Button
                     className="w-full"
                     variant="outline"
@@ -173,11 +173,11 @@ export default function MemberRequests() {
                     <Plus className="h-4 w-4 mr-2" />
                     Request Freeze
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Request Membership Freeze</DialogTitle>
-                  </DialogHeader>
+                </SheetTrigger>
+                <SheetContent side="right">
+                  <SheetHeader>
+                    <SheetTitle>Request Membership Freeze</SheetTitle>
+                  </SheetHeader>
                   <div className="space-y-4 py-4">
                     <div>
                       <label className="text-sm font-medium">Reason for freeze</label>
@@ -192,10 +192,10 @@ export default function MemberRequests() {
                       Your request will be reviewed by the management. You'll be notified once approved.
                     </p>
                   </div>
-                  <DialogFooter>
+                  <SheetFooter>
                     <Button
                       variant="outline"
-                      onClick={() => setFreezeDialogOpen(false)}
+                      onClick={() => setFreezeSheetOpen(false)}
                     >
                       Cancel
                     </Button>
@@ -205,9 +205,9 @@ export default function MemberRequests() {
                     >
                       Submit Request
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
             </CardContent>
           </Card>
 
@@ -225,17 +225,17 @@ export default function MemberRequests() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Dialog open={trainerDialogOpen} onOpenChange={setTrainerDialogOpen}>
-                <DialogTrigger asChild>
+              <Sheet open={trainerSheetOpen} onOpenChange={setTrainerSheetOpen}>
+                <SheetTrigger asChild>
                   <Button className="w-full" variant="outline">
                     <Plus className="h-4 w-4 mr-2" />
                     {member.assigned_trainer_id ? 'Request Trainer Change' : 'Request Trainer'}
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Request Trainer Change</DialogTitle>
-                  </DialogHeader>
+                </SheetTrigger>
+                <SheetContent side="right">
+                  <SheetHeader>
+                    <SheetTitle>Request Trainer Change</SheetTitle>
+                  </SheetHeader>
                   <div className="space-y-4 py-4">
                     <div>
                       <label className="text-sm font-medium">Reason for change</label>
@@ -250,10 +250,10 @@ export default function MemberRequests() {
                       Your request will be reviewed and a suitable trainer will be assigned.
                     </p>
                   </div>
-                  <DialogFooter>
+                  <SheetFooter>
                     <Button
                       variant="outline"
-                      onClick={() => setTrainerDialogOpen(false)}
+                      onClick={() => setTrainerSheetOpen(false)}
                     >
                       Cancel
                     </Button>
@@ -263,9 +263,9 @@ export default function MemberRequests() {
                     >
                       Submit Request
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
             </CardContent>
           </Card>
         </div>
