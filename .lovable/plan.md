@@ -1,179 +1,72 @@
 
 
-# Category-Based Booking with Auto-Gender Filtering
+# Fix: 400 Bad Request Errors on plan_benefits and benefit_settings
 
-## Overview
+## Root Cause
 
-Currently, `benefit_types` (e.g., "Ice Bath") has a `gender_access` column, meaning admins must create separate benefit types like "Male Ice Bath" and "Female Ice Bath." This leads to plan confusion and booking errors.
+Both `plan_benefits` and `benefit_settings` tables have a `benefit_type` column typed as a database enum (`benefit_type`). The valid enum values are: `gym_access`, `pool_access`, `sauna_access`, `steam_access`, `group_classes`, `pt_sessions`, `locker`, `towel`, `parking`, `guest_pass`, `other`, `ice_bath`, `yoga_class`, `crossfit_class`, `spa_access`, `sauna_session`, `cardio_area`, `functional_training`.
 
-The fix introduces a **facilities** table that represents physical rooms/spaces, each linked to a generic benefit type category and tagged with gender access. Plans stay clean ("Ice Bath Access"), and the booking system automatically filters rooms by the member's gender.
+However, custom benefit types created in Settings have their own codes (e.g., `ice_bath_access`) which do NOT exist in this enum. When the code tries to insert these codes into the enum column, PostgREST rejects it with a 400.
+
+**Error 1 -- plan_benefits insert (AddPlanDrawer.tsx line 115):**
+```typescript
+benefit_type: b.code as any  // b.code = "ice_bath_access" -- NOT in enum!
+```
+
+**Error 2 -- benefit_settings upsert (BenefitSettingsComponent.tsx line 68):**
+```typescript
+benefit_type: benefitType  // benefitType comes from bt.code cast as BenefitType -- NOT in enum!
+```
+
+## Fix
+
+In both places, check if the custom benefit type code matches a known enum value. If not, use `'other'` as a safe fallback. The actual linkage is maintained via `benefit_type_id` (UUID foreign key).
 
 ---
 
-## Architecture Change
+### File 1: `src/components/plans/AddPlanDrawer.tsx`
 
-```text
-BEFORE:
-  benefit_types (Ice Bath - Male) --> benefit_slots --> benefit_bookings
-  benefit_types (Ice Bath - Female) --> benefit_slots --> benefit_bookings
+**Change (line 113-119):** Add a helper to map custom codes to valid enum values, using `'other'` as fallback.
 
-AFTER:
-  benefit_types (Ice Bath) [GENERIC, no gender]
-      |
-  facilities (Ice Bath - Male Room, Ice Bath - Female Room) [has gender_access]
-      |
-  benefit_slots (linked to facility) --> benefit_bookings
+```typescript
+// Add a set of known enum values
+const KNOWN_BENEFIT_ENUMS = new Set([
+  'gym_access','pool_access','sauna_access','steam_access','group_classes',
+  'pt_sessions','locker','towel','parking','guest_pass','other','ice_bath',
+  'yoga_class','crossfit_class','spa_access','sauna_session','cardio_area','functional_training'
+]);
+
+// In benefitsToInsert mapping:
+benefit_type: (KNOWN_BENEFIT_ENUMS.has(b.code) ? b.code : 'other') as any,
+```
+
+### File 2: `src/components/settings/BenefitSettingsComponent.tsx`
+
+**Change (line 300):** Same enum validation when passing `benefitType` to the form.
+
+```typescript
+benefitType={KNOWN_BENEFIT_ENUMS.has(bt.code) ? (bt.code as BenefitType) : ('other' as BenefitType)}
+```
+
+### File 3: `src/services/benefitBookingService.ts`
+
+**Change (line 114):** Ensure the insert fallback also validates against known enums.
+
+```typescript
+const insertData = { 
+  ...setting, 
+  benefit_type: (KNOWN_BENEFIT_ENUMS.has(setting.benefit_type) ? setting.benefit_type : 'other') as BenefitType 
+};
 ```
 
 ---
 
-## Database Changes
-
-### 1. Create `facilities` table
-
-```sql
-CREATE TABLE public.facilities (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  branch_id UUID NOT NULL REFERENCES public.branches(id) ON DELETE CASCADE,
-  benefit_type_id UUID NOT NULL REFERENCES public.benefit_types(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,                    -- "Ice Bath - Male Room"
-  gender_access TEXT NOT NULL DEFAULT 'unisex' CHECK (gender_access IN ('male', 'female', 'unisex')),
-  capacity INTEGER NOT NULL DEFAULT 1,
-  description TEXT,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-ALTER TABLE public.facilities ENABLE ROW LEVEL SECURITY;
-
--- RLS: Management can CRUD, members can read active ones matching their gender
-CREATE POLICY "Management full access" ON public.facilities
-  FOR ALL TO authenticated
-  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager']::app_role[]));
-
-CREATE POLICY "Members read matching facilities" ON public.facilities
-  FOR SELECT TO authenticated
-  USING (
-    is_active = true
-    AND (
-      gender_access = 'unisex'
-      OR gender_access = (SELECT gender::text FROM public.profiles WHERE id = auth.uid())
-      OR public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[])
-    )
-  );
-```
-
-### 2. Add `facility_id` to `benefit_slots`
-
-```sql
-ALTER TABLE public.benefit_slots
-  ADD COLUMN facility_id UUID REFERENCES public.facilities(id);
-```
-
-### 3. Remove `gender_access` from `benefit_types`
-
-The `gender_access` column on `benefit_types` (added in the previous migration) will be dropped since gender now lives on facilities.
-
-```sql
-ALTER TABLE public.benefit_types DROP COLUMN IF EXISTS gender_access;
-```
-
----
-
-## UI Changes
-
-### 1. Settings: New "Facilities" Management Section
-
-**File:** `src/components/settings/BenefitSettingsComponent.tsx` (or new component)
-
-Add a "Facilities" tab/section where admins can:
-- Create facilities linked to a benefit type category (e.g., "Ice Bath - Male Room" linked to "Ice Bath")
-- Set gender access (Male / Female / Unisex)
-- Set capacity per facility
-- Toggle active/inactive
-
-### 2. Remove Gender from BenefitTypesManager
-
-**File:** `src/components/settings/BenefitTypesManager.tsx`
-
-Remove the gender access selector from the benefit type create/edit form. Benefit types should be generic categories only.
-
-### 3. Slot Management: Link Slots to Facilities
-
-**File:** `src/components/benefits/ManageSlotsDrawer.tsx`
-
-When creating slots, admins select a **facility** (which already has a benefit type and gender). The slot inherits the benefit type from the facility.
-
-### 4. Member Booking: Auto-Gender Filtering
-
-**File:** `src/pages/BookBenefitSlot.tsx`
-
-The booking flow changes:
-1. Fetch member's gender from their profile
-2. When displaying available slots, join through `facility` to get `gender_access`
-3. Filter to only show slots where `facility.gender_access` matches member's gender or is 'unisex'
-4. The member only sees "Ice Bath" as the category -- the system picks the correct room automatically
-
-**File:** `src/components/benefits/BenefitSlotBookingDrawer.tsx`
-
-Same filtering logic applied here for admin-initiated bookings.
-
-### 5. Plan Creation: No Change Needed
-
-Plans already link to generic `benefit_types` via `plan_benefits`. Since we are keeping `benefit_types` gender-neutral, plans remain clean: "Includes 5 Ice Bath sessions."
-
----
-
-## Files to Modify
+## Summary
 
 | File | Change |
 |------|--------|
-| Database migration | Create `facilities` table, add `facility_id` to `benefit_slots`, drop `gender_access` from `benefit_types` |
-| `src/components/settings/BenefitTypesManager.tsx` | Remove gender access field from benefit type form |
-| New: `src/components/settings/FacilitiesManager.tsx` | CRUD UI for facilities (name, benefit type, gender, capacity) |
-| `src/components/settings/BenefitSettingsComponent.tsx` | Add facilities section/tab |
-| `src/components/benefits/ManageSlotsDrawer.tsx` | Select facility when creating slots instead of bare benefit type |
-| `src/pages/BookBenefitSlot.tsx` | Fetch member gender from profile, filter slots by facility gender_access |
-| `src/components/benefits/BenefitSlotBookingDrawer.tsx` | Filter slots by gender via facility join |
-| `src/services/benefitBookingService.ts` | Update slot queries to join facilities |
+| `src/components/plans/AddPlanDrawer.tsx` | Map unknown benefit codes to `'other'` enum value in plan_benefits insert |
+| `src/components/settings/BenefitSettingsComponent.tsx` | Pass `'other'` as fallback enum when benefit code is custom |
+| `src/services/benefitBookingService.ts` | Validate enum value before insert, fallback to `'other'` |
 
----
-
-## Technical Details
-
-### Member Gender Fetch (BookBenefitSlot)
-```typescript
-// Fetch member's profile gender
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('gender')
-  .eq('id', user.id)
-  .single();
-
-// Filter slots query - join through facility
-const { data } = await supabase
-  .from('benefit_slots')
-  .select(`*, facility:facilities(id, name, gender_access, benefit_type_id, benefit_type_info:benefit_types(name, icon))`)
-  .eq('branch_id', branchId)
-  .eq('slot_date', dateStr)
-  .eq('is_active', true);
-
-// Client-side filter (RLS also enforces this on facilities)
-const filtered = data.filter(slot =>
-  !slot.facility || slot.facility.gender_access === 'unisex' || slot.facility.gender_access === profile.gender
-);
-```
-
-### FacilitiesManager Component
-A simple CRUD list showing:
-- Facility name
-- Linked benefit type (dropdown)
-- Gender access (Male/Female/Unisex badge)
-- Capacity
-- Active toggle
-- Edit/Delete buttons
-
-### Backward Compatibility
-Existing slots without `facility_id` continue to work -- they just won't have gender filtering. New slots will be created with a facility link.
-
+All three files get the same `KNOWN_BENEFIT_ENUMS` set (or a shared constant) to validate codes against. The `benefit_type_id` UUID column handles the actual reference -- the enum column is kept for backward compatibility only.
