@@ -1,72 +1,108 @@
 
 
-# Fix: 400 Bad Request Errors on plan_benefits and benefit_settings
+# Global Branch Context + EditPlanDrawer 400 Fix
 
-## Root Cause
+## Problem 1: Branch Selector Not Persisting Across Actions
 
-Both `plan_benefits` and `benefit_settings` tables have a `benefit_type` column typed as a database enum (`benefit_type`). The valid enum values are: `gym_access`, `pool_access`, `sauna_access`, `steam_access`, `group_classes`, `pt_sessions`, `locker`, `towel`, `parking`, `guest_pass`, `other`, `ice_bath`, `yoga_class`, `crossfit_class`, `spa_access`, `sauna_session`, `cardio_area`, `functional_training`.
+Currently, each page manages its own `selectedBranch` state independently. When "All Branches" is selected (the default), create actions like "Add Member" or "Add Plan" receive `undefined` as the branch ID, which causes failures or data without proper branch assignment.
 
-However, custom benefit types created in Settings have their own codes (e.g., `ice_bath_access`) which do NOT exist in this enum. When the code tries to insert these codes into the enum column, PostgREST rejects it with a 400.
+**Solution:** Create a `BranchContext` (React Context) that holds the selected branch globally. All pages and drawers will consume this context instead of managing their own state. When creating records, if "All Branches" is selected, the system will auto-resolve to the first available branch.
 
-**Error 1 -- plan_benefits insert (AddPlanDrawer.tsx line 115):**
-```typescript
-benefit_type: b.code as any  // b.code = "ice_bath_access" -- NOT in enum!
-```
+## Problem 2: EditPlanDrawer 400 Error on plan_benefits
 
-**Error 2 -- benefit_settings upsert (BenefitSettingsComponent.tsx line 68):**
-```typescript
-benefit_type: benefitType  // benefitType comes from bt.code cast as BenefitType -- NOT in enum!
-```
-
-## Fix
-
-In both places, check if the custom benefit type code matches a known enum value. If not, use `'other'` as a safe fallback. The actual linkage is maintained via `benefit_type_id` (UUID foreign key).
+The same enum bug fixed in `AddPlanDrawer` still exists in `EditPlanDrawer`. Line 214 inserts `benefit_type: benefitType as any` without validating against known enum values, causing a 400 when custom benefit types are used.
 
 ---
 
-### File 1: `src/components/plans/AddPlanDrawer.tsx`
+## Changes
 
-**Change (line 113-119):** Add a helper to map custom codes to valid enum values, using `'other'` as fallback.
+### 1. New File: `src/contexts/BranchContext.tsx`
 
-```typescript
-// Add a set of known enum values
-const KNOWN_BENEFIT_ENUMS = new Set([
-  'gym_access','pool_access','sauna_access','steam_access','group_classes',
-  'pt_sessions','locker','towel','parking','guest_pass','other','ice_bath',
-  'yoga_class','crossfit_class','spa_access','sauna_session','cardio_area','functional_training'
-]);
+A React Context providing:
+- `selectedBranch` (string, defaults to `'all'`)
+- `setSelectedBranch` (setter)
+- `effectiveBranchId` -- resolves to the selected branch ID, or falls back to the first branch when "all" is selected (for create actions)
+- `branches` -- the full branches list
 
-// In benefitsToInsert mapping:
-benefit_type: (KNOWN_BENEFIT_ENUMS.has(b.code) ? b.code : 'other') as any,
+Wraps the app inside `App.tsx` (alongside existing providers).
+
+### 2. Update Pages to Use BranchContext
+
+Remove local `selectedBranch` state and `useBranches()` calls from individual pages. Instead, consume from context:
+
+**Pages to update:**
+- `src/pages/Members.tsx` -- remove local branch state, use context
+- `src/pages/Plans.tsx` -- remove local branch fetch, use context
+- `src/pages/Dashboard.tsx` -- use context for branch filtering
+- Other pages with BranchSelector (Attendance, Classes, Trainers, etc.)
+
+The BranchSelector component stays the same -- it just reads/writes from context instead of props.
+
+### 3. Fix EditPlanDrawer 400 Error
+
+**File:** `src/components/plans/EditPlanDrawer.tsx`
+
+Line 214: Change `benefit_type: benefitType as any` to `benefit_type: safeBenefitEnum(benefitType) as any`
+
+Import `safeBenefitEnum` from `@/lib/benefitEnums`.
+
+---
+
+## Technical Details
+
+### BranchContext Implementation
+
+```text
+// src/contexts/BranchContext.tsx
+const BranchContext = createContext<{
+  selectedBranch: string;           // 'all' or a UUID
+  setSelectedBranch: (id: string) => void;
+  effectiveBranchId: string | undefined;  // first branch ID when 'all', otherwise selectedBranch
+  branches: Branch[];
+}>(...);
+
+// effectiveBranchId logic:
+// selectedBranch === 'all' ? branches[0]?.id : selectedBranch
 ```
 
-### File 2: `src/components/settings/BenefitSettingsComponent.tsx`
+### Members.tsx Change (example)
 
-**Change (line 300):** Same enum validation when passing `benefitType` to the form.
+```text
+// BEFORE:
+const { data: branches = [] } = useBranches();
+const [selectedBranch, setSelectedBranch] = useState('all');
+const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+<AddMemberDrawer branchId={branchFilter} />
 
-```typescript
-benefitType={KNOWN_BENEFIT_ENUMS.has(bt.code) ? (bt.code as BenefitType) : ('other' as BenefitType)}
+// AFTER:
+const { selectedBranch, setSelectedBranch, effectiveBranchId, branches } = useBranchContext();
+const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+<AddMemberDrawer branchId={effectiveBranchId} />
 ```
 
-### File 3: `src/services/benefitBookingService.ts`
+Key difference: `branchFilter` (for queries) can still be `undefined` to fetch all branches. But `effectiveBranchId` (for create actions) always resolves to a real branch ID.
 
-**Change (line 114):** Ensure the insert fallback also validates against known enums.
+### EditPlanDrawer Fix
 
-```typescript
-const insertData = { 
-  ...setting, 
-  benefit_type: (KNOWN_BENEFIT_ENUMS.has(setting.benefit_type) ? setting.benefit_type : 'other') as BenefitType 
-};
+```text
+// Line 214 - BEFORE:
+benefit_type: benefitType as any,
+
+// AFTER:
+benefit_type: safeBenefitEnum(benefitType) as any,
 ```
 
 ---
 
-## Summary
+## Files Summary
 
 | File | Change |
 |------|--------|
-| `src/components/plans/AddPlanDrawer.tsx` | Map unknown benefit codes to `'other'` enum value in plan_benefits insert |
-| `src/components/settings/BenefitSettingsComponent.tsx` | Pass `'other'` as fallback enum when benefit code is custom |
-| `src/services/benefitBookingService.ts` | Validate enum value before insert, fallback to `'other'` |
+| New: `src/contexts/BranchContext.tsx` | Global branch state context |
+| `src/App.tsx` | Wrap app with BranchProvider |
+| `src/pages/Members.tsx` | Use BranchContext, pass `effectiveBranchId` to create drawers |
+| `src/pages/Plans.tsx` | Use BranchContext for branch ID |
+| `src/pages/Dashboard.tsx` | Use BranchContext |
+| `src/components/plans/EditPlanDrawer.tsx` | Add `safeBenefitEnum()` to fix 400 error |
+| Other pages with BranchSelector | Migrate to context (Attendance, Classes, Trainers, etc.) |
 
-All three files get the same `KNOWN_BENEFIT_ENUMS` set (or a shared constant) to validate codes against. The `benefit_type_id` UUID column handles the actual reference -- the enum column is kept for backward compatibility only.
