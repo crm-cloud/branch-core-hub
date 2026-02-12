@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
+import { useAuth } from '@/contexts/AuthContext';
 import { Calendar, Clock, AlertCircle, Loader2, Droplets, Sparkles, Gift, Check, X } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -13,9 +14,25 @@ import { toast } from 'sonner';
 export default function BookBenefitSlot() {
   const queryClient = useQueryClient();
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
+  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Fetch available slots for selected date
+  // Fetch member's gender from profile for facility filtering
+  const { data: profile } = useQuery({
+    queryKey: ['my-profile-gender', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('gender')
+        .eq('id', user!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch available slots with facility info for gender filtering
   const { data: slots = [], isLoading: slotsLoading } = useQuery({
     queryKey: ['benefit-slots', member?.branch_id, selectedDate.toISOString().split('T')[0]],
     enabled: !!member,
@@ -26,7 +43,8 @@ export default function BookBenefitSlot() {
         .from('benefit_slots')
         .select(`
           *,
-          benefit_type_info:benefit_types(id, name, code, icon)
+          benefit_type_info:benefit_types(id, name, code, icon),
+          facility:facilities(id, name, gender_access)
         `)
         .eq('branch_id', member!.branch_id)
         .eq('slot_date', dateStr)
@@ -34,7 +52,16 @@ export default function BookBenefitSlot() {
         .order('start_time', { ascending: true });
 
       if (error) throw error;
-      return data || [];
+      
+      // Auto-filter by gender: only show slots where facility matches member gender or is unisex
+      const memberGender = profile?.gender;
+      const filtered = (data || []).filter((slot: any) => {
+        if (!slot.facility) return true; // No facility = no gender restriction
+        const access = slot.facility.gender_access;
+        return access === 'unisex' || access === memberGender;
+      });
+      
+      return filtered;
     },
   });
 
@@ -241,6 +268,9 @@ export default function BookBenefitSlot() {
                         {getBenefitIcon(slot.benefit_type)}
                         {slot.benefit_type_info?.name || slot.benefit_type}
                       </CardTitle>
+                      {slot.facility?.name && (
+                        <p className="text-xs text-muted-foreground mt-1">{slot.facility.name}</p>
+                      )}
                       {booked ? (
                         <Badge variant="default">Booked</Badge>
                       ) : isFull ? (
