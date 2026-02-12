@@ -562,6 +562,7 @@ export type Database = {
           default_duration_minutes: number | null
           description: string | null
           display_order: number | null
+          gender_access: string | null
           icon: string | null
           id: string
           is_active: boolean | null
@@ -577,6 +578,7 @@ export type Database = {
           default_duration_minutes?: number | null
           description?: string | null
           display_order?: number | null
+          gender_access?: string | null
           icon?: string | null
           id?: string
           is_active?: boolean | null
@@ -592,6 +594,7 @@ export type Database = {
           default_duration_minutes?: number | null
           description?: string | null
           display_order?: number | null
+          gender_access?: string | null
           icon?: string | null
           id?: string
           is_active?: boolean | null

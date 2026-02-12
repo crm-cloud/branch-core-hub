@@ -42,6 +42,12 @@ const CATEGORY_OPTIONS = [
   { value: "service", label: "Service" },
 ];
 
+const GENDER_OPTIONS = [
+  { value: "unisex", label: "Unisex (All)" },
+  { value: "male", label: "Male Only" },
+  { value: "female", label: "Female Only" },
+];
+
 interface BenefitTypeFormData {
   name: string;
   code: string;
@@ -51,6 +57,7 @@ interface BenefitTypeFormData {
   is_active: boolean;
   category: string;
   default_duration_minutes: number;
+  gender_access: string;
 }
 
 const defaultFormData: BenefitTypeFormData = {
@@ -62,6 +69,7 @@ const defaultFormData: BenefitTypeFormData = {
   is_active: true,
   category: "wellness",
   default_duration_minutes: 30,
+  gender_access: "unisex",
 };
 
 function getIconComponent(iconName: string) {
@@ -116,6 +124,7 @@ export function BenefitTypesManager() {
         is_active: data.is_active,
         category: data.category,
         default_duration_minutes: data.default_duration_minutes,
+        gender_access: data.gender_access || "unisex",
       };
 
       if (data.id) {
@@ -178,6 +187,7 @@ export function BenefitTypesManager() {
       is_active: benefitType.is_active ?? true,
       category: benefitType.category || "wellness",
       default_duration_minutes: benefitType.default_duration_minutes || 30,
+      gender_access: (benefitType as any).gender_access || "unisex",
     });
     setEditingId(benefitType.id);
     setIsDrawerOpen(true);
@@ -328,6 +338,25 @@ export function BenefitTypesManager() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label>Gender Access</Label>
+              <Select
+                value={formData.gender_access}
+                onValueChange={(v) => setFormData({ ...formData, gender_access: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map((g) => (
+                    <SelectItem key={g.value} value={g.value}>
+                      {g.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex items-center justify-between py-2">
               <div>
                 <Label>Requires Slot Booking</Label>
@@ -379,6 +408,9 @@ export function BenefitTypesManager() {
                       <Badge variant="outline" className="text-xs">{bt.code}</Badge>
                       {bt.is_bookable && (
                         <Badge variant="secondary" className="text-xs">Bookable</Badge>
+                      )}
+                      {(bt as any).gender_access && (bt as any).gender_access !== 'unisex' && (
+                        <Badge variant="outline" className="text-xs capitalize">{(bt as any).gender_access}</Badge>
                       )}
                       {!bt.is_active && (
                         <Badge variant="destructive" className="text-xs">Inactive</Badge>
