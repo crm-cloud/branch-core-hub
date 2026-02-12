@@ -118,15 +118,31 @@ export function MemberProfileDrawer({
         .from('payments')
         .select(`
           *,
-          invoices(invoice_number),
-          received_by_profile:received_by(full_name)
+          invoices(invoice_number)
         `)
         .eq('member_id', member.id)
         .order('payment_date', { ascending: false })
         .limit(10);
       
       if (error) throw error;
-      return data;
+
+      // Fetch receiver names from profiles separately (received_by references auth.users, not profiles)
+      const receiverIds = [...new Set(data?.filter(p => p.received_by).map(p => p.received_by) || [])];
+      let receiverMap: Record<string, string> = {};
+      if (receiverIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', receiverIds);
+        if (profiles) {
+          receiverMap = Object.fromEntries(profiles.map(p => [p.id, p.full_name]));
+        }
+      }
+
+      return (data || []).map(p => ({
+        ...p,
+        received_by_name: p.received_by ? receiverMap[p.received_by] || null : null,
+      }));
     },
     enabled: !!member?.id && open,
   });
@@ -632,9 +648,9 @@ export function MemberProfileDrawer({
                             <p className="text-xs text-muted-foreground mt-1">
                               {format(new Date(payment.payment_date), 'dd MMM yyyy')}
                             </p>
-                            {payment.received_by_profile && (
+                            {payment.received_by_name && (
                               <p className="text-xs text-muted-foreground">
-                                By: {payment.received_by_profile.full_name}
+                                By: {payment.received_by_name}
                               </p>
                             )}
                           </div>
