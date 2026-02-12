@@ -1,147 +1,179 @@
 
 
-# System Audit & Critical Fixes
+# Category-Based Booking with Auto-Gender Filtering
+
+## Overview
+
+Currently, `benefit_types` (e.g., "Ice Bath") has a `gender_access` column, meaning admins must create separate benefit types like "Male Ice Bath" and "Female Ice Bath." This leads to plan confusion and booking errors.
+
+The fix introduces a **facilities** table that represents physical rooms/spaces, each linked to a generic benefit type category and tagged with gender access. Plans stay clean ("Ice Bath Access"), and the booking system automatically filters rooms by the member's gender.
 
 ---
 
-## Issue 1: Benefits Drawer Shows "No benefit types created yet" (CRITICAL)
+## Architecture Change
 
-**Root Cause:** On `Plans.tsx` line 286, `AddPlanDrawer` is rendered without a `branchId` prop. Inside the drawer, `useBenefitTypes(branchId)` returns `[]` when `branchId` is undefined/falsy (line 9 of the hook: `if (!branchId) return []`). The benefit types exist in the database tied to `branch_id = 11111111-...`, but the drawer never receives this ID.
+```text
+BEFORE:
+  benefit_types (Ice Bath - Male) --> benefit_slots --> benefit_bookings
+  benefit_types (Ice Bath - Female) --> benefit_slots --> benefit_bookings
 
-**Fix:** In `Plans.tsx`, fetch the user's branch (or first available branch) and pass it to `AddPlanDrawer` and `EditPlanDrawer`. Also update `AddPlanDrawer` to auto-resolve the branch if none is provided.
+AFTER:
+  benefit_types (Ice Bath) [GENERIC, no gender]
+      |
+  facilities (Ice Bath - Male Room, Ice Bath - Female Room) [has gender_access]
+      |
+  benefit_slots (linked to facility) --> benefit_bookings
+```
 
-### Files:
+---
+
+## Database Changes
+
+### 1. Create `facilities` table
+
+```sql
+CREATE TABLE public.facilities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES public.branches(id) ON DELETE CASCADE,
+  benefit_type_id UUID NOT NULL REFERENCES public.benefit_types(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,                    -- "Ice Bath - Male Room"
+  gender_access TEXT NOT NULL DEFAULT 'unisex' CHECK (gender_access IN ('male', 'female', 'unisex')),
+  capacity INTEGER NOT NULL DEFAULT 1,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.facilities ENABLE ROW LEVEL SECURITY;
+
+-- RLS: Management can CRUD, members can read active ones matching their gender
+CREATE POLICY "Management full access" ON public.facilities
+  FOR ALL TO authenticated
+  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager']::app_role[]));
+
+CREATE POLICY "Members read matching facilities" ON public.facilities
+  FOR SELECT TO authenticated
+  USING (
+    is_active = true
+    AND (
+      gender_access = 'unisex'
+      OR gender_access = (SELECT gender::text FROM public.profiles WHERE id = auth.uid())
+      OR public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[])
+    )
+  );
+```
+
+### 2. Add `facility_id` to `benefit_slots`
+
+```sql
+ALTER TABLE public.benefit_slots
+  ADD COLUMN facility_id UUID REFERENCES public.facilities(id);
+```
+
+### 3. Remove `gender_access` from `benefit_types`
+
+The `gender_access` column on `benefit_types` (added in the previous migration) will be dropped since gender now lives on facilities.
+
+```sql
+ALTER TABLE public.benefit_types DROP COLUMN IF EXISTS gender_access;
+```
+
+---
+
+## UI Changes
+
+### 1. Settings: New "Facilities" Management Section
+
+**File:** `src/components/settings/BenefitSettingsComponent.tsx` (or new component)
+
+Add a "Facilities" tab/section where admins can:
+- Create facilities linked to a benefit type category (e.g., "Ice Bath - Male Room" linked to "Ice Bath")
+- Set gender access (Male / Female / Unisex)
+- Set capacity per facility
+- Toggle active/inactive
+
+### 2. Remove Gender from BenefitTypesManager
+
+**File:** `src/components/settings/BenefitTypesManager.tsx`
+
+Remove the gender access selector from the benefit type create/edit form. Benefit types should be generic categories only.
+
+### 3. Slot Management: Link Slots to Facilities
+
+**File:** `src/components/benefits/ManageSlotsDrawer.tsx`
+
+When creating slots, admins select a **facility** (which already has a benefit type and gender). The slot inherits the benefit type from the facility.
+
+### 4. Member Booking: Auto-Gender Filtering
+
+**File:** `src/pages/BookBenefitSlot.tsx`
+
+The booking flow changes:
+1. Fetch member's gender from their profile
+2. When displaying available slots, join through `facility` to get `gender_access`
+3. Filter to only show slots where `facility.gender_access` matches member's gender or is 'unisex'
+4. The member only sees "Ice Bath" as the category -- the system picks the correct room automatically
+
+**File:** `src/components/benefits/BenefitSlotBookingDrawer.tsx`
+
+Same filtering logic applied here for admin-initiated bookings.
+
+### 5. Plan Creation: No Change Needed
+
+Plans already link to generic `benefit_types` via `plan_benefits`. Since we are keeping `benefit_types` gender-neutral, plans remain clean: "Includes 5 Ice Bath sessions."
+
+---
+
+## Files to Modify
+
 | File | Change |
 |------|--------|
-| `src/pages/Plans.tsx` | Pass the first branch ID to `AddPlanDrawer` and `EditPlanDrawer` |
-
-The branches query already exists on the page implicitly via `usePlans`. We'll add a simple branch fetch and pass it down. The drawer already handles `branchId` correctly once it receives it.
-
----
-
-## Issue 2: Gender-Separated Facility Booking
-
-**Implementation:**
-
-1. **Database Migration:** Add `gender_access` column to `benefit_types` table with values `'male'`, `'female'`, `'unisex'` (default: `'unisex'`).
-
-2. **Settings UI:** Add a gender access dropdown to the Benefit Type creation/edit form in `BenefitTypesManager.tsx`.
-
-3. **Booking Filter:** In member booking flows (`BenefitSlotBookingDrawer.tsx`, `BookBenefitSlot.tsx`), filter available benefit types by comparing the member's `gender` profile field against `benefit_types.gender_access`. Only show matching or `'unisex'` types.
-
-### Files:
-| File | Change |
-|------|--------|
-| Database migration | Add `gender_access TEXT DEFAULT 'unisex'` to `benefit_types` |
-| `src/components/settings/BenefitTypesManager.tsx` | Add gender access selector (Male/Female/Unisex) to create/edit form |
-| `src/components/benefits/BenefitSlotBookingDrawer.tsx` | Filter benefit types by member gender |
-| `src/pages/BookBenefitSlot.tsx` | Filter available slots by gender |
-
----
-
-## Issue 3: Freeze/Unfreeze State Logic (CRITICAL)
-
-**Current State:** The `ApprovalRequestsDrawer.tsx` already has freeze approval logic (lines 69-98) that updates `membership_freeze_history` status to `'approved'` and conditionally sets `memberships.status = 'frozen'` when the freeze start date is today or earlier. This logic appears correct.
-
-**Remaining Gap:** There is no database trigger to handle future-dated freezes (freeze that starts tomorrow). Also, the member portal needs to show the correct button state based on membership status.
-
-**Fix:**
-
-1. Create a database function/trigger that fires when `membership_freeze_history.status` changes to `'approved'` and the freeze `start_date <= CURRENT_DATE`, automatically setting the membership to `'frozen'`.
-
-2. For future-dated freezes, create a scheduled check (or rely on the existing approval handler which already does this check).
-
-3. In the member portal, ensure the freeze/unfreeze button reflects membership status:
-   - `status = 'active'` --> Show "Request Freeze"
-   - `status = 'frozen'` --> Show "Request Unfreeze" (and disable gym check-in)
-
-### Files:
-| File | Change |
-|------|--------|
-| Database migration | Create trigger on `membership_freeze_history` to auto-update membership status |
-| `src/components/members/MemberProfileDrawer.tsx` | Verify freeze/unfreeze button states match membership status (audit existing logic) |
-
----
-
-## Issue 4: Dashboard Vuexy Overhaul & Financial Accuracy
-
-**Current State:** The dashboard already has:
-- Hero gradient card (violet-to-indigo) with Total Members, Revenue, Expiring Soon -- already implemented
-- Accounts Receivable widget calculating `total_amount - amount_paid` -- already implemented
-- Stat cards, charts, occupancy gauge -- already present
-
-**Remaining Fixes:**
-
-1. **Vuexy Shadows:** Apply `shadow-lg shadow-indigo-500/20` to all white cards (currently some use `border-border/50` instead of shadow styling).
-
-2. **Pending Invoices Widget:** Add a proper "Pending Invoices" section showing invoices with Paid/Partial/Overdue badges color-coded (Green/Yellow/Red).
-
-3. **Transaction Feed:** Add recent payment transactions with status badges.
-
-### Files:
-| File | Change |
-|------|--------|
-| `src/components/dashboard/DashboardCharts.tsx` | Update card classes to Vuexy shadows; add Pending Invoices widget |
-| `src/pages/Dashboard.tsx` | Add pending invoices query; update card styling throughout |
-
----
-
-## Execution Order
-
-1. **Fix Benefits Drawer** -- Pass `branchId` to `AddPlanDrawer` from `Plans.tsx`
-2. **Gender-Separated Booking** -- Add `gender_access` column + filter logic
-3. **Fix Freeze Logic** -- Add trigger + audit member portal buttons
-4. **Dashboard Polish** -- Apply Vuexy shadows + financial widgets
+| Database migration | Create `facilities` table, add `facility_id` to `benefit_slots`, drop `gender_access` from `benefit_types` |
+| `src/components/settings/BenefitTypesManager.tsx` | Remove gender access field from benefit type form |
+| New: `src/components/settings/FacilitiesManager.tsx` | CRUD UI for facilities (name, benefit type, gender, capacity) |
+| `src/components/settings/BenefitSettingsComponent.tsx` | Add facilities section/tab |
+| `src/components/benefits/ManageSlotsDrawer.tsx` | Select facility when creating slots instead of bare benefit type |
+| `src/pages/BookBenefitSlot.tsx` | Fetch member gender from profile, filter slots by facility gender_access |
+| `src/components/benefits/BenefitSlotBookingDrawer.tsx` | Filter slots by gender via facility join |
+| `src/services/benefitBookingService.ts` | Update slot queries to join facilities |
 
 ---
 
 ## Technical Details
 
-### Benefits Drawer Fix (Plans.tsx)
-```text
-// Add branch query
-const { data: branches } = useQuery({
-  queryKey: ['branches'],
-  queryFn: async () => {
-    const { data } = await supabase.from('branches').select('id').limit(1);
-    return data;
-  }
-});
-const defaultBranchId = branches?.[0]?.id;
+### Member Gender Fetch (BookBenefitSlot)
+```typescript
+// Fetch member's profile gender
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('gender')
+  .eq('id', user.id)
+  .single();
 
-// Pass to drawer
-<AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} branchId={defaultBranchId} />
+// Filter slots query - join through facility
+const { data } = await supabase
+  .from('benefit_slots')
+  .select(`*, facility:facilities(id, name, gender_access, benefit_type_id, benefit_type_info:benefit_types(name, icon))`)
+  .eq('branch_id', branchId)
+  .eq('slot_date', dateStr)
+  .eq('is_active', true);
+
+// Client-side filter (RLS also enforces this on facilities)
+const filtered = data.filter(slot =>
+  !slot.facility || slot.facility.gender_access === 'unisex' || slot.facility.gender_access === profile.gender
+);
 ```
 
-### Gender Access Migration
-```sql
-ALTER TABLE public.benefit_types 
-  ADD COLUMN IF NOT EXISTS gender_access TEXT DEFAULT 'unisex' 
-  CHECK (gender_access IN ('male', 'female', 'unisex'));
-```
+### FacilitiesManager Component
+A simple CRUD list showing:
+- Facility name
+- Linked benefit type (dropdown)
+- Gender access (Male/Female/Unisex badge)
+- Capacity
+- Active toggle
+- Edit/Delete buttons
 
-### Freeze Trigger
-```sql
-CREATE OR REPLACE FUNCTION public.auto_freeze_membership()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
-BEGIN
-  IF NEW.status = 'approved' AND OLD.status = 'pending' THEN
-    IF NEW.start_date <= CURRENT_DATE THEN
-      UPDATE public.memberships SET status = 'frozen' WHERE id = NEW.membership_id;
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+### Backward Compatibility
+Existing slots without `facility_id` continue to work -- they just won't have gender filtering. New slots will be created with a facility link.
 
-CREATE TRIGGER trg_auto_freeze_membership
-  AFTER UPDATE ON public.membership_freeze_history
-  FOR EACH ROW
-  EXECUTE FUNCTION public.auto_freeze_membership();
-```
-
-### Dashboard Vuexy Card Class
-```text
-// Replace: className="border-border/50"
-// With:    className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0"
-```
