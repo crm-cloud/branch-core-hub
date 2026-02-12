@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Loader2, ExternalLink, Plus, X, Infinity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getBenefitIcon } from '@/lib/benefitIcons';
+import { safeBenefitEnum } from '@/lib/benefitEnums';
 
 interface AddPlanDrawerProps {
   open: boolean;
@@ -112,7 +113,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
 
       const benefitsToInsert = selectedBenefits.map(b => ({
         plan_id: planData.id,
-        benefit_type: b.code as any,
+        benefit_type: safeBenefitEnum(b.code) as any,
         benefit_type_id: b.benefitTypeId,
         frequency: (b.isUnlimited ? 'unlimited' : b.frequency) as any,
         limit_count: b.isUnlimited ? null : b.limit,
