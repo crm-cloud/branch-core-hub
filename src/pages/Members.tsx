@@ -20,6 +20,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { useState, useMemo } from 'react';
 import { differenceInDays, format } from 'date-fns';
 
@@ -34,10 +35,7 @@ export default function MembersPage() {
   const [selectedMembershipForFreeze, setSelectedMembershipForFreeze] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const { data: branches = [] } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
-
-  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+  const { selectedBranch, setSelectedBranch, effectiveBranchId, branchFilter, branches } = useBranchContext();
 
   // Fetch members using the search_members function when searching, otherwise regular query
   const { data: members = [], isLoading } = useQuery({
@@ -508,7 +506,7 @@ export default function MembersPage() {
         <AddMemberDrawer 
           open={addMemberOpen} 
           onOpenChange={setAddMemberOpen}
-          branchId={branchFilter}
+          branchId={effectiveBranchId}
         />
 
         {selectedMember && (
