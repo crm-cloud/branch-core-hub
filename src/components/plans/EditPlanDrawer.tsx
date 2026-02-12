@@ -206,7 +206,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
       });
 
       // Delete existing benefits and re-insert
-      await supabase.from('plan_benefits').delete().eq('plan_id', plan.id);
+      const { error: deleteError } = await supabase.from('plan_benefits').delete().eq('plan_id', plan.id);
+      if (deleteError) throw deleteError;
 
       const enabledBenefits = Object.entries(benefits)
         .filter(([_, config]) => config.enabled)
