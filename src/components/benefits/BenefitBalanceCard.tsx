@@ -54,7 +54,7 @@ export function BenefitBalanceCard({ balance, showRecordButton, onRecordUsage }:
           <div className="flex items-center gap-2">
             <Icon className="h-5 w-5 text-primary" />
             <CardTitle className="text-base">
-              {benefitTypeLabels[balance.benefit_type]}
+              {balance.label || benefitTypeLabels[balance.benefit_type]}
             </CardTitle>
           </div>
           <Badge variant={balance.isUnlimited ? 'default' : 'outline'} className="text-xs">
@@ -102,7 +102,7 @@ export function BenefitBalanceCard({ balance, showRecordButton, onRecordUsage }:
 interface BenefitBalancesGridProps {
   balances: MemberBenefitBalance[];
   showRecordButtons?: boolean;
-  onRecordUsage?: (benefitType: BenefitType) => void;
+  onRecordUsage?: (benefitType: BenefitType, benefitTypeId?: string | null) => void;
 }
 
 export function BenefitBalancesGrid({ balances, showRecordButtons, onRecordUsage }: BenefitBalancesGridProps) {
@@ -121,7 +121,7 @@ export function BenefitBalancesGrid({ balances, showRecordButtons, onRecordUsage
           key={balance.benefit_type}
           balance={balance}
           showRecordButton={showRecordButtons}
-          onRecordUsage={() => onRecordUsage?.(balance.benefit_type)}
+          onRecordUsage={() => onRecordUsage?.(balance.benefit_type, balance.benefit_type_id)}
         />
       ))}
     </div>

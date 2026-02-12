@@ -81,8 +81,9 @@ export default function BenefitTracking() {
   const exhaustedBenefits = balances.filter(b => !b.isUnlimited && b.remaining === 0).length;
   const todayUsage = usageHistory?.filter(u => u.usage_date === new Date().toISOString().split('T')[0]).length || 0;
 
-  const handleRecordUsage = (benefitType?: BenefitType) => {
-    setPreselectedBenefit(benefitType);
+  const handleRecordUsage = (benefitType?: BenefitType, benefitTypeId?: string | null) => {
+    // For custom types, use benefit_type_id as preselection; for standard enums, use the enum value
+    setPreselectedBenefit((benefitTypeId || benefitType) as BenefitType | undefined);
     setDrawerOpen(true);
   };
 
@@ -270,7 +271,7 @@ export default function BenefitTracking() {
                               </TableCell>
                               <TableCell>
                                 <Badge variant="outline">
-                                  {benefitTypeLabels[usage.benefit_type]}
+                                  {(usage as any).benefit_types?.name || benefitTypeLabels[usage.benefit_type] || usage.benefit_type}
                                 </Badge>
                               </TableCell>
                               <TableCell>{usage.usage_count}</TableCell>

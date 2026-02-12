@@ -139,17 +139,25 @@ export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & {
 export async function getAvailableSlots(
   branchId: string,
   benefitType: BenefitType,
-  date: string
+  date: string,
+  benefitTypeId?: string
 ): Promise<BenefitSlot[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("benefit_slots")
     .select("*")
     .eq("branch_id", branchId)
-    .eq("benefit_type", benefitType)
     .eq("slot_date", date)
     .eq("is_active", true)
     .order("start_time", { ascending: true });
   
+  // Filter by benefit_type_id if provided (for custom types), otherwise by enum
+  if (benefitTypeId) {
+    query = query.eq("benefit_type_id", benefitTypeId);
+  } else {
+    query = query.eq("benefit_type", benefitType);
+  }
+  
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -158,9 +166,11 @@ export async function generateDailySlots(
   branchId: string,
   benefitType: BenefitType,
   date: string,
-  settings: BenefitSettings
+  settings: BenefitSettings,
+  benefitTypeId?: string
 ): Promise<BenefitSlot[]> {
-  const slots: Omit<BenefitSlot, "id" | "booked_count" | "is_active">[] = [];
+  const slots: any[] = [];
+  const safeBt = safeBenefitEnum(benefitType) as BenefitType;
   
   const startTime = new Date(`2000-01-01T${settings.operating_hours_start}`);
   const endTime = new Date(`2000-01-01T${settings.operating_hours_end}`);
@@ -171,14 +181,18 @@ export async function generateDailySlots(
   while (currentTime.getTime() + durationMs <= endTime.getTime()) {
     const slotEnd = new Date(currentTime.getTime() + durationMs);
     
-    slots.push({
+    const slot: any = {
       branch_id: branchId,
-      benefit_type: benefitType,
+      benefit_type: safeBt,
       slot_date: date,
       start_time: currentTime.toTimeString().slice(0, 8),
       end_time: slotEnd.toTimeString().slice(0, 8),
       capacity: settings.capacity_per_slot,
-    });
+    };
+    if (benefitTypeId) {
+      slot.benefit_type_id = benefitTypeId;
+    }
+    slots.push(slot);
     
     currentTime = new Date(slotEnd.getTime() + bufferMs);
   }
@@ -192,10 +206,14 @@ export async function generateDailySlots(
   return data || [];
 }
 
-export async function createSlot(slot: Omit<BenefitSlot, "id" | "booked_count" | "is_active">): Promise<BenefitSlot> {
+export async function createSlot(slot: Omit<BenefitSlot, "id" | "booked_count" | "is_active"> & { benefit_type_id?: string }): Promise<BenefitSlot> {
+  const safeSlot = {
+    ...slot,
+    benefit_type: safeBenefitEnum(slot.benefit_type) as BenefitType,
+  };
   const { data, error } = await supabase
     .from("benefit_slots")
-    .insert(slot)
+    .insert(safeSlot)
     .select()
     .single();
   

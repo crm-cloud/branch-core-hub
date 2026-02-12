@@ -43,14 +43,16 @@ export function useGenerateDailySlots() {
     mutationFn: ({
       branchId,
       benefitType,
+      benefitTypeId,
       date,
       settings,
     }: {
       branchId: string;
       benefitType: BenefitType;
+      benefitTypeId?: string;
       date: string;
       settings: bookingService.BenefitSettings;
-    }) => bookingService.generateDailySlots(branchId, benefitType, date, settings),
+    }) => bookingService.generateDailySlots(branchId, benefitType, date, settings, benefitTypeId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["benefit-slots", variables.branchId, variables.benefitType, variables.date],

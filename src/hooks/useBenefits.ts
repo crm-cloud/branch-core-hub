@@ -78,12 +78,14 @@ export function useRecordBenefitUsage() {
       benefitType,
       usageCount,
       notes,
+      benefitTypeId,
     }: {
       membershipId: string;
       benefitType: BenefitType;
       usageCount?: number;
       notes?: string;
-    }) => recordBenefitUsage(membershipId, benefitType, usageCount, notes),
+      benefitTypeId?: string;
+    }) => recordBenefitUsage(membershipId, benefitType, usageCount, notes, benefitTypeId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['benefit-usage', variables.membershipId] });
       queryClient.invalidateQueries({ queryKey: ['benefit-usage-history', variables.membershipId] });
