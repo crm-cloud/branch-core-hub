@@ -13,11 +13,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function PlansPage() {
   const { data: plans, isLoading } = usePlans(undefined, true);
-  const { data: branches } = useBranches();
-  const defaultBranchId = branches?.[0]?.id || '';
+  const { effectiveBranchId } = useBranchContext();
+  const defaultBranchId = effectiveBranchId || '';
   const [addPlanOpen, setAddPlanOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlanWithBenefits | null>(null);

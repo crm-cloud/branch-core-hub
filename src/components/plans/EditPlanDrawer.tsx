@@ -15,6 +15,7 @@ import { useBenefitTypes, useCreateBenefitType } from '@/hooks/useBenefitTypes';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Loader2 } from 'lucide-react';
+import { safeBenefitEnum } from '@/lib/benefitEnums';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 
 interface EditPlanDrawerProps {
@@ -211,7 +212,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         .filter(([_, config]) => config.enabled)
         .map(([benefitType, config]) => ({
           plan_id: plan.id,
-          benefit_type: benefitType as any,
+          benefit_type: safeBenefitEnum(benefitType) as any,
           benefit_type_id: config.benefitTypeId || null,
           frequency: config.frequency as any,
           limit_count: config.frequency === 'unlimited' ? null : config.limit,

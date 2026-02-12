@@ -8,6 +8,7 @@ import { OccupancyGauge } from '@/components/dashboard/OccupancyGauge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import LiveAccessLog from '@/components/devices/LiveAccessLog';
@@ -22,10 +23,7 @@ import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'da
 
 export default function DashboardPage() {
   const { profile, roles, user } = useAuth();
-  const { data: branches = [] } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
-
-  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+  const { selectedBranch, setSelectedBranch, branchFilter, branches } = useBranchContext();
 
   // Fetch dashboard statistics
   const { data: stats } = useQuery({
