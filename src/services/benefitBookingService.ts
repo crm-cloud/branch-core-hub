@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
+import { safeBenefitEnum } from "@/lib/benefitEnums";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type BenefitBookingStatus = Database["public"]["Enums"]["benefit_booking_status"];
@@ -111,7 +112,7 @@ export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & {
       return data;
     } else {
       // Insert new record with 'other' as fallback enum value for custom types
-      const insertData = { ...setting, benefit_type: (setting.benefit_type || 'other') as BenefitType };
+      const insertData = { ...setting, benefit_type: safeBenefitEnum(setting.benefit_type) as BenefitType };
       const { data, error } = await supabase
         .from("benefit_settings")
         .insert(insertData)

@@ -15,6 +15,7 @@ import { FacilitiesManager } from "./FacilitiesManager";
 import { toast } from "sonner";
 import { Database } from "@/integrations/supabase/types";
 import * as LucideIcons from "lucide-react";
+import { safeBenefitEnum } from "@/lib/benefitEnums";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
@@ -297,7 +298,7 @@ export function BenefitSettingsComponent() {
               <BenefitSettingForm
                 key={bt.id}
                 branchId={branchId}
-                benefitType={(bt.code as BenefitType) || ('other' as BenefitType)}
+                benefitType={safeBenefitEnum(bt.code) as BenefitType}
                 benefitTypeId={bt.id}
                 label={bt.name}
                 icon={getIconComponent(bt.icon)}
