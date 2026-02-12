@@ -12,9 +12,12 @@ import { Plus, Check, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, Tre
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
+import { useBranches } from '@/hooks/useBranches';
 
 export default function PlansPage() {
   const { data: plans, isLoading } = usePlans(undefined, true);
+  const { data: branches } = useBranches();
+  const defaultBranchId = branches?.[0]?.id || '';
   const [addPlanOpen, setAddPlanOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlanWithBenefits | null>(null);
@@ -283,11 +286,12 @@ export default function PlansPage() {
         )}
 
         {/* Drawers */}
-        <AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} />
+        <AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} branchId={defaultBranchId} />
         <EditPlanDrawer 
           open={editPlanOpen} 
           onOpenChange={setEditPlanOpen} 
-          plan={selectedPlan} 
+          plan={selectedPlan}
+          branchId={defaultBranchId}
         />
       </div>
     </AppLayout>

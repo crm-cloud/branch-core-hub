@@ -21,6 +21,7 @@ interface EditPlanDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   plan: MembershipPlanWithBenefits | null;
+  branchId?: string;
 }
 
 type BenefitConfig = {
@@ -30,7 +31,7 @@ type BenefitConfig = {
   benefitTypeId?: string;
 };
 
-export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps) {
+export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanDrawerProps) {
   const updatePlan = useUpdatePlan();
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
@@ -40,7 +41,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan }: EditPlanDrawerProps
   const [newBenefitIcon, setNewBenefitIcon] = useState('🎁');
 
   // Fetch dynamic benefit types from database (fully database-driven, no static fallback)
-  const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(plan?.branch_id || undefined);
+  const { data: dbBenefitTypes = [], isLoading: isLoadingBenefits } = useBenefitTypes(plan?.branch_id || branchId || undefined);
   const createBenefitType = useCreateBenefitType();
 
   const [formData, setFormData] = useState({

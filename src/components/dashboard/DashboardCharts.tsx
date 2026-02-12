@@ -17,7 +17,7 @@ interface RevenueChartProps {
 
 export function RevenueChart({ data }: RevenueChartProps) {
   return (
-    <Card className="border-border/50">
+    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0">
       <CardHeader>
         <CardTitle className="text-lg">Revenue Overview</CardTitle>
       </CardHeader>
@@ -64,7 +64,7 @@ interface AttendanceChartProps {
 
 export function AttendanceChart({ data }: AttendanceChartProps) {
   return (
-    <Card className="border-border/50">
+    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0">
       <CardHeader>
         <CardTitle className="text-lg">Weekly Attendance</CardTitle>
       </CardHeader>
@@ -220,7 +220,7 @@ export function HourlyAttendanceChart({ data }: HourlyAttendanceChartProps) {
   const hasData = data.some(d => d.checkins > 0);
 
   return (
-    <Card className="border-border/50">
+    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <Clock className="h-5 w-5 text-accent" />
@@ -321,7 +321,7 @@ export function ExpiringMembersWidget({ data }: ExpiringMembersWidgetProps) {
   const navigate = useNavigate();
 
   return (
-    <Card className="border-border/50 border-l-4 border-l-destructive">
+    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0 border-l-4 border-l-destructive">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -368,7 +368,7 @@ export function PendingApprovalsWidget({ count }: PendingApprovalsWidgetProps) {
 
   return (
     <Card 
-      className="border-border/50 cursor-pointer hover:shadow-md transition-shadow"
+      className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0 cursor-pointer hover:shadow-xl transition-shadow"
       onClick={() => navigate('/approvals')}
     >
       <CardContent className="p-4">
