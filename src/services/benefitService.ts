@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { safeBenefitEnum } from '@/lib/benefitEnums';
 
 type BenefitType = Database['public']['Enums']['benefit_type'];
 type FrequencyType = Database['public']['Enums']['frequency_type'];
@@ -8,6 +9,7 @@ export interface BenefitUsage {
   id: string;
   membership_id: string;
   benefit_type: BenefitType;
+  benefit_type_id?: string | null;
   usage_date: string;
   usage_count: number;
   notes: string | null;
@@ -17,6 +19,8 @@ export interface BenefitUsage {
 
 export interface MemberBenefitBalance {
   benefit_type: BenefitType;
+  benefit_type_id?: string | null;
+  label: string;
   frequency: FrequencyType;
   limit_count: number | null;
   description: string | null;
@@ -34,6 +38,7 @@ export interface MembershipWithBenefits {
     name: string;
     benefits: {
       benefit_type: BenefitType;
+      benefit_type_id?: string | null;
       frequency: FrequencyType;
       limit_count: number | null;
       description: string | null;
@@ -52,11 +57,13 @@ export async function fetchMembershipWithBenefits(memberId: string): Promise<Mem
       end_date,
       membership_plans!inner(
         name,
-        plan_benefits(
+      plan_benefits(
           benefit_type,
+          benefit_type_id,
           frequency,
           limit_count,
-          description
+          description,
+          benefit_types:benefit_type_id(id, name)
         )
       )
     `)
@@ -106,8 +113,13 @@ export function calculateBenefitBalances(
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   return benefits.map(benefit => {
-    // Filter usage based on frequency period
-    let relevantUsage = usageRecords.filter(u => u.benefit_type === benefit.benefit_type);
+    // Filter usage: use benefit_type_id for custom types to avoid collisions
+    let relevantUsage = usageRecords.filter(u => {
+      if (benefit.benefit_type_id && u.benefit_type_id) {
+        return u.benefit_type_id === benefit.benefit_type_id;
+      }
+      return u.benefit_type === benefit.benefit_type;
+    });
 
     switch (benefit.frequency) {
       case 'daily':
@@ -126,13 +138,11 @@ export function calculateBenefitBalances(
         );
         break;
       case 'per_membership':
-        // For per_membership, count ALL usage from membership start to end (total pool)
         relevantUsage = relevantUsage.filter(u => 
           new Date(u.usage_date) >= new Date(membershipStartDate)
         );
         break;
       case 'unlimited':
-        // No filtering needed for unlimited
         break;
     }
 
@@ -140,8 +150,14 @@ export function calculateBenefitBalances(
     const isUnlimited = benefit.frequency === 'unlimited' || benefit.limit_count === null;
     const remaining = isUnlimited ? null : Math.max(0, (benefit.limit_count || 0) - used);
 
+    // Determine display label: use linked benefit_types name if available
+    const benefitTypeName = (benefit as any).benefit_types?.name;
+    const label = benefitTypeName || benefitTypeLabels[benefit.benefit_type] || benefit.benefit_type;
+
     return {
       benefit_type: benefit.benefit_type,
+      benefit_type_id: benefit.benefit_type_id || null,
+      label,
       frequency: benefit.frequency,
       limit_count: benefit.limit_count,
       description: benefit.description,
@@ -157,20 +173,26 @@ export async function recordBenefitUsage(
   membershipId: string,
   benefitType: BenefitType,
   usageCount: number = 1,
-  notes?: string
+  notes?: string,
+  benefitTypeId?: string
 ): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   
+  const insertData: any = {
+    membership_id: membershipId,
+    benefit_type: safeBenefitEnum(benefitType),
+    usage_date: new Date().toISOString().split('T')[0],
+    usage_count: usageCount,
+    notes: notes || null,
+    recorded_by: user?.id || null,
+  };
+  if (benefitTypeId) {
+    insertData.benefit_type_id = benefitTypeId;
+  }
+  
   const { error } = await supabase
     .from('benefit_usage')
-    .insert({
-      membership_id: membershipId,
-      benefit_type: benefitType,
-      usage_date: new Date().toISOString().split('T')[0],
-      usage_count: usageCount,
-      notes: notes || null,
-      recorded_by: user?.id || null,
-    });
+    .insert(insertData);
 
   if (error) throw error;
 }

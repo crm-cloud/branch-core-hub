@@ -27,6 +27,7 @@ interface ManageSlotsDrawerProps {
   onOpenChange: (open: boolean) => void;
   branchId: string;
   benefitType: BenefitType;
+  benefitTypeId?: string;
   benefitName?: string;
   benefitIcon?: string;
 }
@@ -52,6 +53,7 @@ export function ManageSlotsDrawer({
   onOpenChange,
   branchId,
   benefitType,
+  benefitTypeId,
   benefitName,
   benefitIcon,
 }: ManageSlotsDrawerProps) {
@@ -73,7 +75,9 @@ export function ManageSlotsDrawer({
   const generateSlots = useGenerateDailySlots();
   const markAttendance = useMarkAttendance();
   
-  const benefitSettings = settings?.find((s) => s.benefit_type === benefitType);
+  const benefitSettings = (benefitTypeId 
+    ? settings?.find((s) => s.benefit_type_id === benefitTypeId) 
+    : null) || settings?.find((s) => s.benefit_type === benefitType);
   
   const toggleDay = (day: number) => {
     setSelectedDays((prev) =>
@@ -99,6 +103,7 @@ export function ManageSlotsDrawer({
             await generateSlots.mutateAsync({
               branchId,
               benefitType,
+              benefitTypeId,
               date: format(date, "yyyy-MM-dd"),
               settings: benefitSettings,
             });
@@ -113,6 +118,7 @@ export function ManageSlotsDrawer({
         await generateSlots.mutateAsync({
           branchId,
           benefitType,
+          benefitTypeId,
           date: dateStr,
           settings: benefitSettings,
         });

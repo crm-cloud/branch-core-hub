@@ -76,8 +76,11 @@ export function RecordBenefitUsageDrawer({
     },
   });
 
-  const selectedBenefit = form.watch('benefit_type') as BenefitType;
-  const selectedBalance = availableBenefits.find(b => b.benefit_type === selectedBenefit);
+  const selectedBenefitValue = form.watch('benefit_type');
+  // Match by benefit_type_id if it looks like a UUID, otherwise by enum
+  const selectedBalance = availableBenefits.find(b => 
+    b.benefit_type_id === selectedBenefitValue || b.benefit_type === selectedBenefitValue
+  );
 
   async function onSubmit(values: FormValues) {
     setIsValidating(true);
@@ -95,15 +98,19 @@ export function RecordBenefitUsageDrawer({
         return;
       }
 
-      // Record usage
+      // Record usage - resolve the actual enum and optional UUID
+      const matchedBalance = availableBenefits.find(b => 
+        b.benefit_type_id === values.benefit_type || b.benefit_type === values.benefit_type
+      );
       await recordMutation.mutateAsync({
         membershipId,
-        benefitType: values.benefit_type as BenefitType,
+        benefitType: (matchedBalance?.benefit_type || values.benefit_type) as BenefitType,
         usageCount: values.usage_count,
         notes: values.notes,
+        benefitTypeId: matchedBalance?.benefit_type_id || undefined,
       });
 
-      toast.success(`${benefitTypeLabels[values.benefit_type as BenefitType]} usage recorded`);
+      toast.success(`${matchedBalance?.label || values.benefit_type} usage recorded`);
       form.reset();
       onOpenChange(false);
     } catch (error) {
@@ -145,9 +152,9 @@ export function RecordBenefitUsageDrawer({
                       </FormControl>
                       <SelectContent>
                         {recordableBenefits.map((benefit) => (
-                          <SelectItem key={benefit.benefit_type} value={benefit.benefit_type}>
+                          <SelectItem key={benefit.benefit_type_id || benefit.benefit_type} value={benefit.benefit_type_id || benefit.benefit_type}>
                             <div className="flex items-center justify-between w-full gap-4">
-                              <span>{benefitTypeLabels[benefit.benefit_type]}</span>
+                              <span>{benefit.label}</span>
                               {!benefit.isUnlimited && (
                                 <span className="text-xs text-muted-foreground">
                                   {benefit.remaining} left
