@@ -11,6 +11,7 @@ import { Settings2, Clock, Users, AlertTriangle, Sparkles } from "lucide-react";
 import { useBenefitSettings, useUpsertBenefitSetting } from "@/hooks/useBenefitBookings";
 import { useBookableBenefitTypes } from "@/hooks/useBenefitTypes";
 import { BenefitTypesManager } from "./BenefitTypesManager";
+import { FacilitiesManager } from "./FacilitiesManager";
 import { toast } from "sonner";
 import { Database } from "@/integrations/supabase/types";
 import * as LucideIcons from "lucide-react";
@@ -276,6 +277,9 @@ export function BenefitSettingsComponent() {
     <div className="space-y-8">
       {/* Benefit Types Manager */}
       <BenefitTypesManager />
+      
+      {/* Facilities Manager */}
+      <FacilitiesManager />
       
       {/* Slot Booking Settings */}
       <div className="space-y-6">

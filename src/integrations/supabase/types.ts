@@ -502,6 +502,7 @@ export type Database = {
           capacity: number
           created_at: string
           end_time: string
+          facility_id: string | null
           id: string
           is_active: boolean | null
           slot_date: string
@@ -516,6 +517,7 @@ export type Database = {
           capacity?: number
           created_at?: string
           end_time: string
+          facility_id?: string | null
           id?: string
           is_active?: boolean | null
           slot_date: string
@@ -530,6 +532,7 @@ export type Database = {
           capacity?: number
           created_at?: string
           end_time?: string
+          facility_id?: string | null
           id?: string
           is_active?: boolean | null
           slot_date?: string
@@ -551,6 +554,13 @@ export type Database = {
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "benefit_slots_facility_id_fkey"
+            columns: ["facility_id"]
+            isOneToOne: false
+            referencedRelation: "facilities"
+            referencedColumns: ["id"]
+          },
         ]
       }
       benefit_types: {
@@ -562,7 +572,6 @@ export type Database = {
           default_duration_minutes: number | null
           description: string | null
           display_order: number | null
-          gender_access: string | null
           icon: string | null
           id: string
           is_active: boolean | null
@@ -578,7 +587,6 @@ export type Database = {
           default_duration_minutes?: number | null
           description?: string | null
           display_order?: number | null
-          gender_access?: string | null
           icon?: string | null
           id?: string
           is_active?: boolean | null
@@ -594,7 +602,6 @@ export type Database = {
           default_duration_minutes?: number | null
           description?: string | null
           display_order?: number | null
-          gender_access?: string | null
           icon?: string | null
           id?: string
           is_active?: boolean | null
@@ -1857,6 +1864,60 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      facilities: {
+        Row: {
+          benefit_type_id: string
+          branch_id: string
+          capacity: number
+          created_at: string | null
+          description: string | null
+          gender_access: string
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          benefit_type_id: string
+          branch_id: string
+          capacity?: number
+          created_at?: string | null
+          description?: string | null
+          gender_access?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          benefit_type_id?: string
+          branch_id?: string
+          capacity?: number
+          created_at?: string | null
+          description?: string | null
+          gender_access?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facilities_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facilities_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
