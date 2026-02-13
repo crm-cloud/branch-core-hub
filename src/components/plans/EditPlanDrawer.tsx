@@ -107,24 +107,21 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         };
       });
       
-      // Enable benefits that are in the plan
+      // Enable benefits that are in the plan — match by benefit_type_id (UUID)
       if (plan.plan_benefits) {
         plan.plan_benefits.forEach((benefit: any) => {
-          const benefitKey = benefit.benefit_type;
-          if (benefitMap[benefitKey]) {
+          // Find the matching benefit option by benefit_type_id first, then fallback to code
+          const matchedOption = benefit.benefit_type_id
+            ? benefitOptions.find(b => b.benefitTypeId === benefit.benefit_type_id)
+            : benefitOptions.find(b => b.code === benefit.benefit_type);
+          
+          const benefitKey = matchedOption?.id;
+          if (benefitKey && benefitMap[benefitKey]) {
             benefitMap[benefitKey] = {
               enabled: true,
               frequency: benefit.frequency || 'unlimited',
               limit: benefit.limit_count || 0,
-              benefitTypeId: benefit.benefit_type_id || undefined
-            };
-          } else {
-            // Handle benefits that exist in plan but not in current options
-            benefitMap[benefitKey] = {
-              enabled: true,
-              frequency: benefit.frequency || 'unlimited',
-              limit: benefit.limit_count || 0,
-              benefitTypeId: benefit.benefit_type_id || undefined
+              benefitTypeId: benefit.benefit_type_id || matchedOption?.benefitTypeId || undefined
             };
           }
         });
@@ -238,21 +235,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
     }
   };
 
-  // Get all benefits to display (from options + any existing in plan not in options)
-  const allBenefitsToShow: Array<{ id: string; label: string; icon: string; code: string; benefitTypeId?: string }> = [...benefitOptions];
-  if (plan?.plan_benefits) {
-    plan.plan_benefits.forEach((pb: any) => {
-      if (!allBenefitsToShow.find(b => b.id === pb.benefit_type)) {
-        allBenefitsToShow.push({
-          id: pb.benefit_type,
-          label: pb.benefit_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          icon: '🎁',
-          code: pb.benefit_type,
-          benefitTypeId: pb.benefit_type_id || undefined
-        });
-      }
-    });
-  }
+  // Only show database-driven benefit options (no phantom "Other" entries)
+  const allBenefitsToShow = benefitOptions;
 
   return (
     <>

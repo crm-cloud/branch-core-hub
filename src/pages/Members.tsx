@@ -100,9 +100,13 @@ export default function MembersPage() {
             const end = new Date(ms.end_date);
             return ms.status === 'active' && now >= start && now <= end;
           });
+          const frozenMembership = m.memberships?.find((ms: any) => ms.status === 'frozen');
+          let memberStatus = 'inactive';
+          if (activeMembership) memberStatus = 'active';
+          else if (frozenMembership) memberStatus = 'frozen';
           return {
             ...m,
-            status: activeMembership ? 'active' : 'inactive',
+            status: memberStatus,
             joined_at: m.created_at
           };
         });
@@ -172,6 +176,7 @@ export default function MembersPage() {
     const colors: Record<string, string> = {
       active: 'bg-success/10 text-success border-success/20',
       inactive: 'bg-muted text-muted-foreground border-muted',
+      frozen: 'bg-info/10 text-info border-info/20',
       suspended: 'bg-destructive/10 text-destructive border-destructive/20',
     };
     return colors[status] || 'bg-muted text-muted-foreground';
@@ -305,7 +310,7 @@ export default function MembersPage() {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-l-4 border-l-info hover:shadow-md transition-shadow">
+  <Card className="relative overflow-hidden border-l-4 border-l-info hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('frozen')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -316,6 +321,7 @@ export default function MembersPage() {
                   <Snowflake className="h-6 w-6 text-info" />
                 </div>
               </div>
+              {statusFilter === 'frozen' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-info" />}
             </CardContent>
           </Card>
 
@@ -396,7 +402,7 @@ export default function MembersPage() {
                                 </Avatar>
                                 {/* Status indicator dot */}
                                 <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background ${
-                                  member.status === 'active' ? 'bg-success' : member.status === 'suspended' ? 'bg-destructive' : 'bg-muted-foreground'
+                                  member.status === 'active' ? 'bg-success' : member.status === 'frozen' ? 'bg-info' : member.status === 'suspended' ? 'bg-destructive' : 'bg-muted-foreground'
                                 }`} />
                               </div>
                               <div>
@@ -416,7 +422,8 @@ export default function MembersPage() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={getStatusColor(member.status)}>
-                              {member.status}
+                              {member.status === 'frozen' && <Snowflake className="h-3 w-3 mr-1" />}
+                              {member.status === 'frozen' ? 'Frozen' : member.status}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -478,6 +485,22 @@ export default function MembersPage() {
                                       >
                                         <Snowflake className="h-4 w-4 mr-2" />
                                         Quick Freeze
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {member.status === 'frozen' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => {
+                                        const frozenMs = member.memberships?.find((ms: any) => ms.status === 'frozen');
+                                        if (frozenMs) {
+                                          setSelectedMember(member);
+                                          setSelectedMembershipForFreeze(frozenMs);
+                                          setQuickFreezeOpen(true);
+                                        }
+                                      }}>
+                                        <Snowflake className="h-4 w-4 mr-2 text-info" />
+                                        Unfreeze Membership
                                       </DropdownMenuItem>
                                     </>
                                   )}

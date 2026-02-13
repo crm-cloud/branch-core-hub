@@ -1,24 +1,26 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
-interface BulkCreateLockersDialogProps {
+interface BulkCreateLockersDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId: string;
 }
 
-export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCreateLockersDialogProps) {
+export function BulkCreateLockersDrawer({ open, onOpenChange, branchId }: BulkCreateLockersDrawerProps) {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
+  const [isChargeable, setIsChargeable] = useState(false);
   const [formData, setFormData] = useState({
     prefix: 'L',
     startNumber: 1,
@@ -44,13 +46,19 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
       return;
     }
 
+    if (isChargeable && formData.monthlyFee <= 0) {
+      toast.error('Please enter a valid monthly fee for chargeable lockers');
+      return;
+    }
+
     setIsCreating(true);
     try {
+      const fee = isChargeable ? formData.monthlyFee : 0;
       const lockersData = lockersToCreate.map(lockerNumber => ({
         branch_id: branchId,
         locker_number: lockerNumber,
         size: formData.size,
-        monthly_fee: formData.monthlyFee,
+        monthly_fee: fee,
         status: 'available' as const,
       }));
 
@@ -70,6 +78,7 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
         size: 'medium',
         monthlyFee: 0,
       });
+      setIsChargeable(false);
     } catch (error: any) {
       console.error('Error creating lockers:', error);
       toast.error(error.message || 'Failed to create lockers');
@@ -79,14 +88,14 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Bulk Create Lockers</DialogTitle>
-          <DialogDescription>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Bulk Create Lockers</SheetTitle>
+          <SheetDescription>
             Create multiple lockers at once with a common prefix and numbering
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         <div className="space-y-4 py-4">
           <div className="grid grid-cols-3 gap-4">
@@ -119,34 +128,47 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Size (all)</Label>
-              <Select
-                value={formData.size}
-                onValueChange={(value) => setFormData({ ...formData, size: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="small">Small</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="large">Large</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-2">
+            <Label>Size (all)</Label>
+            <Select
+              value={formData.size}
+              onValueChange={(value) => setFormData({ ...formData, size: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="large">Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Chargeable Toggle */}
+          <div className="flex items-center justify-between py-2 px-3 border rounded-lg bg-muted/30">
+            <div>
+              <Label>Is Chargeable?</Label>
+              <p className="text-xs text-muted-foreground">Enable to set a monthly rental fee</p>
             </div>
-            <div className="space-y-2">
-              <Label>Monthly Fee (₹)</Label>
+            <Switch
+              checked={isChargeable}
+              onCheckedChange={setIsChargeable}
+            />
+          </div>
+
+          {isChargeable && (
+            <div className="space-y-2 ml-4 p-3 border rounded-lg bg-muted/30">
+              <Label>Monthly Fee (₹) *</Label>
               <Input
                 type="number"
-                min={0}
+                min={1}
                 value={formData.monthlyFee}
                 onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
-                placeholder="0 for free"
+                placeholder="Enter monthly fee"
               />
             </div>
-          </div>
+          )}
 
           {/* Preview */}
           <div className="space-y-2">
@@ -172,7 +194,7 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
           )}
         </div>
 
-        <DialogFooter>
+        <SheetFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -182,8 +204,8 @@ export function BulkCreateLockersDialog({ open, onOpenChange, branchId }: BulkCr
           >
             {isCreating ? 'Creating...' : `Create ${lockerCount} Lockers`}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
