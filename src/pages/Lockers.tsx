@@ -14,7 +14,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from 'sonner';
-import { BulkCreateLockersDialog } from '@/components/lockers/BulkCreateLockersDialog';
+import { BulkCreateLockersDrawer } from '@/components/lockers/BulkCreateLockersDrawer';
 import { AssignLockerDrawer } from '@/components/lockers/AssignLockerDrawer';
 
 const createLockerSchema = z.object({
@@ -324,8 +324,8 @@ export default function LockersPage() {
           branchId={branchId || ''}
         />
 
-        {/* Bulk Create Dialog */}
-        <BulkCreateLockersDialog
+        {/* Bulk Create Drawer */}
+        <BulkCreateLockersDrawer
           open={isBulkCreateOpen}
           onOpenChange={setIsBulkCreateOpen}
           branchId={branchId || ''}
