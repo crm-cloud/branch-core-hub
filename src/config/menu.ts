@@ -35,8 +35,7 @@ export const memberMenuConfig: MenuSection[] = [
   {
     title: 'Fitness',
     items: [
-      { label: 'Book Classes', href: '/my-classes', icon: Calendar, roles: ['member'] },
-      { label: 'PT Sessions', href: '/my-pt-sessions', icon: Dumbbell, roles: ['member'] },
+      { label: 'Book & Schedule', href: '/my-classes', icon: Calendar, roles: ['member'] },
       { label: 'Workout Plan', href: '/my-workout', icon: Activity, roles: ['member'] },
       { label: 'Diet Plan', href: '/my-diet', icon: UtensilsCrossed, roles: ['member'] },
     ],
@@ -45,6 +44,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Services',
     items: [
       { label: 'My Benefits', href: '/my-benefits', icon: Heart, roles: ['member'] },
+      { label: 'Refer & Earn', href: '/my-referrals', icon: Gift, roles: ['member'] },
       { label: 'Store', href: '/member-store', icon: ShoppingBag, roles: ['member'] },
       { label: 'My Invoices', href: '/my-invoices', icon: FileText, roles: ['member'] },
       { label: 'My Requests', href: '/my-requests', icon: Target, roles: ['member'] },

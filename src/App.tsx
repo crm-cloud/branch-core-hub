@@ -72,6 +72,7 @@ import BookBenefitSlot from "./pages/BookBenefitSlot";
 import MemberProfile from "./pages/MemberProfile";
 import MemberFeedback from "./pages/MemberFeedback";
 import MemberAnnouncements from "./pages/MemberAnnouncements";
+import MemberReferrals from "./pages/MemberReferrals";
 
 // Trainer-specific pages
 import TrainerDashboard from "./pages/TrainerDashboard";
@@ -116,7 +117,8 @@ const App = () => (
             <Route path="/my-attendance" element={<ProtectedRoute requiredRoles={['member']}><MyAttendance /></ProtectedRoute>} />
             <Route path="/my-progress" element={<ProtectedRoute requiredRoles={['member']}><MyProgress /></ProtectedRoute>} />
             <Route path="/my-classes" element={<ProtectedRoute requiredRoles={['member']}><MemberClassBooking /></ProtectedRoute>} />
-            <Route path="/my-pt-sessions" element={<ProtectedRoute requiredRoles={['member']}><MyPTSessions /></ProtectedRoute>} />
+            <Route path="/my-pt-sessions" element={<ProtectedRoute requiredRoles={['member']}><Navigate to="/my-classes?tab=appointments" replace /></ProtectedRoute>} />
+            <Route path="/my-referrals" element={<ProtectedRoute requiredRoles={['member']}><MemberReferrals /></ProtectedRoute>} />
             <Route path="/my-invoices" element={<ProtectedRoute requiredRoles={['member']}><MyInvoices /></ProtectedRoute>} />
             <Route path="/my-requests" element={<ProtectedRoute requiredRoles={['member']}><MemberRequests /></ProtectedRoute>} />
             <Route path="/member-store" element={<ProtectedRoute requiredRoles={['member']}><MemberStore /></ProtectedRoute>} />
