@@ -1,109 +1,66 @@
 
-# Comprehensive Ice Bath Booking Fix
 
-## Audit Findings
+# UI/UX Consistency and Logic Repairs
 
-After tracing the entire flow from plan creation to member booking, here are the identified issues:
+## Issue 1: Locker Bulk Create - Dialog to Drawer Conversion
 
-### Finding 1: Plan has NO benefits linked
-The ANNUAL PLAN (`33c0f0f5-bdae-47ea-a584-fd2b5fd4487c`) has **zero rows** in the `plan_benefits` table. The Ice Bath Access benefit type exists in `benefit_types` but was never saved to the plan (likely due to the 400 error we fixed earlier). The benefit shown as "Other / Unlimited" on the Benefit Tracking page comes from a stale state.
+**File:** `src/components/lockers/BulkCreateLockersDialog.tsx`
 
-**Fix:** This is a data issue -- the plan needs to be re-edited and saved with Ice Bath Access selected. The code fix from earlier (safeBenefitEnum) should now prevent the 400 error.
+Replace the `Dialog` component with a right-side `Sheet` (drawer) to match the design standard. Add an "Is Chargeable?" toggle switch:
+- When ON: show the Monthly Fee input (required)
+- When OFF: hide the fee input, set fee to 0
 
-### Finding 2: Slot generation uses wrong benefit_type
-In `benefitBookingService.ts`, `generateDailySlots()` inserts `benefit_type: benefitType` directly into `benefit_slots`. If a custom code is passed (e.g., `ice_bath_access`), it will fail with 400 since the DB enum doesn't include it.
+The existing `lockers` table already has a `monthly_fee` column. We will add an `is_chargeable` boolean to the insert logic (derived from `monthlyFee > 0`). No database migration needed since `monthly_fee` already exists and `is_chargeable` can be inferred.
 
-**Fix:** Apply `safeBenefitEnum()` in `generateDailySlots()` and `createSlot()`.
-
-### Finding 3: ManageSlotsDrawer settings lookup mismatch
-Line 76 of `ManageSlotsDrawer.tsx` looks up settings with `s.benefit_type === benefitType`, but in the DB the record is stored as `benefit_type: 'other'` with `benefit_type_id` holding the actual UUID. So it never finds the settings.
-
-**Fix:** Match by `benefit_type_id` first, then fall back to `benefit_type`.
-
-### Finding 4: BookBenefitSlot and benefit_slots query mismatch
-The member booking page (`BookBenefitSlot.tsx`) fetches all slots for a branch/date. Slots are stored with `benefit_type: 'other'` for custom types. The slot display and benefit matching logic needs to use `benefit_type_id` for accurate identification.
-
-### Finding 5: Benefit balance display shows "Other" label
-`BenefitBalanceCard.tsx` uses `benefitTypeLabels[balance.benefit_type]` which maps `'other'` to "Other" instead of the actual benefit name like "Ice Bath Access". The balance calculation in `benefitService.ts` also matches usage by `benefit_type` enum value -- all custom types collapse to `'other'`, making distinct tracking impossible.
-
-**Fix:** Extend the benefit data model to carry `benefit_type_id` through the balance calculation, and use it for display names.
+**Changes:**
+- Replace `Dialog/DialogContent/DialogHeader/DialogTitle/DialogFooter` imports with `Sheet/SheetContent/SheetHeader/SheetTitle/SheetFooter`
+- Add `isChargeable` state toggle
+- Conditionally show/hide Monthly Fee input based on toggle
+- Rename component to `BulkCreateLockersDrawer` (update import in `src/pages/Lockers.tsx`)
 
 ---
 
-## Implementation Plan
+## Issue 2: Frozen Member Status Display
 
-### Step 1: Fix slot generation to use safeBenefitEnum
+**File:** `src/pages/Members.tsx`
 
-**File:** `src/services/benefitBookingService.ts`
+**Root Cause:** Lines 95-108 calculate member status as either `'active'` or `'inactive'`. Members with a frozen membership are shown as `'inactive'` because the code only looks for `status === 'active'` memberships.
 
-- `generateDailySlots()` (line 174): Change `benefit_type: benefitType` to `benefit_type: safeBenefitEnum(benefitType) as BenefitType`
-- `createSlot()` (line 196): Same fix for the slot insert
-- Add `benefit_type_id` parameter to both functions so it gets stored alongside the safe enum
-
-### Step 2: Fix ManageSlotsDrawer settings lookup
-
-**File:** `src/components/benefits/ManageSlotsDrawer.tsx`
-
-- Line 76: Change from `s.benefit_type === benefitType` to also match by `benefit_type_id`
-- Add `benefitTypeId` prop to the drawer
-- Pass the UUID through from the settings page when opening the drawer
-
-### Step 3: Fix getAvailableSlots to filter by benefit_type_id
-
-**File:** `src/services/benefitBookingService.ts`
-
-- Update `getAvailableSlots()` to accept an optional `benefitTypeId` parameter
-- When provided, filter by `benefit_type_id` instead of `benefit_type` enum
-
-### Step 4: Extend benefit balance model with benefit_type_id
-
-**File:** `src/services/benefitService.ts`
-
-- Add `benefit_type_id` to the `MemberBenefitBalance` interface
-- Include `benefit_type_id` in `fetchMembershipWithBenefits` select query
-- Update `calculateBenefitBalances` to match usage by `benefit_type_id` when available (so "other" type benefits for Ice Bath don't collide with "other" type benefits for, say, Spa)
-- Add a `label` field to `MemberBenefitBalance` populated from benefit_types name
-
-### Step 5: Fix BenefitBalanceCard to show actual names
-
-**File:** `src/components/benefits/BenefitBalanceCard.tsx`
-
-- Use the new `label` field from balance instead of hardcoded `benefitTypeLabels[benefit_type]`
-- Fall back to `benefitTypeLabels` for standard enum types
-
-### Step 6: Fix BookBenefitSlot display
-
-**File:** `src/pages/BookBenefitSlot.tsx`
-
-- The query already joins `benefit_type_info:benefit_types(...)`, so display already works
-- Ensure slot filtering and credit checking uses `benefit_type_id` instead of just `benefit_type`
-
-### Step 7: Fix BenefitTracking page (admin)
-
-**File:** `src/pages/BenefitTracking.tsx`
-
-- Update to pass `benefit_type_id` when recording usage, so the ledger correctly tracks Ice Bath vs other "other" benefits
+**Fix:**
+- Update the status calculation (line 95-108) to also check for `status === 'frozen'` memberships. If found, set member status to `'frozen'`.
+- Update `getStatusColor` (line 171-178) to add a blue badge style for `'frozen'`.
+- Update the status indicator dot (line 398-400) to handle `'frozen'` with a blue color.
+- Update the dropdown menu (line 463-484): when a member has a frozen membership, show an "Unfreeze" option that opens the existing unfreeze flow.
+- Adjust the `filteredMembers` filter to include `'frozen'` status when the frozen stat card is clicked (currently not clickable, needs onClick handler).
 
 ---
 
-## Data Fix Required
+## Issue 3: Plan Benefits "Ghosting" - EditPlanDrawer
 
-After the code changes are deployed, the admin needs to:
-1. Go to Plans, edit the ANNUAL PLAN
-2. Add "Ice Bath Access" as a benefit (it should now save correctly with safeBenefitEnum)
-3. Go to Settings > Benefits, configure slot settings for Ice Bath Access
-4. Generate slots using the Manage Slots drawer
+**File:** `src/components/plans/EditPlanDrawer.tsx`
+
+**Root Cause:** The benefit list uses `benefit.id` = `bt.code` (e.g., `ice_bath_access`) as the key. But when loading existing plan_benefits from DB, `benefit.benefit_type` is stored as `'other'` (via safeBenefitEnum). So line 113 tries to match `benefitMap['other']` which doesn't correspond to any specific benefit -- it falls through to the `else` block and creates a generic "Other" entry.
+
+**Fix:** Refactor EditPlanDrawer to match the AddPlanDrawer pattern:
+- Change the benefit initialization to match by `benefit_type_id` (UUID) instead of `benefit_type` (enum code)
+- When iterating `plan.plan_benefits`, find the matching benefit option by `benefitTypeId` match, not by enum code
+- This ensures "Ice Bath Access" config appears under the correct card, not under a phantom "Other" card
+
+Specifically:
+1. In the `useEffect` that initializes benefits (line 96-135), change the matching logic:
+   - Instead of `const benefitKey = benefit.benefit_type`, look up the matching benefit option by `benefit_type_id`
+   - Use `benefitOptions.find(b => b.benefitTypeId === benefit.benefit_type_id)?.id` to get the correct key
+2. Remove the fallback `else` block (lines 121-129) that creates orphaned "Other" entries
+3. Remove the `allBenefitsToShow` merging logic (lines 242-255) that adds phantom entries from plan_benefits
 
 ---
 
-## Files Summary
+## Technical Summary
 
-| File | Change |
-|------|--------|
-| `src/services/benefitBookingService.ts` | Apply safeBenefitEnum in slot generation; add benefit_type_id support |
-| `src/services/benefitService.ts` | Add benefit_type_id to balance model; use for distinct tracking |
-| `src/components/benefits/ManageSlotsDrawer.tsx` | Fix settings lookup; add benefitTypeId prop |
-| `src/components/benefits/BenefitBalanceCard.tsx` | Show actual benefit name instead of "Other" |
-| `src/pages/BenefitTracking.tsx` | Pass benefit_type_id for accurate usage recording |
-| `src/pages/BookBenefitSlot.tsx` | Use benefit_type_id for credit checking |
-| `src/hooks/useBenefitBookings.ts` | Update hook signatures for benefit_type_id |
+| Priority | File | Change |
+|----------|------|--------|
+| 1 | `src/components/lockers/BulkCreateLockersDialog.tsx` | Dialog to Sheet, add Is Chargeable toggle |
+| 1 | `src/pages/Lockers.tsx` | Update import for renamed component |
+| 2 | `src/pages/Members.tsx` | Add frozen status detection, blue badge, unfreeze action, filter click |
+| 3 | `src/components/plans/EditPlanDrawer.tsx` | Fix benefit init to match by benefit_type_id, remove "Other" ghost |
+
