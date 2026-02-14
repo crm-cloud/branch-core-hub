@@ -12,7 +12,7 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,7 +25,147 @@ import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
 import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
 import { EditProfileDrawer } from './EditProfileDrawer';
+import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
+
+// ─── Benefits & Usage Tab ───
+function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; activeMembership: any }) {
+  const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
+
+  const { data: planBenefits = [] } = useQuery({
+    queryKey: ['member-plan-benefits', activeMembership?.plan_id],
+    queryFn: async () => {
+      if (!activeMembership?.plan_id) return [];
+      const { data, error } = await supabase
+        .from('plan_benefits')
+        .select('*, benefit_types:benefit_type_id(id, name, code, icon)')
+        .eq('plan_id', activeMembership.plan_id);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeMembership?.plan_id,
+  });
+
+  const { data: usageHistory = [] } = useQuery({
+    queryKey: ['member-benefit-usage', activeMembership?.id],
+    queryFn: async () => {
+      if (!activeMembership?.id) return [];
+      const { data, error } = await supabase
+        .from('benefit_usage')
+        .select('*, benefit_types:benefit_type_id(id, name, code)')
+        .eq('membership_id', activeMembership.id)
+        .order('usage_date', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!activeMembership?.id,
+  });
+
+  const getFrequencyLabel = (f: string) => {
+    const map: Record<string, string> = { unlimited: 'Unlimited', daily: '/day', weekly: '/week', monthly: '/month', per_membership: 'total' };
+    return map[f] || f;
+  };
+
+  const availableBenefits = planBenefits.map((b: any) => ({
+    benefit_type: b.benefit_type,
+    benefit_type_id: b.benefit_type_id,
+    label: b.benefit_types?.name || b.benefit_type,
+    name: b.benefit_types?.name || b.benefit_type,
+    frequency: b.frequency,
+    limit_count: b.limit_count,
+    description: b.description,
+    used: 0,
+    remaining: b.limit_count,
+    isUnlimited: b.frequency === 'unlimited',
+  }));
+
+  return (
+    <TabsContent value="benefits" className="space-y-4 mt-4">
+      {!activeMembership ? (
+        <Card>
+          <CardContent className="pt-4 text-center text-muted-foreground">
+            <Heart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No active membership to show benefits</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Heart className="h-4 w-4" />
+                  Plan Entitlements
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setUsageDrawerOpen(true)}>
+                  <Activity className="h-3 w-3 mr-1" />
+                  Log Usage
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {planBenefits.length > 0 ? (
+                <div className="space-y-2">
+                  {planBenefits.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <Heart className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-sm">{b.benefit_types?.name || b.benefit_type}</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {b.frequency === 'unlimited' ? 'Unlimited' : `${b.limit_count || '∞'} ${getFrequencyLabel(b.frequency)}`}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No benefits included in this plan</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Recent Usage
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {usageHistory.length > 0 ? (
+                <div className="space-y-2">
+                  {usageHistory.map((u: any) => (
+                    <div key={u.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                      <div>
+                        <p className="text-sm font-medium">{u.benefit_types?.name || u.benefit_type}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(u.usage_date), 'dd MMM yyyy')} • {u.usage_count || 1} session(s)
+                        </p>
+                      </div>
+                      {u.notes && <p className="text-xs text-muted-foreground max-w-[120px] truncate">{u.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No usage recorded yet</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <RecordBenefitUsageDrawer
+            open={usageDrawerOpen}
+            onOpenChange={setUsageDrawerOpen}
+            membershipId={activeMembership.id}
+            memberId={memberId}
+            memberName=""
+            availableBenefits={availableBenefits}
+          />
+        </>
+      )}
+    </TabsContent>
+  );
+}
 
 interface MemberProfileDrawerProps {
   open: boolean;
@@ -429,9 +569,10 @@ export function MemberProfileDrawer({
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="membership">Plan</TabsTrigger>
+              <TabsTrigger value="benefits">Benefits</TabsTrigger>
               <TabsTrigger value="measurements">Body</TabsTrigger>
               <TabsTrigger value="payments">Pay</TabsTrigger>
               <TabsTrigger value="rewards">Rewards</TabsTrigger>
@@ -627,6 +768,8 @@ export function MemberProfileDrawer({
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {payments.length > 0 ? (

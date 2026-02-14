@@ -114,7 +114,7 @@ export const staffMenuConfig: MenuSection[] = [
     items: [
       { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['staff'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['staff'] },
-      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['staff'] },
+      
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['staff'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['staff'] },
     ],
@@ -161,7 +161,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager', 'staff'] },
+      
       { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
     ],
   },
