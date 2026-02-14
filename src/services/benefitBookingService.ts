@@ -167,7 +167,8 @@ export async function generateDailySlots(
   benefitType: BenefitType,
   date: string,
   settings: BenefitSettings,
-  benefitTypeId?: string
+  benefitTypeId?: string,
+  facilityId?: string
 ): Promise<BenefitSlot[]> {
   const slots: any[] = [];
   const safeBt = safeBenefitEnum(benefitType) as BenefitType;
@@ -192,11 +193,16 @@ export async function generateDailySlots(
     if (benefitTypeId) {
       slot.benefit_type_id = benefitTypeId;
     }
+    if (facilityId) {
+      slot.facility_id = facilityId;
+    }
     slots.push(slot);
     
     currentTime = new Date(slotEnd.getTime() + bufferMs);
   }
   
+  if (slots.length === 0) return [];
+
   const { data, error } = await supabase
     .from("benefit_slots")
     .insert(slots)
@@ -204,6 +210,87 @@ export async function generateDailySlots(
   
   if (error) throw error;
   return data || [];
+}
+
+// ========== AUTO-GENERATION ==========
+
+export async function ensureSlotsForDateRange(
+  branchId: string,
+  startDate: string,
+  endDate: string
+): Promise<void> {
+  // 1. Fetch all active facilities for the branch
+  const { data: facilities, error: facError } = await supabase
+    .from("facilities")
+    .select("id, benefit_type_id, capacity")
+    .eq("branch_id", branchId)
+    .eq("is_active", true);
+  if (facError || !facilities?.length) return;
+
+  // 2. Fetch benefit settings for the branch
+  const { data: allSettings, error: setError } = await supabase
+    .from("benefit_settings")
+    .select("*")
+    .eq("branch_id", branchId);
+  if (setError || !allSettings?.length) return;
+
+  // 3. Get existing slot counts per facility+date
+  const { data: existingSlots } = await supabase
+    .from("benefit_slots")
+    .select("facility_id, slot_date")
+    .eq("branch_id", branchId)
+    .gte("slot_date", startDate)
+    .lte("slot_date", endDate)
+    .eq("is_active", true);
+
+  const existingSet = new Set(
+    (existingSlots || []).map(s => `${s.facility_id}::${s.slot_date}`)
+  );
+
+  // 4. For each facility × each day, generate if missing
+  const dates: string[] = [];
+  let d = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T00:00:00");
+  while (d <= end) {
+    dates.push(d.toISOString().split("T")[0]);
+    d.setDate(d.getDate() + 1);
+  }
+
+  for (const facility of facilities) {
+    // Find matching settings by benefit_type_id
+    const settings = allSettings.find(
+      s => s.benefit_type_id === facility.benefit_type_id && s.is_slot_booking_enabled
+    );
+    if (!settings) continue;
+
+    for (const date of dates) {
+      if (existingSet.has(`${facility.id}::${date}`)) continue;
+
+      const settingsObj: BenefitSettings = {
+        ...settings,
+        is_slot_booking_enabled: settings.is_slot_booking_enabled ?? false,
+        slot_duration_minutes: settings.slot_duration_minutes ?? 30,
+        booking_opens_hours_before: settings.booking_opens_hours_before ?? 24,
+        cancellation_deadline_minutes: settings.cancellation_deadline_minutes ?? 60,
+        no_show_policy: (settings.no_show_policy ?? 'charge_penalty') as NoShowPolicy,
+        no_show_penalty_amount: settings.no_show_penalty_amount ?? 0,
+        max_bookings_per_day: settings.max_bookings_per_day ?? 1,
+        buffer_between_sessions_minutes: settings.buffer_between_sessions_minutes ?? 0,
+        operating_hours_start: settings.operating_hours_start ?? '06:00:00',
+        operating_hours_end: settings.operating_hours_end ?? '22:00:00',
+        capacity_per_slot: facility.capacity || settings.capacity_per_slot || 1,
+      };
+
+      await generateDailySlots(
+        branchId,
+        settings.benefit_type,
+        date,
+        settingsObj,
+        facility.benefit_type_id ?? undefined,
+        facility.id
+      );
+    }
+  }
 }
 
 export async function createSlot(slot: Omit<BenefitSlot, "id" | "booked_count" | "is_active"> & { benefit_type_id?: string }): Promise<BenefitSlot> {
