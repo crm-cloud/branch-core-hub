@@ -1,102 +1,91 @@
 
-# Member Portal Overhaul: Frozen State, Referrals, Unified Booking
+# System-Wide Audit: Locker, Benefits, Plan Display & Booking Fixes
 
-## Module 1: Unified "Book and Schedule" Hub (Priority 1)
+## 1. Fix Plan Benefits Displaying as "Other" (Priority: HIGH)
 
-**Current State:** The member sidebar has separate "Book Classes" (/my-classes) and "My Benefits" (/my-benefits) pages. The BookBenefitSlot page (/book-benefit) already has gender-based facility filtering.
+**Root Cause:** Two issues compound:
+- `plan_benefits` stores `benefit_type = 'other'` for custom benefits (by design via `safeBenefitEnum`)
+- The `fetchPlans` query in `planService.ts` uses `select('*, plan_benefits(*)')` which does NOT join the `benefit_types` table
+- The Plan Card in `Plans.tsx` uses `getBenefitLabel(benefit.benefit_type)` which only has a static map and returns `'other'` for unknown codes
 
-**Changes:**
+**Fix (3 files):**
 
-### 1a. Rename and restructure MemberClassBooking page
-- **File:** `src/pages/MemberClassBooking.tsx`
-- Rename page title from "Class Booking" to "Book & Schedule"
-- Add 3 top-level tabs: **Group Classes** | **Recovery Zone** | **PT Sessions**
-- "Group Classes" tab = current browse/bookings content (no change to logic)
-- "Recovery Zone" tab = embed the existing BookBenefitSlot logic (slot browsing with gender filtering, booking, cancellation) directly into this tab
-- "PT Sessions" tab = embed the existing MyPTSessions content (upcoming/past sessions list)
+**a. `src/services/planService.ts`** - Update the `fetchPlans` and `fetchPlan` queries to join `benefit_types`:
+```
+.select('*, plan_benefits(*, benefit_types:benefit_type_id(id, name, code, icon))')
+```
 
-### 1b. Update sidebar navigation
-- **File:** `src/config/menu.ts`
-- Rename "Book Classes" to "Book & Schedule" (keep href `/my-classes`)
-- Remove "PT Sessions" from the Fitness section (it's now inside the unified hub)
-- Keep "My Benefits" in Services section (it shows credits/usage, different from booking)
+**b. `src/pages/Plans.tsx`** - Update `getBenefitLabel` to use the joined `benefit_types` name:
+```typescript
+// Line 242-245: Change benefit display
+{plan.plan_benefits.slice(0, 4).map((benefit) => (
+  <div key={benefit.id} className="flex items-center gap-2 text-sm">
+    <Check className="h-3.5 w-3.5 text-primary" />
+    <span>{benefit.benefit_types?.name || getBenefitLabel(benefit.benefit_type)}</span>
+  </div>
+))}
+```
 
-### 1c. Update dashboard quick action
-- **File:** `src/pages/MemberDashboard.tsx`
-- Change "Book a Class" card text to "Book & Schedule"
-
-### 1d. Route cleanup
-- **File:** `src/App.tsx`
-- Keep `/my-pt-sessions` route but add a redirect to `/my-classes?tab=appointments` for backward compatibility
-- Keep `/book-benefit` route as-is (still accessible from My Benefits page)
+**c. `src/types/membership.ts`** - Update `PlanBenefit` type to include the joined `benefit_types` field.
 
 ---
 
-## Module 2: Frozen Dashboard UI (Priority 2)
+## 2. Convert "Add Locker" Dialog to Drawer (Priority: MEDIUM)
 
-**Current State:** The MemberDashboard does not check for `activeMembership?.status === 'frozen'`. The useMemberData hook already fetches memberships with `status in ('active', 'frozen')`, so the data is available.
+**Current State:** `Lockers.tsx` lines 125-206 use a `Dialog` for "Add Locker". The "Quick Freeze" at `QuickFreezeDialog.tsx` also uses a `Dialog`.
 
-**Changes:**
+**Fix:**
 
-### 2a. Update dashboard for frozen state
-- **File:** `src/pages/MemberDashboard.tsx`
-- Add `const isFrozen = activeMembership?.status === 'frozen';`
-- **Status Badge (top-right):** If frozen, show a blue "Membership Frozen" badge with Snowflake icon instead of green "Active Membership"
-- **Membership Status stat card:** If frozen, show "Membership Paused" instead of "364 days remaining"
-- **Alert Card:** If frozen, render a prominent blue alert card at the top with: "Your membership is currently frozen. Gym access and bookings are disabled." and a "Request Unfreeze" button linking to `/my-requests`
-- **Quick Action cards:** If frozen, gray out "Book a Class" and disable the link. Replace with a disabled state showing a lock icon
-- **Membership Details card:** Show "Status: Frozen" with a blue badge and snowflake icon
+**a. `src/pages/Lockers.tsx`** - Replace the inline `Dialog` for "Add Locker" with a `Sheet` (right-side drawer) matching the Vuexy standard. Add an `is_chargeable` toggle with conditional `monthly_fee` input.
 
-### 2b. No changes needed to MemberRequests
-The unfreeze request flow already exists in `src/pages/MemberRequests.tsx` with the `isFrozen` check and unfreeze Sheet. The dashboard just needs to link there.
+**b. `src/components/members/QuickFreezeDialog.tsx`** - Convert from `Dialog` to `Sheet` component. Rename to `QuickFreezeDrawer.tsx`. Update imports in `Members.tsx`.
+
+**c. Database:** The `lockers` table already has `monthly_fee` (decimal). No `is_chargeable` column needed -- it can be inferred (`monthly_fee > 0`). No migration required.
 
 ---
 
-## Module 3: Member Referral System (Priority 3)
+## 3. Add "Benefits & Usage" Tab to Member Profile Drawer (Priority: MEDIUM)
 
-**Current State:** The admin Referrals page exists at `/referrals`. The `referrals` table has `referral_code`, `referrer_member_id`, `referred_member_id`, and `status`. There is a `referral_rewards` table. No member-facing referral page exists. Members don't have a stored referral code.
+**Current State:** `MemberProfileDrawer.tsx` has 6 tabs (Overview, Plan, Body, Pay, Rewards, Activity). Benefit tracking is a standalone page.
 
-**Changes:**
+**Fix:**
 
-### 3a. Create Member Referral Page
-- **New File:** `src/pages/MemberReferrals.tsx`
-- Generate a referral code from the member's name + year (e.g., "KULDEEP-2026") or use the member_code
-- **Share Section:**
-  - "Copy Link" button that copies a URL with the referral code
-  - "Share on WhatsApp" button that opens `https://wa.me/?text=...` with a pre-filled invite message
-- **Tracker Widget:** 3 stat cards showing:
-  - Referrals Sent (count from referrals table where referrer = current member)
-  - Successful Signups (count where status = 'converted')
-  - Rewards Earned (sum from referral_rewards)
-- **Referral History:** List of referrals with status badges
-- **Rewards Section:** List of rewards with claim buttons (reuse existing `claimReward` service)
+**a. `src/components/members/MemberProfileDrawer.tsx`** - Add a 7th tab: "Benefits". This tab will:
+- Show entitlements from the member's active plan (read from `plan_benefits` joined with `benefit_types`)
+- Show usage history from `benefit_usage` table
+- Include a "Log Usage" button that opens the existing `RecordBenefitUsageDrawer`
 
-### 3b. Add route
-- **File:** `src/App.tsx`
-- Add `/my-referrals` route with member role protection
-
-### 3c. Add to sidebar
-- **File:** `src/config/menu.ts`
-- Add "Refer & Earn" with Gift icon under the Services section of memberMenuConfig
-
-### 3d. Add to dashboard
-- **File:** `src/pages/MemberDashboard.tsx`
-- Optionally add a "Refer & Earn" quick action card linking to `/my-referrals`
+**b. `src/config/menu.ts`** - Remove "Benefit Tracking" from the admin sidebar (`adminMenuConfig` line 164) and staff sidebar (line 117). The standalone page stays accessible via URL for backward compatibility but is no longer in navigation.
 
 ---
 
-## Database Changes
+## 4. Fix Empty Booking Page (Priority: HIGH)
 
-**No migrations required.** All tables (referrals, referral_rewards, members, memberships, benefit_slots, facilities) already exist with the needed columns. The gender filter for facilities is already implemented in BookBenefitSlot.
+**Current State:** The `MemberClassBooking.tsx` page already has 3 tabs: Group Classes, Recovery Zone, and PT Sessions. The Recovery Zone tab queries `benefit_slots` with gender filtering. The Group Classes tab queries `classes` filtered by date.
+
+**Diagnosis:** The "No classes scheduled" message appears because:
+- Classes are filtered by the selected date (defaults to today)
+- If no classes are scheduled for today at the member's branch, the page shows empty
+- The Recovery Zone tab requires `benefit_slots` to be pre-created for each date
+
+**Fix:**
+
+**a. `src/pages/MemberClassBooking.tsx`** - Improve the Group Classes empty state to be more helpful (show "No classes for [date]. Try another day." instead of generic message). Also ensure the tab defaults intelligently -- if no classes exist but slots do, default to Recovery Zone tab.
+
+**b. Recovery Zone enhancement:** Currently filters slots correctly by gender. Add a fallback message when no slots exist: "No recovery slots available. Contact staff to schedule." Also show the member's remaining benefit credits above the slots list so they know their balance before booking.
 
 ---
 
 ## Files Summary
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/MemberClassBooking.tsx` | Major edit | Add 3-tab layout, embed Recovery Zone and PT Sessions |
-| `src/config/menu.ts` | Edit | Rename sidebar item, remove PT Sessions, add Refer & Earn |
-| `src/pages/MemberDashboard.tsx` | Edit | Add frozen state UI, rename quick action, add referral card |
-| `src/pages/MemberReferrals.tsx` | New | Member-facing referral + rewards page |
-| `src/App.tsx` | Edit | Add /my-referrals route, redirect /my-pt-sessions |
+| Priority | File | Change |
+|----------|------|--------|
+| 1 | `src/services/planService.ts` | Join `benefit_types` in plan queries |
+| 1 | `src/pages/Plans.tsx` | Display real benefit names instead of enum codes |
+| 1 | `src/types/membership.ts` | Add `benefit_types` to PlanBenefit type |
+| 2 | `src/pages/Lockers.tsx` | Convert Add Locker Dialog to Sheet drawer |
+| 2 | `src/components/members/QuickFreezeDialog.tsx` | Convert to Sheet, rename to QuickFreezeDrawer |
+| 2 | `src/pages/Members.tsx` | Update QuickFreezeDialog import |
+| 3 | `src/components/members/MemberProfileDrawer.tsx` | Add Benefits & Usage tab |
+| 3 | `src/config/menu.ts` | Remove Benefit Tracking from sidebars |
+| 4 | `src/pages/MemberClassBooking.tsx` | Better empty states, show benefit credits, smarter default tab |
