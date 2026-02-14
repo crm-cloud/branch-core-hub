@@ -1,162 +1,70 @@
 
 
-# Book & Schedule: Smart Agenda Redesign
+# Fix: Facility Slot Generation, 409 Conflict, and Recovery Zone
 
-## Problem Summary
+## Root Cause Analysis
 
-The booking page has three issues:
-- **Recovery slots show empty** because the `benefit_slots` table has zero rows. Facilities (Ice Bath M/F, Sauna M/F) exist, and settings are configured (6 AM - 10 PM, 30-min slots), but no code auto-generates daily slots.
-- **Date-picker friction** forces users to click through days with no content.
-- **Classes, recovery, and PT are siloed** into separate tabs instead of a unified timeline.
+### 1. The 409 Conflict (Benefit Settings)
+The `benefit_settings` table has a UNIQUE constraint on `(branch_id, benefit_type)`. Since all custom benefit types (Ice Bath, Sauna M, Sauna F) map to the enum value `'other'` via `safeBenefitEnum()`, only ONE settings row can exist per branch for all custom types. Ice Bath settings saved first; Sauna settings fail with 409 because they also try to insert `benefit_type = 'other'` for the same branch.
 
-## Solution: Unified Smart Agenda Feed
+**Database fix:** Replace the unique constraint `(branch_id, benefit_type)` with `(branch_id, benefit_type_id)` since `benefit_type_id` is the real unique identifier for custom types. Also add a fallback unique on `(branch_id, benefit_type)` only WHERE `benefit_type_id IS NULL` (for legacy enum-only types). Simpler approach: drop the old constraint and add a new one on `(branch_id, COALESCE(benefit_type_id, benefit_type::text))`.
 
-### Architecture
+**Code fix:** Update `upsertBenefitSetting` in `benefitBookingService.ts` to always use the `benefit_type_id`-aware path (check-then-update/insert) instead of falling through to the raw upsert that triggers the constraint.
 
-Replace the 3-tab layout with a single scrollable feed that merges all bookable items (classes + facility slots + PT sessions) into a chronological, day-grouped list for the next 7 days.
+### 2. Empty Recovery Zone (No Sauna Slots)
+Currently in the database:
+- 4 active facilities: Ice Bath M, Ice Bath F, Sauna Room Female, Sauna Room Male
+- Only 1 `benefit_settings` row exists (for Ice Bath, benefit_type_id `977dcc42...`)
+- Sauna M (benefit_type_id `bbdd063c`) and Sauna F (benefit_type_id `b712228b`) have NO settings rows
+- `ensureSlotsForDateRange` skips facilities with no matching settings
+- Result: 0 benefit_slots generated, Recovery Zone is empty
 
-### File Changes
+**Fix:** After fixing the 409 conflict, the admin can save Sauna settings. But we also need a fallback: if a facility has no specific settings, `ensureSlotsForDateRange` should use sensible defaults (6 AM - 10 PM, 30 min slots) from the branch or gym-wide config.
 
-**File 1: `src/pages/MemberClassBooking.tsx`** (Full rewrite of the page)
-
-The entire page gets replaced with the Smart Agenda layout:
-
-**Top Bar: Quick Filter Chips**
-- Filter pills: `[All]` `[Recovery]` `[Classes]` `[PT]`
-- A small calendar icon button (top-right) opens a date-picker popover to jump to a specific day
-- A "My Bookings" toggle/button to view only existing bookings
-
-**Main View: The Unified Feed**
-- Fetches 3 data sources for the next 7 days in parallel:
-  1. `classes` table (group classes)
-  2. `benefit_slots` table with facility join (recovery slots)
-  3. `pt_sessions` table (PT appointments)
-- Merges all items into a single array, sorted by date+time
-- Groups items by day with sticky headers: "Today, Feb 14", "Tomorrow, Feb 15", etc.
-- Gender filter applied automatically: queries `profiles.gender` for the user, then filters facility slots where `facility.gender_access` matches (male/unisex or female/unisex)
-- Conflict filter: hides slots the user has already booked (via cross-referencing `class_bookings` and `benefit_bookings`)
-
-**Card Design (each feed item):**
-```
-[10:00 AM]  Ice Bath - Male           [5 spots]  [Book]
-            Recovery | 30 min
-[11:00 AM]  HIIT Workout              [12 spots] [Book]
-            Class | 60 min | Coach Jay
-[02:00 PM]  PT Session                [Scheduled]
-            With Coach Ravi | 45 min
-```
-
-- Time in bold left column
-- Title + category badge (Recovery/Class/PT)
-- Spots remaining or status
-- "Book" button on right (or "Cancel" if already booked, or "Scheduled" badge for PT)
-
-**Auto-generation of Recovery Slots:**
-- When the Recovery data is fetched, the query checks `benefit_slots` for each day in the 7-day window
-- If a day has zero slots AND `benefit_settings.is_slot_booking_enabled = true`, the system calls `generateDailySlots()` from `benefitBookingService.ts` to create them on-the-fly
-- This runs per-facility: for each active facility, it generates slots using the operating hours from `benefit_settings`, linking each slot to the correct `facility_id` and `benefit_type_id`
-
-**File 2: `src/services/benefitBookingService.ts`** (Minor update)
-
-Update `generateDailySlots` to accept a `facility_id` parameter so each generated slot links to the correct physical facility (Ice Bath M, Sauna F, etc.). Currently the function only sets `benefit_type_id` but not `facility_id`.
-
-Add a new helper function `ensureSlotsForDateRange`:
-```typescript
-export async function ensureSlotsForDateRange(
-  branchId: string,
-  startDate: string,
-  endDate: string
-): Promise<void>
-```
-This function:
-1. Fetches all active facilities for the branch (with their `benefit_type_id`)
-2. Fetches matching `benefit_settings` for each benefit type
-3. For each day in the range, checks if slots already exist for each facility
-4. If not, generates slots using `generateDailySlots` with the facility's settings
-5. Sets `facility_id` on each generated slot
-
-**No other files need changes.** The sidebar menu, routes, and dashboard links remain the same since the page URL stays `/my-classes`.
+### 3. Console 400 Errors
+The 400 errors visible in the screenshot come from multiple failed API calls. These are likely from pages loading with invalid parameters or missing relationships. The PT sessions query in `MemberClassBooking.tsx` is correctly guarded by `ptPackageIds.length > 0`, so those 400s likely come from other pages loaded in the session.
 
 ---
 
-## Technical Details
+## Implementation Plan
 
-### Data Fetching Strategy
+### Step 1: Database Migration
+Drop the old unique constraint and create a new one that handles both enum-based and UUID-based benefit types:
 
-Three parallel queries run on mount, covering 7 days from today:
-
-1. **Classes query** (existing, just widen to 7 days instead of 1):
 ```sql
-SELECT *, trainer:trainers(id, user_id), bookings:class_bookings(id, member_id, status)
-FROM classes
-WHERE branch_id = ? AND is_active = true
-  AND scheduled_at >= today AND scheduled_at < today+7
-ORDER BY scheduled_at
+-- Drop the old constraint that causes 409 conflicts
+ALTER TABLE benefit_settings 
+  DROP CONSTRAINT benefit_settings_branch_id_benefit_type_key;
+
+-- Add new unique constraint using benefit_type_id (primary key for custom types)
+-- For rows WITH a benefit_type_id, uniqueness is on (branch_id, benefit_type_id)
+CREATE UNIQUE INDEX benefit_settings_branch_type_id_key 
+  ON benefit_settings (branch_id, benefit_type_id) 
+  WHERE benefit_type_id IS NOT NULL;
+
+-- For legacy rows WITHOUT a benefit_type_id, keep uniqueness on (branch_id, benefit_type)
+CREATE UNIQUE INDEX benefit_settings_branch_type_enum_key 
+  ON benefit_settings (branch_id, benefit_type) 
+  WHERE benefit_type_id IS NULL;
 ```
 
-2. **Recovery slots query** (existing, widen + add facility join):
-```sql
-SELECT *, benefit_type_info:benefit_types(...), facility:facilities(...)
-FROM benefit_slots
-WHERE branch_id = ? AND is_active = true
-  AND slot_date >= today AND slot_date <= today+6
-ORDER BY slot_date, start_time
-```
-Post-filter: remove slots where `facility.gender_access` does not match user gender.
+### Step 2: Fix `upsertBenefitSetting` in `src/services/benefitBookingService.ts`
+Simplify the function: ALWAYS use the check-then-update/insert pattern. Remove the fallback raw upsert that relies on the old `(branch_id, benefit_type)` constraint.
 
-3. **PT sessions query** (existing, from PTSessionsTab):
-```sql
-SELECT * FROM pt_sessions
-WHERE member_pt_package_id IN (user's packages)
-  AND scheduled_at >= today AND status = 'scheduled'
-ORDER BY scheduled_at
-```
+### Step 3: Fix `ensureSlotsForDateRange` in `src/services/benefitBookingService.ts`
+Add a fallback for facilities with no matching `benefit_settings` row. If no settings exist for a facility's `benefit_type_id`, use default values (6:00-22:00, 30 min slots, capacity from facility). This ensures slots are always generated for active facilities.
 
-4. **Existing bookings** (to mark "already booked" items):
-   - `class_bookings` where member_id = current and status = 'booked'
-   - `benefit_bookings` where member_id = current and status in ('booked','confirmed')
-
-### Merge + Group Logic
-
-All items normalized to a common shape:
-```typescript
-interface AgendaItem {
-  id: string;
-  type: 'class' | 'recovery' | 'pt';
-  datetime: Date;       // for classes/PT: scheduled_at; for slots: slot_date+start_time
-  endTime?: string;
-  title: string;
-  subtitle: string;     // trainer name, facility name, etc.
-  duration: number;
-  spotsLeft?: number;
-  capacity?: number;
-  isBooked: boolean;
-  bookingId?: string;    // if already booked, for cancel action
-  rawData: any;          // original record for booking mutations
-}
-```
-
-Grouped by day using `format(item.datetime, 'yyyy-MM-dd')` as key.
-
-### Auto-Slot Generation
-
-Triggered inside the recovery query's `queryFn`:
-1. Call `ensureSlotsForDateRange(branchId, today, today+6)`
-2. Then fetch the slots normally
-3. This ensures slots exist before the user sees the page
-4. Uses `staleTime: Infinity` on the generation call to avoid re-generating on every render
-
-### Empty State
-
-Since we fetch 7 days of data across 3 sources, the empty state is extremely rare. If truly empty:
-- "No sessions available this week. Contact your gym to check the schedule."
+### Step 4: Fix `MemberClassBooking.tsx` 
+- The `ensureSlotsForDateRange` query currently has `retry: false`. If it silently fails (e.g., due to RLS or a missing settings row), the Recovery Zone stays empty forever. Add error handling so the slots query still runs even if auto-generation partially fails.
+- Make the recovery slots query NOT dependent on `slotsReady === true` as a hard gate. Instead, fetch whatever slots exist and attempt generation in the background.
 
 ---
 
-## Summary
+## Files Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/MemberClassBooking.tsx` | Full rewrite: Smart Agenda feed with filter chips, 7-day merged timeline, auto-slot generation |
-| `src/services/benefitBookingService.ts` | Add `facility_id` to slot generation, add `ensureSlotsForDateRange` helper |
+| Migration SQL | Drop old unique constraint, add two partial unique indexes |
+| `src/services/benefitBookingService.ts` | Fix `upsertBenefitSetting` to always use check-then-upsert; fix `ensureSlotsForDateRange` to use defaults when no settings row exists |
+| `src/pages/MemberClassBooking.tsx` | Remove hard gate on `slotsReady` for recovery query; add error resilience |
 
