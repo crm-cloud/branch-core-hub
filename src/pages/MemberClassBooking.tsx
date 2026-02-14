@@ -89,11 +89,16 @@ export default function MemberClassBooking() {
   });
 
   // ─── Auto-generate recovery slots ───
-  const { data: slotsReady } = useQuery({
+  // Auto-generate recovery slots in background (fire-and-forget style)
+  useQuery({
     queryKey: ['ensure-slots', member?.branch_id, todayStr, endDateStr],
     enabled: !!member?.branch_id,
     queryFn: async () => {
-      await ensureSlotsForDateRange(member!.branch_id, todayStr, endDateStr);
+      try {
+        await ensureSlotsForDateRange(member!.branch_id, todayStr, endDateStr);
+      } catch (e) {
+        console.warn('Slot auto-generation failed (will still show existing slots):', e);
+      }
       return true;
     },
     staleTime: Infinity,
@@ -132,8 +137,8 @@ export default function MemberClassBooking() {
 
   // ─── Fetch Recovery Slots (7 days) ───
   const { data: recoverySlots = [], isLoading: slotsLoading } = useQuery({
-    queryKey: ['agenda-slots', member?.branch_id, todayStr, slotsReady],
-    enabled: !!member && slotsReady === true,
+    queryKey: ['agenda-slots', member?.branch_id, todayStr],
+    enabled: !!member,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('benefit_slots')
