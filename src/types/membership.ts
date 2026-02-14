@@ -15,7 +15,9 @@ export type WalletTxnType = Database['public']['Enums']['wallet_txn_type'];
 // Table types
 export type Branch = Database['public']['Tables']['branches']['Row'];
 export type MembershipPlan = Database['public']['Tables']['membership_plans']['Row'];
-export type PlanBenefit = Database['public']['Tables']['plan_benefits']['Row'];
+export type PlanBenefit = Database['public']['Tables']['plan_benefits']['Row'] & {
+  benefit_types?: { id: string; name: string; code: string; icon: string | null } | null;
+};
 export type Member = Database['public']['Tables']['members']['Row'];
 export type Membership = Database['public']['Tables']['memberships']['Row'];
 export type MembershipFreeDay = Database['public']['Tables']['membership_free_days']['Row'];

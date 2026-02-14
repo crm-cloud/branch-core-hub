@@ -242,7 +242,7 @@ export default function PlansPage() {
                           {plan.plan_benefits.slice(0, 4).map((benefit) => (
                             <div key={benefit.id} className="flex items-center gap-2 text-sm">
                               <Check className="h-3.5 w-3.5 text-primary" />
-                              <span>{getBenefitLabel(benefit.benefit_type)}</span>
+                              <span>{benefit.benefit_types?.name || getBenefitLabel(benefit.benefit_type)}</span>
                             </div>
                           ))}
                           {plan.plan_benefits.length > 4 && (

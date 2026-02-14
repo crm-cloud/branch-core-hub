@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +17,7 @@ import { Snowflake, Calendar, AlertTriangle } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface QuickFreezeDialogProps {
+interface QuickFreezeDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   member: {
@@ -33,13 +33,13 @@ interface QuickFreezeDialogProps {
   onSuccess: () => void;
 }
 
-export function QuickFreezeDialog({
+export function QuickFreezeDrawer({
   open,
   onOpenChange,
   member,
   activeMembership,
   onSuccess,
-}: QuickFreezeDialogProps) {
+}: QuickFreezeDrawerProps) {
   const { user } = useAuth();
   const [days, setDays] = useState(7);
   const [reason, setReason] = useState('');
@@ -57,7 +57,6 @@ export function QuickFreezeDialog({
 
     setIsSubmitting(true);
     try {
-      // Create freeze history record
       const { error: freezeError } = await supabase
         .from('membership_freeze_history')
         .insert({
@@ -73,7 +72,6 @@ export function QuickFreezeDialog({
 
       if (freezeError) throw freezeError;
 
-      // Update membership status to frozen and extend end date
       const { error: membershipError } = await supabase
         .from('memberships')
         .update({
@@ -97,19 +95,19 @@ export function QuickFreezeDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
             <Snowflake className="h-5 w-5 text-info" />
             Quick Freeze Membership
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             This will immediately freeze the membership without requiring approval.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-6">
           {/* Member Info */}
           <div className="rounded-lg bg-muted/50 p-3 space-y-1">
             <p className="text-sm font-medium">{member.profiles?.full_name || 'Member'}</p>
@@ -177,15 +175,15 @@ export function QuickFreezeDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <SheetFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button onClick={handleFreeze} disabled={isSubmitting}>
             {isSubmitting ? 'Freezing...' : 'Freeze Now'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

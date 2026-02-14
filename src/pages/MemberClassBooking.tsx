@@ -115,7 +115,7 @@ function RecoveryZoneTab({ member, activeMembership }: { member: any; activeMemb
       {slotsLoading ? (
         <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
       ) : slots.length === 0 ? (
-        <Card><CardContent className="py-12 text-center"><Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">No slots available for this day</p></CardContent></Card>
+        <Card><CardContent className="py-12 text-center"><Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-semibold mb-1">No recovery slots for {format(selectedDate, 'EEEE, dd MMM')}</h3><p className="text-sm text-muted-foreground">No slots available. Contact staff to schedule recovery sessions.</p></CardContent></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {slots.map((slot: any) => {
@@ -369,7 +369,7 @@ export default function MemberClassBooking() {
                 {classesLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
                 ) : classes.length === 0 ? (
-                  <Card><CardContent className="py-12 text-center"><Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">No classes scheduled for this day</p></CardContent></Card>
+                  <Card><CardContent className="py-12 text-center"><Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-semibold mb-1">No classes for {format(selectedDate, 'EEEE, dd MMM')}</h3><p className="text-sm text-muted-foreground">Try selecting another day, or check the Recovery Zone for facility bookings.</p></CardContent></Card>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {classes.map((classItem: any) => {

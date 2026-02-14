@@ -9,7 +9,7 @@ import { AddMemberDrawer } from '@/components/members/AddMemberDrawer';
 import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershipDrawer';
 import { PurchasePTDrawer } from '@/components/members/PurchasePTDrawer';
 import { MemberProfileDrawer } from '@/components/members/MemberProfileDrawer';
-import { QuickFreezeDialog } from '@/components/members/QuickFreezeDialog';
+import { QuickFreezeDrawer } from '@/components/members/QuickFreezeDrawer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -556,7 +556,7 @@ export default function MembersPage() {
               onPurchasePT={() => { setProfileOpen(false); setPurchasePTOpen(true); }}
             />
             {selectedMembershipForFreeze && (
-              <QuickFreezeDialog
+              <QuickFreezeDrawer
                 open={quickFreezeOpen}
                 onOpenChange={setQuickFreezeOpen}
                 member={selectedMember}

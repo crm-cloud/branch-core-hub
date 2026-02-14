@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranches } from '@/hooks/useBranches';
 import { Lock, Plus, User, Key, DollarSign, Package } from 'lucide-react';
@@ -20,6 +22,7 @@ import { AssignLockerDrawer } from '@/components/lockers/AssignLockerDrawer';
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),
   size: z.string().optional(),
+  is_chargeable: z.boolean().default(false),
   monthly_fee: z.coerce.number().min(0).optional(),
   notes: z.string().optional(),
 });
@@ -43,6 +46,7 @@ export default function LockersPage() {
     defaultValues: {
       locker_number: '',
       size: 'medium',
+      is_chargeable: false,
       monthly_fee: 0,
       notes: '',
     },
@@ -54,7 +58,7 @@ export default function LockersPage() {
       branch_id: branchId,
       locker_number: data.locker_number,
       size: data.size,
-      monthly_fee: data.monthly_fee,
+      monthly_fee: data.is_chargeable ? (data.monthly_fee || 0) : 0,
       notes: data.notes,
     });
     setIsCreateOpen(false);
@@ -122,20 +126,19 @@ export default function LockersPage() {
               Bulk Create
             </Button>
 
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Locker
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Locker</DialogTitle>
-                  <DialogDescription>Create a new locker for the branch</DialogDescription>
-                </DialogHeader>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Locker
+            </Button>
+
+            <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Add New Locker</SheetTitle>
+                  <SheetDescription>Create a new locker for the branch</SheetDescription>
+                </SheetHeader>
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4">
+                  <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4 mt-6">
                     <FormField
                       control={form.control}
                       name="locker_number"
@@ -173,17 +176,34 @@ export default function LockersPage() {
                     />
                     <FormField
                       control={form.control}
-                      name="monthly_fee"
+                      name="is_chargeable"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Monthly Fee (₹0 for free)</FormLabel>
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base">Is Chargeable?</FormLabel>
+                            <p className="text-sm text-muted-foreground">Enable monthly rental fee for this locker</p>
+                          </div>
                           <FormControl>
-                            <Input type="number" placeholder="0" {...field} />
+                            <Switch checked={field.value} onCheckedChange={field.onChange} />
                           </FormControl>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
+                    {form.watch('is_chargeable') && (
+                      <FormField
+                        control={form.control}
+                        name="monthly_fee"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Monthly Rental Fee (₹)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="500" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={form.control}
                       name="notes"
@@ -202,8 +222,8 @@ export default function LockersPage() {
                     </Button>
                   </form>
                 </Form>
-              </DialogContent>
-            </Dialog>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
 

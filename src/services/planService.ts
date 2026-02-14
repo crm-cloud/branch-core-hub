@@ -4,7 +4,7 @@ import type { MembershipPlanWithBenefits, PlanBenefit, BenefitType, FrequencyTyp
 export async function fetchPlans(branchId?: string, includeInactive = false) {
   let query = supabase
     .from('membership_plans')
-    .select('*, plan_benefits(*)')
+    .select('*, plan_benefits(*, benefit_types:benefit_type_id(id, name, code, icon))')
     .order('display_order', { ascending: true });
 
   if (branchId) {
@@ -23,7 +23,7 @@ export async function fetchPlans(branchId?: string, includeInactive = false) {
 export async function fetchPlan(planId: string) {
   const { data, error } = await supabase
     .from('membership_plans')
-    .select('*, plan_benefits(*)')
+    .select('*, plan_benefits(*, benefit_types:benefit_type_id(id, name, code, icon))')
     .eq('id', planId)
     .single();
 
