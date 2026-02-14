@@ -123,15 +123,34 @@ export async function upsertBenefitSetting(setting: Partial<BenefitSettings> & {
     }
   }
 
-  // Fallback: original upsert for standard enum types
-  const { data, error } = await supabase
+  // Fallback for standard enum types: check-then-update/insert
+  const { data: existing } = await supabase
     .from("benefit_settings")
-    .upsert(setting, { onConflict: "branch_id,benefit_type" })
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+    .select("id")
+    .eq("branch_id", setting.branch_id)
+    .eq("benefit_type", setting.benefit_type)
+    .is("benefit_type_id", null)
+    .maybeSingle();
+
+  if (existing) {
+    const { id: _id, ...updateData } = setting;
+    const { data, error } = await supabase
+      .from("benefit_settings")
+      .update(updateData)
+      .eq("id", existing.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } else {
+    const { data, error } = await supabase
+      .from("benefit_settings")
+      .insert(setting)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
 }
 
 // ========== SLOTS ==========
@@ -227,12 +246,12 @@ export async function ensureSlotsForDateRange(
     .eq("is_active", true);
   if (facError || !facilities?.length) return;
 
-  // 2. Fetch benefit settings for the branch
-  const { data: allSettings, error: setError } = await supabase
+  // 2. Fetch benefit settings for the branch (optional – we use defaults if missing)
+  const { data: allSettings } = await supabase
     .from("benefit_settings")
     .select("*")
     .eq("branch_id", branchId);
-  if (setError || !allSettings?.length) return;
+  const settingsList = allSettings || [];
 
   // 3. Get existing slot counts per facility+date
   const { data: existingSlots } = await supabase
@@ -257,33 +276,38 @@ export async function ensureSlotsForDateRange(
   }
 
   for (const facility of facilities) {
-    // Find matching settings by benefit_type_id
-    const settings = allSettings.find(
-      s => s.benefit_type_id === facility.benefit_type_id && s.is_slot_booking_enabled
+    // Find matching settings by benefit_type_id, or use sensible defaults
+    const matchedSettings = settingsList.find(
+      s => s.benefit_type_id === facility.benefit_type_id
     );
-    if (!settings) continue;
+    // Skip only if settings explicitly disable slot booking
+    if (matchedSettings && matchedSettings.is_slot_booking_enabled === false) continue;
 
     for (const date of dates) {
       if (existingSet.has(`${facility.id}::${date}`)) continue;
 
+      const s = matchedSettings;
       const settingsObj: BenefitSettings = {
-        ...settings,
-        is_slot_booking_enabled: settings.is_slot_booking_enabled ?? false,
-        slot_duration_minutes: settings.slot_duration_minutes ?? 30,
-        booking_opens_hours_before: settings.booking_opens_hours_before ?? 24,
-        cancellation_deadline_minutes: settings.cancellation_deadline_minutes ?? 60,
-        no_show_policy: (settings.no_show_policy ?? 'charge_penalty') as NoShowPolicy,
-        no_show_penalty_amount: settings.no_show_penalty_amount ?? 0,
-        max_bookings_per_day: settings.max_bookings_per_day ?? 1,
-        buffer_between_sessions_minutes: settings.buffer_between_sessions_minutes ?? 0,
-        operating_hours_start: settings.operating_hours_start ?? '06:00:00',
-        operating_hours_end: settings.operating_hours_end ?? '22:00:00',
-        capacity_per_slot: facility.capacity || settings.capacity_per_slot || 1,
+        id: s?.id || '',
+        branch_id: branchId,
+        benefit_type: (s?.benefit_type || 'other') as BenefitType,
+        benefit_type_id: s?.benefit_type_id || facility.benefit_type_id,
+        is_slot_booking_enabled: s?.is_slot_booking_enabled ?? true,
+        slot_duration_minutes: s?.slot_duration_minutes ?? 30,
+        booking_opens_hours_before: s?.booking_opens_hours_before ?? 24,
+        cancellation_deadline_minutes: s?.cancellation_deadline_minutes ?? 60,
+        no_show_policy: (s?.no_show_policy ?? 'charge_penalty') as NoShowPolicy,
+        no_show_penalty_amount: s?.no_show_penalty_amount ?? 0,
+        max_bookings_per_day: s?.max_bookings_per_day ?? 1,
+        buffer_between_sessions_minutes: s?.buffer_between_sessions_minutes ?? 0,
+        operating_hours_start: s?.operating_hours_start ?? '06:00:00',
+        operating_hours_end: s?.operating_hours_end ?? '22:00:00',
+        capacity_per_slot: facility.capacity || s?.capacity_per_slot || 1,
       };
 
       await generateDailySlots(
         branchId,
-        settings.benefit_type,
+        settingsObj.benefit_type,
         date,
         settingsObj,
         facility.benefit_type_id ?? undefined,
