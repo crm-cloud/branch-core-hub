@@ -10,11 +10,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Calendar, Clock, CreditCard, Dumbbell, FileText, 
-  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake
+  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { getBenefitIcon } from '@/lib/benefitIcons';
 
 export default function MemberDashboard() {
   const { profile } = useAuth();
@@ -44,6 +45,88 @@ export default function MemberDashboard() {
         .maybeSingle();
       if (error) { console.error('Error fetching locker:', error); return null; }
       return data;
+    },
+  });
+
+  // Fetch benefit entitlements for active membership
+  const { data: entitlements } = useQuery({
+    queryKey: ['my-entitlements', activeMembership?.id],
+    enabled: !!activeMembership?.id,
+    queryFn: async () => {
+      // Get plan benefits with benefit type details
+      const { data: planBenefits, error: pbErr } = await supabase
+        .from('plan_benefits')
+        .select('*, benefit_types:benefit_type_id(name, icon, code, is_bookable)')
+        .eq('plan_id', activeMembership!.plan_id);
+      
+      if (pbErr) { console.error('Error fetching plan benefits:', pbErr); return []; }
+      if (!planBenefits || planBenefits.length === 0) return [];
+
+      // Get usage for this membership
+      const { data: usageData, error: uErr } = await supabase
+        .from('benefit_usage')
+        .select('benefit_type_id, usage_count')
+        .eq('membership_id', activeMembership!.id);
+
+      if (uErr) { console.error('Error fetching usage:', uErr); }
+
+      // Aggregate usage by benefit_type_id
+      const usageMap: Record<string, number> = {};
+      (usageData || []).forEach((u: any) => {
+        const key = u.benefit_type_id || 'unknown';
+        usageMap[key] = (usageMap[key] || 0) + (u.usage_count || 1);
+      });
+
+      // Calculate membership duration in months
+      const startDate = new Date(activeMembership!.start_date);
+      const endDate = new Date(activeMembership!.end_date);
+      const durationDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const durationMonths = Math.max(1, Math.round(durationDays / 30));
+
+      return planBenefits.map((pb: any) => {
+        const bt = pb.benefit_types;
+        const typeId = pb.benefit_type_id;
+        const used = usageMap[typeId] || 0;
+        const frequency = pb.frequency || 'per_membership';
+        const limitCount = pb.limit_count;
+
+        let totalAllowed: number | null = null; // null = unlimited
+        let periodLabel = '';
+
+        if (!limitCount || limitCount <= 0) {
+          // Unlimited
+          totalAllowed = null;
+          periodLabel = '';
+        } else if (frequency === 'per_membership') {
+          // Total pool
+          totalAllowed = limitCount * durationMonths;
+          periodLabel = 'total';
+        } else if (frequency === 'daily') {
+          totalAllowed = limitCount;
+          periodLabel = 'per day';
+        } else if (frequency === 'weekly') {
+          totalAllowed = limitCount;
+          periodLabel = 'per week';
+        } else if (frequency === 'monthly') {
+          totalAllowed = limitCount;
+          periodLabel = 'per month';
+        } else {
+          totalAllowed = limitCount;
+          periodLabel = '';
+        }
+
+        return {
+          id: pb.id,
+          name: bt?.name || 'Benefit',
+          icon: bt?.icon || 'sparkles',
+          code: bt?.code || 'other',
+          isBookable: bt?.is_bookable || false,
+          used,
+          totalAllowed,
+          periodLabel,
+          frequency,
+        };
+      });
     },
   });
 
@@ -175,6 +258,65 @@ export default function MemberDashboard() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
+          {/* My Entitlements */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-accent" />
+                My Entitlements
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!activeMembership ? (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground mb-4">No active membership</p>
+                  <Button variant="outline" asChild><Link to="/my-requests">Get Membership</Link></Button>
+                </div>
+              ) : !entitlements || entitlements.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">No benefits configured for your plan</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {entitlements.map((ent: any) => {
+                    const IconComponent = getBenefitIcon(ent.icon || ent.code);
+                    const remaining = ent.totalAllowed !== null ? Math.max(0, ent.totalAllowed - ent.used) : null;
+                    
+                    return (
+                      <div key={ent.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-accent/10 flex items-center justify-center">
+                            <IconComponent className="h-4.5 w-4.5 text-accent" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{ent.name}</p>
+                            {ent.periodLabel && (
+                              <p className="text-xs text-muted-foreground capitalize">{ent.periodLabel}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {ent.totalAllowed === null ? (
+                            <Badge variant="outline" className="text-success border-success/30">Unlimited</Badge>
+                          ) : (
+                            <span className="text-sm font-semibold">
+                              {remaining} <span className="text-muted-foreground font-normal">/ {ent.totalAllowed}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!isFrozen && (
+                    <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                      <Link to="/my-classes">Book Now</Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Membership Details */}
           <Card className="border-border/50">
             <CardHeader>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { lockerService } from '@/services/lockerService';
@@ -28,13 +29,14 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
   const [isSearching, setIsSearching] = useState(false);
   const [memberHasFreeLocker, setMemberHasFreeLocker] = useState(false);
   const [checkingPlan, setCheckingPlan] = useState(false);
+  const [isChargeable, setIsChargeable] = useState(false);
+  const [rentalFee, setRentalFee] = useState(500);
 
   const handleMemberSearch = async () => {
     if (!memberSearch.trim() || !branchId) return;
     
     setIsSearching(true);
     try {
-      // Search by member_code first
       const { data: membersByCode } = await supabase
         .from('members')
         .select(`
@@ -47,7 +49,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         .ilike('member_code', `%${memberSearch}%`)
         .limit(10);
 
-      // Search by profile name, email, or phone
       const { data: membersByProfile } = await supabase
         .from('members')
         .select(`
@@ -60,7 +61,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         .not('user_id', 'is', null)
         .limit(50);
 
-      // Filter members whose profile matches the search
       const searchLower = memberSearch.toLowerCase();
       const filteredByProfile = (membersByProfile || []).filter((m) => {
         const profile = m.profiles as any;
@@ -72,7 +72,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         );
       });
 
-      // Combine and deduplicate results
       const allResults = [...(membersByCode || []), ...filteredByProfile];
       const uniqueResults = allResults.filter(
         (member, index, self) => index === self.findIndex((m) => m.id === member.id)
@@ -97,7 +96,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
       
       setCheckingPlan(true);
       try {
-        // Get active membership with plan
         const { data: membership } = await supabase
           .from('memberships')
           .select(`
@@ -118,11 +116,9 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           const plan = membership.membership_plans as any;
           const hasFreeLocker = plan?.includes_free_locker === true;
           
-          // If plan includes locker and locker size matches (or any size), grant free
           if (hasFreeLocker) {
             const planSize = plan?.free_locker_size;
             const lockerSize = locker?.size?.toLowerCase();
-            // Free if no size specified in plan OR sizes match
             setMemberHasFreeLocker(!planSize || !lockerSize || planSize === lockerSize);
           } else {
             setMemberHasFreeLocker(false);
@@ -149,10 +145,10 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
       const startDate = new Date().toISOString().split('T')[0];
       const endDate = new Date(Date.now() + assignMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
-      // If member's plan includes free locker, set fee to 0
-      const feeAmount = memberHasFreeLocker ? 0 : (locker.monthly_fee || 0) * assignMonths;
+      // Fee logic: plan free > not chargeable > user-set fee
+      const perMonthFee = memberHasFreeLocker ? 0 : (isChargeable ? rentalFee : 0);
+      const feeAmount = perMonthFee * assignMonths;
 
-      // Assign locker
       await lockerService.assignLocker({
         locker_id: locker.id,
         member_id: selectedMember.id,
@@ -161,7 +157,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         fee_amount: feeAmount,
       });
 
-      // Create invoice if fee > 0
       if (feeAmount > 0) {
         await lockerService.createLockerInvoice(
           selectedMember.id,
@@ -194,13 +189,14 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     setMemberSearch('');
     setAssignMonths(1);
     setMemberHasFreeLocker(false);
+    setIsChargeable(false);
+    setRentalFee(500);
   };
 
   if (!locker) return null;
 
-  const isFreeLocker = !locker.monthly_fee || locker.monthly_fee === 0;
-  const effectivelyFree = isFreeLocker || memberHasFreeLocker;
-  const totalAmount = effectivelyFree ? 0 : (locker.monthly_fee || 0) * assignMonths;
+  const effectivelyFree = memberHasFreeLocker || !isChargeable;
+  const totalAmount = effectivelyFree ? 0 : rentalFee * assignMonths;
 
   return (
     <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
@@ -208,14 +204,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         <SheetHeader>
           <SheetTitle>Assign Locker {locker.locker_number}</SheetTitle>
           <SheetDescription>
-            {isFreeLocker ? (
-              <span className="flex items-center gap-2 text-success">
-                <Gift className="w-4 h-4" />
-                Free Locker - No charges apply
-              </span>
-            ) : (
-              `Assign this locker to a member (₹${locker.monthly_fee}/month)`
-            )}
+            Assign this locker to a member. Configure rental charges below.
           </SheetDescription>
         </SheetHeader>
 
@@ -285,6 +274,11 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
             <div className="p-4 rounded-lg bg-accent/10 border border-accent/30">
               <p className="font-medium">Selected: {(selectedMember.profiles as any)?.full_name}</p>
               <p className="text-sm text-muted-foreground">{selectedMember.member_code}</p>
+              {memberHasFreeLocker && (
+                <Badge variant="outline" className="mt-2 text-success border-success/30">
+                  <Gift className="w-3 h-3 mr-1" /> Free locker included in plan
+                </Badge>
+              )}
             </div>
           )}
 
@@ -303,15 +297,40 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
             </Select>
           </div>
 
+          {/* Charge Toggle (hidden if plan includes free locker) */}
+          {!memberHasFreeLocker && (
+            <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base">Charge Monthly Rental?</Label>
+                <p className="text-sm text-muted-foreground">Enable rental fee for this assignment</p>
+              </div>
+              <Switch checked={isChargeable} onCheckedChange={setIsChargeable} />
+            </div>
+          )}
+
+          {/* Rental Fee Input */}
+          {isChargeable && !memberHasFreeLocker && (
+            <div className="space-y-2">
+              <Label>Rental Fee (₹ per month)</Label>
+              <Input
+                type="number"
+                value={rentalFee}
+                onChange={(e) => setRentalFee(Number(e.target.value))}
+                min={0}
+                placeholder="500"
+              />
+            </div>
+          )}
+
           {/* Total Amount or Free Assignment Message */}
-          {isFreeLocker ? (
+          {effectivelyFree ? (
             <div className="p-4 rounded-lg bg-success/10 border border-success/30">
               <div className="flex items-center gap-3">
                 <CheckCircle className="w-5 h-5 text-success" />
                 <div>
                   <p className="font-medium text-success">Free Assignment</p>
                   <p className="text-sm text-muted-foreground">
-                    No invoice will be generated for this locker
+                    {memberHasFreeLocker ? 'Included in membership plan' : 'No invoice will be generated'}
                   </p>
                 </div>
               </div>

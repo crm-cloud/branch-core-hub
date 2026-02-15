@@ -9,8 +9,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useBranches } from '@/hooks/useBranches';
-import { UserPlus, Link } from 'lucide-react';
+import { UserPlus, Link, Info } from 'lucide-react';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
+
+const DEPARTMENTS = ['Management', 'Fitness', 'Sales', 'Operations', 'Maintenance'];
+const POSITIONS = ['Gym Manager', 'Personal Trainer', 'Receptionist', 'Sales Rep', 'Cleaner'];
 
 interface AddEmployeeDrawerProps {
   open: boolean;
@@ -36,10 +39,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
     role: 'staff' as 'staff' | 'manager',
   });
 
-  // Form data for creating new user
+  // Form data for creating new user (no password - edge function handles it)
   const [newUserFormData, setNewUserFormData] = useState({
     email: '',
-    password: '',
     full_name: '',
     phone: '',
     branch_id: '',
@@ -55,14 +57,12 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
   const { data: availableUsers = [] } = useQuery({
     queryKey: ['available-users-for-employees'],
     queryFn: async () => {
-      // Get existing employee user IDs
       const { data: existingEmployees } = await supabase
         .from('employees')
         .select('user_id');
       
       const existingEmployeeIds = (existingEmployees || []).map((e) => e.user_id);
 
-      // Get member user IDs (employees should not be members)
       const { data: existingMembers } = await supabase
         .from('members')
         .select('user_id')
@@ -70,13 +70,11 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
       
       const existingMemberIds = (existingMembers || []).map((m) => m.user_id);
 
-      // Get all active profiles
       const { data: users } = await supabase
         .from('profiles')
         .select('id, email, full_name')
         .eq('is_active', true);
 
-      // Filter out users who are already employees or members
       return (users || []).filter((u) => 
         !existingEmployeeIds.includes(u.id) && 
         !existingMemberIds.includes(u.id)
@@ -116,19 +114,16 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
       if (error) throw error;
 
-      // Assign role to user
       await supabase.from('user_roles').insert({
         user_id: linkFormData.user_id,
         role: linkFormData.role,
       });
 
-      // Add to staff_branches for branch access
       await supabase.from('staff_branches').insert({
         user_id: linkFormData.user_id,
         branch_id: linkFormData.branch_id,
       });
 
-      // If manager, also add to branch_managers
       if (linkFormData.role === 'manager') {
         await supabase.from('branch_managers').insert({
           user_id: linkFormData.user_id,
@@ -151,18 +146,16 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
   const handleCreateNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserFormData.email || !newUserFormData.password || !newUserFormData.branch_id) {
-      toast.error('Please fill in all required fields');
+    if (!newUserFormData.email || !newUserFormData.branch_id) {
+      toast.error('Please fill in email and branch');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Create user via edge function (handles user creation, employee record, role, branch assignment)
       const { data: result, error: createError } = await supabase.functions.invoke('create-staff-user', {
         body: {
           email: newUserFormData.email,
-          password: newUserFormData.password,
           fullName: newUserFormData.full_name,
           phone: newUserFormData.phone,
           role: newUserFormData.role,
@@ -178,7 +171,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
       if (createError) throw createError;
       if (result?.error) throw new Error(result.error);
 
-      toast.success('Employee created successfully');
+      toast.success('Employee created! They will receive a password setup prompt on first login.');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       onOpenChange(false);
       resetForms();
@@ -204,7 +197,6 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
     });
     setNewUserFormData({
       email: '',
-      password: '',
       full_name: '',
       phone: '',
       branch_id: '',
@@ -240,9 +232,12 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
           {/* Create New User Tab */}
           <TabsContent value="new">
             <form onSubmit={handleCreateNew} className="space-y-4 py-4">
-              <div className="p-3 rounded-lg bg-info/10 border border-info/30 text-sm">
-                <p className="text-info font-medium">Create New User</p>
-                <p className="text-muted-foreground">This will create a new user account and employee record.</p>
+              <div className="p-3 rounded-lg bg-info/10 border border-info/30 text-sm flex items-start gap-2">
+                <Info className="h-4 w-4 text-info mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-info font-medium">Create New User</p>
+                  <p className="text-muted-foreground">The employee will receive a password setup prompt on their first login.</p>
+                </div>
               </div>
 
               {/* Avatar Upload */}
@@ -286,18 +281,6 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Password *</Label>
-                <Input
-                  type="password"
-                  value={newUserFormData.password}
-                  onChange={(e) => setNewUserFormData({ ...newUserFormData, password: e.target.value })}
-                  placeholder="Min 6 characters"
-                  required
-                  minLength={6}
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Branch *</Label>
@@ -337,19 +320,37 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Department</Label>
-                  <Input
-                    value={newUserFormData.department}
-                    onChange={(e) => setNewUserFormData({ ...newUserFormData, department: e.target.value })}
-                    placeholder="Operations"
-                  />
+                  <Select
+                    value={newUserFormData.department || 'none'}
+                    onValueChange={(value) => setNewUserFormData({ ...newUserFormData, department: value === 'none' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {DEPARTMENTS.map((dept) => (
+                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Position</Label>
-                  <Input
-                    value={newUserFormData.position}
-                    onChange={(e) => setNewUserFormData({ ...newUserFormData, position: e.target.value })}
-                    placeholder="Front Desk"
-                  />
+                  <Select
+                    value={newUserFormData.position || 'none'}
+                    onValueChange={(value) => setNewUserFormData({ ...newUserFormData, position: value === 'none' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {POSITIONS.map((pos) => (
+                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -456,19 +457,37 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Department</Label>
-                  <Input
-                    value={linkFormData.department}
-                    onChange={(e) => setLinkFormData({ ...linkFormData, department: e.target.value })}
-                    placeholder="Operations"
-                  />
+                  <Select
+                    value={linkFormData.department || 'none'}
+                    onValueChange={(value) => setLinkFormData({ ...linkFormData, department: value === 'none' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {DEPARTMENTS.map((dept) => (
+                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Position</Label>
-                  <Input
-                    value={linkFormData.position}
-                    onChange={(e) => setLinkFormData({ ...linkFormData, position: e.target.value })}
-                    placeholder="Manager"
-                  />
+                  <Select
+                    value={linkFormData.position || 'none'}
+                    onValueChange={(value) => setLinkFormData({ ...linkFormData, position: value === 'none' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {POSITIONS.map((pos) => (
+                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
