@@ -6,11 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranches } from '@/hooks/useBranches';
-import { Lock, Plus, User, Key, DollarSign, Package } from 'lucide-react';
+import { Lock, Plus, User, Key, Package, MapPin } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -22,8 +21,7 @@ import { AssignLockerDrawer } from '@/components/lockers/AssignLockerDrawer';
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),
   size: z.string().optional(),
-  is_chargeable: z.boolean().default(false),
-  monthly_fee: z.coerce.number().min(0).optional(),
+  area: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -46,8 +44,7 @@ export default function LockersPage() {
     defaultValues: {
       locker_number: '',
       size: 'medium',
-      is_chargeable: false,
-      monthly_fee: 0,
+      area: '',
       notes: '',
     },
   });
@@ -58,8 +55,7 @@ export default function LockersPage() {
       branch_id: branchId,
       locker_number: data.locker_number,
       size: data.size,
-      monthly_fee: data.is_chargeable ? (data.monthly_fee || 0) : 0,
-      notes: data.notes,
+      notes: data.area ? `Area: ${data.area}${data.notes ? ` | ${data.notes}` : ''}` : data.notes,
     });
     setIsCreateOpen(false);
     form.reset();
@@ -78,6 +74,12 @@ export default function LockersPage() {
       default:
         return 'bg-muted text-muted-foreground';
     }
+  };
+
+  const getAreaFromNotes = (notes: string | null) => {
+    if (!notes) return null;
+    const match = notes.match(/^Area:\s*([^|]+)/);
+    return match ? match[1].trim() : null;
   };
 
   const stats = {
@@ -176,34 +178,17 @@ export default function LockersPage() {
                     />
                     <FormField
                       control={form.control}
-                      name="is_chargeable"
+                      name="area"
                       render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">Is Chargeable?</FormLabel>
-                            <p className="text-sm text-muted-foreground">Enable monthly rental fee for this locker</p>
-                          </div>
+                        <FormItem>
+                          <FormLabel>Area / Location</FormLabel>
                           <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
+                            <Input placeholder="e.g. Men's Changing Room" {...field} />
                           </FormControl>
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {form.watch('is_chargeable') && (
-                      <FormField
-                        control={form.control}
-                        name="monthly_fee"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Monthly Rental Fee (₹)</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="500" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
                     <FormField
                       control={form.control}
                       name="notes"
@@ -277,6 +262,7 @@ export default function LockersPage() {
             <div className="grid gap-3 grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
               {lockers.data?.map((locker) => {
                 const activeAssignment = locker.locker_assignments?.find(a => a.is_active);
+                const area = getAreaFromNotes(locker.notes);
                 return (
                   <div
                     key={locker.id}
@@ -286,13 +272,14 @@ export default function LockersPage() {
                       transition-all hover:scale-105
                       ${getStatusColor(locker.status)}
                     `}
-                    title={activeAssignment ? `Assigned to: ${activeAssignment.members?.member_code}` : 'Click to assign'}
+                    title={activeAssignment ? `Assigned to: ${activeAssignment.members?.member_code}` : area ? `Area: ${area}` : 'Click to assign'}
                   >
                     <div className="font-bold text-sm">{locker.locker_number}</div>
                     <div className="text-xs opacity-70 capitalize">{locker.size || 'M'}</div>
-                    {locker.monthly_fee && locker.monthly_fee > 0 && (
-                      <div className="text-xs mt-1 flex items-center justify-center gap-0.5">
-                        ₹{locker.monthly_fee}
+                    {area && (
+                      <div className="text-xs mt-1 flex items-center justify-center gap-0.5 opacity-70">
+                        <MapPin className="h-2.5 w-2.5" />
+                        {area.length > 8 ? area.slice(0, 8) + '…' : area}
                       </div>
                     )}
                     {activeAssignment && (
