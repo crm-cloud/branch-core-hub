@@ -127,7 +127,7 @@ export function useMemberData() {
         .from('invoices')
         .select('*')
         .eq('member_id', member!.id)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'partial', 'overdue'])
         .order('created_at', { ascending: false });
       
       if (error) throw error;

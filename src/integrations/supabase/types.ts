@@ -1870,6 +1870,7 @@ export type Database = {
       }
       facilities: {
         Row: {
+          available_days: string[] | null
           benefit_type_id: string
           branch_id: string
           capacity: number
@@ -1879,9 +1880,11 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          under_maintenance: boolean | null
           updated_at: string | null
         }
         Insert: {
+          available_days?: string[] | null
           benefit_type_id: string
           branch_id: string
           capacity?: number
@@ -1891,9 +1894,11 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          under_maintenance?: boolean | null
           updated_at?: string | null
         }
         Update: {
+          available_days?: string[] | null
           benefit_type_id?: string
           branch_id?: string
           capacity?: number
@@ -1903,6 +1908,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          under_maintenance?: boolean | null
           updated_at?: string | null
         }
         Relationships: [

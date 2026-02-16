@@ -241,7 +241,7 @@ export async function ensureSlotsForDateRange(
   // 1. Fetch all active facilities for the branch
   const { data: facilities, error: facError } = await supabase
     .from("facilities")
-    .select("id, benefit_type_id, capacity")
+    .select("id, benefit_type_id, capacity, available_days, under_maintenance")
     .eq("branch_id", branchId)
     .eq("is_active", true);
   if (facError || !facilities?.length) return;
@@ -275,7 +275,12 @@ export async function ensureSlotsForDateRange(
     d.setDate(d.getDate() + 1);
   }
 
+  const dayAbbreviations = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
   for (const facility of facilities) {
+    // Skip facilities under maintenance
+    if ((facility as any).under_maintenance) continue;
+
     // Find matching settings by benefit_type_id, or use sensible defaults
     const matchedSettings = settingsList.find(
       s => s.benefit_type_id === facility.benefit_type_id
@@ -283,8 +288,14 @@ export async function ensureSlotsForDateRange(
     // Skip only if settings explicitly disable slot booking
     if (matchedSettings && matchedSettings.is_slot_booking_enabled === false) continue;
 
+    const facilityDays: string[] = (facility as any).available_days || ['mon','tue','wed','thu','fri','sat','sun'];
+
     for (const date of dates) {
       if (existingSet.has(`${facility.id}::${date}`)) continue;
+
+      // Check if this day of week is in the facility's available days
+      const dayOfWeek = dayAbbreviations[new Date(date + "T00:00:00").getDay()];
+      if (!facilityDays.includes(dayOfWeek)) continue;
 
       const s = matchedSettings;
       const settingsObj: BenefitSettings = {
