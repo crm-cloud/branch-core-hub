@@ -1,51 +1,42 @@
 
-# Fix: Financial Sync, Class Booking Permissions & Facility Scheduling
+# Fix: Auto-Slot Generation (RLS), Recovery Zone Visibility & Staff Concierge Booking
 
-## Problem 1: Pending Dues Shows ₹0
+## Root Cause: Why Recovery Zone is Empty
 
-**Root cause:** `useMemberData.ts` line 130 filters invoices with `.eq('status', 'pending')`. The actual invoices in the database have status `'partial'` (₹15,000 paid of ₹29,999). Partial invoices are excluded, so the dashboard shows ₹0.
+The `ensureSlotsForDateRange` function runs client-side in the member's browser. It tries to INSERT rows into `benefit_slots`, but RLS only allows staff roles to insert. The member's INSERT silently fails (caught by try-catch), so zero slots exist and the Recovery tab shows "No sessions available this week."
 
-**Fix in `src/hooks/useMemberData.ts`:**
-- Change the pending invoices query from `.eq('status', 'pending')` to `.in('status', ['pending', 'partial', 'overdue'])` -- any status that is NOT 'paid', 'cancelled', or 'refunded'.
-- This ensures partial payments (like the ₹14,999 due) are included in the total.
+All 4 facilities exist. All 4 benefit_settings exist. The data is correct -- it just can't be written by members.
 
-## Problem 2: "Plan does not include group classes"
+## Plan
 
-**Root cause:** The database function `validate_class_booking` checks `pb.benefit_type = 'group_classes'`. But the plan stores the class benefit as a **custom benefit type** with `benefit_type = 'other'` and a `benefit_type_id` pointing to a row named "CLASS" (code: `class`). The strict enum check always fails.
+### 1. Database: SECURITY DEFINER Function for Slot Generation
 
-**Fix: Update the `validate_class_booking` database function:**
-- Change the benefit lookup from `pb.benefit_type = 'group_classes'` to also check for custom benefit types where the linked `benefit_types.code` matches 'class' or 'group_classes'.
-- Updated query:
-  ```sql
-  SELECT pb.limit_count, pb.frequency INTO v_limit, v_frequency
-  FROM plan_benefits pb
-  LEFT JOIN benefit_types bt ON pb.benefit_type_id = bt.id
-  WHERE pb.plan_id = _membership.plan_id
-    AND (
-      pb.benefit_type = 'group_classes'
-      OR bt.code IN ('class', 'group_classes')
-    )
-  LIMIT 1;
-  ```
-- This covers both the legacy enum path AND the custom benefit type path.
-- Same fix applied to the usage count query below it.
+Create a PostgreSQL function `ensure_facility_slots(p_branch_id UUID, p_start_date DATE, p_end_date DATE)` with `SECURITY DEFINER` that:
+- Reads facilities (checking `is_active`, `under_maintenance`, `available_days`)
+- Reads benefit_settings for each facility
+- Checks existing slots to avoid duplicates
+- Inserts missing slots directly (bypasses RLS since SECURITY DEFINER)
+- Returns void (fire-and-forget)
 
-## Problem 3: Facility Scheduling (Available Days)
+This is safe because the function only generates slots based on existing facility/settings config -- it doesn't accept arbitrary slot data from the caller.
 
-**Database migration:**
-- Add `available_days TEXT[] DEFAULT ARRAY['mon','tue','wed','thu','fri','sat','sun']` to the `facilities` table.
-- Add `under_maintenance BOOLEAN DEFAULT false` to the `facilities` table.
+### 2. Client Code: Call RPC Instead of Direct Inserts
 
-**Fix in `src/services/benefitBookingService.ts` (`ensureSlotsForDateRange`):**
-- Fetch `available_days` and `under_maintenance` along with other facility fields.
-- Before generating slots for a date, check:
-  1. If `facility.under_maintenance = true`, skip.
-  2. If the day-of-week abbreviation (mon/tue/wed...) is NOT in `facility.available_days`, skip.
+Update `ensureSlotsForDateRange` in `src/services/benefitBookingService.ts` to call `supabase.rpc('ensure_facility_slots', {...})` instead of doing client-side loops with direct table inserts. This makes it work for both members and staff.
 
-**Admin UI (`src/components/settings/FacilitiesManager.tsx`):**
-- Add a "Weekly Schedule" row of 7 toggle buttons (Mon-Sun) for each facility.
-- Add an "Under Maintenance" switch toggle.
-- Save these fields when updating a facility.
+### 3. Staff Concierge Booking Drawer
+
+Add a "New Booking" button to `src/pages/AllBookings.tsx` that opens a `ConciergeBookingDrawer`:
+- Step 1: Search and select a member (using the existing `search_members` RPC)
+- Step 2: Choose service type (Class or Recovery Facility)
+- Step 3: Select available slot/class
+- Step 4: Confirm booking (with an "Override Capacity" checkbox for staff)
+
+The drawer will use the existing `book_class` RPC for classes and direct `benefit_bookings` insert for facilities (staff already has INSERT permission).
+
+### 4. "My Entitlements" Widget
+
+Already implemented in the previous iteration on MemberDashboard. No changes needed.
 
 ---
 
@@ -53,7 +44,33 @@
 
 | File | Change |
 |------|--------|
-| Database migration | Add `available_days` and `under_maintenance` columns to `facilities`; update `validate_class_booking` and `book_class` functions to support custom class benefit types |
-| `src/hooks/useMemberData.ts` | Change pending invoices filter from `eq('status','pending')` to `in('status', ['pending','partial','overdue'])` |
-| `src/services/benefitBookingService.ts` | Add day-of-week and maintenance checks in `ensureSlotsForDateRange` |
-| `src/components/settings/FacilitiesManager.tsx` | Add weekly schedule toggles and maintenance switch to facility management UI |
+| Database migration | Create `ensure_facility_slots` SECURITY DEFINER function |
+| `src/services/benefitBookingService.ts` | Replace client-side slot generation loop with single RPC call |
+| `src/components/bookings/ConciergeBookingDrawer.tsx` | New file: staff booking-on-behalf drawer |
+| `src/pages/AllBookings.tsx` | Add "New Booking" button that opens concierge drawer |
+
+---
+
+## Technical Details
+
+**The SECURITY DEFINER function** replaces the entire client-side `ensureSlotsForDateRange` logic. It runs as the function owner (postgres), so RLS doesn't block slot inserts. The function:
+
+```sql
+CREATE OR REPLACE FUNCTION ensure_facility_slots(
+  p_branch_id UUID, p_start_date DATE, p_end_date DATE
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+```
+
+- Loops over active, non-maintenance facilities for the branch
+- Checks day-of-week against `available_days`
+- Skips facility+date combos that already have slots
+- Uses matched benefit_settings or sensible defaults (06:00-22:00, 30min)
+- Bulk-inserts all generated slots
+
+**ConciergeBookingDrawer** workflow:
+1. Member search via `search_members` RPC (already exists)
+2. Tabs for "Class" vs "Recovery"
+3. For classes: fetch upcoming classes, show available ones, book via `book_class` RPC
+4. For recovery: fetch `benefit_slots` for selected date/facility, insert `benefit_bookings`
+5. "Force Add" toggle allows overbooking (skips capacity check)
