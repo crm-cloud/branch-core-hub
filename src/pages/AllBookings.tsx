@@ -12,8 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranches } from '@/hooks/useBranches';
-import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter } from 'lucide-react';
+import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
 
 export default function AllBookingsPage() {
   const { data: branches } = useBranches();
@@ -21,6 +22,7 @@ export default function AllBookingsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [conciergeOpen, setConciergeOpen] = useState(false);
 
   const branchId = selectedBranch || branches?.[0]?.id || '';
 
@@ -263,6 +265,10 @@ export default function AllBookingsPage() {
             <p className="text-muted-foreground">View all member bookings across classes, benefits, and PT sessions</p>
           </div>
           <div className="flex items-center gap-4">
+            <Button onClick={() => setConciergeOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Booking
+            </Button>
             {branches && branches.length > 1 && (
               <Select value={selectedBranch || branches[0]?.id} onValueChange={setSelectedBranch}>
                 <SelectTrigger className="w-[180px]">
@@ -496,6 +502,12 @@ export default function AllBookingsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <ConciergeBookingDrawer
+        open={conciergeOpen}
+        onOpenChange={setConciergeOpen}
+        branchId={branchId}
+      />
     </AppLayout>
   );
 }

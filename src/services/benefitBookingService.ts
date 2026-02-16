@@ -238,93 +238,17 @@ export async function ensureSlotsForDateRange(
   startDate: string,
   endDate: string
 ): Promise<void> {
-  // 1. Fetch all active facilities for the branch
-  const { data: facilities, error: facError } = await supabase
-    .from("facilities")
-    .select("id, benefit_type_id, capacity, available_days, under_maintenance")
-    .eq("branch_id", branchId)
-    .eq("is_active", true);
-  if (facError || !facilities?.length) return;
+  // Use server-side SECURITY DEFINER function to generate slots
+  // This bypasses RLS so members can trigger slot creation
+  const { error } = await supabase.rpc('ensure_facility_slots', {
+    p_branch_id: branchId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
 
-  // 2. Fetch benefit settings for the branch (optional – we use defaults if missing)
-  const { data: allSettings } = await supabase
-    .from("benefit_settings")
-    .select("*")
-    .eq("branch_id", branchId);
-  const settingsList = allSettings || [];
-
-  // 3. Get existing slot counts per facility+date
-  const { data: existingSlots } = await supabase
-    .from("benefit_slots")
-    .select("facility_id, slot_date")
-    .eq("branch_id", branchId)
-    .gte("slot_date", startDate)
-    .lte("slot_date", endDate)
-    .eq("is_active", true);
-
-  const existingSet = new Set(
-    (existingSlots || []).map(s => `${s.facility_id}::${s.slot_date}`)
-  );
-
-  // 4. For each facility × each day, generate if missing
-  const dates: string[] = [];
-  let d = new Date(startDate + "T00:00:00");
-  const end = new Date(endDate + "T00:00:00");
-  while (d <= end) {
-    dates.push(d.toISOString().split("T")[0]);
-    d.setDate(d.getDate() + 1);
-  }
-
-  const dayAbbreviations = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-
-  for (const facility of facilities) {
-    // Skip facilities under maintenance
-    if ((facility as any).under_maintenance) continue;
-
-    // Find matching settings by benefit_type_id, or use sensible defaults
-    const matchedSettings = settingsList.find(
-      s => s.benefit_type_id === facility.benefit_type_id
-    );
-    // Skip only if settings explicitly disable slot booking
-    if (matchedSettings && matchedSettings.is_slot_booking_enabled === false) continue;
-
-    const facilityDays: string[] = (facility as any).available_days || ['mon','tue','wed','thu','fri','sat','sun'];
-
-    for (const date of dates) {
-      if (existingSet.has(`${facility.id}::${date}`)) continue;
-
-      // Check if this day of week is in the facility's available days
-      const dayOfWeek = dayAbbreviations[new Date(date + "T00:00:00").getDay()];
-      if (!facilityDays.includes(dayOfWeek)) continue;
-
-      const s = matchedSettings;
-      const settingsObj: BenefitSettings = {
-        id: s?.id || '',
-        branch_id: branchId,
-        benefit_type: (s?.benefit_type || 'other') as BenefitType,
-        benefit_type_id: s?.benefit_type_id || facility.benefit_type_id,
-        is_slot_booking_enabled: s?.is_slot_booking_enabled ?? true,
-        slot_duration_minutes: s?.slot_duration_minutes ?? 30,
-        booking_opens_hours_before: s?.booking_opens_hours_before ?? 24,
-        cancellation_deadline_minutes: s?.cancellation_deadline_minutes ?? 60,
-        no_show_policy: (s?.no_show_policy ?? 'charge_penalty') as NoShowPolicy,
-        no_show_penalty_amount: s?.no_show_penalty_amount ?? 0,
-        max_bookings_per_day: s?.max_bookings_per_day ?? 1,
-        buffer_between_sessions_minutes: s?.buffer_between_sessions_minutes ?? 0,
-        operating_hours_start: s?.operating_hours_start ?? '06:00:00',
-        operating_hours_end: s?.operating_hours_end ?? '22:00:00',
-        capacity_per_slot: facility.capacity || s?.capacity_per_slot || 1,
-      };
-
-      await generateDailySlots(
-        branchId,
-        settingsObj.benefit_type,
-        date,
-        settingsObj,
-        facility.benefit_type_id ?? undefined,
-        facility.id
-      );
-    }
+  if (error) {
+    console.error('Failed to ensure facility slots via RPC:', error);
+    // Don't throw - slot generation is best-effort
   }
 }
 
