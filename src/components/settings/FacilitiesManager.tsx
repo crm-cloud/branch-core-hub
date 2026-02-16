@@ -21,6 +21,16 @@ const GENDER_OPTIONS = [
   { value: "female", label: "Female Only" },
 ];
 
+const ALL_DAYS = [
+  { key: 'mon', label: 'Mon' },
+  { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' },
+  { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' },
+  { key: 'sat', label: 'Sat' },
+  { key: 'sun', label: 'Sun' },
+];
+
 interface FacilityFormData {
   name: string;
   benefit_type_id: string;
@@ -28,6 +38,8 @@ interface FacilityFormData {
   capacity: number;
   description: string;
   is_active: boolean;
+  available_days: string[];
+  under_maintenance: boolean;
 }
 
 const defaultFormData: FacilityFormData = {
@@ -37,6 +49,8 @@ const defaultFormData: FacilityFormData = {
   capacity: 1,
   description: "",
   is_active: true,
+  available_days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+  under_maintenance: false,
 };
 
 function getIconComponent(iconName: string | null) {
@@ -80,7 +94,7 @@ export function FacilitiesManager() {
 
   const upsertMutation = useMutation({
     mutationFn: async (data: FacilityFormData & { id?: string }) => {
-      const payload = {
+    const payload = {
         branch_id: branchId,
         name: data.name,
         benefit_type_id: data.benefit_type_id,
@@ -88,6 +102,8 @@ export function FacilitiesManager() {
         capacity: data.capacity,
         description: data.description || null,
         is_active: data.is_active,
+        available_days: data.available_days,
+        under_maintenance: data.under_maintenance,
       };
       if (data.id) {
         const { error } = await supabase.from("facilities").update(payload).eq("id", data.id);
@@ -131,6 +147,8 @@ export function FacilitiesManager() {
       capacity: facility.capacity || 1,
       description: facility.description || "",
       is_active: facility.is_active ?? true,
+      available_days: facility.available_days || ['mon','tue','wed','thu','fri','sat','sun'],
+      under_maintenance: facility.under_maintenance ?? false,
     });
     setEditingId(facility.id);
     setIsDrawerOpen(true);
@@ -249,6 +267,44 @@ export function FacilitiesManager() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label>Weekly Schedule</Label>
+              <p className="text-xs text-muted-foreground">Select days this facility is open</p>
+              <div className="flex flex-wrap gap-2">
+                {ALL_DAYS.map((day) => {
+                  const isSelected = formData.available_days.includes(day.key);
+                  return (
+                    <Button
+                      key={day.key}
+                      type="button"
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className="w-12"
+                      onClick={() => {
+                        const newDays = isSelected
+                          ? formData.available_days.filter(d => d !== day.key)
+                          : [...formData.available_days, day.key];
+                        setFormData({ ...formData, available_days: newDays });
+                      }}
+                    >
+                      {day.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <Label>Under Maintenance</Label>
+                <p className="text-xs text-muted-foreground">Temporarily disable all bookings</p>
+              </div>
+              <Switch
+                checked={formData.under_maintenance}
+                onCheckedChange={(checked) => setFormData({ ...formData, under_maintenance: checked })}
+              />
+            </div>
+
             <div className="flex items-center justify-between py-2">
               <div>
                 <Label>Active</Label>
@@ -289,6 +345,7 @@ export function FacilitiesManager() {
                         {f.gender_access}
                       </Badge>
                       <Badge variant="outline" className="text-xs">{f.capacity} cap</Badge>
+                      {f.under_maintenance && <Badge variant="destructive" className="text-xs">🔧 Maintenance</Badge>}
                       {!f.is_active && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
                     </div>
                     {f.description && <p className="text-sm text-muted-foreground">{f.description}</p>}
