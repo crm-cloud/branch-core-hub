@@ -5194,6 +5194,10 @@ export type Database = {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
       }
+      ensure_facility_slots: {
+        Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
+        Returns: undefined
+      }
       get_member_id: { Args: { _user_id: string }; Returns: string }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {
