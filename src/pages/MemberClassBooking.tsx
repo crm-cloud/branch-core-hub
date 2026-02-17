@@ -101,8 +101,8 @@ export default function MemberClassBooking() {
       }
       return true;
     },
-    staleTime: Infinity,
-    retry: false,
+    staleTime: 0,
+    retry: 2,
   });
 
   // ─── Fetch Classes (7 days) ───

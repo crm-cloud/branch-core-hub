@@ -3423,6 +3423,50 @@ export type Database = {
           },
         ]
       }
+      organization_settings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          currency: string | null
+          fiscal_year_start: string | null
+          id: string
+          logo_url: string | null
+          name: string | null
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          currency?: string | null
+          fiscal_year_start?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          currency?: string | null
+          fiscal_year_start?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: true
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_reminders: {
         Row: {
           branch_id: string

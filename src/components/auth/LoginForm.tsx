@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, Eye, EyeOff, Mail } from 'lucide-react';
+import { LogIn, Eye, EyeOff, Mail, Phone } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OtpLoginForm } from './OtpLoginForm';
+import { PhoneOtpLoginForm } from './PhoneOtpLoginForm';
 
 const passwordLoginSchema = z.object({
   email: z.string().email('Valid email required'),
@@ -76,9 +77,10 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="password" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="password">Password</TabsTrigger>
             <TabsTrigger value="otp">Email OTP</TabsTrigger>
+            <TabsTrigger value="phone">Phone OTP</TabsTrigger>
           </TabsList>
           
           <TabsContent value="password">
@@ -142,6 +144,10 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           
           <TabsContent value="otp">
             <OtpLoginForm />
+          </TabsContent>
+          
+          <TabsContent value="phone">
+            <PhoneOtpLoginForm />
           </TabsContent>
         </Tabs>
       </CardContent>

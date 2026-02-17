@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, Database, MessageSquare, Receipt } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
@@ -13,6 +13,34 @@ import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsC
 import { DemoDataSettings } from '@/components/settings/DemoDataSettings';
 import { TemplateManager } from '@/components/settings/TemplateManager';
 import { ExpenseCategoryManager } from '@/components/settings/ExpenseCategoryManager';
+
+const SETTINGS_MENU = [
+  { value: 'organization', label: 'Organization', icon: SettingsIcon },
+  { value: 'branches', label: 'Branches', icon: Building2 },
+  { value: 'benefits', label: 'Benefits', icon: Sparkles },
+  { value: 'referrals', label: 'Referrals', icon: Gift },
+  { value: 'templates', label: 'Templates', icon: MessageSquare },
+  { value: 'expenses', label: 'Expenses', icon: Receipt },
+  { value: 'integrations', label: 'Integrations', icon: Plug },
+  { value: 'notifications', label: 'Notifications', icon: Bell },
+  { value: 'security', label: 'Security', icon: Shield },
+  { value: 'website', label: 'Website', icon: Globe },
+  { value: 'demo', label: 'Demo Data', icon: Database },
+];
+
+const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
+  organization: <OrganizationSettings />,
+  branches: <BranchSettings />,
+  benefits: <BenefitSettingsComponent />,
+  referrals: <ReferralSettings />,
+  templates: <TemplateManager />,
+  expenses: <ExpenseCategoryManager />,
+  integrations: <IntegrationSettings />,
+  notifications: <NotificationSettings />,
+  security: <SecuritySettings />,
+  website: <WebsiteSettings />,
+  demo: <DemoDataSettings />,
+};
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,66 +61,38 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-11 h-auto p-1">
-            <TabsTrigger value="organization" className="flex items-center gap-2 py-2">
-              <SettingsIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">Organization</span>
-            </TabsTrigger>
-            <TabsTrigger value="branches" className="flex items-center gap-2 py-2">
-              <Building2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Branches</span>
-            </TabsTrigger>
-            <TabsTrigger value="benefits" className="flex items-center gap-2 py-2">
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden sm:inline">Benefits</span>
-            </TabsTrigger>
-            <TabsTrigger value="referrals" className="flex items-center gap-2 py-2">
-              <Gift className="h-4 w-4" />
-              <span className="hidden sm:inline">Referrals</span>
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="flex items-center gap-2 py-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Templates</span>
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="flex items-center gap-2 py-2">
-              <Receipt className="h-4 w-4" />
-              <span className="hidden sm:inline">Expenses</span>
-            </TabsTrigger>
-            <TabsTrigger value="integrations" className="flex items-center gap-2 py-2">
-              <Plug className="h-4 w-4" />
-              <span className="hidden sm:inline">Integrations</span>
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2 py-2">
-              <Bell className="h-4 w-4" />
-              <span className="hidden sm:inline">Notifications</span>
-            </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2 py-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Security</span>
-            </TabsTrigger>
-            <TabsTrigger value="website" className="flex items-center gap-2 py-2">
-              <Globe className="h-4 w-4" />
-              <span className="hidden sm:inline">Website</span>
-            </TabsTrigger>
-            <TabsTrigger value="demo" className="flex items-center gap-2 py-2">
-              <Database className="h-4 w-4" />
-              <span className="hidden sm:inline">Demo Data</span>
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex flex-col md:flex-row gap-6">
+          {/* Sidebar Navigation */}
+          <nav className="w-full md:w-60 shrink-0">
+            <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
+              {SETTINGS_MENU.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.value;
+                return (
+                  <button
+                    key={item.value}
+                    onClick={() => handleTabChange(item.value)}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap',
+                      'hover:bg-muted/80',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
 
-          <TabsContent value="organization"><OrganizationSettings /></TabsContent>
-          <TabsContent value="branches"><BranchSettings /></TabsContent>
-          <TabsContent value="benefits"><BenefitSettingsComponent /></TabsContent>
-          <TabsContent value="referrals"><ReferralSettings /></TabsContent>
-          <TabsContent value="templates"><TemplateManager /></TabsContent>
-          <TabsContent value="expenses"><ExpenseCategoryManager /></TabsContent>
-          <TabsContent value="integrations"><IntegrationSettings /></TabsContent>
-          <TabsContent value="notifications"><NotificationSettings /></TabsContent>
-          <TabsContent value="security"><SecuritySettings /></TabsContent>
-          <TabsContent value="website"><WebsiteSettings /></TabsContent>
-          <TabsContent value="demo"><DemoDataSettings /></TabsContent>
-        </Tabs>
+          {/* Content Area */}
+          <div className="flex-1 min-w-0">
+            {SETTINGS_CONTENT[activeTab] || <OrganizationSettings />}
+          </div>
+        </div>
       </div>
     </AppLayout>
   );

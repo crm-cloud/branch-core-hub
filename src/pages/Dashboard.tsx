@@ -12,6 +12,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import LiveAccessLog from '@/components/devices/LiveAccessLog';
+import { MemberVoiceWidget } from '@/components/dashboard/MemberVoiceWidget';
 import { 
   UserPlus, 
   Dumbbell, 
@@ -366,6 +367,11 @@ export default function DashboardPage() {
               <LiveAccessLog />
             </CardContent>
           </Card>
+        </div>
+
+        {/* Member Voice Widget */}
+        <div className="grid gap-6 md:grid-cols-2">
+          <MemberVoiceWidget />
         </div>
       </div>
     </AppLayout>
