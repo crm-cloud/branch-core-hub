@@ -1,76 +1,124 @@
 
-# Fix: Auto-Slot Generation (RLS), Recovery Zone Visibility & Staff Concierge Booking
 
-## Root Cause: Why Recovery Zone is Empty
+# Project Overhaul: Settings, Feedback Widget, Mobile Login & Booking Fix
 
-The `ensureSlotsForDateRange` function runs client-side in the member's browser. It tries to INSERT rows into `benefit_slots`, but RLS only allows staff roles to insert. The member's INSERT silently fails (caught by try-catch), so zero slots exist and the Recovery tab shows "No sessions available this week."
+## 1. Settings Page: Vertical Sidebar Layout + Logo Upload
 
-All 4 facilities exist. All 4 benefit_settings exist. The data is correct -- it just can't be written by members.
+**Current state:** The Settings page uses a horizontal `TabsList` with `grid-cols-11`, causing a cramped, scrollable layout on smaller screens.
 
-## Plan
+**Changes to `src/pages/Settings.tsx`:**
+- Replace the horizontal Tabs layout with a two-column layout:
+  - Left column (w-64): Vertical navigation list with icons and labels (styled as clickable menu items)
+  - Right column (flex-1): Content area for the active section
+- Keep the same `searchParams`-based tab routing
+- Use Shadcn Cards with proper padding for the sidebar items
 
-### 1. Database: SECURITY DEFINER Function for Slot Generation
+**Changes to `src/components/settings/OrganizationSettings.tsx`:**
+- Add a "Gym Logo" section at the top with a drag-and-drop image uploader
+- Upload to the existing `avatars` storage bucket (public)
+- Store the URL in an `organization_settings` table (or use the existing organization config if available)
+- Add fields: Logo preview, "Upload Logo" dropzone, "Remove Logo" button
+- Query/upsert organization settings on save
 
-Create a PostgreSQL function `ensure_facility_slots(p_branch_id UUID, p_start_date DATE, p_end_date DATE)` with `SECURITY DEFINER` that:
-- Reads facilities (checking `is_active`, `under_maintenance`, `available_days`)
-- Reads benefit_settings for each facility
-- Checks existing slots to avoid duplicates
-- Inserts missing slots directly (bypasses RLS since SECURITY DEFINER)
-- Returns void (fire-and-forget)
+**Database migration:**
+- Create `organization_settings` table if it doesn't exist (id, branch_id, name, logo_url, timezone, currency, fiscal_year_start, created_at, updated_at) with RLS policies for staff roles
 
-This is safe because the function only generates slots based on existing facility/settings config -- it doesn't accept arbitrary slot data from the caller.
+---
 
-### 2. Client Code: Call RPC Instead of Direct Inserts
+## 2. "Member Voice" Feedback Widget on Admin Dashboard
 
-Update `ensureSlotsForDateRange` in `src/services/benefitBookingService.ts` to call `supabase.rpc('ensure_facility_slots', {...})` instead of doing client-side loops with direct table inserts. This makes it work for both members and staff.
+**Changes to `src/pages/Dashboard.tsx`:**
+- Add a new Card widget titled "Member Voice" in the bottom grid row
+- Query: Fetch latest 5 feedback rows joined with member profiles (avatar, name)
+- Display each row as: Avatar | Name | Message preview (truncated to ~60 chars) | Status badge (Pending=yellow, Approved=green, Rejected=red)
+- Clicking a row opens the existing Feedback detail drawer (or navigates to /feedback)
 
-### 3. Staff Concierge Booking Drawer
+**New component: `src/components/dashboard/MemberVoiceWidget.tsx`**
+- Self-contained widget with its own query
+- Uses the same feedback query pattern as `Feedback.tsx` (with profile lookup)
+- Limit to 5 rows, ordered by `created_at DESC`
+- "View All" link to `/feedback`
 
-Add a "New Booking" button to `src/pages/AllBookings.tsx` that opens a `ConciergeBookingDrawer`:
-- Step 1: Search and select a member (using the existing `search_members` RPC)
-- Step 2: Choose service type (Class or Recovery Facility)
-- Step 3: Select available slot/class
-- Step 4: Confirm booking (with an "Override Capacity" checkbox for staff)
+---
 
-The drawer will use the existing `book_class` RPC for classes and direct `benefit_bookings` insert for facilities (staff already has INSERT permission).
+## 3. "Always-Open" Facility Booking (Already Mostly Fixed)
 
-### 4. "My Entitlements" Widget
+**Current state:** The `ensure_facility_slots` RPC (SECURITY DEFINER) already auto-generates slots server-side. The `MemberClassBooking.tsx` page calls `ensureSlotsForDateRange` which triggers this RPC. The Recovery tab already shows auto-generated slots.
 
-Already implemented in the previous iteration on MemberDashboard. No changes needed.
+**Remaining gap:** If the RPC fails silently or slots aren't generated due to timing, the member sees nothing.
+
+**Changes to `src/pages/MemberClassBooking.tsx`:**
+- Add a retry mechanism: if `recoverySlots` returns empty after slot generation completes, re-fetch once
+- Add a user-friendly "No Recovery facilities configured" empty state (instead of generic "No sessions")
+- Ensure the slot generation query has `staleTime: 0` (not `Infinity`) so it runs on each page visit, guaranteeing fresh slots
+
+**Changes to `src/services/benefitBookingService.ts`:**
+- No changes needed -- the RPC-based approach is already correct
+
+---
+
+## 4. Phone Number Login (OTP via Phone)
+
+**Current state:** The LoginForm has two tabs: "Password" and "Email OTP". The OtpLoginForm only supports email-based OTP.
+
+**Changes to `src/components/auth/LoginForm.tsx`:**
+- Add a third tab: "Phone OTP" (or change tabs to: Password | Email OTP | Phone OTP)
+- Alternatively, restructure into: "Password" | "OTP" where OTP tab has a sub-toggle for Email vs Phone
+
+**New component: `src/components/auth/PhoneOtpLoginForm.tsx`:**
+- Step 1: Phone number input with country code prefix (+91 default for India)
+- Step 2: OTP verification (6-digit, same InputOTP component)
+- Uses `supabase.auth.signInWithOtp({ phone })` to send SMS OTP
+- Uses `supabase.auth.verifyOtp({ phone, token, type: 'sms' })` to verify
+- On success, navigate to `/home`
+
+**Auth configuration:**
+- Phone auth provider needs to be enabled (note: this requires Twilio or similar SMS provider credentials). Will need to check if Lovable Cloud supports phone auth natively or if API keys are needed.
+
+**Changes to `src/contexts/AuthContext.tsx`:**
+- Add `signInWithPhoneOtp` and `verifyPhoneOtp` methods if not already present
 
 ---
 
 ## Files Summary
 
-| File | Change |
-|------|--------|
-| Database migration | Create `ensure_facility_slots` SECURITY DEFINER function |
-| `src/services/benefitBookingService.ts` | Replace client-side slot generation loop with single RPC call |
-| `src/components/bookings/ConciergeBookingDrawer.tsx` | New file: staff booking-on-behalf drawer |
-| `src/pages/AllBookings.tsx` | Add "New Booking" button that opens concierge drawer |
+| Priority | File | Change |
+|----------|------|--------|
+| 1 | `src/pages/MemberClassBooking.tsx` | Fix staleTime for slot generation; add retry; improve empty state |
+| 2 | `src/pages/Settings.tsx` | Vertical sidebar layout replacing horizontal tabs |
+| 2 | `src/components/settings/OrganizationSettings.tsx` | Add logo drag-and-drop uploader |
+| 2 | Database migration | `organization_settings` table with RLS |
+| 3 | `src/components/auth/PhoneOtpLoginForm.tsx` | New phone OTP login component |
+| 3 | `src/components/auth/LoginForm.tsx` | Add Phone OTP tab |
+| 3 | `src/contexts/AuthContext.tsx` | Add phone OTP auth methods |
+| 4 | `src/components/dashboard/MemberVoiceWidget.tsx` | New feedback widget component |
+| 4 | `src/pages/Dashboard.tsx` | Add Member Voice widget to dashboard grid |
 
 ---
 
-## Technical Details
+## Technical Notes
 
-**The SECURITY DEFINER function** replaces the entire client-side `ensureSlotsForDateRange` logic. It runs as the function owner (postgres), so RLS doesn't block slot inserts. The function:
-
-```sql
-CREATE OR REPLACE FUNCTION ensure_facility_slots(
-  p_branch_id UUID, p_start_date DATE, p_end_date DATE
-) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+**Settings sidebar pattern:**
+```
++-------------------+----------------------------------+
+| [icon] Org        |                                  |
+| [icon] Branches   |    Active Section Content        |
+| [icon] Benefits   |                                  |
+| [icon] Referrals  |                                  |
+| [icon] Templates  |                                  |
+| [icon] Expenses   |                                  |
+| [icon] Integrations                                  |
+| [icon] Notifications                                 |
+| [icon] Security   |                                  |
+| [icon] Website    |                                  |
+| [icon] Demo Data  |                                  |
++-------------------+----------------------------------+
 ```
 
-- Loops over active, non-maintenance facilities for the branch
-- Checks day-of-week against `available_days`
-- Skips facility+date combos that already have slots
-- Uses matched benefit_settings or sensible defaults (06:00-22:00, 30min)
-- Bulk-inserts all generated slots
+**Phone OTP flow:**
+- `signInWithOtp({ phone: '+91XXXXXXXXXX' })` sends SMS
+- `verifyOtp({ phone, token, type: 'sms' })` verifies
+- Requires SMS provider configuration (Twilio). Will check if secrets exist and prompt if needed.
 
-**ConciergeBookingDrawer** workflow:
-1. Member search via `search_members` RPC (already exists)
-2. Tabs for "Class" vs "Recovery"
-3. For classes: fetch upcoming classes, show available ones, book via `book_class` RPC
-4. For recovery: fetch `benefit_slots` for selected date/facility, insert `benefit_bookings`
-5. "Force Add" toggle allows overbooking (skips capacity check)
+**Logo upload:** Uses the existing public `avatars` bucket. The image URL is stored in `organization_settings.logo_url` and displayed in the sidebar header / login page.
+
