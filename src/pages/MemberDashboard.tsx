@@ -98,9 +98,9 @@ export default function MemberDashboard() {
           totalAllowed = null;
           periodLabel = '';
         } else if (frequency === 'per_membership') {
-          // Total pool
-          totalAllowed = limitCount * durationMonths;
-          periodLabel = 'total';
+          // Total pool — limit_count IS the total for the entire membership
+          totalAllowed = limitCount;
+          periodLabel = 'Total';
         } else if (frequency === 'daily') {
           totalAllowed = limitCount;
           periodLabel = 'per day';
