@@ -1,124 +1,80 @@
 
 
-# Project Overhaul: Settings, Feedback Widget, Mobile Login & Booking Fix
+# Fix: "Unknown User" in Audit Logs + Member Facility Booking Broken
 
-## 1. Settings Page: Vertical Sidebar Layout + Logo Upload
+## Issue 1: "Unknown User" in Audit Logs
 
-**Current state:** The Settings page uses a horizontal `TabsList` with `grid-cols-11`, causing a cramped, scrollable layout on smaller screens.
+**Root Cause Found:** There are TWO audit trigger functions on the same tables, creating duplicate entries:
 
-**Changes to `src/pages/Settings.tsx`:**
-- Replace the horizontal Tabs layout with a two-column layout:
-  - Left column (w-64): Vertical navigation list with icons and labels (styled as clickable menu items)
-  - Right column (flex-1): Content area for the active section
-- Keep the same `searchParams`-based tab routing
-- Use Shadcn Cards with proper padding for the sidebar items
+| Old trigger (broken) | New trigger (works) |
+|---|---|
+| Function: `log_audit_change` | Function: `audit_log_trigger_function` |
+| Trigger names: `audit_employees`, `audit_members`, etc. | Trigger names: `audit_employees_trigger`, `audit_members_trigger`, etc. |
+| Does NOT populate `actor_name` or `action_description` | Correctly fetches user name from profiles |
 
-**Changes to `src/components/settings/OrganizationSettings.tsx`:**
-- Add a "Gym Logo" section at the top with a drag-and-drop image uploader
-- Upload to the existing `avatars` storage bucket (public)
-- Store the URL in an `organization_settings` table (or use the existing organization config if available)
-- Add fields: Logo preview, "Upload Logo" dropzone, "Remove Logo" button
-- Query/upsert organization settings on save
+The old `log_audit_change` triggers fire alongside the new ones, inserting rows with NULL `actor_name`. The UI falls back to "Unknown User" for those.
 
-**Database migration:**
-- Create `organization_settings` table if it doesn't exist (id, branch_id, name, logo_url, timezone, currency, fiscal_year_start, created_at, updated_at) with RLS policies for staff roles
+**Affected tables with duplicate triggers:** employees, trainers, members, memberships, invoices, payments
 
----
+**Fix (Database Migration):**
+- Drop all old triggers that use `log_audit_change` (audit_employees, audit_members, audit_trainers, audit_memberships, audit_invoices, audit_payments)
+- Drop the old `log_audit_change` function
+- Backfill existing NULL `actor_name` rows by looking up `user_id` in the `profiles` table
+- Also add missing triggers for tables like `classes`, `leads`, `lockers` that only have one trigger but it's the old one (no actor_name)
 
-## 2. "Member Voice" Feedback Widget on Admin Dashboard
-
-**Changes to `src/pages/Dashboard.tsx`:**
-- Add a new Card widget titled "Member Voice" in the bottom grid row
-- Query: Fetch latest 5 feedback rows joined with member profiles (avatar, name)
-- Display each row as: Avatar | Name | Message preview (truncated to ~60 chars) | Status badge (Pending=yellow, Approved=green, Rejected=red)
-- Clicking a row opens the existing Feedback detail drawer (or navigates to /feedback)
-
-**New component: `src/components/dashboard/MemberVoiceWidget.tsx`**
-- Self-contained widget with its own query
-- Uses the same feedback query pattern as `Feedback.tsx` (with profile lookup)
-- Limit to 5 rows, ordered by `created_at DESC`
-- "View All" link to `/feedback`
+**Fix (UI - `src/pages/AuditLogs.tsx`):**
+- Update the fallback display: when `actor_name` is NULL, look up the `user_id` from the log entry in profiles (or display "System" if no user_id exists)
+- Filter out known duplicate entries (same timestamp + table + record_id but different trigger)
 
 ---
 
-## 3. "Always-Open" Facility Booking (Already Mostly Fixed)
+## Issue 2: Members Cannot See Ice Bath / Sauna Facilities
 
-**Current state:** The `ensure_facility_slots` RPC (SECURITY DEFINER) already auto-generates slots server-side. The `MemberClassBooking.tsx` page calls `ensureSlotsForDateRange` which triggers this RPC. The Recovery tab already shows auto-generated slots.
+**Root Cause Found:** The `ensure_facility_slots` RPC function has a **type mismatch bug** that causes it to crash silently every time a member visits the booking page.
 
-**Remaining gap:** If the RPC fails silently or slots aren't generated due to timing, the member sees nothing.
+The error:
+```
+ERROR: operator does not exist: date = text
+QUERY: NOT EXISTS (SELECT 1 FROM benefit_slots WHERE ... AND slot_date = v_current_date::TEXT ...)
+```
 
-**Changes to `src/pages/MemberClassBooking.tsx`:**
-- Add a retry mechanism: if `recoverySlots` returns empty after slot generation completes, re-fetch once
-- Add a user-friendly "No Recovery facilities configured" empty state (instead of generic "No sessions")
-- Ensure the slot generation query has `staleTime: 0` (not `Infinity`) so it runs on each page visit, guaranteeing fresh slots
+The `slot_date` column is type `DATE`, but the function compares it against `v_current_date::TEXT`. This type mismatch makes the RPC fail, so zero slots are ever generated, and the Recovery tab shows nothing.
 
-**Changes to `src/services/benefitBookingService.ts`:**
-- No changes needed -- the RPC-based approach is already correct
+The same bug affects the INSERT statement where `slot_date`, `start_time`, and `end_time` are cast to `TEXT` but the columns are `DATE` and `TIME` types.
+
+**Fix (Database Migration):**
+- Recreate `ensure_facility_slots` function with correct type casts:
+  - Change `slot_date = v_current_date::TEXT` to `slot_date = v_current_date`
+  - Change `v_current_date::TEXT` in INSERT to `v_current_date`
+  - Change `v_slot_start::TEXT` and `v_slot_end::TEXT` to `v_slot_start` and `v_slot_end`
 
 ---
 
-## 4. Phone Number Login (OTP via Phone)
+## Issue 3: Class Booking / Cancel UI/UX Improvements
 
-**Current state:** The LoginForm has two tabs: "Password" and "Email OTP". The OtpLoginForm only supports email-based OTP.
+**Current state:** The Agenda cards work but the Cancel button is a small outline button that blends in. Booked items don't stand out enough.
 
-**Changes to `src/components/auth/LoginForm.tsx`:**
-- Add a third tab: "Phone OTP" (or change tabs to: Password | Email OTP | Phone OTP)
-- Alternatively, restructure into: "Password" | "OTP" where OTP tab has a sub-toggle for Email vs Phone
-
-**New component: `src/components/auth/PhoneOtpLoginForm.tsx`:**
-- Step 1: Phone number input with country code prefix (+91 default for India)
-- Step 2: OTP verification (6-digit, same InputOTP component)
-- Uses `supabase.auth.signInWithOtp({ phone })` to send SMS OTP
-- Uses `supabase.auth.verifyOtp({ phone, token, type: 'sms' })` to verify
-- On success, navigate to `/home`
-
-**Auth configuration:**
-- Phone auth provider needs to be enabled (note: this requires Twilio or similar SMS provider credentials). Will need to check if Lovable Cloud supports phone auth natively or if API keys are needed.
-
-**Changes to `src/contexts/AuthContext.tsx`:**
-- Add `signInWithPhoneOtp` and `verifyPhoneOtp` methods if not already present
+**Fix (in `src/pages/MemberClassBooking.tsx` AgendaCard component):**
+- Make booked items more visually distinct with a green left-border accent and a "Booked" badge
+- Make the Cancel button red/destructive variant so it's clearly a cancel action
+- Add a confirmation step before cancellation (to prevent accidental taps)
+- Show facility name (Ice Bath / Sauna) more prominently on recovery cards
+- Improve the empty state for Recovery filter to say "No recovery slots available -- facilities may be closed today"
 
 ---
 
 ## Files Summary
 
-| Priority | File | Change |
-|----------|------|--------|
-| 1 | `src/pages/MemberClassBooking.tsx` | Fix staleTime for slot generation; add retry; improve empty state |
-| 2 | `src/pages/Settings.tsx` | Vertical sidebar layout replacing horizontal tabs |
-| 2 | `src/components/settings/OrganizationSettings.tsx` | Add logo drag-and-drop uploader |
-| 2 | Database migration | `organization_settings` table with RLS |
-| 3 | `src/components/auth/PhoneOtpLoginForm.tsx` | New phone OTP login component |
-| 3 | `src/components/auth/LoginForm.tsx` | Add Phone OTP tab |
-| 3 | `src/contexts/AuthContext.tsx` | Add phone OTP auth methods |
-| 4 | `src/components/dashboard/MemberVoiceWidget.tsx` | New feedback widget component |
-| 4 | `src/pages/Dashboard.tsx` | Add Member Voice widget to dashboard grid |
+| File | Change |
+|---|---|
+| Database migration | 1. Drop old duplicate audit triggers + `log_audit_change` function. 2. Backfill NULL actor_name from profiles. 3. Fix `ensure_facility_slots` type casts. 4. Add missing audit triggers for classes/leads/lockers |
+| `src/pages/AuditLogs.tsx` | Better fallback for NULL actor_name (show "System" badge instead of "Unknown User") |
+| `src/pages/MemberClassBooking.tsx` | UI/UX polish: booked state styling, red cancel button, confirmation dialog, better empty states |
 
 ---
 
-## Technical Notes
+## Execution Order
 
-**Settings sidebar pattern:**
-```
-+-------------------+----------------------------------+
-| [icon] Org        |                                  |
-| [icon] Branches   |    Active Section Content        |
-| [icon] Benefits   |                                  |
-| [icon] Referrals  |                                  |
-| [icon] Templates  |                                  |
-| [icon] Expenses   |                                  |
-| [icon] Integrations                                  |
-| [icon] Notifications                                 |
-| [icon] Security   |                                  |
-| [icon] Website    |                                  |
-| [icon] Demo Data  |                                  |
-+-------------------+----------------------------------+
-```
-
-**Phone OTP flow:**
-- `signInWithOtp({ phone: '+91XXXXXXXXXX' })` sends SMS
-- `verifyOtp({ phone, token, type: 'sms' })` verifies
-- Requires SMS provider configuration (Twilio). Will check if secrets exist and prompt if needed.
-
-**Logo upload:** Uses the existing public `avatars` bucket. The image URL is stored in `organization_settings.logo_url` and displayed in the sidebar header / login page.
-
+1. Database migration (fixes both the audit duplicates AND the slot generation crash)
+2. AuditLogs.tsx UI fix (display cleanup)
+3. MemberClassBooking.tsx UI/UX improvements (booking cards polish)
