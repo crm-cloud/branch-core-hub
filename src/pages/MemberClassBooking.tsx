@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -475,13 +476,23 @@ export default function MemberClassBooking() {
         {!isLoading && sortedDayKeys.length === 0 && (
           <Card>
             <CardContent className="py-16 text-center">
-              <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="font-semibold mb-1">
-                {showMyBookings ? 'No upcoming bookings' : 'No sessions available this week'}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {showMyBookings ? 'Book a class or recovery slot to see it here.' : 'Contact your gym to check the schedule.'}
-              </p>
+              {activeFilter === 'recovery' ? (
+                <>
+                  <Droplets className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="font-semibold mb-1">No recovery slots available</h3>
+                  <p className="text-sm text-muted-foreground">Facilities may be closed today or under maintenance. Check back later.</p>
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="font-semibold mb-1">
+                    {showMyBookings ? 'No upcoming bookings' : 'No sessions available this week'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {showMyBookings ? 'Book a class or recovery slot to see it here.' : 'Contact your gym to check the schedule.'}
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -546,7 +557,7 @@ function AgendaCard({
   const isFull = item.spotsLeft !== undefined && item.spotsLeft <= 0;
 
   return (
-    <Card className={`border-border/50 transition-colors ${item.isBooked ? 'bg-primary/5 border-primary/20' : ''}`}>
+    <Card className={`border-border/50 transition-colors ${item.isBooked ? 'bg-accent/10 border-l-4 border-l-accent border-accent/30' : ''}`}>
       <CardContent className="py-3 px-4">
         <div className="flex items-center gap-4">
           {/* Time Column */}
@@ -563,6 +574,11 @@ function AgendaCard({
             <div className="flex items-center gap-2 mb-0.5">
               {getTypeIcon(item.type)}
               <h3 className="font-semibold text-sm truncate">{item.title}</h3>
+              {item.isBooked && (
+                <Badge className="bg-accent/20 text-accent border-accent/30 text-[10px] px-1.5 py-0">
+                  <Check className="h-2.5 w-2.5 mr-0.5" />Booked
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {getTypeBadge(item.type)}
@@ -581,18 +597,38 @@ function AgendaCard({
             {item.type === 'pt' ? (
               <Badge variant="default" className="text-xs">Scheduled</Badge>
             ) : item.isBooked ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs"
-                disabled={isCancelling}
-                onClick={() => {
-                  if (item.type === 'class') onCancelClass(item.bookingId!);
-                  else onCancelSlot(item.bookingId!);
-                }}
-              >
-                <X className="h-3.5 w-3.5 mr-1" />Cancel
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={isCancelling}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" />Cancel
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel Booking?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to cancel your booking for <strong>{item.title}</strong> at {format(item.datetime, 'h:mm a')}? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep Booking</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => {
+                        if (item.type === 'class') onCancelClass(item.bookingId!);
+                        else onCancelSlot(item.bookingId!);
+                      }}
+                    >
+                      Yes, Cancel
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             ) : (
               <Button
                 size="sm"

@@ -327,8 +327,8 @@ export default function AuditLogsPage() {
               <div className="space-y-2">
                 {logs.data.map((log: any) => {
                   // Generate human-readable description
+                  const actorDisplay = log.actor_name || (log.user_id ? 'Staff' : 'System');
                   const humanDescription = log.action_description || (() => {
-                    const actorName = log.actor_name || 'Unknown User';
                     const recordName = log.new_data?.name || 
                                        log.new_data?.full_name || 
                                        log.new_data?.member_code || 
@@ -339,7 +339,7 @@ export default function AuditLogsPage() {
                                        log.record_id?.substring(0, 8) || 'record';
                     const actionVerb = log.action === 'INSERT' ? 'created' : 
                                        log.action === 'UPDATE' ? 'updated' : 'deleted';
-                    return `${actorName} ${actionVerb} ${log.table_name} "${recordName}"`;
+                    return `${actorDisplay} ${actionVerb} ${log.table_name} "${recordName}"`;
                   })();
                   
                   return (
@@ -362,9 +362,9 @@ export default function AuditLogsPage() {
                             <span className="text-sm">{humanDescription}</span>
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            {log.actor_name && (
-                              <span className="hidden md:inline text-xs bg-muted px-2 py-1 rounded">{log.actor_name}</span>
-                            )}
+                            <span className="hidden md:inline text-xs bg-muted px-2 py-1 rounded">
+                              {log.actor_name || (log.user_id ? 'Staff' : 'System')}
+                            </span>
                             <span title={format(new Date(log.created_at), 'PPpp')}>
                               {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
                             </span>
@@ -399,7 +399,7 @@ export default function AuditLogsPage() {
                                 </div>
                                 <div className="flex justify-between">
                                   <dt className="text-muted-foreground">Actor:</dt>
-                                  <dd>{log.actor_name || 'System'}</dd>
+                                  <dd>{log.actor_name || (log.user_id ? 'Staff' : 'System')}</dd>
                                 </div>
                                 <div className="flex justify-between">
                                   <dt className="text-muted-foreground">Time:</dt>
