@@ -255,32 +255,43 @@ export default function MemberClassBooking() {
   const bookSlot = useMutation({
     mutationFn: async (slotId: string) => {
       if (!member || !activeMembership) throw new Error('No active membership');
-      const { error } = await supabase.from('benefit_bookings').insert({
-        slot_id: slotId, member_id: member.id, membership_id: activeMembership.id, status: 'booked',
+      const { data, error } = await supabase.rpc('book_facility_slot', {
+        p_slot_id: slotId,
+        p_member_id: member.id,
+        p_membership_id: activeMembership.id,
       });
       if (error) throw error;
+      const result = data as { success: boolean; error?: string };
+      if (!result.success) throw new Error(result.error || 'Booking failed');
+      return result;
     },
     onSuccess: () => {
       toast.success('Slot booked!');
       queryClient.invalidateQueries({ queryKey: ['agenda-slots'] });
       queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings-agenda'] });
+      queryClient.invalidateQueries({ queryKey: ['my-entitlements'] });
     },
     onError: (e: any) => toast.error(e.message || 'Failed to book slot'),
   });
 
   const cancelSlotBooking = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase.from('benefit_bookings')
-        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
-        .eq('id', bookingId);
+      const { data, error } = await supabase.rpc('cancel_facility_slot', {
+        p_booking_id: bookingId,
+        p_reason: 'Cancelled by member',
+      });
       if (error) throw error;
+      const result = data as { success: boolean; error?: string };
+      if (!result.success) throw new Error(result.error || 'Cancellation failed');
+      return result;
     },
     onSuccess: () => {
       toast.success('Booking cancelled');
       queryClient.invalidateQueries({ queryKey: ['agenda-slots'] });
       queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings-agenda'] });
+      queryClient.invalidateQueries({ queryKey: ['my-entitlements'] });
     },
-    onError: () => toast.error('Failed to cancel'),
+    onError: (e: any) => toast.error(e.message || 'Failed to cancel'),
   });
 
   // ─── Build Unified Agenda ───
