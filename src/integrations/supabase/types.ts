@@ -5222,8 +5222,20 @@ export type Database = {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
       }
+      book_facility_slot: {
+        Args: {
+          p_member_id: string
+          p_membership_id: string
+          p_slot_id: string
+        }
+        Returns: Json
+      }
       cancel_class_booking: {
         Args: { _booking_id: string; _reason?: string }
+        Returns: Json
+      }
+      cancel_facility_slot: {
+        Args: { p_booking_id: string; p_reason?: string }
         Returns: Json
       }
       check_trainer_slot_available: {

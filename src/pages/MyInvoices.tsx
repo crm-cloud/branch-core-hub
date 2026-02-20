@@ -119,7 +119,7 @@ export default function MyInvoices() {
     );
   }
 
-  const pendingInvoices = invoices.filter(inv => inv.status === 'pending');
+  const pendingInvoices = invoices.filter(inv => ['pending', 'partial', 'overdue'].includes(inv.status));
   const paidInvoices = invoices.filter(inv => inv.status === 'paid');
   const totalPending = pendingInvoices.reduce((sum, inv) => sum + (inv.total_amount - (inv.amount_paid || 0)), 0);
 
@@ -232,7 +232,7 @@ export default function MyInvoices() {
                               <Eye className="h-4 w-4 mr-1" />
                               View
                             </Button>
-                            {invoice.status === 'pending' && amountDue > 0 && (
+                            {['pending', 'partial', 'overdue'].includes(invoice.status) && amountDue > 0 && (
                               <Button
                                 size="sm"
                                 onClick={() => handlePayNow(invoice)}
