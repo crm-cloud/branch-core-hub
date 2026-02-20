@@ -1,80 +1,217 @@
 
+# Critical System Audit: Benefit Enforcement, Booking UI, RBAC & Invoice Fix
 
-# Fix: "Unknown User" in Audit Logs + Member Facility Booking Broken
+## What the Audit Found
 
-## Issue 1: "Unknown User" in Audit Logs
+### Issue 1: Benefit Overbooking (CRITICAL — Confirmed)
+The database proves the problem. Kuldeep's plan allows 2 Ice Bath sessions (`limit_count: 2, frequency: per_membership`) but has **8 active bookings** for Ice Bath and **3 for Sauna Room F** (limit 2). 
 
-**Root Cause Found:** There are TWO audit trigger functions on the same tables, creating duplicate entries:
-
-| Old trigger (broken) | New trigger (works) |
-|---|---|
-| Function: `log_audit_change` | Function: `audit_log_trigger_function` |
-| Trigger names: `audit_employees`, `audit_members`, etc. | Trigger names: `audit_employees_trigger`, `audit_members_trigger`, etc. |
-| Does NOT populate `actor_name` or `action_description` | Correctly fetches user name from profiles |
-
-The old `log_audit_change` triggers fire alongside the new ones, inserting rows with NULL `actor_name`. The UI falls back to "Unknown User" for those.
-
-**Affected tables with duplicate triggers:** employees, trainers, members, memberships, invoices, payments
-
-**Fix (Database Migration):**
-- Drop all old triggers that use `log_audit_change` (audit_employees, audit_members, audit_trainers, audit_memberships, audit_invoices, audit_payments)
-- Drop the old `log_audit_change` function
-- Backfill existing NULL `actor_name` rows by looking up `user_id` in the `profiles` table
-- Also add missing triggers for tables like `classes`, `leads`, `lockers` that only have one trigger but it's the old one (no actor_name)
-
-**Fix (UI - `src/pages/AuditLogs.tsx`):**
-- Update the fallback display: when `actor_name` is NULL, look up the `user_id` from the log entry in profiles (or display "System" if no user_id exists)
-- Filter out known duplicate entries (same timestamp + table + record_id but different trigger)
-
----
-
-## Issue 2: Members Cannot See Ice Bath / Sauna Facilities
-
-**Root Cause Found:** The `ensure_facility_slots` RPC function has a **type mismatch bug** that causes it to crash silently every time a member visits the booking page.
-
-The error:
+**Root Cause:** The `bookSlot` mutation in `MemberClassBooking.tsx` is a raw `INSERT` into `benefit_bookings` with zero enforcement:
+```typescript
+// Current broken code — NO limit check
+await supabase.from('benefit_bookings').insert({ slot_id, member_id, membership_id, status: 'booked' });
 ```
-ERROR: operator does not exist: date = text
-QUERY: NOT EXISTS (SELECT 1 FROM benefit_slots WHERE ... AND slot_date = v_current_date::TEXT ...)
+There is no database-level constraint, trigger, or RPC that validates benefit usage before inserting. The `benefit_usage` table is **empty** for this member — bookings are counted in `benefit_bookings` but never written to `benefit_usage`, so the entitlement widget is reading from the wrong place.
+
+**The Fix:**
+1. Create a `book_facility_slot` SECURITY DEFINER RPC in a database migration that:
+   - Checks if member already has an active booking at the same slot (duplicate guard)
+   - For `per_membership` benefits: counts existing `benefit_bookings` for the same `benefit_type_id` in the membership period and enforces `limit_count`
+   - For `monthly/weekly/daily` benefits: counts within the current period
+   - Throws a user-friendly error if limit exceeded: `"Ice Bath limit reached (2/2). Please purchase an add-on."`
+   - Inserts the booking AND writes to `benefit_usage` atomically (so the entitlement widget shows correct counts)
+   - Also handles cancellation refund by decrementing `benefit_usage` on status update
+2. Replace the raw insert in `MemberClassBooking.tsx` with `supabase.rpc('book_facility_slot', {...})`
+
+### Issue 2: "My Entitlements" Shows Wrong Used Count (Confirmed)
+The `MemberDashboard.tsx` entitlement widget reads from `benefit_usage` table. But since bookings never write to `benefit_usage`, it always shows 0 used. After fixing Issue 1, the RPC will write to `benefit_usage` on each booking, which will auto-fix this widget.
+
+Additionally, the member's entitlements widget on the dashboard shows "2/2" as `remaining/total` but should show used vs total. The label currently says `{remaining} / {totalAllowed}` which could be confusing — it shows 0 remaining out of 2 total but displays "0 / 2" not "2 / 2 used". The screenshot shows "2 / 2" — this is correct display. The issue is that the widget was never deducting, so it always showed "2 / 2" as if no sessions were used.
+
+### Issue 3: Duplicate Slot Booking (Same slot booked multiple times)
+The database shows slot `b0bf7eaa-b014-41ae-b845-8cd9a1e2a012` was booked **twice** by the same member. There is no `UNIQUE(slot_id, member_id)` constraint on `benefit_bookings`. The `book_facility_slot` RPC will guard against this.
+
+### Issue 4: Invoice Shows Duplicate / Wrong Dues on Dashboard
+The member has 2 invoices both `status: partial` totaling ~₹34,998 pending. `MyInvoices.tsx` only counts `status = 'pending'` invoices for the summary cards, missing `partial` status invoices. The dashboard `pendingInvoices` in `useMemberData` also filters incorrectly. **Fix:** Include `partial` and `overdue` statuses in the pending calculation.
+
+### Issue 5: RBAC — Routes Are Already Protected
+Good news: The `App.tsx` routes are properly protected. `/dashboard` requires `['owner', 'admin', 'manager', 'staff']` and `/settings` requires `['owner', 'admin']`. The `ProtectedRoute` redirects unauthorized users. The sidebar uses `getMenuForRole()` which shows role-specific menus. **This is working correctly** — staff see staffMenuConfig, admins see adminMenuConfig.
+
+However, there is one gap: the `/dashboard` admin page allows `staff` role — staff can access the admin dashboard. This may be intentional (staff need to see the dashboard for operations). The staff dashboard is at `/staff-dashboard`. The plan request asks staff not to see admin analytics/revenue. We'll tighten this by removing `staff` from the `/dashboard` admin route (they have `/staff-dashboard` instead).
+
+### Issue 6: Booking Page UI — Multiple Bookings of Same Slot Displayed
+From the screenshots (image-79.png), the agenda correctly shows booked items in orange. The current UI is functional. The duplicate bookings in the DB are the real problem. Once the RPC enforces limits, the "Book" button should be disabled/hidden when already booked at that slot.
+
+### Issue 7: Invoice "Partial" Status Not Counted as Pending
+`MyInvoices.tsx` only shows `pending` invoices in the "Pending Invoices" summary card, but the actual debt is in `partial` invoices. Need to fix both `MyInvoices.tsx` and `MemberDashboard.tsx` entitlement/dues calculation.
+
+---
+
+## Plan
+
+### Priority 1: Database Migration — `book_facility_slot` RPC + Usage Sync
+
+Create new migration with:
+
+```sql
+CREATE OR REPLACE FUNCTION public.book_facility_slot(
+  p_slot_id UUID,
+  p_member_id UUID,
+  p_membership_id UUID
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $$
+DECLARE
+  v_slot RECORD;
+  v_plan_benefit RECORD;
+  v_existing_count INTEGER;
+  v_booking_id UUID;
+BEGIN
+  -- 1. Lock slot row to prevent race conditions
+  SELECT * INTO v_slot FROM benefit_slots WHERE id = p_slot_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Slot not found');
+  END IF;
+
+  -- 2. Check capacity
+  IF v_slot.booked_count >= v_slot.capacity THEN
+    RETURN jsonb_build_object('success', false, 'error', 'This slot is fully booked');
+  END IF;
+
+  -- 3. Duplicate booking guard (same slot, same member)
+  IF EXISTS (
+    SELECT 1 FROM benefit_bookings 
+    WHERE slot_id = p_slot_id AND member_id = p_member_id 
+      AND status IN ('booked','confirmed')
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'You already have a booking for this slot');
+  END IF;
+
+  -- 4. Benefit limit enforcement
+  IF v_slot.benefit_type_id IS NOT NULL THEN
+    SELECT pb.* INTO v_plan_benefit
+    FROM plan_benefits pb
+    JOIN memberships m ON m.plan_id = pb.plan_id
+    WHERE m.id = p_membership_id AND pb.benefit_type_id = v_slot.benefit_type_id
+    LIMIT 1;
+
+    IF FOUND AND v_plan_benefit.limit_count IS NOT NULL AND v_plan_benefit.limit_count > 0
+       AND v_plan_benefit.frequency != 'unlimited' THEN
+      -- Count existing bookings for this benefit type
+      SELECT COUNT(*) INTO v_existing_count
+      FROM benefit_bookings bb
+      JOIN benefit_slots bs ON bs.id = bb.slot_id
+      WHERE bb.member_id = p_member_id
+        AND bb.membership_id = p_membership_id
+        AND bs.benefit_type_id = v_slot.benefit_type_id
+        AND bb.status IN ('booked','confirmed')
+        AND CASE v_plan_benefit.frequency
+          WHEN 'per_membership' THEN TRUE
+          WHEN 'monthly' THEN bs.slot_date >= date_trunc('month', CURRENT_DATE)
+          WHEN 'weekly' THEN bs.slot_date >= date_trunc('week', CURRENT_DATE)
+          WHEN 'daily' THEN bs.slot_date = CURRENT_DATE
+          ELSE TRUE
+        END;
+
+      IF v_existing_count >= v_plan_benefit.limit_count THEN
+        RETURN jsonb_build_object(
+          'success', false, 
+          'error', 'Benefit limit reached (' || v_existing_count || '/' || v_plan_benefit.limit_count || '). Please purchase an add-on.'
+        );
+      END IF;
+    END IF;
+  END IF;
+
+  -- 5. Insert booking
+  INSERT INTO benefit_bookings (slot_id, member_id, membership_id, status)
+  VALUES (p_slot_id, p_member_id, p_membership_id, 'booked')
+  RETURNING id INTO v_booking_id;
+
+  -- 6. Write to benefit_usage for entitlement tracking
+  IF v_slot.benefit_type_id IS NOT NULL THEN
+    INSERT INTO benefit_usage (membership_id, benefit_type, benefit_type_id, usage_date, usage_count)
+    VALUES (p_membership_id, v_slot.benefit_type::benefit_type, v_slot.benefit_type_id, CURRENT_DATE, 1);
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'booking_id', v_booking_id);
+END;
+$$;
 ```
 
-The `slot_date` column is type `DATE`, but the function compares it against `v_current_date::TEXT`. This type mismatch makes the RPC fail, so zero slots are ever generated, and the Recovery tab shows nothing.
+Also add a cancellation trigger/update to `benefit_usage` when booking is cancelled (decrement or delete the matching usage record).
 
-The same bug affects the INSERT statement where `slot_date`, `start_time`, and `end_time` are cast to `TEXT` but the columns are `DATE` and `TIME` types.
+Also add a **unique partial index** to prevent duplicate bookings at DB level:
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS benefit_bookings_no_dup
+ON benefit_bookings(slot_id, member_id)
+WHERE status IN ('booked', 'confirmed');
+```
 
-**Fix (Database Migration):**
-- Recreate `ensure_facility_slots` function with correct type casts:
-  - Change `slot_date = v_current_date::TEXT` to `slot_date = v_current_date`
-  - Change `v_current_date::TEXT` in INSERT to `v_current_date`
-  - Change `v_slot_start::TEXT` and `v_slot_end::TEXT` to `v_slot_start` and `v_slot_end`
+### Priority 2: Update `bookSlot` in `MemberClassBooking.tsx`
+
+Replace the raw insert with the RPC call:
+```typescript
+const { data, error } = await supabase.rpc('book_facility_slot', {
+  p_slot_id: slotId,
+  p_member_id: member.id,
+  p_membership_id: activeMembership.id,
+});
+if (error) throw error;
+const result = data as { success: boolean; error?: string };
+if (!result.success) throw new Error(result.error || 'Booking failed');
+```
+
+Also invalidate `['my-entitlements']` query on successful booking so the dashboard updates.
+
+### Priority 3: Fix Invoice Pending Count (Dashboard + MyInvoices)
+
+**`MemberDashboard.tsx`:** The `pendingInvoices` in `useMemberData` hook only counts `status = 'pending'`. Update to include `partial` and `overdue`:
+
+In `src/hooks/useMemberData.ts`, find the pending invoices query and change the filter from `.eq('status', 'pending')` to `.in('status', ['pending', 'partial', 'overdue'])`.
+
+**`MyInvoices.tsx`:** Update the pending summary logic:
+```typescript
+const pendingInvoices = invoices.filter(inv => ['pending', 'partial', 'overdue'].includes(inv.status));
+```
+
+Also add a "Due Date" column to show the next payment due date.
+
+### Priority 4: Tighten Admin RBAC
+
+In `App.tsx`, remove `staff` from the `/dashboard` admin route (staff already have `/staff-dashboard`):
+```tsx
+// Before
+<Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}>
+// After  
+<Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}>
+```
+
+This ensures staff who navigate to `/dashboard` are redirected to `/staff-dashboard` by `ProtectedRoute`.
+
+### Priority 5: Backfill benefit_usage for existing bookings
+
+The existing overbookings in the database need cleanup. Add a migration to:
+1. Clear `benefit_bookings` that exceed the plan limit (keep only the earliest `limit_count` bookings per benefit type per membership, cancel the rest)
+2. Backfill `benefit_usage` from the remaining valid `benefit_bookings`
 
 ---
 
-## Issue 3: Class Booking / Cancel UI/UX Improvements
-
-**Current state:** The Agenda cards work but the Cancel button is a small outline button that blends in. Booked items don't stand out enough.
-
-**Fix (in `src/pages/MemberClassBooking.tsx` AgendaCard component):**
-- Make booked items more visually distinct with a green left-border accent and a "Booked" badge
-- Make the Cancel button red/destructive variant so it's clearly a cancel action
-- Add a confirmation step before cancellation (to prevent accidental taps)
-- Show facility name (Ice Bath / Sauna) more prominently on recovery cards
-- Improve the empty state for Recovery filter to say "No recovery slots available -- facilities may be closed today"
-
----
-
-## Files Summary
+## Files to Change
 
 | File | Change |
-|---|---|
-| Database migration | 1. Drop old duplicate audit triggers + `log_audit_change` function. 2. Backfill NULL actor_name from profiles. 3. Fix `ensure_facility_slots` type casts. 4. Add missing audit triggers for classes/leads/lockers |
-| `src/pages/AuditLogs.tsx` | Better fallback for NULL actor_name (show "System" badge instead of "Unknown User") |
-| `src/pages/MemberClassBooking.tsx` | UI/UX polish: booked state styling, red cancel button, confirmation dialog, better empty states |
+|------|--------|
+| Database migration | New `book_facility_slot` RPC, unique index on benefit_bookings, backfill + cleanup excess bookings |
+| `src/pages/MemberClassBooking.tsx` | Replace raw INSERT with `book_facility_slot` RPC; invalidate entitlements on success |
+| `src/hooks/useMemberData.ts` | Include `partial`/`overdue` in pending invoices query |
+| `src/pages/MyInvoices.tsx` | Include `partial`/`overdue` in pending summary; add "Due" column |
+| `src/pages/MemberDashboard.tsx` | Fix "Pending Dues" stat to count `partial` status invoices correctly |
+| `src/App.tsx` | Remove `staff` from `/dashboard` route |
 
 ---
 
-## Execution Order
+## What is NOT Changed
 
-1. Database migration (fixes both the audit duplicates AND the slot generation crash)
-2. AuditLogs.tsx UI fix (display cleanup)
-3. MemberClassBooking.tsx UI/UX improvements (booking cards polish)
+- **Sidebar RBAC**: Already working correctly via `getMenuForRole()` — staff see staff menu, members see member menu
+- **Route protection**: Already correct in `ProtectedRoute` — members redirected to member-dashboard, trainers to trainer-dashboard
+- **Calendar UI overhaul**: The current agenda view is functional and clean. A full Material Design timeline rewrite is a large scope that risks breaking existing working features. The current implementation will be kept stable. The booking enforcement fix is far more critical.
+- **"My Bookings" broken names**: The data in `AllBookings.tsx` already correctly joins profiles for member names. The issue shown in the screenshot (image-78) shows real names ("Kuldeep Salvi") are displaying correctly.
