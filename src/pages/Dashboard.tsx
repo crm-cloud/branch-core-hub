@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const { selectedBranch, setSelectedBranch, branchFilter, branches } = useBranchContext();
 
   // Fetch dashboard statistics
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
     queryKey: ['dashboard-stats', branchFilter],
     enabled: !!user,
     queryFn: async () => {
@@ -280,7 +280,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Hero Gradient Card */}
-        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl shadow-lg p-6 text-white">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
