@@ -15,8 +15,10 @@ import { useBranches } from '@/hooks/useBranches';
 import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function AllBookingsPage() {
+  const queryClient = useQueryClient();
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -507,6 +509,11 @@ export default function AllBookingsPage() {
         open={conciergeOpen}
         onOpenChange={setConciergeOpen}
         branchId={branchId}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['all-benefit-bookings'] });
+          queryClient.invalidateQueries({ queryKey: ['all-class-bookings'] });
+          queryClient.invalidateQueries({ queryKey: ['all-pt-sessions'] });
+        }}
       />
     </AppLayout>
   );

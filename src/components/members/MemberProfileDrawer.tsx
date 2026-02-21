@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,11 +26,14 @@ import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
 import { EditProfileDrawer } from './EditProfileDrawer';
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
+import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 
 // ─── Benefits & Usage Tab ───
-function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; activeMembership: any }) {
+function BenefitsUsageTab({ memberId, activeMembership, branchId }: { memberId: string; activeMembership: any; branchId: string }) {
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
+  const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
+  const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
 
   const { data: planBenefits = [] } = useQuery({
     queryKey: ['member-plan-benefits', activeMembership?.plan_id],
@@ -46,18 +49,63 @@ function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; ac
     enabled: !!activeMembership?.plan_id,
   });
 
-  const { data: usageHistory = [] } = useQuery({
-    queryKey: ['member-benefit-usage', activeMembership?.id],
+  // Real usage from benefit_usage table
+  const { data: usageSummary = [] } = useQuery({
+    queryKey: ['member-benefit-usage-summary', activeMembership?.id],
     queryFn: async () => {
       if (!activeMembership?.id) return [];
       const { data, error } = await supabase
         .from('benefit_usage')
-        .select('*, benefit_types:benefit_type_id(id, name, code)')
-        .eq('membership_id', activeMembership.id)
-        .order('usage_date', { ascending: false })
-        .limit(20);
+        .select('benefit_type_id, usage_count')
+        .eq('membership_id', activeMembership.id);
       if (error) throw error;
       return data || [];
+    },
+    enabled: !!activeMembership?.id,
+  });
+
+  // Recent bookings with facility details
+  const { data: recentBookings = [] } = useQuery({
+    queryKey: ['member-benefit-bookings-recent', memberId, activeMembership?.id],
+    queryFn: async () => {
+      if (!activeMembership?.id) return [];
+      const { data, error } = await supabase
+        .from('benefit_bookings')
+        .select('id, status, booked_at, cancelled_at, slot_id')
+        .eq('member_id', memberId)
+        .eq('membership_id', activeMembership.id)
+        .order('booked_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      if (!data?.length) return [];
+
+      // Fetch slot details
+      const slotIds = [...new Set(data.map(b => b.slot_id))];
+      const { data: slots } = await supabase
+        .from('benefit_slots')
+        .select('id, slot_date, start_time, end_time, facility_id')
+        .in('id', slotIds);
+
+      // Fetch facility names
+      const facilityIds = [...new Set((slots || []).map(s => s.facility_id).filter(Boolean))] as string[];
+      let facilityMap: Record<string, string> = {};
+      if (facilityIds.length > 0) {
+        const { data: facilities } = await supabase
+          .from('facilities')
+          .select('id, name')
+          .in('id', facilityIds);
+        facilityMap = (facilities || []).reduce((acc, f) => { acc[f.id] = f.name; return acc; }, {} as Record<string, string>);
+      }
+
+      const slotMap = (slots || []).reduce((acc, s) => {
+        acc[s.id] = { ...s, facility_name: s.facility_id ? facilityMap[s.facility_id] || 'Facility' : 'Facility' };
+        return acc;
+      }, {} as Record<string, any>);
+
+      return data.map(b => ({
+        ...b,
+        slot: slotMap[b.slot_id] || null,
+      }));
     },
     enabled: !!activeMembership?.id,
   });
@@ -67,18 +115,44 @@ function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; ac
     return map[f] || f;
   };
 
-  const availableBenefits = planBenefits.map((b: any) => ({
-    benefit_type: b.benefit_type,
-    benefit_type_id: b.benefit_type_id,
-    label: b.benefit_types?.name || b.benefit_type,
-    name: b.benefit_types?.name || b.benefit_type,
-    frequency: b.frequency,
-    limit_count: b.limit_count,
-    description: b.description,
-    used: 0,
-    remaining: b.limit_count,
-    isUnlimited: b.frequency === 'unlimited',
-  }));
+  // Compute real used counts per benefit_type_id
+  const usageMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    usageSummary.forEach((u: any) => {
+      if (u.benefit_type_id) {
+        map[u.benefit_type_id] = (map[u.benefit_type_id] || 0) + (u.usage_count || 1);
+      }
+    });
+    return map;
+  }, [usageSummary]);
+
+  const availableBenefits = planBenefits.map((b: any) => {
+    const isUnlimited = b.frequency === 'unlimited';
+    const used = b.benefit_type_id ? (usageMap[b.benefit_type_id] || 0) : 0;
+    const remaining = isUnlimited ? null : Math.max(0, (b.limit_count || 0) - used);
+    return {
+      benefit_type: b.benefit_type,
+      benefit_type_id: b.benefit_type_id,
+      label: b.benefit_types?.name || b.benefit_type,
+      name: b.benefit_types?.name || b.benefit_type,
+      frequency: b.frequency,
+      limit_count: b.limit_count,
+      description: b.description,
+      used,
+      remaining,
+      isUnlimited,
+    };
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'booked': case 'confirmed': return <Badge variant="secondary" className="text-[10px]">Booked</Badge>;
+      case 'attended': case 'checked_in': return <Badge variant="default" className="text-[10px]">Attended</Badge>;
+      case 'cancelled': return <Badge variant="outline" className="text-[10px]">Cancelled</Badge>;
+      case 'no_show': return <Badge variant="destructive" className="text-[10px]">No Show</Badge>;
+      default: return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+    }
+  };
 
   return (
     <TabsContent value="benefits" className="space-y-4 mt-4">
@@ -105,19 +179,70 @@ function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; ac
               </div>
             </CardHeader>
             <CardContent>
-              {planBenefits.length > 0 ? (
-                <div className="space-y-2">
-                  {planBenefits.map((b: any) => (
-                    <div key={b.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                      <div className="flex items-center gap-2">
-                        <Heart className="h-4 w-4 text-primary" />
-                        <span className="font-medium text-sm">{b.benefit_types?.name || b.benefit_type}</span>
+              {availableBenefits.length > 0 ? (
+                <div className="space-y-3">
+                  {availableBenefits.map((b: any, idx: number) => {
+                    const progressPct = b.isUnlimited ? 100 : b.limit_count ? Math.min(100, (b.used / b.limit_count) * 100) : 0;
+                    const isExhausted = !b.isUnlimited && b.remaining === 0;
+                    const barColor = b.isUnlimited
+                      ? 'bg-blue-500'
+                      : isExhausted
+                        ? 'bg-destructive'
+                        : 'bg-emerald-500';
+                    const borderColor = b.isUnlimited
+                      ? 'border-l-blue-500'
+                      : isExhausted
+                        ? 'border-l-destructive'
+                        : 'border-l-emerald-500';
+
+                    return (
+                      <div key={idx} className={`p-3 rounded-lg bg-muted/50 border-l-4 ${borderColor}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <Heart className="h-4 w-4 text-primary" />
+                            <span className="font-medium text-sm">{b.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {b.isUnlimited ? (
+                              <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 text-xs">
+                                ∞ Unlimited
+                              </Badge>
+                            ) : (
+                              <span className={`text-xs font-semibold ${isExhausted ? 'text-destructive' : 'text-foreground'}`}>
+                                {b.used}/{b.limit_count} {getFrequencyLabel(b.frequency)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {!b.isUnlimited && b.limit_count > 0 && (
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${barColor}`}
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                        )}
+                        {b.isUnlimited && (
+                          <div className="h-2 bg-blue-500/20 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-500 w-full animate-pulse opacity-40" />
+                          </div>
+                        )}
+                        {isExhausted && b.benefit_type_id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2 w-full text-xs h-7"
+                            onClick={() => {
+                              setTopUpBenefit(b);
+                              setTopUpDrawerOpen(true);
+                            }}
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> Top Up Sessions
+                          </Button>
+                        )}
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {b.frequency === 'unlimited' ? 'Unlimited' : `${b.limit_count || '∞'} ${getFrequencyLabel(b.frequency)}`}
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No benefits included in this plan</p>
@@ -129,26 +254,27 @@ function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; ac
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Clock className="h-4 w-4" />
-                Recent Usage
+                Recent Bookings
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {usageHistory.length > 0 ? (
+              {recentBookings.length > 0 ? (
                 <div className="space-y-2">
-                  {usageHistory.map((u: any) => (
-                    <div key={u.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                  {recentBookings.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
                       <div>
-                        <p className="text-sm font-medium">{u.benefit_types?.name || u.benefit_type}</p>
+                        <p className="text-sm font-medium">{b.slot?.facility_name || 'Facility'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(u.usage_date), 'dd MMM yyyy')} • {u.usage_count || 1} session(s)
+                          {b.slot?.slot_date ? format(new Date(b.slot.slot_date), 'dd MMM yyyy') : 'N/A'}
+                          {b.slot?.start_time ? ` • ${b.slot.start_time.slice(0, 5)} - ${b.slot.end_time?.slice(0, 5)}` : ''}
                         </p>
                       </div>
-                      {u.notes && <p className="text-xs text-muted-foreground max-w-[120px] truncate">{u.notes}</p>}
+                      {getStatusBadge(b.status)}
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No usage recorded yet</p>
+                <p className="text-sm text-muted-foreground">No bookings recorded yet</p>
               )}
             </CardContent>
           </Card>
@@ -161,6 +287,19 @@ function BenefitsUsageTab({ memberId, activeMembership }: { memberId: string; ac
             memberName=""
             availableBenefits={availableBenefits}
           />
+
+          {topUpBenefit && (
+            <TopUpBenefitDrawer
+              open={topUpDrawerOpen}
+              onOpenChange={setTopUpDrawerOpen}
+              memberId={memberId}
+              membershipId={activeMembership.id}
+              branchId={branchId}
+              benefitName={topUpBenefit.name}
+              benefitTypeId={topUpBenefit.benefit_type_id}
+              benefitType={topUpBenefit.benefit_type}
+            />
+          )}
         </>
       )}
     </TabsContent>
@@ -769,7 +908,7 @@ export function MemberProfileDrawer({
               </Card>
             </TabsContent>
 
-            <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} />
+            <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {payments.length > 0 ? (

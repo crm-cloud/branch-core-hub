@@ -17,6 +17,7 @@ interface ConciergeBookingDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId: string;
+  onSuccess?: () => void;
 }
 
 interface MemberResult {
@@ -30,7 +31,7 @@ interface MemberResult {
   member_status: string;
 }
 
-export function ConciergeBookingDrawer({ open, onOpenChange, branchId }: ConciergeBookingDrawerProps) {
+export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess }: ConciergeBookingDrawerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<MemberResult | null>(null);
   const [serviceType, setServiceType] = useState<'class' | 'recovery'>('class');
@@ -151,6 +152,7 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId }: Concier
       const result = data as any;
       if (result?.success || result?.valid !== false) {
         toast.success(`Class booked for ${selectedMember.full_name}`);
+        onSuccess?.();
         onOpenChange(false);
         resetState();
       } else {
@@ -165,6 +167,7 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId }: Concier
             });
           if (insertError) throw insertError;
           toast.success(`Class force-booked for ${selectedMember.full_name}`);
+          onSuccess?.();
           onOpenChange(false);
           resetState();
         } else {
@@ -198,17 +201,34 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId }: Concier
         return;
       }
 
-      const { error } = await supabase
-        .from('benefit_bookings')
-        .insert({
-          slot_id: slotId,
-          member_id: selectedMember.id,
-          membership_id: membership?.id || selectedMember.id, // fallback for force-add
-          status: 'booked',
+      if (forceAdd) {
+        // Force-add: bypass limits with raw insert
+        const { error } = await supabase
+          .from('benefit_bookings')
+          .insert({
+            slot_id: slotId,
+            member_id: selectedMember.id,
+            membership_id: membership?.id || selectedMember.id,
+            status: 'booked',
+          });
+        if (error) throw error;
+      } else {
+        // Normal path: use RPC for enforcement
+        const { data, error } = await supabase.rpc('book_facility_slot', {
+          p_slot_id: slotId,
+          p_member_id: selectedMember.id,
+          p_membership_id: membership!.id,
         });
+        if (error) throw error;
+        const result = data as { success: boolean; error?: string };
+        if (!result.success) {
+          toast.error(result.error || 'Booking failed');
+          return;
+        }
+      }
 
-      if (error) throw error;
       toast.success(`Slot booked for ${selectedMember.full_name}`);
+      onSuccess?.();
       onOpenChange(false);
       resetState();
     } catch (err: any) {
