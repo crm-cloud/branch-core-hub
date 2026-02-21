@@ -271,7 +271,20 @@ export default function MemberClassBooking() {
       queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings-agenda'] });
       queryClient.invalidateQueries({ queryKey: ['my-entitlements'] });
     },
-    onError: (e: any) => toast.error(e.message || 'Failed to book slot'),
+    onError: (e: any) => {
+      const msg = e.message || 'Failed to book slot';
+      if (msg.includes('Benefit limit reached')) {
+        toast.error(msg, {
+          action: {
+            label: 'Buy More',
+            onClick: () => window.location.href = '/my-benefits',
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   const cancelSlotBooking = useMutation({
