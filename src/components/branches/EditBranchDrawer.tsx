@@ -275,7 +275,9 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
                 <SelectValue placeholder="Select a manager" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No change</SelectItem>
+                <SelectItem value="none">
+                  {currentManager ? 'Keep current manager' : 'No manager assigned'}
+                </SelectItem>
                 {potentialManagers.map((m: any) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
                     {m.profiles?.full_name || m.profiles?.email} ({m.role})
@@ -283,6 +285,9 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Only users with Manager, Admin, or Owner roles appear here. Assign roles via Admin Roles page.
+            </p>
           </div>
 
           <div className="flex items-center justify-between py-2">

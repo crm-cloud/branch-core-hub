@@ -152,6 +152,7 @@ export async function createContract(contract: {
   endDate?: string;
   salary: number;
   terms?: any;
+  documentUrl?: string;
 }) {
   const { data, error } = await supabase
     .from('contracts')
@@ -163,6 +164,7 @@ export async function createContract(contract: {
       end_date: contract.endDate,
       salary: contract.salary,
       terms: contract.terms,
+      document_url: contract.documentUrl || null,
       status: 'draft',
     })
     .select()

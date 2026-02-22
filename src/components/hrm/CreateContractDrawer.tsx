@@ -24,6 +24,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     endDate: '',
     salary: employee?.salary || 0,
     terms: '',
+    documentUrl: '',
   });
 
   const createContractMutation = useMutation({
@@ -47,6 +48,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
       endDate: '',
       salary: employee?.salary || 0,
       terms: '',
+      documentUrl: '',
     });
   };
 
@@ -65,6 +67,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
       endDate: formData.endDate || undefined,
       salary: Number(formData.salary),
       terms: formData.terms ? { conditions: formData.terms } : undefined,
+      documentUrl: formData.documentUrl || undefined,
     });
   };
 
@@ -146,9 +149,42 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
             <Textarea
               value={formData.terms}
               onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
-              placeholder="Additional contract terms..."
+              placeholder="Notice period, working hours, PF/ESI details, leave policy..."
               rows={4}
             />
+            <p className="text-xs text-muted-foreground">
+              Include Indian labor law essentials: notice period, PF/ESI, working hours, leave policy
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contract Document (Upload)</Label>
+            <Input
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.png"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fileName = `contracts/${employee?.id || 'unknown'}/${Date.now()}-${file.name}`;
+                const { error } = await (await import('@/integrations/supabase/client')).supabase.storage
+                  .from('documents')
+                  .upload(fileName, file);
+                if (error) {
+                  (await import('sonner')).toast.error('Upload failed: ' + error.message);
+                } else {
+                  const { data: urlData } = (await import('@/integrations/supabase/client')).supabase.storage
+                    .from('documents')
+                    .getPublicUrl(fileName);
+                  setFormData({ ...formData, documentUrl: urlData.publicUrl });
+                  (await import('sonner')).toast.success('Document uploaded');
+                }
+              }}
+            />
+            {formData.documentUrl && (
+              <a href={formData.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-accent underline">
+                View uploaded document
+              </a>
+            )}
           </div>
 
           <SheetFooter className="pt-4">

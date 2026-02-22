@@ -5,7 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Gift, Users, Wallet, Copy, Check } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Gift, Users, Wallet, Copy, Check, Plus } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
@@ -15,7 +19,52 @@ import { claimReward } from '@/services/referralService';
 export default function ReferralsPage() {
   const { user } = useAuth();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [createReferralOpen, setCreateReferralOpen] = useState(false);
+  const [newReferral, setNewReferral] = useState({ referrerMemberId: '', referredName: '', referredPhone: '', referredEmail: '' });
   const queryClient = useQueryClient();
+
+  // Fetch members for referrer selection
+  const { data: members = [] } = useQuery({
+    queryKey: ['referral-members'],
+    enabled: !!user,
+    queryFn: async (): Promise<any[]> => {
+      const { data, error } = await (supabase as any)
+        .from('members')
+        .select('id, member_code, user_id')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      // Fetch profiles separately
+      const userIds = (data || []).map(m => m.user_id).filter(Boolean);
+      const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+      return (data || []).map(m => ({ ...m, profiles: profileMap.get(m.user_id) || null }));
+    },
+  });
+
+  const createReferralMutation = useMutation({
+    mutationFn: async () => {
+      const member = members.find((m: any) => m.id === newReferral.referrerMemberId);
+      if (!member) throw new Error('Select a referrer member');
+      const code = `REF-${Date.now().toString(36).toUpperCase()}`;
+      const { error } = await supabase.from('referrals').insert({
+        referrer_member_id: newReferral.referrerMemberId,
+        referral_code: code,
+        referred_name: newReferral.referredName || 'Unknown',
+        referred_phone: newReferral.referredPhone || 'N/A',
+        status: 'new' as const,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Referral created');
+      queryClient.invalidateQueries({ queryKey: ['all-referrals'] });
+      setCreateReferralOpen(false);
+      setNewReferral({ referrerMemberId: '', referredName: '', referredPhone: '', referredEmail: '' });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const { data: referrals = [], isLoading: referralsLoading } = useQuery({
     queryKey: ['all-referrals'],
@@ -83,6 +132,10 @@ export default function ReferralsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Referrals & Rewards</h1>
+          <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
+            <Plus className="mr-2 h-4 w-4" />
+            Create Referral
+          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -267,6 +320,49 @@ export default function ReferralsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Create Referral Drawer */}
+      <Sheet open={createReferralOpen} onOpenChange={setCreateReferralOpen}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Create Referral</SheetTitle>
+            <SheetDescription>Manually log a referral from a walk-in or phone inquiry</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={(e) => { e.preventDefault(); createReferralMutation.mutate(); }} className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Referrer Member *</Label>
+              <Select value={newReferral.referrerMemberId} onValueChange={(v) => setNewReferral({ ...newReferral, referrerMemberId: v })}>
+                <SelectTrigger><SelectValue placeholder="Select member who referred" /></SelectTrigger>
+                <SelectContent>
+                  {members.map((m: any) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.profiles?.full_name || m.member_code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Referred Person Name</Label>
+              <Input value={newReferral.referredName} onChange={(e) => setNewReferral({ ...newReferral, referredName: e.target.value })} placeholder="Name of the referred person" />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={newReferral.referredPhone} onChange={(e) => setNewReferral({ ...newReferral, referredPhone: e.target.value })} placeholder="Phone number" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={newReferral.referredEmail} onChange={(e) => setNewReferral({ ...newReferral, referredEmail: e.target.value })} placeholder="Email address" />
+            </div>
+            <SheetFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => setCreateReferralOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createReferralMutation.isPending || !newReferral.referrerMemberId}>
+                {createReferralMutation.isPending ? 'Creating...' : 'Create Referral'}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
