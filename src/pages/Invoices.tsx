@@ -50,7 +50,8 @@ export default function InvoicesPage() {
         .from('invoices')
         .select(`
           *,
-          members(member_code, profiles:user_id(full_name, email))
+          members(member_code, profiles:user_id(full_name, email)),
+          invoice_items(description, reference_type)
         `)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -64,6 +65,20 @@ export default function InvoicesPage() {
       return data;
     },
   });
+
+  const getInvoiceType = (invoice: any): { label: string; emoji: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
+    if (invoice.pos_sale_id) return { label: 'POS', emoji: '🛒', variant: 'secondary' };
+    const items = invoice.invoice_items || [];
+    const firstItem = items[0];
+    if (!firstItem) return { label: 'Manual', emoji: '📝', variant: 'outline' };
+    const refType = firstItem.reference_type || '';
+    const desc = (firstItem.description || '').toLowerCase();
+    if (refType === 'membership_refund' || invoice.total_amount < 0) return { label: 'Refund', emoji: '↩️', variant: 'destructive' };
+    if (desc.includes('top-up') || desc.includes('top up') || desc.includes('add-on')) return { label: 'Add-On', emoji: '➕', variant: 'default' };
+    if (refType === 'pt_package' || desc.includes('pt ')) return { label: 'PT', emoji: '🏋️', variant: 'secondary' };
+    if (refType === 'membership') return { label: 'Membership', emoji: '📋', variant: 'outline' };
+    return { label: 'Manual', emoji: '📝', variant: 'outline' };
+  };
 
   // Filter invoices
   const filteredInvoices = invoices.filter((invoice: any) => {
@@ -259,9 +274,14 @@ export default function InvoicesPage() {
                             <span className="font-mono text-sm">{invoice.invoice_number}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={invoice.pos_sale_id ? 'secondary' : 'outline'}>
-                              {invoice.pos_sale_id ? '🛒 POS' : '📋 Membership'}
-                            </Badge>
+                            {(() => {
+                              const t = getInvoiceType(invoice);
+                              return (
+                                <Badge variant={t.variant}>
+                                  {t.emoji} {t.label}
+                                </Badge>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="font-semibold">
                             ₹{invoice.total_amount.toLocaleString()}

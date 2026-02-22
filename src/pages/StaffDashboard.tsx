@@ -140,6 +140,23 @@ export default function StaffDashboard() {
     },
   });
 
+  // Fetch leads requiring follow-up
+  const { data: followUpLeads = [] } = useQuery({
+    queryKey: ['staff-followup-leads', branchId],
+    enabled: !!branchId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, name, phone, source, status, follow_up_date, notes')
+        .eq('branch_id', branchId!)
+        .in('status', ['new', 'contacted'])
+        .order('follow_up_date', { ascending: true, nullsFirst: false })
+        .limit(5);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Fetch recent check-ins
   const { data: recentCheckins = [] } = useQuery({
     queryKey: ['recent-checkins', branchId],
@@ -350,8 +367,47 @@ export default function StaffDashboard() {
             </CardContent>
           </Card>
 
+          {/* Leads Requiring Follow-Up */}
+          <Card className="border-border/50">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-accent" />
+                Follow-Up Leads
+              </CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/leads">View All</Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {followUpLeads.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No leads pending follow-up</p>
+              ) : (
+                <div className="space-y-3">
+                  {followUpLeads.map((lead: any) => (
+                    <div key={lead.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{lead.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {lead.phone || 'No phone'} • {lead.source || 'Unknown'}
+                        </p>
+                        {lead.follow_up_date && (
+                          <p className="text-xs text-warning mt-0.5">
+                            Follow-up: {format(new Date(lead.follow_up_date), 'dd MMM')}
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>
+                        {lead.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* My Tasks */}
-          <Card className="border-border/50 md:col-span-2">
+          <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
