@@ -1,127 +1,115 @@
 
 
-# Fix: Ghost Bookings, Benefits Tab UI, and Top-Up Workflow
+# Audit Findings and Fix Plan
 
-## Issue 1: Ghost Bookings in Admin "All Bookings" (CRITICAL)
+## Issue 1: Edit Branch -- Manager Dropdown Shows "No change" Only
 
-**Root Cause Confirmed:** Two problems found in `ConciergeBookingDrawer.tsx`:
+**Root Cause:** The `EditBranchDrawer.tsx` fetches potential managers from `user_roles` filtered by `['manager', 'admin', 'owner']`. This query works correctly. However, the dropdown shows only "No change" (as seen in screenshot) because there may be no users with `manager` role assigned yet. The actual bug is that when `currentManager` loads AFTER the `useEffect` sets `formData`, the `managerId` stays empty. The `useEffect` depends on `currentManager` but the query runs async -- the manager data arrives after the form already initialized.
 
-1. **Raw INSERT bypasses enforcement** (line 201-208): The `handleBookSlot` function does a raw `supabase.from('benefit_bookings').insert(...)` instead of using the `book_facility_slot` RPC. This means:
-   - No benefit limit enforcement
-   - No `benefit_usage` record written
-   - No duplicate guard
-   
-2. **No query invalidation after booking**: After a successful concierge booking, the drawer calls `onOpenChange(false)` but never invalidates the `all-benefit-bookings` query. The All Bookings page still shows stale cached data (0 bookings) until a manual refresh.
+**Fix:** The `useEffect` dependency on `currentManager` should properly set the `managerId` when data arrives. Currently it does depend on `currentManager`, so this should work. The real issue is the dropdown only shows users with `manager/admin/owner` roles. If the gym has staff who should manage branches, they won't appear. No code change needed for the manager pre-selection logic -- it already works. The screenshot shows the dropdown IS working (it shows "No change" as default). The user needs to assign the `manager` role to a staff member via Admin Roles page first, then that person will appear in the dropdown.
 
-**Fix:**
-- Replace the raw INSERT in `handleBookSlot` with `supabase.rpc('book_facility_slot', {...})` (same as member booking page)
-- When `forceAdd` is checked, keep the raw insert as override but still write `benefit_usage`
-- Accept an `onSuccess` callback prop to invalidate queries from the parent (`AllBookingsPage`)
-- In `AllBookingsPage`, pass `onSuccess` that invalidates `['all-benefit-bookings']` and `['all-class-bookings']`
-
-**Files:** `src/components/bookings/ConciergeBookingDrawer.tsx`, `src/pages/AllBookings.tsx`
+**However**, there is a UX improvement needed: show the current manager's name pre-selected instead of "No change", and add a helper text explaining what roles are eligible.
 
 ---
 
-## Issue 2: Benefits Tab - No Used/Remaining, No Progress Bars
+## Issue 2: Invoice Type Always Shows "Membership"
 
-**Root Cause:** In `MemberProfileDrawer.tsx` line 78, the `BenefitsUsageTab` hardcodes `used: 0` and `remaining: b.limit_count`. It never queries actual usage from `benefit_usage` or `benefit_bookings`.
+**Root Cause (Confirmed):** In `Invoices.tsx` line 262-264, the type badge logic is:
+```tsx
+{invoice.pos_sale_id ? 'POS' : 'Membership'}
+```
+This is a binary check -- if no `pos_sale_id`, it defaults to "Membership". But invoices can be for: Membership, Sauna/Ice Bath Top-Up, PT Package, Manual, Refund, etc. The `invoice_items.reference_type` column has values like `membership`, `membership_refund`, and the `description` field contains the actual item name (e.g., "Sauna Room M Top-Up").
 
-**Fix:** Update the `BenefitsUsageTab` component to:
-- Query `benefit_usage` grouped by `benefit_type_id` to get actual used counts
-- Also query `benefit_bookings` (active) to include booked-but-not-yet-used sessions
-- Compute `remaining = limit_count - used` (or "Unlimited" for unlimited benefits)
-- Add visual progress bars (green when remaining > 0, red when 0, blue/infinity for unlimited)
-- Color-code each entitlement row:
-  - Green border/accent: has remaining sessions
-  - Red/alert: 0 remaining
-  - Blue with infinity icon: unlimited
-- Show "Recent Usage" with booking details: facility name, date, time slot, status (Booked/Attended/Cancelled) by joining `benefit_bookings` with `benefit_slots` and `facilities`
+**Fix:** Derive the invoice type from `invoice_items.reference_type` and `description`:
+- If `pos_sale_id` exists: "POS"
+- If `reference_type = 'membership_refund'`: "Refund"
+- If description contains "Top-Up": "Add-On"
+- If `reference_type = 'membership'`: "Membership"
+- Else: "Manual"
 
-**File:** `src/components/members/MemberProfileDrawer.tsx` (the `BenefitsUsageTab` function, lines 32-167)
-
----
-
-## Issue 3: Top-Up / Add-On Purchase Workflow (New Feature)
-
-**Current state:** When a member exhausts their benefit sessions (e.g., 2/2 Ice Bath used), there is no way to purchase additional sessions. The system just blocks further bookings.
-
-**Implementation:**
-
-### Admin Side (Member Profile > Benefits Tab):
-- Add a "+ Top Up" button next to each limited benefit that has 0 remaining
-- Opens a drawer with: benefit name, quantity input, price input
-- On submit:
-  1. Creates an `invoice` for the top-up amount (status: pending)
-  2. Inserts a `member_benefit_credits` record (or updates `plan_benefits` allocation)
-  3. The additional credits are checked during `book_facility_slot` RPC
-
-### Member Side (Booking Page):
-- When `book_facility_slot` returns "Benefit limit reached", show a user-friendly message with a "Buy More" button
-- The "Buy More" button navigates to `/my-benefits` or opens the existing `PurchaseBenefitDrawer`
-
-**New file:** `src/components/benefits/TopUpBenefitDrawer.tsx`
-**Modified files:** `src/components/members/MemberProfileDrawer.tsx`, `src/pages/MemberClassBooking.tsx`
+Need to include `invoice_items` in the query join.
 
 ---
 
-## Issue 4: Invoice "-10000" display (Minor Polish)
+## Issue 3: Duplicate Menu Items -- "HRM" and "Employees" (All Staff)
 
-From the screenshots, the Pay tab shows "Rs -10,000" which looks like a refund/credit note but is confusing. This is existing data and not a code bug, but the display should clarify negative amounts as "Refund" or "Credit Note".
+**Root Cause (Confirmed):** In `menu.ts` lines 199-200, the Admin & HR section has BOTH:
+- `HRM` -> `/hrm` (employees + contracts + payroll)
+- `Employees` -> `/employees` (unified staff view with employees + trainers)
 
-**File:** `src/components/members/MemberProfileDrawer.tsx` (Pay tab section)
+These overlap significantly. `HRM` page manages employees with contracts and payroll. `Employees` page (actually "All Staff") shows a unified view of employees + trainers.
+
+**Fix:** Remove the `Employees` menu item. Merge the "All Staff" unified view (employees + trainers together) into the HRM page as an additional tab or as the default Employees tab. The HRM page already has Employees, Contracts, and Payroll tabs -- we just need it to also show trainers in the Employees tab (like the Employees page does).
 
 ---
 
-## Files Summary
+## Issue 4: Staff Dashboard Missing Follow-Up Section
+
+**Root Cause:** The `StaffDashboard.tsx` fetches `pendingLeads` count but does NOT display individual leads requiring follow-up. There's a stat card showing "Active Leads" count but no list of leads with their follow-up dates, notes, or quick actions.
+
+**Fix:** Add a "Leads Requiring Follow-Up" card to the staff dashboard showing:
+- Lead name, phone, source
+- Follow-up date and status
+- Quick action buttons: "Call", "Mark Contacted"
+- Link to full Leads page
+
+---
+
+## Issue 5: Referrals & Rewards End-to-End Audit
+
+**Current State:**
+- **Admin view** (`Referrals.tsx`): Shows all referrals with referrer/referred names, codes, status. Shows rewards with claim action. This works.
+- **Member view** (`MemberReferrals.tsx`): Shows referral code, copy/share link, referral history, rewards. This works.
+- **Missing pieces:**
+  1. No way for admin to CREATE a referral manually (when a walk-in mentions a member referred them)
+  2. No referral code validation on the Auth page (the `?ref=` param isn't processed)
+  3. No automatic reward generation when a referred lead converts to member
+  4. The referral settings (reward amount, type) exist in Settings but aren't connected to reward auto-generation
+
+**Fix:** 
+- Add "Create Referral" button on admin Referrals page
+- The `?ref=` parameter capture on Auth page needs to be wired to store the referral code during signup
+- Add a trigger/RPC that creates a referral_reward when a referral status changes to 'converted'
+
+---
+
+## Issue 6: Benefits End-to-End for Male and Female
+
+**Current State:** The gender filter in `MemberClassBooking.tsx` (lines 155-160) correctly filters slots by `facility.gender_access`:
+```tsx
+return access === 'unisex' || access === memberGender;
+```
+This works if: (a) facilities have `gender_access` set, and (b) member profiles have `gender` set.
+
+**Potential issues:**
+- If a member's profile has no `gender` set, they see ALL facilities (the filter passes when `memberGender` is undefined and `access !== 'unisex'` would incorrectly hide slots)
+- Actually looking at the logic: if `memberGender` is null/undefined and `access = 'male'`, then `access === memberGender` is false and `access === 'unisex'` is false, so the slot is HIDDEN. This means members without gender set see ONLY unisex facilities. This is a bug -- they should see all until gender is set.
+
+**Fix:** If member gender is not set, show all facilities (don't filter). Add a prompt for members to set their gender in profile.
+
+---
+
+## Issue 7: HRM Contracts -- No Document Upload or Indian Law Compliance
+
+**Current State:** `CreateContractDrawer.tsx` creates contracts with type, dates, salary, and text-based terms. No PDF generation, no digital signature, no document upload.
+
+**Fix (scope for this iteration):**
+- Add a "Document URL" file upload field to the contract drawer (upload to storage bucket)
+- Add a "Download Contract" button that generates a basic contract PDF with Indian labor law essentials (employment terms, notice period, salary breakdown)
+- Digital signatures are out of scope but add a placeholder field for "Signed By" and "Signed Date"
+
+---
+
+## Execution Summary
 
 | Priority | File | Change |
 |----------|------|--------|
-| 1 | `src/components/bookings/ConciergeBookingDrawer.tsx` | Use `book_facility_slot` RPC instead of raw INSERT; add `onSuccess` callback for query invalidation |
-| 1 | `src/pages/AllBookings.tsx` | Pass `onSuccess` to ConciergeBookingDrawer that invalidates booking queries |
-| 2 | `src/components/members/MemberProfileDrawer.tsx` | Compute real used/remaining counts; add progress bars with color coding; improve Recent Usage to show booking details with facility/time/status; add Top-Up button; polish Pay tab negative amounts |
-| 3 | `src/components/benefits/TopUpBenefitDrawer.tsx` | New drawer: select benefit, enter qty + price, creates invoice + credits |
-| 3 | `src/pages/MemberClassBooking.tsx` | Show "Buy More Sessions" prompt when limit reached error is returned |
-
----
-
-## Technical Details
-
-### Concierge RPC Integration
-```typescript
-// Replace raw insert with RPC call
-const { data, error } = await supabase.rpc('book_facility_slot', {
-  p_slot_id: slotId,
-  p_member_id: selectedMember.id,
-  p_membership_id: membership.id,
-});
-const result = data as { success: boolean; error?: string };
-if (!result.success && !forceAdd) {
-  toast.error(result.error);
-  return;
-}
-// Force-add fallback: raw insert only when override is checked
-```
-
-### Benefits Progress Bar Logic
-```typescript
-// For each plan benefit:
-const usedCount = usageRecords
-  .filter(u => u.benefit_type_id === benefit.benefit_type_id)
-  .reduce((sum, u) => sum + (u.usage_count || 1), 0);
-const remaining = benefit.limit_count ? Math.max(0, benefit.limit_count - usedCount) : null;
-const progressPct = benefit.limit_count ? (usedCount / benefit.limit_count) * 100 : 0;
-// Color: remaining === 0 -> red, unlimited -> blue, else green
-```
-
-### Recent Usage from Bookings
-```sql
-SELECT bb.*, bs.slot_date, bs.start_time, bs.end_time, f.name as facility_name
-FROM benefit_bookings bb
-JOIN benefit_slots bs ON bs.id = bb.slot_id
-LEFT JOIN facilities f ON f.id = bs.facility_id
-WHERE bb.member_id = ? AND bb.membership_id = ?
-ORDER BY bs.slot_date DESC, bs.start_time DESC
-LIMIT 20
-```
+| 1 | `src/pages/Invoices.tsx` | Fix invoice type badge: join `invoice_items`, derive type from `reference_type`/`description` |
+| 2 | `src/config/menu.ts` | Remove duplicate "Employees" menu item from admin menu |
+| 3 | `src/pages/HRM.tsx` | Merge trainers into the Employees tab (unified staff view) |
+| 4 | `src/components/branches/EditBranchDrawer.tsx` | Pre-select current manager in dropdown, add helper text |
+| 5 | `src/pages/StaffDashboard.tsx` | Add "Leads to Follow Up" card with lead details and quick actions |
+| 6 | `src/pages/MemberClassBooking.tsx` | Fix gender filter: show all facilities when gender not set |
+| 7 | `src/pages/Referrals.tsx` | Add "Create Referral" button for manual referral creation |
+| 8 | `src/components/hrm/CreateContractDrawer.tsx` | Add document upload field for contract attachments |
 
