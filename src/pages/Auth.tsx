@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { Link } from 'react-router-dom';
@@ -11,6 +11,15 @@ export default function AuthPage() {
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Capture referral code from URL (?ref=CODE)
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      sessionStorage.setItem('referral_code', refCode);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const checkSetup = async () => {
@@ -30,7 +39,6 @@ export default function AuthPage() {
     checkSetup();
   }, []);
 
-  // Determine the correct redirect path based on user roles
   const getRedirectPath = () => {
     if (roles.some(r => r.role === 'member')) {
       return '/member-dashboard';
@@ -50,24 +58,19 @@ export default function AuthPage() {
     );
   }
 
-  // Redirect to setup if no owner exists
   if (needsSetup) {
     return <Navigate to="/setup" replace />;
   }
 
-  // Already logged in - redirect to appropriate dashboard
   if (user && !mustSetPassword) {
     return <Navigate to={getRedirectPath()} replace />;
   }
 
-  // Needs to set password
   if (user && mustSetPassword) {
     return <Navigate to="/auth/set-password" replace />;
   }
 
-  // Handle successful login - redirect to appropriate dashboard
   const handleLoginSuccess = () => {
-    // Use /home which will then redirect to the appropriate dashboard
     navigate('/home');
   };
 
@@ -77,7 +80,6 @@ export default function AuthPage() {
       style={{ background: 'var(--gradient-hero)' }}
     >
       <div className="w-full max-w-md space-y-8">
-        {/* Logo */}
         <div className="text-center">
           <h1 className="text-4xl font-bold text-primary-foreground tracking-tight">
             <span className="text-gradient">Incline</span>

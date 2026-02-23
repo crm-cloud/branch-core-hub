@@ -199,6 +199,37 @@ Deno.serve(async (req) => {
 
     console.log('Member created:', member.id)
 
+    // Auto-create referral record if referred_by is set
+    if (referredBy) {
+      try {
+        // referredBy is a member ID — create a referral record
+        const { data: referrer } = await supabaseAdmin
+          .from('members')
+          .select('id, member_code')
+          .eq('id', referredBy)
+          .single()
+
+        if (referrer) {
+          await supabaseAdmin
+            .from('referrals')
+            .insert({
+              referrer_member_id: referrer.id,
+              referred_name: fullName,
+              referred_email: email,
+              referred_phone: phone || null,
+              referral_code: referrer.member_code,
+              status: 'converted',
+              branch_id: branchId,
+              converted_member_id: member.id,
+              converted_at: new Date().toISOString(),
+            })
+          console.log('Referral record created for referrer:', referrer.id)
+        }
+      } catch (refErr) {
+        console.error('Referral record creation failed (non-fatal):', refErr)
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
