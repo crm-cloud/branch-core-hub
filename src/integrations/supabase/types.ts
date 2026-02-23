@@ -5218,6 +5218,7 @@ export type Database = {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
       }
+      auto_expire_memberships: { Args: never; Returns: undefined }
       book_class: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json

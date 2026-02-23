@@ -45,6 +45,26 @@ export default function WhatsAppChatPage() {
   const { data: branches = [] } = useBranches();
   const queryClient = useQueryClient();
 
+  // Realtime subscription for new WhatsApp messages
+  useEffect(() => {
+    const channel = supabase
+      .channel('whatsapp-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'whatsapp_messages' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+          queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+
   // Fetch contacts with latest messages
   const { data: contacts = [] } = useQuery({
     queryKey: ['whatsapp-contacts', selectedBranch],
