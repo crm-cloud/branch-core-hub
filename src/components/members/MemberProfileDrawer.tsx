@@ -30,7 +30,7 @@ import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 
 // ─── Benefits & Usage Tab ───
-function BenefitsUsageTab({ memberId, activeMembership, branchId }: { memberId: string; activeMembership: any; branchId: string }) {
+function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
   const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
@@ -47,6 +47,21 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId }: { memberId: 
       return data || [];
     },
     enabled: !!activeMembership?.plan_id,
+  });
+
+  // Fetch facility gender_access for benefit types to filter by member gender
+  const benefitTypeIds = planBenefits.map((b: any) => b.benefit_type_id).filter(Boolean);
+  const { data: facilityGenderMap = [] } = useQuery({
+    queryKey: ['facility-gender-map', benefitTypeIds],
+    queryFn: async () => {
+      if (!benefitTypeIds.length) return [];
+      const { data } = await supabase
+        .from('facilities')
+        .select('benefit_type_id, gender_access')
+        .in('benefit_type_id', benefitTypeIds);
+      return data || [];
+    },
+    enabled: benefitTypeIds.length > 0,
   });
 
   // Real usage from benefit_usage table
@@ -142,6 +157,12 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId }: { memberId: 
       remaining,
       isUnlimited,
     };
+  }).filter((b: any) => {
+    // Filter out benefits linked to gender-restricted facilities that don't match the member
+    if (!memberGender) return true; // Show all if gender not set
+    const facility = facilityGenderMap.find((f: any) => f.benefit_type_id === b.benefit_type_id);
+    if (!facility) return true; // No facility link = show
+    return facility.gender_access === 'unisex' || facility.gender_access === memberGender;
   });
 
   const getStatusBadge = (status: string) => {
@@ -908,7 +929,7 @@ export function MemberProfileDrawer({
               </Card>
             </TabsContent>
 
-            <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} />
+            <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} memberGender={(memberDetails?.profiles as any)?.gender} />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {payments.length > 0 ? (

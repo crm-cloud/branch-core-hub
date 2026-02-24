@@ -22,6 +22,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
   const [formData, setFormData] = useState({
     device_name: "",
     ip_address: "",
+    port: "",
     mac_address: "",
     branch_id: defaultBranchId || "",
     device_type: "turnstile",
@@ -53,6 +54,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     setFormData({
       device_name: "",
       ip_address: "",
+      port: "",
       mac_address: "",
       branch_id: defaultBranchId || "",
       device_type: "turnstile",
@@ -112,14 +114,25 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="ip_address">IP Address *</Label>
-            <Input
-              id="ip_address"
-              placeholder="e.g., 192.168.1.100"
-              value={formData.ip_address}
-              onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
-            />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="ip_address">IP Address *</Label>
+              <Input
+                id="ip_address"
+                placeholder="e.g., 192.168.1.100"
+                value={formData.ip_address}
+                onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="port">Port</Label>
+              <Input
+                id="port"
+                placeholder="e.g., 8080"
+                value={formData.port}
+                onChange={(e) => setFormData({ ...formData, port: e.target.value })}
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
