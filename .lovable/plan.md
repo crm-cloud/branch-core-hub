@@ -1,102 +1,92 @@
 
 
-# Audit Findings and Fix Plan
+# Fix Plan: Gender Filter, Attendance UX, Equipment Bug, Device Audit
 
-## Issue 1: Edit Branch -- Manager Dropdown Shows "No change" Only
+## Issue 1: Gender Logic in Benefit Allocation (CRITICAL)
 
-**Root Cause:** The `EditBranchDrawer.tsx` fetches potential managers from `user_roles` filtered by `['manager', 'admin', 'owner']`. This query works correctly. However, the dropdown shows only "No change" (as seen in screenshot) because there may be no users with `manager` role assigned yet. The actual bug is that when `currentManager` loads AFTER the `useEffect` sets `formData`, the `managerId` stays empty. The `useEffect` depends on `currentManager` but the query runs async -- the manager data arrives after the form already initialized.
+**Root Cause Confirmed:** The `BenefitsUsageTab` in `MemberProfileDrawer.tsx` (line 38-50) queries `plan_benefits` directly -- it shows ALL benefits in the plan regardless of member gender. The plan includes both "SAUNA ROOM F" (linked to a female-only facility) and "Sauna Room M" (linked to a male-only facility). A male member like Kuldeep sees both.
 
-**Fix:** The `useEffect` dependency on `currentManager` should properly set the `managerId` when data arrives. Currently it does depend on `currentManager`, so this should work. The real issue is the dropdown only shows users with `manager/admin/owner` roles. If the gym has staff who should manage branches, they won't appear. No code change needed for the manager pre-selection logic -- it already works. The screenshot shows the dropdown IS working (it shows "No change" as default). The user needs to assign the `manager` role to a staff member via Admin Roles page first, then that person will appear in the dropdown.
+The gender filter only exists in the booking flow (`MemberClassBooking.tsx` and `BookBenefitSlot.tsx`), NOT in the benefits display.
 
-**However**, there is a UX improvement needed: show the current manager's name pre-selected instead of "No change", and add a helper text explaining what roles are eligible.
+**Fix:** In the `BenefitsUsageTab` component:
+1. Fetch the member's gender from the parent `memberDetails.profiles.gender`
+2. For each `plan_benefit`, look up its linked facility via `benefit_type_id` to check `gender_access`
+3. Filter out benefits whose facility has `gender_access` opposite to the member's gender
+4. If member gender is not set, show all (same pattern as booking page)
 
----
+**Technical approach:**
+- After fetching `planBenefits`, also query `facilities` table filtered by the `benefit_type_id` values
+- Build a map: `benefit_type_id -> gender_access`
+- Filter `availableBenefits` array: if facility `gender_access` is `male` and member is `female`, hide it (and vice versa). Keep `unisex` and benefits with no facility link.
 
-## Issue 2: Invoice Type Always Shows "Membership"
+**File:** `src/components/members/MemberProfileDrawer.tsx` (BenefitsUsageTab function, lines 32-306)
 
-**Root Cause (Confirmed):** In `Invoices.tsx` line 262-264, the type badge logic is:
-```tsx
-{invoice.pos_sale_id ? 'POS' : 'Membership'}
-```
-This is a binary check -- if no `pos_sale_id`, it defaults to "Membership". But invoices can be for: Membership, Sauna/Ice Bath Top-Up, PT Package, Manual, Refund, etc. The `invoice_items.reference_type` column has values like `membership`, `membership_refund`, and the `description` field contains the actual item name (e.g., "Sauna Room M Top-Up").
-
-**Fix:** Derive the invoice type from `invoice_items.reference_type` and `description`:
-- If `pos_sale_id` exists: "POS"
-- If `reference_type = 'membership_refund'`: "Refund"
-- If description contains "Top-Up": "Add-On"
-- If `reference_type = 'membership'`: "Membership"
-- Else: "Manual"
-
-Need to include `invoice_items` in the query join.
+Also apply the same filter to `BookBenefitSlot.tsx` (already partially done but needs the same null-gender fallback).
 
 ---
 
-## Issue 3: Duplicate Menu Items -- "HRM" and "Employees" (All Staff)
+## Issue 2: Attendance Page UX Redesign
 
-**Root Cause (Confirmed):** In `menu.ts` lines 199-200, the Admin & HR section has BOTH:
-- `HRM` -> `/hrm` (employees + contracts + payroll)
-- `Employees` -> `/employees` (unified staff view with employees + trainers)
+**Current State:** The Attendance page (`src/pages/Attendance.tsx`) is already reasonably clean with a search bar, stat cards, and tabs. Looking at the screenshot, it has:
+- 3 stat cards (Currently In, Today's Check-ins, Checked Out)
+- Quick Check-in card with large search input
+- Tabs for Currently In / Today's Log
 
-These overlap significantly. `HRM` page manages employees with contracts and payroll. `Employees` page (actually "All Staff") shows a unified view of employees + trainers.
+**Redesign for Rapid Entry:**
+- Make the search input auto-focus on page load (already done)
+- Add auto-search on 3+ characters (currently requires Enter or button click)
+- After check-in, flash a green banner with member name + photo for 3 seconds (visual confirmation)
+- After denied check-in, flash a red banner with the denial reason
+- Reduce stat cards to a single compact row
+- Remove the nested card wrapper around the search input -- make it a direct full-width bar
+- Add barcode/scanner icon hint
 
-**Fix:** Remove the `Employees` menu item. Merge the "All Staff" unified view (employees + trainers together) into the HRM page as an additional tab or as the default Employees tab. The HRM page already has Employees, Contracts, and Payroll tabs -- we just need it to also show trainers in the Employees tab (like the Employees page does).
-
----
-
-## Issue 4: Staff Dashboard Missing Follow-Up Section
-
-**Root Cause:** The `StaffDashboard.tsx` fetches `pendingLeads` count but does NOT display individual leads requiring follow-up. There's a stat card showing "Active Leads" count but no list of leads with their follow-up dates, notes, or quick actions.
-
-**Fix:** Add a "Leads Requiring Follow-Up" card to the staff dashboard showing:
-- Lead name, phone, source
-- Follow-up date and status
-- Quick action buttons: "Call", "Mark Contacted"
-- Link to full Leads page
+**File:** `src/pages/Attendance.tsx`
 
 ---
 
-## Issue 5: Referrals & Rewards End-to-End Audit
+## Issue 3: Equipment "Add Equipment" Button Not Working
 
-**Current State:**
-- **Admin view** (`Referrals.tsx`): Shows all referrals with referrer/referred names, codes, status. Shows rewards with claim action. This works.
-- **Member view** (`MemberReferrals.tsx`): Shows referral code, copy/share link, referral history, rewards. This works.
-- **Missing pieces:**
-  1. No way for admin to CREATE a referral manually (when a walk-in mentions a member referred them)
-  2. No referral code validation on the Auth page (the `?ref=` param isn't processed)
-  3. No automatic reward generation when a referred lead converts to member
-  4. The referral settings (reward amount, type) exist in Settings but aren't connected to reward auto-generation
+**Root Cause Confirmed:** There are TWO equipment pages:
+1. `/equipment` -> `Equipment.tsx` -- has a working "Add Equipment" button with `AddEquipmentDrawer`
+2. `/equipment-maintenance` -> `EquipmentMaintenance.tsx` -- the menu links HERE, and its "Add Equipment" button (line 91) is a plain `<Button>` with NO onClick handler and NO drawer
 
-**Fix:** 
-- Add "Create Referral" button on admin Referrals page
-- The `?ref=` parameter capture on Auth page needs to be wired to store the referral code during signup
-- Add a trigger/RPC that creates a referral_reward when a referral status changes to 'converted'
+The menu item in `menu.ts` (line 191) points to `/equipment-maintenance`, so users always land on the broken page.
 
----
+**Fix:** In `EquipmentMaintenance.tsx` line 90-93, wire the "Add Equipment" button to open an `AddEquipmentDrawer`:
+1. Import `AddEquipmentDrawer` 
+2. Add state for `addDrawerOpen`
+3. Add branch selection (like the Equipment page does)
+4. Pass `branchId` to the drawer
+5. On success, invalidate equipment queries
 
-## Issue 6: Benefits End-to-End for Male and Female
-
-**Current State:** The gender filter in `MemberClassBooking.tsx` (lines 155-160) correctly filters slots by `facility.gender_access`:
-```tsx
-return access === 'unisex' || access === memberGender;
-```
-This works if: (a) facilities have `gender_access` set, and (b) member profiles have `gender` set.
-
-**Potential issues:**
-- If a member's profile has no `gender` set, they see ALL facilities (the filter passes when `memberGender` is undefined and `access !== 'unisex'` would incorrectly hide slots)
-- Actually looking at the logic: if `memberGender` is null/undefined and `access = 'male'`, then `access === memberGender` is false and `access === 'unisex'` is false, so the slot is HIDDEN. This means members without gender set see ONLY unisex facilities. This is a bug -- they should see all until gender is set.
-
-**Fix:** If member gender is not set, show all facilities (don't filter). Add a prompt for members to set their gender in profile.
+**File:** `src/pages/EquipmentMaintenance.tsx`
 
 ---
 
-## Issue 7: HRM Contracts -- No Document Upload or Indian Law Compliance
+## Issue 4: Device Management API Audit
 
-**Current State:** `CreateContractDrawer.tsx` creates contracts with type, dates, salary, and text-based terms. No PDF generation, no digital signature, no document upload.
+**Current State:** The `AddDeviceDrawer.tsx` already contains the correct fields for Android Face ID turnstile integration:
+- Device Name, IP Address, MAC Address
+- Branch selection
+- Device Type (Turnstile, Face Terminal, Card Reader)
+- Model, Serial Number
+- Relay Mode (Manual / Auto-Close)
+- Relay Delay slider (1-63 seconds)
 
-**Fix (scope for this iteration):**
-- Add a "Document URL" file upload field to the contract drawer (upload to storage bucket)
-- Add a "Download Contract" button that generates a basic contract PDF with Indian labor law essentials (employment terms, notice period, salary breakdown)
-- Digital signatures are out of scope but add a placeholder field for "Signed By" and "Signed Date"
+The Edge Functions (`device-heartbeat`, `device-sync-data`, `device-access-event`) handle:
+- Heartbeat polling (updates `is_online`, `last_heartbeat`)
+- Biometric sync queue (pending face data pushed to terminals)
+- Access events (membership validation on scan)
+
+**Assessment:** The device management page and API are functionally correct for the documented Android Face ID turnstile workflow. The form fields map to the `access_devices` table columns. The biometric sync queue properly tracks per-device sync status.
+
+**Minor improvements:**
+- Add a "Port" field to the Add Device drawer (some turnstile APIs require a port number alongside IP)
+- Add a "Test Connection" button that pings the device heartbeat endpoint
+- Show the device's `firmware_version` in the device list table (already stored but not displayed)
+
+**Files:** `src/components/devices/AddDeviceDrawer.tsx`, `src/pages/DeviceManagement.tsx`
 
 ---
 
@@ -104,12 +94,68 @@ This works if: (a) facilities have `gender_access` set, and (b) member profiles 
 
 | Priority | File | Change |
 |----------|------|--------|
-| 1 | `src/pages/Invoices.tsx` | Fix invoice type badge: join `invoice_items`, derive type from `reference_type`/`description` |
-| 2 | `src/config/menu.ts` | Remove duplicate "Employees" menu item from admin menu |
-| 3 | `src/pages/HRM.tsx` | Merge trainers into the Employees tab (unified staff view) |
-| 4 | `src/components/branches/EditBranchDrawer.tsx` | Pre-select current manager in dropdown, add helper text |
-| 5 | `src/pages/StaffDashboard.tsx` | Add "Leads to Follow Up" card with lead details and quick actions |
-| 6 | `src/pages/MemberClassBooking.tsx` | Fix gender filter: show all facilities when gender not set |
-| 7 | `src/pages/Referrals.tsx` | Add "Create Referral" button for manual referral creation |
-| 8 | `src/components/hrm/CreateContractDrawer.tsx` | Add document upload field for contract attachments |
+| 1 (Critical) | `src/components/members/MemberProfileDrawer.tsx` | Filter benefits by member gender using facility `gender_access` |
+| 2 | `src/pages/Attendance.tsx` | UX redesign: auto-search, flash banners, streamlined layout |
+| 3 | `src/pages/EquipmentMaintenance.tsx` | Wire "Add Equipment" button to AddEquipmentDrawer with branch selector |
+| 4 | `src/components/devices/AddDeviceDrawer.tsx` | Add Port field for turnstile API compatibility |
+| 4 | `src/pages/DeviceManagement.tsx` | Show firmware version column in device table |
 
+---
+
+## Technical Details
+
+### Gender Filter for Benefits Tab
+```typescript
+// Query facilities linked to benefit types
+const { data: facilityGenderMap = [] } = useQuery({
+  queryKey: ['facility-gender-map', planBenefits],
+  queryFn: async () => {
+    const btIds = planBenefits.map(b => b.benefit_type_id).filter(Boolean);
+    if (!btIds.length) return [];
+    const { data } = await supabase
+      .from('facilities')
+      .select('benefit_type_id, gender_access')
+      .in('benefit_type_id', btIds);
+    return data || [];
+  },
+  enabled: planBenefits.length > 0,
+});
+
+// Filter benefits
+const memberGender = memberDetails?.profiles?.gender; // 'male' | 'female' | null
+const filteredBenefits = availableBenefits.filter(b => {
+  if (!memberGender) return true; // Show all if gender not set
+  const facilityGender = facilityGenderMap.find(f => f.benefit_type_id === b.benefit_type_id);
+  if (!facilityGender) return true; // No facility link = show
+  return facilityGender.gender_access === 'unisex' || facilityGender.gender_access === memberGender;
+});
+```
+
+### Equipment Fix
+```typescript
+// Add to EquipmentMaintenance.tsx
+const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+const [selectedBranch, setSelectedBranch] = useState<string>('');
+const { data: branches = [] } = useBranches();
+
+// Wire the button
+<Button onClick={() => setAddDrawerOpen(true)}>
+  <Plus className="mr-2 h-4 w-4" /> Add Equipment
+</Button>
+
+// Add drawer at bottom
+<AddEquipmentDrawer open={addDrawerOpen} onOpenChange={setAddDrawerOpen} branchId={selectedBranch || branches[0]?.id || ''} />
+```
+
+### Attendance Auto-Search
+```typescript
+// Trigger search automatically after 3+ chars with debounce
+useEffect(() => {
+  if (searchQuery.length >= 3) {
+    const timer = setTimeout(() => handleSearch(), 300);
+    return () => clearTimeout(timer);
+  } else {
+    setSearchResults([]);
+  }
+}, [searchQuery]);
+```
