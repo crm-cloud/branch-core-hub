@@ -209,6 +209,7 @@ const DeviceManagement = () => {
                     <TableRow>
                       <TableHead>Device</TableHead>
                       <TableHead>IP Address</TableHead>
+                      <TableHead>Firmware</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Last Heartbeat</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -232,6 +233,9 @@ const DeviceManagement = () => {
                         </TableCell>
                         <TableCell className="font-mono text-sm">
                           {String(device.ip_address)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {device.firmware_version || '—'}
                         </TableCell>
                         <TableCell>
                           {device.is_online ? (

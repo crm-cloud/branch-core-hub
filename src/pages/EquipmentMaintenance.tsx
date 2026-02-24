@@ -14,11 +14,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
+import { useBranches } from '@/hooks/useBranches';
 
 export default function EquipmentMaintenancePage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { data: branches = [] } = useBranches();
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ['equipment-list'],
@@ -87,7 +91,7 @@ export default function EquipmentMaintenancePage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
-          <Button>
+          <Button onClick={() => setAddDrawerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Equipment
           </Button>
@@ -343,6 +347,11 @@ export default function EquipmentMaintenancePage() {
             </Card>
           </TabsContent>
         </Tabs>
+        <AddEquipmentDrawer
+          open={addDrawerOpen}
+          onOpenChange={setAddDrawerOpen}
+          branchId={branches[0]?.id || ''}
+        />
       </div>
     </AppLayout>
   );
