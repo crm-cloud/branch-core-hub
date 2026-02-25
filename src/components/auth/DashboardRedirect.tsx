@@ -1,12 +1,10 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { GymLoader } from '@/components/ui/gym-loader';
 
 /**
  * Smart dashboard redirect component that routes users to the appropriate dashboard
  * based on their role hierarchy.
- * 
- * Priority: member > trainer > staff > manager/admin/owner
  */
 export function DashboardRedirect() {
   const { roles, isLoading, user } = useAuth();
@@ -14,10 +12,7 @@ export function DashboardRedirect() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
-          <p className="text-muted-foreground">Loading your dashboard...</p>
-        </div>
+        <GymLoader text="Loading your dashboard..." />
       </div>
     );
   }
