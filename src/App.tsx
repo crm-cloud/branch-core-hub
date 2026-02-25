@@ -160,7 +160,7 @@ const App = () => (
             <Route path="/attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><AttendancePage /></ProtectedRoute>} />
             <Route path="/feedback" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><FeedbackPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><InvoicesPage /></ProtectedRoute>} />
-            <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PaymentsPage /></ProtectedRoute>} />
+            <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><PaymentsPage /></ProtectedRoute>} />
             <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
             <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PTSessionsPage /></ProtectedRoute>} />
             <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
@@ -168,20 +168,20 @@ const App = () => (
             <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
             <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentMaintenancePage /></ProtectedRoute>} />
             <Route path="/lockers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LockersPage /></ProtectedRoute>} />
-            <Route path="/hrm" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><HRMPage /></ProtectedRoute>} />
+            <Route path="/hrm" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><HRMPage /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><TasksPage /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EmployeesPage /></ProtectedRoute>} />
             <Route path="/trainers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><TrainersPage /></ProtectedRoute>} />
             <Route path="/staff-attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><StaffAttendancePage /></ProtectedRoute>} />
             <Route path="/attendance-dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AttendanceDashboardPage /></ProtectedRoute>} />
-            <Route path="/analytics" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AnalyticsPage /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/audit-logs" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AuditLogsPage /></ProtectedRoute>} />
             <Route path="/announcements" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><AnnouncementsPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SettingsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><StorePage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><POSPage /></ProtectedRoute>} />
             <Route path="/referrals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ReferralsPage /></ProtectedRoute>} />
-            <Route path="/finance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><FinancePage /></ProtectedRoute>} />
+            <Route path="/finance" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><FinancePage /></ProtectedRoute>} />
             <Route path="/my-plans" element={<ProtectedRoute><MemberPlansPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />

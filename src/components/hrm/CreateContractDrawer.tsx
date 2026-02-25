@@ -23,6 +23,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
     salary: employee?.salary || 0,
+    commissionPercentage: 0,
     terms: '',
     documentUrl: '',
   });
@@ -47,6 +48,7 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
       startDate: new Date().toISOString().split('T')[0],
       endDate: '',
       salary: employee?.salary || 0,
+      commissionPercentage: 0,
       terms: '',
       documentUrl: '',
     });
@@ -66,6 +68,8 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,
       salary: Number(formData.salary),
+      baseSalary: Number(formData.salary),
+      commissionPercentage: Number(formData.commissionPercentage),
       terms: formData.terms ? { conditions: formData.terms } : undefined,
       documentUrl: formData.documentUrl || undefined,
     });
@@ -134,14 +138,28 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Monthly Salary (₹) *</Label>
-            <Input
-              type="number"
-              value={formData.salary}
-              onChange={(e) => setFormData({ ...formData, salary: Number(e.target.value) })}
-              required
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Base Salary (₹) *</Label>
+              <Input
+                type="number"
+                value={formData.salary}
+                onChange={(e) => setFormData({ ...formData, salary: Number(e.target.value) })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Commission %</Label>
+              <Input
+                type="number"
+                value={formData.commissionPercentage}
+                onChange={(e) => setFormData({ ...formData, commissionPercentage: Number(e.target.value) })}
+                min={0}
+                max={100}
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground">PT session commission rate</p>
+            </div>
           </div>
 
           <div className="space-y-2">

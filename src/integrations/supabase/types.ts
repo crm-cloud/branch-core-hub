@@ -1131,6 +1131,8 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          base_salary: number | null
+          commission_percentage: number | null
           contract_type: string
           created_at: string
           document_url: string | null
@@ -1141,11 +1143,14 @@ export type Database = {
           start_date: string
           status: Database["public"]["Enums"]["contract_status"]
           terms: Json | null
+          trainer_id: string | null
           updated_at: string
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          base_salary?: number | null
+          commission_percentage?: number | null
           contract_type: string
           created_at?: string
           document_url?: string | null
@@ -1156,11 +1161,14 @@ export type Database = {
           start_date: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
+          trainer_id?: string | null
           updated_at?: string
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          base_salary?: number | null
+          commission_percentage?: number | null
           contract_type?: string
           created_at?: string
           document_url?: string | null
@@ -1171,6 +1179,7 @@ export type Database = {
           start_date?: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
+          trainer_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1179,6 +1188,20 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers_public"
             referencedColumns: ["id"]
           },
         ]
@@ -3434,6 +3457,7 @@ export type Database = {
           name: string | null
           timezone: string | null
           updated_at: string
+          website_theme: Json | null
         }
         Insert: {
           branch_id?: string | null
@@ -3445,6 +3469,7 @@ export type Database = {
           name?: string | null
           timezone?: string | null
           updated_at?: string
+          website_theme?: Json | null
         }
         Update: {
           branch_id?: string | null
@@ -3456,6 +3481,7 @@ export type Database = {
           name?: string | null
           timezone?: string | null
           updated_at?: string
+          website_theme?: Json | null
         }
         Relationships: [
           {
@@ -5255,6 +5281,7 @@ export type Database = {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
       }
+      generate_renewal_invoices: { Args: never; Returns: undefined }
       get_member_id: { Args: { _user_id: string }; Returns: string }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {

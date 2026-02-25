@@ -44,6 +44,7 @@ export default function AnalyticsPage() {
 
       return { totalMembers: membersRes.count || 0, totalRevenue, pendingAmount };
     },
+    refetchInterval: 60000,
   });
 
   // Total expenses
@@ -210,7 +211,7 @@ export default function AnalyticsPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Hero Gradient Card */}
-        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20 p-6 text-white">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Gym Analytics</h1>

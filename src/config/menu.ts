@@ -140,7 +140,7 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin'] },
     ],
   },
   {
@@ -178,9 +178,9 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Finance',
     items: [
-      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin'] },
     ],
   },
   {
@@ -196,7 +196,7 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Admin & HR',
     items: [
-      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
+      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },

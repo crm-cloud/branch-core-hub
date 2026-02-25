@@ -497,3 +497,87 @@ function generateDietContent(data: any, caloriesTarget?: number): string {
   
   return html;
 }
+// ========== PAYSLIP PDF ==========
+interface PayslipData {
+  employeeName: string;
+  employeeCode: string;
+  month: string;
+  baseSalary: number;
+  daysPresent: number;
+  workingDays: number;
+  proRatedPay: number;
+  ptCommission: number;
+  grossPay: number;
+  pfDeduction: number;
+  netPay: number;
+  department?: string;
+  position?: string;
+  companyName?: string;
+}
+
+export function generatePayslipPDF(data: PayslipData): void {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('Please allow popups to download PDF');
+    return;
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payslip - ${data.employeeName} - ${data.month}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px solid #6366f1; }
+        .header h1 { color: #6366f1; font-size: 22px; }
+        .header p { color: #666; font-size: 13px; margin-top: 5px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 25px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .info-item { font-size: 13px; }
+        .info-item strong { color: #6366f1; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th { background: #f1f5f9; text-align: left; padding: 10px; font-size: 13px; border-bottom: 2px solid #e2e8f0; }
+        td { padding: 10px; font-size: 13px; border-bottom: 1px solid #e2e8f0; }
+        .amount { text-align: right; font-weight: 600; }
+        .deduction { color: #ef4444; }
+        .total-row { background: #f0fdf4; font-weight: 700; }
+        .total-row td { border-top: 2px solid #22c55e; font-size: 15px; }
+        .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #999; }
+        @media print { body { padding: 20px; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>${data.companyName || 'PAYSLIP'}</h1>
+        <p>Pay Period: ${data.month}</p>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><strong>Employee:</strong> ${data.employeeName}</div>
+        <div class="info-item"><strong>Code:</strong> ${data.employeeCode}</div>
+        <div class="info-item"><strong>Department:</strong> ${data.department || '-'}</div>
+        <div class="info-item"><strong>Position:</strong> ${data.position || '-'}</div>
+        <div class="info-item"><strong>Days Present:</strong> ${data.daysPresent} / ${data.workingDays}</div>
+        <div class="info-item"><strong>Base Salary:</strong> ₹${data.baseSalary.toLocaleString('en-IN')}</div>
+      </div>
+      <table>
+        <thead><tr><th>Component</th><th class="amount">Amount (₹)</th></tr></thead>
+        <tbody>
+          <tr><td>Pro-rated Base Pay</td><td class="amount">${data.proRatedPay.toLocaleString('en-IN')}</td></tr>
+          <tr><td>PT Session Commission</td><td class="amount">${data.ptCommission.toLocaleString('en-IN')}</td></tr>
+          <tr><td><strong>Gross Pay</strong></td><td class="amount"><strong>${data.grossPay.toLocaleString('en-IN')}</strong></td></tr>
+          <tr><td class="deduction">PF Deduction (12%)</td><td class="amount deduction">-${data.pfDeduction.toLocaleString('en-IN')}</td></tr>
+          <tr class="total-row"><td>Net Pay</td><td class="amount">₹${data.netPay.toLocaleString('en-IN')}</td></tr>
+        </tbody>
+      </table>
+      <div class="footer">
+        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • This is a computer-generated payslip</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}
