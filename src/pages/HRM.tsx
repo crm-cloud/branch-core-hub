@@ -22,13 +22,15 @@ import {
   Clock,
   Search,
   Download,
-  Edit
+  Edit,
+  Mail
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchEmployees, fetchEmployeeContracts } from '@/services/hrmService';
+import { fetchEmployees, fetchEmployeeContracts, calculatePayroll } from '@/services/hrmService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { generatePayslipPDF } from '@/utils/pdfGenerator';
 
 export default function HRMPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
@@ -60,6 +62,42 @@ export default function HRMPage() {
       if (error) throw error;
       return data;
     },
+  });
+
+  // Fetch staff attendance for HRM tab
+  const { data: staffAttendance = [] } = useQuery({
+    queryKey: ['hrm-staff-attendance', payrollMonth],
+    queryFn: async () => {
+      const startDate = `${payrollMonth}-01T00:00:00`;
+      const endDate = new Date(parseInt(payrollMonth.split('-')[0]), parseInt(payrollMonth.split('-')[1]), 0).toISOString();
+      const { data, error } = await supabase
+        .from('staff_attendance')
+        .select('*')
+        .gte('check_in', startDate)
+        .lte('check_in', endDate)
+        .order('check_in', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Payroll calculations per employee
+  const { data: payrollData = {} } = useQuery({
+    queryKey: ['hrm-payroll', payrollMonth, employees.length],
+    queryFn: async () => {
+      const results: Record<string, any> = {};
+      const activeEmps = employees.filter((e: any) => e.is_active);
+      for (const emp of activeEmps) {
+        try {
+          const calc = await calculatePayroll(emp.id, payrollMonth);
+          results[emp.id] = calc;
+        } catch {
+          results[emp.id] = { baseSalary: emp.salary || 0, proRatedPay: emp.salary || 0, ptCommission: 0, grossPay: emp.salary || 0, pfDeduction: 0, netPay: emp.salary || 0, daysPresent: 0, workingDays: 26 };
+        }
+      }
+      return results;
+    },
+    enabled: employees.length > 0,
   });
 
   // Filter employees
@@ -98,8 +136,6 @@ export default function HRMPage() {
     mutationFn: async (employeeId: string) => {
       const employee = employees.find((e: any) => e.id === employeeId);
       if (!employee) throw new Error('Employee not found');
-      
-      // In a real app, this would create payroll records
       toast.success(`Payroll processed for ${employee.profile?.full_name}`);
     },
   });
@@ -107,10 +143,34 @@ export default function HRMPage() {
   const processAllPayroll = useMutation({
     mutationFn: async () => {
       const activeEmployees = employees.filter((e: any) => e.is_active);
-      // In a real app, this would batch process all payrolls
       toast.success(`Payroll processed for ${activeEmployees.length} employees`);
     },
   });
+
+  // Get attendance summary per employee
+  const getEmployeeAttendanceSummary = (userId: string) => {
+    const records = staffAttendance.filter((a: any) => a.user_id === userId);
+    const totalDays = records.length;
+    const totalHours = records.reduce((sum: number, a: any) => {
+      if (a.check_in && a.check_out) {
+        return sum + (new Date(a.check_out).getTime() - new Date(a.check_in).getTime()) / 3600000;
+      }
+      return sum;
+    }, 0);
+    return { totalDays, totalHours: Math.round(totalHours * 10) / 10, records };
+  };
+
+  // Total payroll summary
+  const totalPayrollSummary = Object.values(payrollData as Record<string, any>).reduce(
+    (acc: any, p: any) => ({
+      totalBase: acc.totalBase + (p.proRatedPay || 0),
+      totalCommission: acc.totalCommission + (p.ptCommission || 0),
+      totalGross: acc.totalGross + (p.grossPay || 0),
+      totalDeductions: acc.totalDeductions + (p.pfDeduction || 0),
+      totalNet: acc.totalNet + (p.netPay || 0),
+    }),
+    { totalBase: 0, totalCommission: 0, totalGross: 0, totalDeductions: 0, totalNet: 0 }
+  );
 
   return (
     <AppLayout>
@@ -119,7 +179,7 @@ export default function HRMPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Human Resources</h1>
-            <p className="text-muted-foreground mt-1">Manage employees, contracts, and payroll</p>
+            <p className="text-muted-foreground mt-1">Manage employees, contracts, attendance & payroll</p>
           </div>
           <Button onClick={() => setAddEmployeeOpen(true)} className="bg-accent hover:bg-accent/90">
             <Plus className="mr-2 h-4 w-4" />
@@ -127,7 +187,7 @@ export default function HRMPage() {
           </Button>
         </div>
 
-        {/* Stats Cards - Vuexy Style */}
+        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
             <CardContent className="p-6">
@@ -191,6 +251,7 @@ export default function HRMPage() {
           <TabsList className="bg-muted/50">
             <TabsTrigger value="employees">Employees</TabsTrigger>
             <TabsTrigger value="contracts">Contracts</TabsTrigger>
+            <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="payroll">Payroll</TabsTrigger>
           </TabsList>
 
@@ -314,7 +375,8 @@ export default function HRMPage() {
                       <TableHead>Type</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
-                      <TableHead>Salary</TableHead>
+                      <TableHead>Base Salary</TableHead>
+                      <TableHead>Commission %</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -342,7 +404,13 @@ export default function HRMPage() {
                             : <span className="text-muted-foreground">Ongoing</span>
                           }
                         </TableCell>
-                        <TableCell className="font-semibold">₹{contract.salary.toLocaleString()}</TableCell>
+                        <TableCell className="font-semibold">₹{(contract.base_salary || contract.salary).toLocaleString()}</TableCell>
+                        <TableCell>
+                          {contract.commission_percentage > 0 
+                            ? <Badge className="bg-accent/10 text-accent border-accent/20 border">{contract.commission_percentage}%</Badge>
+                            : <span className="text-muted-foreground">-</span>
+                          }
+                        </TableCell>
                         <TableCell>
                           <Badge className={`border ${getStatusColor(contract.status)}`}>
                             {contract.status}
@@ -352,9 +420,113 @@ export default function HRMPage() {
                     ))}
                     {allContracts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No contracts found</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Attendance Tab (NEW) */}
+          <TabsContent value="attendance" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-accent" />
+                    Staff Attendance
+                  </CardTitle>
+                  <Input
+                    type="month"
+                    value={payrollMonth}
+                    onChange={(e) => setPayrollMonth(e.target.value)}
+                    className="w-[180px]"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {/* Summary per employee */}
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
+                  {employees.filter((e: any) => e.is_active).map((emp: any) => {
+                    const summary = getEmployeeAttendanceSummary(emp.user_id);
+                    return (
+                      <Card key={emp.id} className="border">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">
+                                {getInitials(emp.profile?.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{emp.profile?.full_name}</p>
+                              <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{summary.totalDays}</p>
+                              <p className="text-xs text-muted-foreground">Days Present</p>
+                            </div>
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{summary.totalHours}h</p>
+                              <p className="text-xs text-muted-foreground">Total Hours</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Detailed log */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Check In</TableHead>
+                      <TableHead>Check Out</TableHead>
+                      <TableHead>Duration</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {staffAttendance.slice(0, 50).map((record: any) => {
+                      const emp = employees.find((e: any) => e.user_id === record.user_id);
+                      const duration = record.check_in && record.check_out
+                        ? ((new Date(record.check_out).getTime() - new Date(record.check_in).getTime()) / 3600000).toFixed(1)
+                        : '-';
+                      return (
+                        <TableRow key={record.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-7 w-7">
+                                <AvatarFallback className="bg-accent/10 text-accent text-xs">
+                                  {getInitials(emp?.profile?.full_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm font-medium">{emp?.profile?.full_name || 'Unknown'}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{format(new Date(record.check_in), 'dd MMM yyyy')}</TableCell>
+                          <TableCell>{format(new Date(record.check_in), 'hh:mm a')}</TableCell>
+                          <TableCell>
+                            {record.check_out ? format(new Date(record.check_out), 'hh:mm a') : <Badge variant="outline" className="text-warning">Active</Badge>}
+                          </TableCell>
+                          <TableCell>{duration !== '-' ? `${duration}h` : '-'}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {staffAttendance.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                          <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>No attendance records for this month</p>
                         </TableCell>
                       </TableRow>
                     )}
@@ -393,19 +565,18 @@ export default function HRMPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Employee</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Base Salary</TableHead>
-                      <TableHead>Deductions</TableHead>
+                      <TableHead>Days</TableHead>
+                      <TableHead>Base Pay</TableHead>
+                      <TableHead>PT Commission</TableHead>
+                      <TableHead>Gross</TableHead>
+                      <TableHead>PF (12%)</TableHead>
                       <TableHead>Net Pay</TableHead>
-                      <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {employees.filter((e: any) => e.is_active).map((employee: any) => {
-                      const baseSalary = employee.salary || 0;
-                      const deductions = Math.round(baseSalary * 0.1); // 10% deductions
-                      const netPay = baseSalary - deductions;
+                      const p = (payrollData as Record<string, any>)[employee.id] || {};
                       
                       return (
                         <TableRow key={employee.id}>
@@ -422,31 +593,69 @@ export default function HRMPage() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>{employee.department || '-'}</TableCell>
-                          <TableCell>₹{baseSalary.toLocaleString()}</TableCell>
-                          <TableCell className="text-destructive">-₹{deductions.toLocaleString()}</TableCell>
-                          <TableCell className="font-semibold text-success">₹{netPay.toLocaleString()}</TableCell>
                           <TableCell>
-                            <Badge className="bg-warning/10 text-warning border-warning/20 border">
-                              Pending
-                            </Badge>
+                            <span className="font-mono text-sm">{p.daysPresent || 0}/{p.workingDays || 26}</span>
                           </TableCell>
+                          <TableCell>₹{(p.proRatedPay || 0).toLocaleString()}</TableCell>
                           <TableCell>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => processPayroll.mutate(employee.id)}
-                            >
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              Process
-                            </Button>
+                            {(p.ptCommission || 0) > 0 
+                              ? <span className="text-success font-medium">+₹{p.ptCommission.toLocaleString()}</span>
+                              : <span className="text-muted-foreground">-</span>
+                            }
+                          </TableCell>
+                          <TableCell className="font-semibold">₹{(p.grossPay || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-destructive">-₹{(p.pfDeduction || 0).toLocaleString()}</TableCell>
+                          <TableCell className="font-semibold text-success">₹{(p.netPay || 0).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => processPayroll.mutate(employee.id)}
+                              >
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                Process
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  generatePayslipPDF({
+                                    employeeName: employee.profile?.full_name || 'Employee',
+                                    employeeCode: employee.employee_code,
+                                    month: format(new Date(payrollMonth), 'MMMM yyyy'),
+                                    baseSalary: employee.salary || 0,
+                                    daysPresent: p.daysPresent || 0,
+                                    workingDays: p.workingDays || 26,
+                                    proRatedPay: p.proRatedPay || 0,
+                                    ptCommission: p.ptCommission || 0,
+                                    grossPay: p.grossPay || 0,
+                                    pfDeduction: p.pfDeduction || 0,
+                                    netPay: p.netPay || 0,
+                                    department: employee.department,
+                                    position: employee.position,
+                                  });
+                                }}
+                                title="Download Payslip"
+                              >
+                                <Download className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toast.info('Email payslip feature coming soon')}
+                                title="Send Payslip via Email"
+                              >
+                                <Mail className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                     {employees.filter((e: any) => e.is_active).length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                           <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No active employees for payroll</p>
                         </TableCell>
@@ -458,26 +667,32 @@ export default function HRMPage() {
                 {/* Payroll Summary */}
                 <div className="mt-6 p-4 rounded-lg bg-muted/50">
                   <h4 className="font-semibold mb-3">Payroll Summary - {format(new Date(payrollMonth), 'MMMM yyyy')}</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Base Salary</p>
-                      <p className="text-lg font-bold">₹{stats.totalSalary.toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">Pro-rated Base</p>
+                      <p className="text-lg font-bold">₹{Math.round(totalPayrollSummary.totalBase).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">PT Commission</p>
+                      <p className="text-lg font-bold text-success">
+                        +₹{Math.round(totalPayrollSummary.totalCommission).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Gross Pay</p>
+                      <p className="text-lg font-bold">₹{Math.round(totalPayrollSummary.totalGross).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Deductions</p>
                       <p className="text-lg font-bold text-destructive">
-                        -₹{Math.round(stats.totalSalary * 0.1).toLocaleString()}
+                        -₹{Math.round(totalPayrollSummary.totalDeductions).toLocaleString()}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Net Payable</p>
                       <p className="text-lg font-bold text-success">
-                        ₹{Math.round(stats.totalSalary * 0.9).toLocaleString()}
+                        ₹{Math.round(totalPayrollSummary.totalNet).toLocaleString()}
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Employees</p>
-                      <p className="text-lg font-bold">{stats.active}</p>
                     </div>
                   </div>
                 </div>

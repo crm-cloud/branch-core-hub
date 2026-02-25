@@ -20,10 +20,13 @@ export interface Employee {
 export interface Contract {
   id: string;
   employee_id: string;
+  trainer_id?: string;
   contract_type: string;
   start_date: string;
   end_date: string | null;
   salary: number;
+  base_salary: number;
+  commission_percentage: number;
   terms: any;
   document_url: string | null;
   status: 'draft' | 'pending' | 'active' | 'expired' | 'terminated';
@@ -45,7 +48,6 @@ export async function fetchEmployees(branchId?: string) {
   const { data, error } = await query;
   if (error) throw error;
 
-  // Fetch profile data separately
   const userIds = data?.map(e => e.user_id).filter(Boolean) || [];
   let profiles: any[] = [];
   
@@ -151,6 +153,8 @@ export async function createContract(contract: {
   startDate: string;
   endDate?: string;
   salary: number;
+  baseSalary?: number;
+  commissionPercentage?: number;
   terms?: any;
   documentUrl?: string;
 }) {
@@ -163,6 +167,8 @@ export async function createContract(contract: {
       start_date: contract.startDate,
       end_date: contract.endDate,
       salary: contract.salary,
+      base_salary: contract.baseSalary || contract.salary,
+      commission_percentage: contract.commissionPercentage || 0,
       terms: contract.terms,
       document_url: contract.documentUrl || null,
       status: 'draft',
@@ -222,19 +228,43 @@ export async function calculatePayroll(employeeId: string, month: string) {
 
   const attendance = await fetchEmployeeAttendance(employeeId, startDate, endDate);
   
-  const totalDays = attendance.length;
-  const monthlySalary = employee.salary || 0;
-  const dailyRate = monthlySalary / 30;
-  const grossPay = dailyRate * totalDays;
+  const workingDays = 26; // Standard Indian working days
+  const daysPresent = attendance.length;
+  const baseSalary = employee.salary || 0;
+  const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
+
+  // Fetch PT commissions if employee has a linked trainer record
+  let ptCommission = 0;
+  const { data: trainerLink } = await supabase
+    .from('trainers')
+    .select('id, pt_share_percentage')
+    .eq('user_id', employee.user_id)
+    .maybeSingle();
+  
+  if (trainerLink) {
+    const { data: commissions } = await supabase
+      .from('trainer_commissions')
+      .select('amount')
+      .eq('trainer_id', trainerLink.id)
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
+    ptCommission = commissions?.reduce((s, c) => s + (c.amount || 0), 0) || 0;
+  }
+
+  const grossPay = proRatedPay + ptCommission;
+  const pfDeduction = Math.round(proRatedPay * 0.12);
+  const netPay = grossPay - pfDeduction;
 
   return {
     employee,
     month,
-    totalDays,
-    monthlySalary,
-    dailyRate,
+    baseSalary,
+    daysPresent,
+    workingDays,
+    proRatedPay,
+    ptCommission,
     grossPay,
-    deductions: 0,
-    netPay: grossPay,
+    pfDeduction,
+    netPay,
   };
 }
