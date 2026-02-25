@@ -252,4 +252,20 @@
     from { box-shadow: 0 0 20px rgba(249, 115, 22, 0.3); }
     to { box-shadow: 0 0 40px rgba(249, 115, 22, 0.6); }
   }
+
+  .animate-dumbbell-bounce {
+    animation: dumbbellBounce 1s ease-in-out infinite, dumbbellTilt 1s ease-in-out infinite;
+  }
+
+  @keyframes dumbbellBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+
+  @keyframes dumbbellTilt {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    25% { transform: rotate(-4deg) translateY(-8px); }
+    50% { transform: rotate(0deg) translateY(-12px); }
+    75% { transform: rotate(4deg) translateY(-8px); }
+  }
 }

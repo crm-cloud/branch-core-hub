@@ -125,7 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Safety timeout: never stay loading forever
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 8000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   const signInWithOtp = async (email: string) => {

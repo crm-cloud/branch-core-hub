@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { SetPasswordForm } from '@/components/auth/SetPasswordForm';
+import { GymLoader } from '@/components/ui/gym-loader';
 
 export default function SetPasswordPage() {
   const { user, isLoading, mustSetPassword } = useAuth();
@@ -8,7 +9,7 @@ export default function SetPasswordPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--gradient-hero)' }}>
-        <div className="animate-pulse text-accent">Loading...</div>
+        <GymLoader text="Warming up..." />
       </div>
     );
   }

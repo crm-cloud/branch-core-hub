@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Database } from '@/integrations/supabase/types';
-import { Loader2 } from 'lucide-react';
+import { GymLoader } from '@/components/ui/gym-loader';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -12,11 +12,6 @@ interface ProtectedRouteProps {
 
 /**
  * ProtectedRoute component that handles authentication and role-based access control.
- * 
- * - Redirects unauthenticated users to /auth
- * - Enforces role requirements when specified
- * - Automatically redirects users to their appropriate dashboard if they try to access
- *   routes they don't have permission for
  */
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
   const { user, isLoading, mustSetPassword, hasAnyRole, roles } = useAuth();
@@ -25,10 +20,7 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
+        <GymLoader text="Loading..." />
       </div>
     );
   }

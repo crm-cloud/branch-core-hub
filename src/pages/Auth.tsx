@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2 } from 'lucide-react';
+import { GymLoader } from '@/components/ui/gym-loader';
 
 export default function AuthPage() {
   const { user, isLoading, mustSetPassword, roles } = useAuth();
@@ -24,13 +24,21 @@ export default function AuthPage() {
   useEffect(() => {
     const checkSetup = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('check-setup');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        const { data, error } = await supabase.functions.invoke('check-setup', {
+          signal: controller.signal as any,
+        });
+        clearTimeout(timeout);
+
         if (error) throw error;
         if (data?.needsSetup) {
           setNeedsSetup(true);
         }
       } catch (error) {
         console.error('Setup check failed:', error);
+        // On timeout/error, assume setup is done -- show login form
       } finally {
         setCheckingSetup(false);
       }
@@ -53,7 +61,7 @@ export default function AuthPage() {
   if (isLoading || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--gradient-hero)' }}>
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        <GymLoader text="Warming up..." />
       </div>
     );
   }
