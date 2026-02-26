@@ -362,7 +362,9 @@ export function useTrainerData() {
 
   return {
     trainer,
-    clients,
+    generalClients,
+    ptClients,
+    clients: ptClients, // backward compat
     todaySessions,
     myClasses,
     isLoading: trainerLoading,

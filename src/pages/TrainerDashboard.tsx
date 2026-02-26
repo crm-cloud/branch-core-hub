@@ -181,27 +181,39 @@ export default function TrainerDashboard() {
               </Button>
             </CardHeader>
             <CardContent>
-              {clients.length === 0 ? (
+              {generalClients.length === 0 && ptClients.length === 0 ? (
                 <div className="text-center py-8">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No active PT clients</p>
+                  <p className="text-muted-foreground">No clients assigned</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {clients.slice(0, 5).map((client: any) => (
+                  {generalClients.slice(0, 3).map((client: any) => (
                     <div key={client.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center">
                           <User className="h-5 w-5 text-accent" />
                         </div>
                         <div>
-                          <p className="font-medium">{client.member?.profiles?.full_name || client.member?.member_code}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {client.sessions_remaining} sessions left
-                          </p>
+                          <p className="font-medium">{client.profile?.full_name || client.member_code}</p>
+                          <p className="text-sm text-muted-foreground">General Training</p>
                         </div>
                       </div>
-                      <Badge variant="outline">{client.package?.name}</Badge>
+                      <Badge variant="outline">General</Badge>
+                    </div>
+                  ))}
+                  {ptClients.slice(0, 3).map((client: any) => (
+                    <div key={client.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center">
+                          <Dumbbell className="h-5 w-5 text-warning" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{client.member?.profile?.full_name || client.member?.member_code}</p>
+                          <p className="text-sm text-muted-foreground">{client.sessions_remaining} sessions left</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">{client.package?.name}</Badge>
                     </div>
                   ))}
                 </div>
