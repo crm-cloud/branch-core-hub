@@ -10,23 +10,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { queueStaffSync } from '@/services/biometricService';
+import { DEPARTMENTS, POSITIONS, SALARY_TYPES } from '@/constants/employeeConstants';
 
 interface EditEmployeeDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee: any;
 }
-
-const DEPARTMENTS = [
-  'Management', 'Front Desk', 'Training', 'Housekeeping', 
-  'Maintenance', 'Sales', 'Marketing', 'Finance', 'HR'
-];
-
-const SALARY_TYPES = [
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'weekly', label: 'Weekly' },
-];
 
 export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmployeeDrawerProps) {
   const queryClient = useQueryClient();
@@ -44,15 +34,12 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
     is_active: true,
   });
 
-  // Handle avatar changes and queue biometric sync
   const handleAvatarChange = async (url: string) => {
     setAvatarUrl(url);
     if (url && employee?.id) {
-      // Update profile avatar
       if (employee.user_id) {
         await supabase.from('profiles').update({ avatar_url: url }).eq('id', employee.user_id);
       }
-      // Queue biometric sync
       try {
         await queueStaffSync(employee.id, url, employee.profile?.full_name || 'Employee');
       } catch (err) {
@@ -165,11 +152,20 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
             </div>
             <div className="space-y-2">
               <Label>Position</Label>
-              <Input
-                value={formData.position}
-                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                placeholder="e.g., Manager"
-              />
+              <Select
+                value={formData.position || 'none'}
+                onValueChange={(v) => setFormData({ ...formData, position: v === 'none' ? '' : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {POSITIONS.map((pos) => (
+                    <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
