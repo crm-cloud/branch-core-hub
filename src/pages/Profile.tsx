@@ -3,8 +3,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { AvatarUpload } from '@/components/auth/AvatarUpload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -111,12 +111,7 @@ export default function ProfilePage() {
           <Card className="shadow-lg shadow-primary/5 rounded-2xl border-0 lg:col-span-1">
             <CardContent className="pt-6">
               <div className="flex flex-col items-center text-center">
-                <Avatar className="h-24 w-24 mb-4 border-4 border-primary/20">
-                  <AvatarImage src={profile?.avatar_url ?? undefined} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                    {getInitials(profile?.full_name)}
-                  </AvatarFallback>
-                </Avatar>
+                <AvatarUpload />
                 <h2 className="text-xl font-bold">{profile?.full_name || 'User'}</h2>
                 <Badge variant={getRoleBadgeVariant(roleLabel)} className="capitalize mt-2">
                   {displayRole}
