@@ -234,7 +234,7 @@ export const managerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['manager'] },
-      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['manager'] },
+      
     ],
   },
   {

@@ -80,6 +80,7 @@ import TrainerDashboard from "./pages/TrainerDashboard";
 import MyClients from "./pages/MyClients";
 import TrainerEarnings from "./pages/TrainerEarnings";
 import ScheduleSession from "./pages/ScheduleSession";
+import TrainerPlanBuilder from "./pages/TrainerPlanBuilder";
 
 // Staff-specific pages
 import StaffDashboard from "./pages/StaffDashboard";
