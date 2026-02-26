@@ -1,86 +1,100 @@
 
 
-# Deep Audit: Remove All Duplicate Branch Selectors + Fix Build Errors
+# Security & Consistency Audit: 4 Fixes
 
-## Audit Results
+## 1. Unify Add/Edit Employee Forms
 
-Here is every file that has a **duplicate/local** branch selector that conflicts with the global AppHeader selector:
+**Problem:** Add and Edit employee drawers have mismatched fields:
+- **AddEmployeeDrawer** DEPARTMENTS: `['Management', 'Fitness', 'Sales', 'Operations', 'Maintenance']`
+- **EditEmployeeDrawer** DEPARTMENTS: `['Management', 'Front Desk', 'Training', 'Housekeeping', 'Maintenance', 'Sales', 'Marketing', 'Finance', 'HR']`
+- Add uses a `Select` dropdown for Position (5 fixed options). Edit uses a free-text `Input` for Position.
+- Edit has Bank Details, Tax ID, Active Status toggle, Compensation section. Add only has Salary + Salary Type.
+- Edit has `salary_type` options: monthly/hourly/weekly. Add has only a hidden default of 'monthly'.
 
-| File | Problem | Fix |
-|------|---------|-----|
-| `src/pages/Members.tsx` | Imports `BranchSelector` + `useBranches`, renders per-page selector (line 253) while also using `useBranchContext` | Remove `BranchSelector` import, remove `useBranches` import, remove the `<BranchSelector>` JSX block (lines 253-258) |
-| `src/pages/Dashboard.tsx` | Imports `BranchSelector`, renders per-page selector (line 274-279) while also using `useBranchContext` | Remove `BranchSelector` import, remove the `<BranchSelector>` JSX block |
-| `src/pages/Finance.tsx` | Local `useState('all')` + inline `<Select>` branch dropdown (lines 24, 33-39, 306-316). Does NOT use `useBranchContext` at all | Replace with `useBranchContext()`, remove local state + inline branch query + inline `<Select>` UI |
-| `src/pages/Integrations.tsx` | Local `useState('all')` + `useBranches()` + `<BranchSelector>` (lines 54, 62, 103-108) | Replace with `useBranchContext()`, remove all local branch logic + selector UI |
-| `src/pages/PTSessions.tsx` | Local `useState("")` + `useBranches()` (lines 33-34). **Also has build error: `useTrainers` and `useDeactivateTrainer` not found** | Replace with `useBranchContext()`, fix missing imports |
-| `src/pages/DeviceManagement.tsx` | Uses `useBranchContext` correctly but **has build error: `queryClient` used without declaration** | Add `const queryClient = useQueryClient()` |
-| `src/pages/Trainers.tsx` | Uses `useBranchContext` correctly but **has build error: `useTrainers` and `useDeactivateTrainer` not imported** | Add missing imports from `@/hooks/useTrainers` |
-| `src/components/settings/IntegrationSettings.tsx` | Local `useState('all')` + `useBranches()` + `<BranchSelector>` (lines 57, 65, 108-113) | Replace with `useBranchContext()`, remove local branch logic + selector UI |
-| `src/components/settings/ReferralSettings.tsx` | Local `useState('')` + inline branch query + inline `<Select>` (lines 16, 28-35, 122-133) | Replace with `useBranchContext()`, remove local branch logic + selector UI |
+**Fix:**
+- Unify both DEPARTMENTS and POSITIONS constants into a shared file: `src/constants/employeeConstants.ts`
+- **EditEmployeeDrawer**: Change Position from free-text `Input` to `Select` dropdown (matching Add)
+- **AddEmployeeDrawer**: Add Salary Type `Select` dropdown (matching Edit's monthly/hourly/weekly options), and add Bank Details + Tax ID fields to the "Create New" tab
+- Both forms will share the same field set. The Edit form retains its Active Status toggle (not needed for Add since new employees default to active).
 
-### Files that correctly use `useBranches()` and should NOT be changed:
-- `src/contexts/BranchContext.tsx` -- the source of truth
-- `src/components/settings/BranchSettings.tsx` -- manages branches themselves
-- `src/components/employees/AddEmployeeDrawer.tsx` -- needs branch list for assignment dropdown (not filtering)
-- `src/components/settings/UserSettings.tsx` / `AdminUsers.tsx` -- needs branch list for user creation form (not filtering)
+**Files:**
+- New: `src/constants/employeeConstants.ts`
+- Edit: `src/components/employees/AddEmployeeDrawer.tsx` (add salary_type selector, bank details, tax_id)
+- Edit: `src/components/employees/EditEmployeeDrawer.tsx` (use shared constants, change Position to Select)
 
-## Execution Plan
+---
 
-### Fix 1: Build Errors (Critical)
+## 2. Branch Selector RBAC Visibility
 
-**`src/pages/DeviceManagement.tsx`** -- Add `useQueryClient` import and declaration:
-```typescript
-const queryClient = useQueryClient();
-```
+**Problem:** The `AppHeader` currently shows the branch selector for `owner`, `admin`, `manager` roles equally with "All Branches" option. But:
+- Managers should only see their assigned branches (from `staff_branches` table), not all branches
+- If a manager has only 1 branch, hide the selector entirely and lock context to that branch
+- Staff/Trainer/Member roles should never see the selector
 
-**`src/pages/Trainers.tsx`** -- Add missing hook imports:
-```typescript
-import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
-```
+**Fix:**
+- **BranchContext**: Add role-aware initialization logic
+  - For `owner`/`admin`: Load all branches, show "All Branches" option
+  - For `manager`: Query `staff_branches` for assigned branches only. If single branch, auto-set and hide selector. No "All Branches" option.
+  - For `staff`/`trainer`/`member`: Query their `branch_id` from `employees`/`trainers`/`members` table. Auto-set to that branch. Never show selector.
+- **AppHeader**: Update `showBranchSelector` logic:
+  - `owner`/`admin`: always show
+  - `manager` with multiple branches: show (no "All" option)
+  - Everyone else: hide
 
-### Fix 2: Remove Duplicate Selectors from Pages Using Context
+**Files:**
+- Edit: `src/contexts/BranchContext.tsx` (add role-aware branch loading)
+- Edit: `src/components/layout/AppHeader.tsx` (update visibility logic, conditionally hide "All" option)
 
-**`src/pages/Members.tsx`:**
-- Remove `import { BranchSelector }` (line 7)
-- Remove `import { useBranches }` (line 22)
-- Remove `<BranchSelector ... />` JSX block (lines 253-258)
+---
 
-**`src/pages/Dashboard.tsx`:**
-- Remove `import { BranchSelector }` (line 5)
-- Remove `<BranchSelector ... />` JSX block (lines 274-279)
+## 3. Remove Role Badge from Header
 
-### Fix 3: Migrate Remaining Pages to Global Context
+**Problem:** The role badge ("Owner", "Admin") in the top navbar is unnecessary -- the role is already shown in the user dropdown menu.
 
-**`src/pages/Finance.tsx`:**
-- Replace local `useState('all')` + inline branches query with `useBranchContext()`
-- Remove the inline `<Select>` dropdown (lines 306-316)
-- Replace all `selectedBranch` references with context values
-- Use `effectiveBranchId` for `AddExpenseDrawer` branchId prop
+**Fix:**
+- Remove the `<Badge>` element at line 87-89 of `AppHeader.tsx` that displays `primaryRoleString`
+- Keep the role badge inside the `DropdownMenuLabel` (line 125-127) since it provides context in the user menu
 
-**`src/pages/Integrations.tsx`:**
-- Replace `useBranches()` + `useState('all')` with `useBranchContext()`
-- Remove `<BranchSelector>` from JSX
-- Remove `BranchSelector` and `useBranches` imports
+**File:** `src/components/layout/AppHeader.tsx`
 
-**`src/pages/PTSessions.tsx`:**
-- Replace `useBranches()` + `useState("")` with `useBranchContext()`
-- Use `effectiveBranchId` as `branchId`
-- Add missing hook imports if any
+---
 
-**`src/components/settings/IntegrationSettings.tsx`:**
-- Replace `useBranches()` + `useState('all')` with `useBranchContext()`
-- Remove `<BranchSelector>` from JSX
+## 4. Restrict Profile Edit Capabilities
 
-**`src/components/settings/ReferralSettings.tsx`:**
-- Replace inline branches query + `useState('')` with `useBranchContext()`
-- Remove the inline branch `<Select>` UI
-- Use `effectiveBranchId` for the branch-specific settings query
+**Problem:** Two separate issues:
 
-## Summary
+**A) Admin EditProfileDrawer (used in MemberProfileDrawer):**
+- Allows editing Full Name, Email, Avatar -- all of which should be admin-only locked fields for members
+- Currently any admin can change a member's name/email which is fine, but the avatar upload and fitness goal editing are also there
 
-- **2 build errors** fixed (DeviceManagement missing `queryClient`, Trainers missing imports)
-- **2 pages** with duplicate selectors cleaned (Members, Dashboard -- already on context but render extra selector)
-- **5 files** migrated from local branch state to global context (Finance, Integrations, PTSessions, IntegrationSettings, ReferralSettings)
-- **0 new components** needed
-- Total: **9 files** modified
+**B) Member's own MemberProfile page (`/member/profile`):**
+- Has a "Change Password" dialog that lets members directly call `updatePassword()` -- this is a security concern since there's no current-password verification
+- Members can edit Phone + Emergency Contact (correct)
+- Email and Name are already disabled (correct)
+
+**Fix:**
+
+**EditProfileDrawer (Admin context):**
+- Keep all fields editable (admins need full control)
+- No changes needed -- this is the admin tool
+
+**MemberProfile page:**
+- Remove the "Change Password" dialog entirely
+- Replace with a "Reset Password" button that calls `supabase.auth.resetPasswordForEmail(profile.email)` -- sends a secure email link instead of allowing direct password change without current-password verification
+- Remove avatar upload capability from member self-edit (only admin can change avatar via the admin EditProfileDrawer)
+- Keep editable: Phone, Emergency Contact Name, Emergency Contact Phone
+- Keep read-only: Email, Full Name, Status, Member Since, Branch
+
+**File:**
+- Edit: `src/pages/MemberProfile.tsx` (replace password dialog with reset email button, remove avatar edit)
+
+---
+
+## Execution Order
+
+| Step | Priority | Files | Description |
+|------|----------|-------|-------------|
+| 1 | Critical | `BranchContext.tsx`, `AppHeader.tsx` | RBAC branch selector + remove role badge |
+| 2 | High | `MemberProfile.tsx` | Restrict member edit capabilities, replace password dialog |
+| 3 | Medium | New constants file, `AddEmployeeDrawer.tsx`, `EditEmployeeDrawer.tsx` | Unify employee forms |
 
