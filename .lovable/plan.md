@@ -1,76 +1,86 @@
-# Deep Audit & Fix: Manager RBAC, Employee/Trainer Forms, Branch Assignment
+
+
+# Audit & Fix Plan: Branch Manager, Search UI, Demo Data, Stale Data, Branch Selector
 
 ## Issues Found
 
-### 1. Manager Menu — Wrong Access Restrictions
+### 1. Branch Manager Assignment Bug (EditBranchDrawer)
+**Problem:** When `formData.managerId` is empty (selecting "No manager assigned" → maps to `""`), the `if (formData.managerId)` check on line 116 is falsy, so the manager update is skipped entirely. You cannot unassign a manager, and the "No manager assigned" text persists even after assigning one until page refresh. Also, the drawer doesn't invalidate `branch-manager` query key, so the current manager display is stale.
 
-The current `managerMenuConfig` is too restrictive. Managers need:
+**Fix:**
+- Track whether manager selection changed with a separate flag
+- When manager is intentionally cleared, delete existing `branch_managers` row
+- Invalidate `['branch-manager', branch.id]` and `['potential-managers']` query keys after save
 
-- **Analytics** — to view branch performance (add `manager` to route + menu)
-- **Finance Overview** — to manage daily branch finances (add `manager` to route + menu)
-- **Payments** — to track branch payments (add `manager` to route + menu)
-- **HRM** — to manage staff in their branch (add `manager` to route + menu)
-- **Devices** — already present, correct but we need to remove this because this settings will be managed by admin/owner.
+### 2. Stale Data After Mutations (System-Wide)
+**Problem:** After creating/editing entities (employees, branch managers, etc.), the UI doesn't reflect changes without manual refresh. Root cause: mutations only invalidate their own narrow query key but not related ones (e.g., creating an employee with manager role doesn't invalidate `branches`, `branch-manager`, or `potential-managers`).
 
-Items managers should NOT have:
+**Fix in EditBranchDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branch-manager'] })` after save.
+**Fix in AddEmployeeDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branches'] })` and `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after employee creation.
+**Fix in AddBranchDialog:** Add `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after branch creation.
 
-- System Health, Audit Logs, Settings — correct, these stay admin/owner only
+### 3. Reset Data Uses AlertDialog Instead of Side Drawer
+**Problem:** The "Reset All Data" confirmation uses a center `AlertDialog`. Per project rules, center dialogs are only for simple destructive warnings — this IS a destructive confirmation, so it's actually correct per the design spec. However, user wants it changed.
 
-**Files:** `src/config/menu.ts` (update `managerMenuConfig`), `src/App.tsx` (update `requiredRoles` on `/analytics`, `/finance`, `/payments`, `/hrm` routes to include `manager`)
+**Fix:** Replace the `AlertDialog` with a `Sheet` (right-side drawer) for the reset confirmation flow.
 
-### 2. `create-staff-user` Edge Function — Two Critical Gaps
+### 4. Remove Demo Data Feature Entirely
+**Problem:** User wants to remove the demo data edge function and UI. Replace with pre-built plan/benefit templates.
 
-**Gap A: Caller authorization too restrictive.** Line 119 only allows `owner`/`admin` callers. Managers cannot create staff/members/trainers in their branch. Fix: add `manager` to the `in('role', ...)` check.
+**Fix:**
+- Remove `DemoDataSettings` component from Settings page
+- Remove "Demo Data" from `SETTINGS_MENU`
+- Delete `seed-test-data` and `reset-all-data` edge functions
+- Add a "Templates" section in Settings for pre-built plan and benefit templates (read-only starter data that admins can import selectively)
 
-**Gap B: Missing `branch_managers` insert for manager role.** When role is `manager`, the function creates an employee record but never inserts into `branch_managers`. Fix: add `branch_managers` insert when role is `manager`.
+### 5. Cmd+K Search Not Aligned with Vuexy Design
+**Problem:** Current search opens as a standard `CommandDialog` (Dialog-based) without the Vuexy-style two-column layout with categorized sections (Popular Searches, Apps & Pages, User Interface, Forms & Charts).
 
-**File:** `supabase/functions/create-staff-user/index.ts`
+**Fix:** Redesign the `GlobalSearch` component to match the Vuexy reference:
+- Show a two-column grid layout when no search query is typed
+- Left column: "Popular Searches" (Dashboard, Analytics, Members, etc.)
+- Right column: "Apps & Pages" (Calendar, Invoice List, Settings, etc.)
+- Keep the existing search results behavior when user types
+- Add `[esc]` keyboard hint next to close button
+- Increase dialog width to accommodate two columns
 
-### 3. AddEmployeeDrawer — Missing Fields Not Synced with DB
+### 6. Branch Selector Not Working on Some Pages
+**Problem:** The `branchFilter` from `BranchContext` is used by most pages, but some pages don't react to branch changes because they use `effectiveBranchId` (which doesn't change when admin switches "All Branches") or they cache query results without including branch in the query key.
 
-The employee form sends `department`, `position`, `salary`, `salary_type`, `bank_name`, `bank_account`, `tax_id` to `create-staff-user`, but the edge function ignores all of them (lines 324-335 only set `employee_code`, `hire_date`, `position` hardcoded). The form fields are wasted.
+Pages confirmed working: Dashboard, Members, Equipment, Invoices, Attendance, Lockers, etc.
 
-**Fix:** Update `create-staff-user` to accept and pass through `department`, `salary`, `salary_type`, `bank_name`, `bank_account`, `tax_id` from the request body into the employee insert.
+Pages to audit:
+- `Plans.tsx`: Uses `effectiveBranchId` but the `usePlans` hook may not filter by branch
+- `PTSessions.tsx`, `Trainers.tsx`: Use `effectiveBranchId` which returns undefined when "All Branches" selected
 
-**File:** `supabase/functions/create-staff-user/index.ts`
-
-### 4. EditEmployeeDrawer — Missing Branch & Role Fields
-
-The edit form only shows department/position/salary/bank/tax/active status. It cannot change the employee's branch or role assignment, and doesn't show the current branch. For managers editing staff in their branch, this is a gap.
-
-**Fix:** Add read-only branch display and the ability to change branch assignment (for admin/owner) in the edit form. Also invalidate more query keys after save.
-
-**File:** `src/components/employees/EditEmployeeDrawer.tsx`
-
-### 5. AddTrainerDrawer — Password Field is Redundant
-
-Line 397-406 shows a password field, but `create-staff-user` generates a temp password and uses `must_set_password`. The password field is misleading and unused.
-
-**Fix:** Remove the password field from the trainer create form.
-
-**File:** `src/components/trainers/AddTrainerDrawer.tsx`
-
-### 6. Staff & Trainer Menu Configs — Minor Gaps
-
-Staff menu is appropriately limited. Trainer menu is appropriately limited. No changes needed for these.
+**Fix:** Audit the `usePlans` hook and other affected pages to ensure they pass `branchFilter` to their queries and include it in query keys.
 
 ---
 
-## Files to Change
+## Files Summary
 
-
-| File                                              | Change                                                                                                                         |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `src/config/menu.ts`                              | Add Analytics, Finance Overview, Payments, HRM to `managerMenuConfig`; remove Devices from manager menu (per user request)     |
-| `src/App.tsx`                                     | Add `manager` to `requiredRoles` for `/analytics`, `/finance`, `/payments`, `/hrm` routes                                      |
-| `supabase/functions/create-staff-user/index.ts`   | (1) Allow `manager` callers, (2) insert `branch_managers` for manager role, (3) pass through employee fields from request body |
-| `src/components/employees/EditEmployeeDrawer.tsx` | Add branch display, broader query invalidation                                                                                 |
-| `src/components/trainers/AddTrainerDrawer.tsx`    | Remove password field                                                                                                          |
-
+| Action | File | Description |
+|--------|------|-------------|
+| Edit | `src/components/branches/EditBranchDrawer.tsx` | Fix manager assignment/unassignment + invalidate related queries |
+| Edit | `src/components/employees/AddEmployeeDrawer.tsx` | Invalidate branches/potential-managers after creation |
+| Edit | `src/components/branches/AddBranchDialog.tsx` | Invalidate potential-managers after creation |
+| Edit | `src/components/search/GlobalSearch.tsx` | Redesign to Vuexy two-column layout |
+| Edit | `src/components/ui/command.tsx` | Widen CommandDialog for two-column search |
+| Edit | `src/pages/Settings.tsx` | Remove Demo Data from settings menu |
+| Edit | `src/components/settings/DemoDataSettings.tsx` | Replace with Plan/Benefit template importer |
+| Delete | `supabase/functions/seed-test-data/index.ts` | Remove demo data edge function |
+| Delete | `supabase/functions/reset-all-data/index.ts` | Remove reset data edge function |
+| Edit | `src/hooks/usePlans.ts` | Add branch filtering support |
+| Edit | Pages using effectiveBranchId | Fix branch selector reactivity |
 
 ## Execution Order
 
-1. Update manager menu config + route permissions
-2. Fix `create-staff-user` edge function (authorization + branch_managers + form fields)
-3. Fix EditEmployeeDrawer (branch display + invalidation)
-4. Remove password field from AddTrainerDrawer
+| Step | Priority | Description |
+|------|----------|-------------|
+| 1 | Critical | Fix branch manager assignment in EditBranchDrawer |
+| 2 | Critical | Fix stale data — add cross-query invalidation |
+| 3 | High | Remove demo data, replace with template importer |
+| 4 | High | Redesign Cmd+K search to Vuexy style |
+| 5 | High | Fix branch selector on Plans and other pages |
+| 6 | Medium | Replace reset AlertDialog with Sheet |
+

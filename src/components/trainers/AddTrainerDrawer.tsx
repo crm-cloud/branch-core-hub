@@ -56,7 +56,6 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   // Form data for creating new user
   const [newUserFormData, setNewUserFormData] = useState({
     email: '',
-    password: '',
     full_name: '',
     phone: '',
     specializations: '',
@@ -220,7 +219,6 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
     });
     setNewUserFormData({
       email: '',
-      password: '',
       full_name: '',
       phone: '',
       specializations: '',
@@ -393,17 +391,6 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
                 <p className="text-xs text-muted-foreground">Trainer will set their password on first login</p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Password *</Label>
-                <Input
-                  type="password"
-                  value={newUserFormData.password}
-                  onChange={(e) => setNewUserFormData({ ...newUserFormData, password: e.target.value })}
-                  placeholder="Min 6 characters"
-                  required
-                  minLength={6}
-                />
-              </div>
 
               {renderGovernmentIdFields(newUserFormData, setNewUserFormData)}
 

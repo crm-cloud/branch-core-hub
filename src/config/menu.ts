@@ -140,7 +140,7 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin'] },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
@@ -178,9 +178,9 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Finance',
     items: [
-      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin'] },
+      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin'] },
+      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
@@ -190,13 +190,13 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin'] },
     ],
   },
   {
     title: 'Admin & HR',
     items: [
-      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin'] },
+      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
@@ -207,12 +207,13 @@ export const adminMenuConfig: MenuSection[] = [
   },
 ];
 
-// Manager-specific menu (subset of admin — no Analytics, Finance Overview, Payments, HRM, System Health, Audit Logs, Settings)
+// Manager-specific menu (has Analytics, Finance, Payments, HRM — but no Devices, System Health, Audit Logs, Settings)
 export const managerMenuConfig: MenuSection[] = [
   {
     title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['manager'] },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['manager'] },
     ],
   },
   {
@@ -249,7 +250,9 @@ export const managerMenuConfig: MenuSection[] = [
   {
     title: 'Finance',
     items: [
+      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['manager'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['manager'] },
+      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['manager'] },
     ],
   },
   {
@@ -259,12 +262,12 @@ export const managerMenuConfig: MenuSection[] = [
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
-      { label: 'Devices', href: '/devices', icon: Router, roles: ['manager'] },
     ],
   },
   {
     title: 'Admin & HR',
     items: [
+      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['manager'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
