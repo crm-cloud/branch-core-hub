@@ -207,20 +207,91 @@ export const adminMenuConfig: MenuSection[] = [
   },
 ];
 
+// Manager-specific menu (subset of admin — no Analytics, Finance Overview, Payments, HRM, System Health, Audit Logs, Settings)
+export const managerMenuConfig: MenuSection[] = [
+  {
+    title: 'Main',
+    items: [
+      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Members & Leads',
+    items: [
+      { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['manager'] },
+      { label: 'Members', href: '/members', icon: Users, roles: ['manager'] },
+      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['manager'] },
+      { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['manager'] },
+      { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['manager'] },
+      { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Training & Bookings',
+    items: [
+      { label: 'Classes', href: '/classes', icon: Calendar, roles: ['manager'] },
+      { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['manager'] },
+      { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['manager'] },
+      { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['manager'] },
+      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'E-Commerce & Sales',
+    items: [
+      { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['manager'] },
+      { label: 'Products', href: '/products', icon: Package, roles: ['manager'] },
+      { label: 'Categories', href: '/product-categories', icon: Tags, roles: ['manager'] },
+      { label: 'Store Orders', href: '/store', icon: ShoppingBag, roles: ['manager'] },
+      { label: 'Discount Coupons', href: '/discount-coupons', icon: Tags, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Finance',
+    items: [
+      { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Operations & Comm',
+    items: [
+      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
+      { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['manager'] },
+      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
+      { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
+      { label: 'Devices', href: '/devices', icon: Router, roles: ['manager'] },
+    ],
+  },
+  {
+    title: 'Admin & HR',
+    items: [
+      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
+      { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
+      { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
+    ],
+  },
+];
+
 // Legacy menuConfig - kept for backward compatibility but use role-specific ones
 export const menuConfig: MenuSection[] = adminMenuConfig;
 
 // Helper function to get menu by primary role
 export function getMenuForRole(roles: Array<{ role: AppRole }>): MenuSection[] {
-  // Priority: member > trainer > staff > manager > admin > owner
-  if (roles.some(r => r.role === 'member')) {
+  const roleSet = new Set(roles.map(r => r.role));
+
+  // Priority: member > trainer > staff > manager > admin/owner
+  if (roleSet.has('member')) {
     return memberMenuConfig;
   }
-  if (roles.some(r => r.role === 'trainer') && !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+  if (roleSet.has('trainer') && !roleSet.has('owner') && !roleSet.has('admin') && !roleSet.has('manager')) {
     return trainerMenuConfig;
   }
-  if (roles.some(r => r.role === 'staff') && !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+  if (roleSet.has('staff') && !roleSet.has('owner') && !roleSet.has('admin') && !roleSet.has('manager')) {
     return staffMenuConfig;
+  }
+  // Manager WITHOUT admin/owner gets restricted menu
+  if (roleSet.has('manager') && !roleSet.has('owner') && !roleSet.has('admin')) {
+    return managerMenuConfig;
   }
   return adminMenuConfig;
 }
