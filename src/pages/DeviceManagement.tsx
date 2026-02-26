@@ -16,8 +16,11 @@ import {
   Fingerprint,
   CreditCard,
   RefreshCw,
-  Activity
+  Activity,
+  Copy,
+  Info
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { fetchDevices, deleteDevice, triggerRelay, sendDeviceCommand, subscribeToCommandStatus, getDeviceStats, AccessDevice } from "@/services/deviceService";
@@ -305,6 +308,50 @@ const DeviceManagement = () => {
           <LiveAccessLog branchId={selectedBranchFilter || undefined} />
         </div>
       </div>
+
+      {/* API Info Card */}
+      <Collapsible>
+        <Card className="border-dashed">
+          <CardHeader className="pb-3">
+            <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
+              <Info className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Hardware API Endpoints</CardTitle>
+            </CollapsibleTrigger>
+            <CardDescription className="text-xs">Configure your Android device with these URLs</CardDescription>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="space-y-3">
+              {[
+                { label: 'Heartbeat', path: 'device-heartbeat' },
+                { label: 'Sync Data', path: 'device-sync-data' },
+                { label: 'Access Event', path: 'device-access-event' },
+                { label: 'Trigger Relay', path: 'device-trigger-relay' },
+              ].map((ep) => {
+                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${ep.path}`;
+                return (
+                  <div key={ep.path} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50">
+                    <div>
+                      <p className="text-xs font-medium">{ep.label}</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">{url}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(url);
+                        toast.info(`${ep.label} URL copied`);
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Drawers */}
       <AddDeviceDrawer

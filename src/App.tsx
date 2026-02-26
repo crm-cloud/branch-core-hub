@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
-import { ViewAsProvider } from "@/contexts/ViewAsContext";
+
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
 import SetupPage from "./pages/Setup";
@@ -117,7 +117,6 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <BranchProvider>
-          <ViewAsProvider>
           <Routes>
             {/* Public Website */}
             <Route path="/" element={<PublicWebsite />} />
@@ -215,7 +214,6 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
-          </ViewAsProvider>
           </BranchProvider>
         </AuthProvider>
       </BrowserRouter>

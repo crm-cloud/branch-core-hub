@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { AvatarUpload } from '@/components/auth/AvatarUpload';
+import { queueStaffSync } from '@/services/biometricService';
 import { 
   User, Mail, Phone, Shield, Building2, Calendar, 
   KeyRound, Save, CheckCircle, AlertCircle 
@@ -111,13 +113,7 @@ export default function ProfilePage() {
           <Card className="shadow-lg shadow-primary/5 rounded-2xl border-0 lg:col-span-1">
             <CardContent className="pt-6">
               <div className="flex flex-col items-center text-center">
-                <Avatar className="h-24 w-24 mb-4 border-4 border-primary/20">
-                  <AvatarImage src={profile?.avatar_url ?? undefined} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                    {getInitials(profile?.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <h2 className="text-xl font-bold">{profile?.full_name || 'User'}</h2>
+                <AvatarUpload />
                 <Badge variant={getRoleBadgeVariant(roleLabel)} className="capitalize mt-2">
                   {displayRole}
                 </Badge>

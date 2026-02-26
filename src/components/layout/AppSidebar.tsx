@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useViewAs } from '@/contexts/ViewAsContext';
 import { getMenuForRole } from '@/config/menu';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -42,14 +41,9 @@ function BrandLogo({ className }: { className?: string }) {
 
 export function AppSidebar() {
   const { signOut, roles } = useAuth();
-  const { viewAsRole } = useViewAs();
   const location = useLocation();
 
-  // If viewing as a role, build fake roles array for menu
-  const effectiveRoles = viewAsRole 
-    ? [{ role: viewAsRole as any }] 
-    : roles;
-  const menuSections = getMenuForRole(effectiveRoles);
+  const menuSections = getMenuForRole(roles);
 
   return (
     <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border">
@@ -109,13 +103,9 @@ export function AppSidebar() {
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const { signOut, roles } = useAuth();
-  const { viewAsRole } = useViewAs();
   const location = useLocation();
 
-  const effectiveRoles = viewAsRole 
-    ? [{ role: viewAsRole as any }] 
-    : roles;
-  const menuSections = getMenuForRole(effectiveRoles);
+  const menuSections = getMenuForRole(roles);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
