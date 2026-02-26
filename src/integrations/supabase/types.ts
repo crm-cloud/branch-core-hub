@@ -1732,6 +1732,48 @@ export type Database = {
           },
         ]
       }
+      error_logs: {
+        Row: {
+          browser_info: string | null
+          component_name: string | null
+          created_at: string | null
+          error_message: string
+          id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          route: string | null
+          stack_trace: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          browser_info?: string | null
+          component_name?: string | null
+          created_at?: string | null
+          error_message: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          stack_trace?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          browser_info?: string | null
+          component_name?: string | null
+          created_at?: string | null
+          error_message?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          stack_trace?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       exercises: {
         Row: {
           calories_per_minute: number | null
