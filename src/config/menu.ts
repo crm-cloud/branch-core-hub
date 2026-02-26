@@ -190,7 +190,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin'] },
     ],
   },
   {
