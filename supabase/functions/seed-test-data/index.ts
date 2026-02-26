@@ -130,14 +130,15 @@ Deno.serve(async (req) => {
 
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: authUser.user.id,
+          email: user.email,
           full_name: user.full_name,
           phone: user.phone,
-        })
-        .eq('id', authUser.user.id);
+        }, { onConflict: 'id' });
 
       if (profileError) {
-        console.error(`Profile update error for ${user.email}:`, profileError);
+        console.error(`Profile upsert error for ${user.email}:`, profileError);
       }
 
       const { error: roleError } = await supabase
@@ -328,6 +329,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ==================== STAFF_BRANCHES FOR TRAINERS ====================
+    for (const trainer of createdTrainers) {
+      const { error: trainerBranchError } = await supabase
+        .from('staff_branches')
+        .upsert({
+          user_id: trainer.id,
+          branch_id: branchId,
+          is_primary: true,
+        }, { onConflict: 'user_id,branch_id' });
+
+      if (trainerBranchError) {
+        console.error(`Trainer staff_branches link error for ${trainer.full_name}:`, trainerBranchError);
+      } else {
+        console.log(`Linked trainer ${trainer.full_name} to staff_branches`);
+      }
+    }
+
     // ==================== MEMBERS ====================
     const memberUsers = createdUsers.filter(u => u.role === 'member');
     const fitnessGoals = ['Weight Loss', 'Muscle Gain', 'General Fitness', 'Endurance', 'Flexibility', 'Strength'];
@@ -427,6 +445,61 @@ Deno.serve(async (req) => {
         if (branchManagerError) {
           console.error(`Branch manager link error:`, branchManagerError);
         }
+      }
+    }
+
+    // ==================== ORGANIZATION SETTINGS ====================
+    const { error: orgSettingsError } = await supabase
+      .from('organization_settings')
+      .upsert({
+        branch_id: branchId,
+        name: 'Incline Fitness',
+        logo_url: null,
+        currency: 'INR',
+        timezone: 'Asia/Kolkata',
+      }, { onConflict: 'branch_id' });
+
+    if (orgSettingsError) {
+      console.error('Organization settings error:', orgSettingsError);
+    } else {
+      console.log('Created organization settings');
+    }
+
+    // ==================== FACILITIES ====================
+    const bookableBenefitTypesForFacilities = createdBenefitTypes.filter(bt => 
+      ['ICE_BATH', 'SAUNA', 'STEAM_ROOM', 'POOL', 'SPA'].includes(bt.code)
+    );
+
+    for (const bt of bookableBenefitTypesForFacilities) {
+      const { data: existingFacility } = await supabase
+        .from('facilities')
+        .select('id')
+        .eq('branch_id', branchId)
+        .eq('benefit_type_id', bt.id)
+        .maybeSingle();
+
+      if (existingFacility) {
+        console.log(`Facility ${bt.name} already exists`);
+        continue;
+      }
+
+      const { error: facilityError } = await supabase
+        .from('facilities')
+        .insert({
+          branch_id: branchId,
+          benefit_type_id: bt.id,
+          name: bt.name,
+          description: bt.description || `${bt.name} facility`,
+          capacity: bt.code === 'POOL' ? 20 : 5,
+          gender_access: 'all',
+          is_active: true,
+          available_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+        });
+
+      if (facilityError) {
+        console.error(`Facility creation error for ${bt.name}:`, facilityError);
+      } else {
+        console.log(`Created facility: ${bt.name}`);
       }
     }
 

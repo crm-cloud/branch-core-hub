@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -49,11 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [roles, setRoles] = useState<UserRoleInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const [rolesLoaded, setRolesLoaded] = useState(false);
+
+  // Guard against concurrent/double hydration
+  const hydrationRef = useRef<string | null>(null);
+  const initializedRef = useRef(false);
 
   const fetchProfile = async (userId: string, userEmail?: string) => {
-    // Use maybeSingle to avoid 406 errors
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, full_name, avatar_url, phone, must_set_password, emergency_contact_name, emergency_contact_phone')
@@ -65,16 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
-    // If profile doesn't exist, attempt to create it (self-healing)
     if (!data && userEmail) {
       console.log('Profile missing, auto-creating for user:', userId);
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
-        .insert({
-          id: userId,
-          email: userEmail,
-          full_name: userEmail,
-        })
+        .insert({ id: userId, email: userEmail, full_name: userEmail })
         .select('id, email, full_name, avatar_url, phone, must_set_password, emergency_contact_name, emergency_contact_phone')
         .single();
 
@@ -102,20 +98,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const hydrateUser = async (userId: string, email?: string) => {
-    setProfileLoaded(false);
-    setRolesLoaded(false);
+    // Prevent concurrent hydrations for the same user
+    const hydrateId = `${userId}-${Date.now()}`;
+    hydrationRef.current = hydrateId;
 
     const [profileData, rolesData] = await Promise.all([
       fetchProfile(userId, email),
       fetchRoles(userId),
     ]);
 
-    setProfile(profileData);
-    setProfileLoaded(true);
-    setRoles(rolesData);
-    setRolesLoaded(true);
+    // Only apply if this is still the latest hydration call
+    if (hydrationRef.current !== hydrateId) {
+      console.log('Stale hydration discarded');
+      return;
+    }
 
-    return { profileData, rolesData };
+    setProfile(profileData);
+    setRoles(rolesData);
+    setIsLoading(false);
   };
 
   const refreshProfile = async () => {
@@ -127,42 +127,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      (event, newSession) => {
+        console.log('Auth event:', event);
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
 
-        if (session?.user) {
-          // Defer to avoid deadlock
-          setTimeout(() => {
-            hydrateUser(session.user.id, session.user.email).then(() => {
-              setIsLoading(false);
-            });
-          }, 0);
+        if (newSession?.user) {
+          // If getSession already triggered hydration, skip duplicate
+          if (initializedRef.current) {
+            // This is a real state change (sign in, token refresh, etc.)
+            hydrateUser(newSession.user.id, newSession.user.email);
+          }
         } else {
           setProfile(null);
           setRoles([]);
-          setProfileLoaded(false);
-          setRolesLoaded(false);
           setIsLoading(false);
         }
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        hydrateUser(session.user.id, session.user.email).then(() => {
-          setIsLoading(false);
+    // THEN check for existing session (runs once)
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      setSession(existingSession);
+      setUser(existingSession?.user ?? null);
+
+      if (existingSession?.user) {
+        hydrateUser(existingSession.user.id, existingSession.user.email).then(() => {
+          initializedRef.current = true;
         });
       } else {
         setIsLoading(false);
+        initializedRef.current = true;
       }
     });
 
-    // Safety timeout: never stay loading forever
+    // Safety timeout
     const safetyTimeout = setTimeout(() => {
       setIsLoading(false);
     }, 8000);
@@ -178,18 +177,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
-        shouldCreateUser: false, // Prevent OTP from creating new users
+        shouldCreateUser: false,
       },
     });
     return { error: error as Error | null };
   };
 
   const verifyOtp = async (email: string, token: string) => {
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email',
-    });
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
     return { error: error as Error | null };
   };
 
@@ -203,7 +198,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', user?.id);
 
     if (profileError) return { error: profileError as Error };
-    
     await refreshProfile();
     return { error: null };
   };
@@ -230,34 +224,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles([]);
   };
 
-  const hasRole = (role: AppRole) => {
-    return roles.some(r => r.role === role);
-  };
-
-  const hasAnyRole = (checkRoles: AppRole[]) => {
-    return roles.some(r => checkRoles.includes(r.role));
-  };
+  const hasRole = (role: AppRole) => roles.some(r => r.role === role);
+  const hasAnyRole = (checkRoles: AppRole[]) => roles.some(r => checkRoles.includes(r.role));
 
   const mustSetPassword = profile?.must_set_password ?? false;
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
-        profile,
-        roles,
-        isLoading,
-        mustSetPassword,
-        signInWithOtp,
-        verifyOtp,
-        setPassword,
-        resetPassword,
-        updatePassword,
-        signOut,
-        hasRole,
-        hasAnyRole,
-        refreshProfile,
+        user, session, profile, roles, isLoading, mustSetPassword,
+        signInWithOtp, verifyOtp, setPassword, resetPassword, updatePassword,
+        signOut, hasRole, hasAnyRole, refreshProfile,
       }}
     >
       {children}
