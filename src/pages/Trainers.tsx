@@ -148,6 +148,12 @@ export default function TrainersPage() {
             icon={Users}
           />
           <StatCard
+            title="General Clients"
+            value={totalGeneralClients}
+            description="Assigned members"
+            icon={Users}
+          />
+          <StatCard
             title="PT Clients"
             value={totalActiveClients}
             description="Active PT packages"
