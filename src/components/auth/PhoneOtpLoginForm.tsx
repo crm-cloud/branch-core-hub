@@ -23,7 +23,7 @@ export function PhoneOtpLoginForm() {
     }
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ phone: fullPhone });
+      const { error } = await supabase.auth.signInWithOtp({ phone: fullPhone, options: { shouldCreateUser: false } });
       if (error) throw error;
       setStep('verify');
       toast({ title: 'OTP Sent', description: `Verification code sent to ${fullPhone}` });

@@ -55,7 +55,7 @@ export function SetPasswordForm() {
     }
 
     toast.success('Password set successfully!');
-    navigate('/dashboard');
+    navigate('/home');
   };
 
   return (

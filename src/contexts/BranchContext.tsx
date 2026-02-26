@@ -15,6 +15,8 @@ interface BranchContextType {
   showSelector: boolean;
   /** Whether the "All Branches" option should be available */
   showAllOption: boolean;
+  /** Whether branch context is fully initialized and ready */
+  branchReady: boolean;
 }
 
 const BranchContext = createContext<BranchContextType | undefined>(undefined);
@@ -51,14 +53,12 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     queryKey: ['staff-home-branch', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      // Try employees first
       const { data: emp } = await supabase
         .from('employees')
         .select('branch_id, branches(id, name, code)')
         .eq('user_id', user.id)
         .maybeSingle();
       if (emp?.branches) return emp.branches as any;
-      // Try trainers
       const { data: trainer } = await supabase
         .from('trainers')
         .select('branch_id, branches(id, name, code)')
@@ -105,49 +105,75 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   // Auto-initialize branch selection for restricted roles
   useEffect(() => {
     if (initialized) return;
+
     if (isOwnerOrAdmin) {
+      // Restore saved branch for admin/owner too
+      const saved = sessionStorage.getItem('current_branch_id');
+      if (saved && allBranches.some(b => b.id === saved)) {
+        setSelectedBranch(saved);
+      }
       setInitialized(true);
-      return; // default 'all' is fine
+      return;
     }
+
     if (isManager && !isOwnerOrAdmin && managerBranches.length > 0) {
-      if (managerBranches.length === 1) {
-        setSelectedBranch(managerBranches[0].id);
+      const saved = sessionStorage.getItem('current_branch_id');
+      if (saved && managerBranches.some((b: any) => b.id === saved)) {
+        setSelectedBranch(saved);
       } else {
-        setSelectedBranch(managerBranches[0].id); // default to first
+        setSelectedBranch(managerBranches[0].id);
       }
       setInitialized(true);
     }
+
     if (staffBranch) {
       setSelectedBranch(staffBranch.id);
       setInitialized(true);
     }
+
     if (memberBranch) {
       setSelectedBranch(memberBranch.id);
       setInitialized(true);
     }
-  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, initialized]);
+  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, initialized, allBranches]);
 
   const isLoading = branchesLoading;
 
+  // effectiveBranchId: never 'all' for non-admin roles
   const effectiveBranchId = useMemo(() => {
     if (selectedBranch !== 'all') return selectedBranch;
-    return branches[0]?.id;
-  }, [selectedBranch, branches]);
+    // For owner/admin, fall back to first branch if available
+    if (isOwnerOrAdmin && branches.length > 0) return branches[0].id;
+    // For other roles, this shouldn't happen but guard anyway
+    if (branches.length > 0) return branches[0].id;
+    return undefined;
+  }, [selectedBranch, branches, isOwnerOrAdmin]);
 
   const branchFilter = useMemo(() => {
     return selectedBranch !== 'all' ? selectedBranch : undefined;
   }, [selectedBranch]);
 
+  const branchReady = initialized && !branchesLoading;
+
+  // Persist branch selection
+  const handleSetBranch = (id: string) => {
+    setSelectedBranch(id);
+    if (id !== 'all') {
+      sessionStorage.setItem('current_branch_id', id);
+    }
+  };
+
   return (
     <BranchContext.Provider value={{
       selectedBranch,
-      setSelectedBranch,
+      setSelectedBranch: handleSetBranch,
       effectiveBranchId,
       branchFilter,
       branches,
       isLoading,
       showSelector,
       showAllOption,
+      branchReady,
     }}>
       {children}
     </BranchContext.Provider>

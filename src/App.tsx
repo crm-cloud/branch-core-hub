@@ -8,7 +8,9 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
 import { ViewAsProvider } from "@/contexts/ViewAsContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
+import GatekeeperPage from "./pages/Gatekeeper";
+import PendingApprovalPage from "./pages/PendingApproval";
+import SelectBranchPage from "./pages/SelectBranch";
 import SetupPage from "./pages/Setup";
 import AuthPage from "./pages/Auth";
 import SetPasswordPage from "./pages/SetPassword";
@@ -131,9 +133,10 @@ const App = () => (
             {/* Embeddable lead form - no auth required */}
             <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
 
-            {/* Smart Dashboard Redirect */}
-            <Route path="/home" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
-
+            {/* Gatekeeper: central post-login router */}
+            <Route path="/home" element={<ProtectedRoute><GatekeeperPage /></ProtectedRoute>} />
+            <Route path="/pending-approval" element={<ProtectedRoute><PendingApprovalPage /></ProtectedRoute>} />
+            <Route path="/select-branch" element={<ProtectedRoute><SelectBranchPage /></ProtectedRoute>} />
             {/* Profile - all authenticated roles */}
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
@@ -208,7 +211,7 @@ const App = () => (
             <Route path="/system-health" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SystemHealthPage /></ProtectedRoute>} />
 
             {/* Redirects for old routes */}
-            <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
+            <Route path="/admin/users" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminUsersPage /></ProtectedRoute>} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
             <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
             <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
