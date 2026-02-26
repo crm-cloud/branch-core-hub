@@ -111,12 +111,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if calling user has admin/owner role
+    // Check if calling user has admin/owner/manager role
     const { data: callerRoles } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', callingUser.id)
-      .in('role', ['owner', 'admin'])
+      .in('role', ['owner', 'admin', 'manager'])
 
     if (!callerRoles || callerRoles.length === 0) {
       console.log('Insufficient permissions for user:', callingUser.id)
