@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   TrendingUp, TrendingDown, Wallet, 
-  ArrowUpRight, ArrowDownRight, Building2, Plus, Clock, CheckCircle, XCircle, Download,
+  ArrowUpRight, ArrowDownRight, Plus, Clock, CheckCircle, XCircle, Download,
   CreditCard, Banknote, Smartphone, Receipt
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -21,22 +22,12 @@ import { toast } from 'sonner';
 
 export default function FinancePage() {
   const queryClient = useQueryClient();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { selectedBranch, effectiveBranchId, branchFilter } = useBranchContext();
   const [expenseTab, setExpenseTab] = useState<string>('approved');
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | null>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
-  });
-
-  // Fetch branches
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('branches').select('id, name');
-      if (error) throw error;
-      return data || [];
-    },
   });
 
   // Fetch income data (payments)
@@ -251,7 +242,7 @@ export default function FinancePage() {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
   };
 
-  const defaultBranchId = branches[0]?.id || '';
+  const defaultBranchId = effectiveBranchId || '';
 
   // Recent transactions for timeline
   const recentTransactions = [
@@ -303,18 +294,6 @@ export default function FinancePage() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger className="w-[200px]">
-                <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {branches.map((branch: any) => (
-                  <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
         </div>

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/ui/stat-card';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
+
 import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, AccountsReceivableWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
 import { OccupancyGauge } from '@/components/dashboard/OccupancyGauge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useBranches } from '@/hooks/useBranches';
+
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -271,12 +271,6 @@ export default function DashboardPage() {
               Here's what's happening at your gym today
             </p>
           </div>
-          <BranchSelector
-            branches={branches}
-            selectedBranch={selectedBranch}
-            onBranchChange={setSelectedBranch}
-            showAllOption={true}
-          />
         </div>
 
         {/* Hero Gradient Card */}

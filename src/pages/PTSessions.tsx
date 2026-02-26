@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell, Eye, EyeOff } from "lucide-react";
 import { usePTPackages, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession, useUpdatePTPackage } from "@/hooks/usePTPackages";
 import { useTrainers } from "@/hooks/useTrainers";
-import { useBranches } from "@/hooks/useBranches";
+import { useBranchContext } from '@/contexts/BranchContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { AddPTPackageDrawer } from "@/components/pt/AddPTPackageDrawer";
 import { EditPTPackageDrawer } from "@/components/pt/EditPTPackageDrawer";
@@ -30,8 +30,7 @@ const SESSION_TYPES = [
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function PTSessionsPage() {
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const { effectiveBranchId } = useBranchContext();
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
   const [isEditPackageOpen, setIsEditPackageOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<any>(null);
@@ -43,7 +42,7 @@ export default function PTSessionsPage() {
     duration_minutes: 60,
   });
 
-  const branchId = selectedBranch || branches?.[0]?.id || "";
+  const branchId = effectiveBranchId || "";
   const { data: packages, isLoading: packagesLoading } = usePTPackages(branchId);
   const { data: trainers } = useTrainers(branchId);
   const { data: activePackages } = useActiveMemberPackages(branchId);

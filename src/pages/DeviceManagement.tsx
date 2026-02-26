@@ -38,6 +38,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 
 const DeviceManagement = () => {
+  const queryClient = useQueryClient();
   const { selectedBranch, branches, effectiveBranchId } = useBranchContext();
   const selectedBranchFilter = selectedBranch !== 'all' ? selectedBranch : '';
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);

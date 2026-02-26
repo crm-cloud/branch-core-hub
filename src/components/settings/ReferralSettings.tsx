@@ -10,10 +10,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Gift, Save, Percent, IndianRupee } from 'lucide-react';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export function ReferralSettings() {
   const queryClient = useQueryClient();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const { effectiveBranchId } = useBranchContext();
+  const selectedBranch = effectiveBranchId || '';
   const [formData, setFormData] = useState({
     is_active: true,
     reward_mode: 'fixed',
@@ -22,16 +24,6 @@ export function ReferralSettings() {
     min_membership_value: 1000,
     referrer_reward_type: 'wallet_credit',
     referred_reward_type: 'wallet_credit',
-  });
-
-  // Fetch branches
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('branches').select('id, name');
-      if (error) throw error;
-      return data || [];
-    },
   });
 
   const { data: settings, isLoading } = useQuery({
@@ -119,20 +111,6 @@ export function ReferralSettings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="max-w-xs">
-            <Label>Select Branch</Label>
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((branch: any) => (
-                  <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {selectedBranch && (
             <>
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">

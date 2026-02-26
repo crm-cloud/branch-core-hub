@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit } from "lucide-react";
 import { useBranchContext } from '@/contexts/BranchContext';
+import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Progress } from '@/components/ui/progress';

@@ -9,8 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -54,15 +53,13 @@ const WHATSAPP_PROVIDERS = [
 ];
 
 export function IntegrationSettings() {
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { selectedBranch, branchFilter } = useBranchContext();
   const [configSheet, setConfigSheet] = useState<{
     open: boolean;
     type: IntegrationType;
     provider: string;
     existing?: any;
   }>({ open: false, type: 'payment_gateway', provider: '' });
-  
-  const { data: branches = [] } = useBranches();
   const queryClient = useQueryClient();
 
   const { data: integrations = [] } = useQuery({
@@ -105,12 +102,6 @@ export function IntegrationSettings() {
           <h2 className="text-lg font-semibold">Integrations</h2>
           <p className="text-sm text-muted-foreground">Configure payment gateways, SMS, email and WhatsApp</p>
         </div>
-        <BranchSelector
-          branches={branches}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
-          showAllOption={true}
-        />
       </div>
 
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
@@ -404,7 +395,7 @@ export function IntegrationSettings() {
       <IntegrationConfigSheet 
         {...configSheet} 
         onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
-        branchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+        branchId={branchFilter}
       />
     </div>
   );
