@@ -27,10 +27,6 @@ verify_jwt = true
 [functions.payment-webhook]
 verify_jwt = false
 
-[functions.seed-test-data]
-verify_jwt = false
-
-[functions.device-access-event]
 verify_jwt = false
 
 [functions.device-heartbeat]
@@ -48,5 +44,3 @@ verify_jwt = false
 [functions.send-reminders]
 verify_jwt = false
 
-[functions.reset-all-data]
-verify_jwt = false

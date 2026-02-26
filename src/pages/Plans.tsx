@@ -16,8 +16,8 @@ import { useBranches } from '@/hooks/useBranches';
 import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function PlansPage() {
-  const { data: plans, isLoading } = usePlans(undefined, true);
-  const { effectiveBranchId } = useBranchContext();
+  const { effectiveBranchId, branchFilter } = useBranchContext();
+  const { data: plans, isLoading } = usePlans(branchFilter, true);
   const defaultBranchId = effectiveBranchId || '';
   const [addPlanOpen, setAddPlanOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);

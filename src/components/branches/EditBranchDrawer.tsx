@@ -18,6 +18,7 @@ interface EditBranchDrawerProps {
 export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawerProps) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [managerChanged, setManagerChanged] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -52,6 +53,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
 
   useEffect(() => {
     if (branch) {
+      setManagerChanged(false);
       setFormData({
         name: branch.name || '',
         code: branch.code || '',
@@ -87,6 +89,12 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     enabled: open,
   });
 
+  const handleManagerChange = (value: string) => {
+    const newId = value === 'none' ? '' : value;
+    setFormData({ ...formData, managerId: newId });
+    setManagerChanged(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!branch?.id) return;
@@ -112,27 +120,48 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
 
       if (error) throw error;
 
-      // Update manager if selected
-      if (formData.managerId) {
-        // Remove existing manager
+      // Update manager only if selection changed
+      if (managerChanged) {
+        // Always remove existing primary manager first
         await supabase
           .from('branch_managers')
           .delete()
           .eq('branch_id', branch.id)
           .eq('is_primary', true);
 
-        // Add new manager
-        await supabase
-          .from('branch_managers')
-          .insert({
-            branch_id: branch.id,
-            user_id: formData.managerId,
-            is_primary: true,
-          });
+        // Add new manager if one was selected
+        if (formData.managerId) {
+          await supabase
+            .from('branch_managers')
+            .insert({
+              branch_id: branch.id,
+              user_id: formData.managerId,
+              is_primary: true,
+            });
+
+          // Also ensure staff_branches entry exists
+          const { data: existing } = await supabase
+            .from('staff_branches')
+            .select('id')
+            .eq('user_id', formData.managerId)
+            .eq('branch_id', branch.id)
+            .maybeSingle();
+
+          if (!existing) {
+            await supabase
+              .from('staff_branches')
+              .insert({
+                user_id: formData.managerId,
+                branch_id: branch.id,
+              });
+          }
+        }
       }
 
       toast.success('Branch updated successfully');
       queryClient.invalidateQueries({ queryKey: ['branches'] });
+      queryClient.invalidateQueries({ queryKey: ['branch-manager', branch.id] });
+      queryClient.invalidateQueries({ queryKey: ['potential-managers'] });
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error updating branch:', error);
@@ -262,22 +291,20 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
 
           <div className="space-y-2">
             <Label htmlFor="manager">Branch Manager</Label>
-            {currentManager && (
+            {currentManager && !managerChanged && (
               <p className="text-xs text-muted-foreground">
                 Current: <span className="font-medium text-foreground">{(currentManager as any).profiles?.full_name || 'Unknown'}</span>
               </p>
             )}
             <Select
               value={formData.managerId || "none"}
-              onValueChange={(v) => setFormData({ ...formData, managerId: v === "none" ? "" : v })}
+              onValueChange={handleManagerChange}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a manager" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">
-                  {currentManager ? 'Keep current manager' : 'No manager assigned'}
-                </SelectItem>
+                <SelectItem value="none">No manager assigned</SelectItem>
                 {potentialManagers.map((m: any) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
                     {m.profiles?.full_name || m.profiles?.email} ({m.role})

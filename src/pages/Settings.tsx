@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, Database, MessageSquare, Receipt } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -10,9 +10,9 @@ import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
-import { DemoDataSettings } from '@/components/settings/DemoDataSettings';
 import { TemplateManager } from '@/components/settings/TemplateManager';
 import { ExpenseCategoryManager } from '@/components/settings/ExpenseCategoryManager';
+import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
@@ -20,12 +20,12 @@ const SETTINGS_MENU = [
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'templates', label: 'Templates', icon: MessageSquare },
+  { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
   { value: 'expenses', label: 'Expenses', icon: Receipt },
   { value: 'integrations', label: 'Integrations', icon: Plug },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
   { value: 'website', label: 'Website', icon: Globe },
-  { value: 'demo', label: 'Demo Data', icon: Database },
 ];
 
 const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
@@ -34,12 +34,12 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
   templates: <TemplateManager />,
+  'plan-templates': <PlanBenefitTemplates />,
   expenses: <ExpenseCategoryManager />,
   integrations: <IntegrationSettings />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
   website: <WebsiteSettings />,
-  demo: <DemoDataSettings />,
 };
 
 export default function SettingsPage() {
