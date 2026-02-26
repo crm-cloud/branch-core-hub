@@ -1,6 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useViewAs } from '@/contexts/ViewAsContext';
 import type { Database } from '@/integrations/supabase/types';
 import { GymLoader } from '@/components/ui/gym-loader';
 
@@ -16,7 +15,6 @@ interface ProtectedRouteProps {
  */
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
   const { user, isLoading, mustSetPassword, hasAnyRole, roles } = useAuth();
-  const { isViewingAs } = useViewAs();
   const location = useLocation();
 
   if (isLoading) {
@@ -39,12 +37,6 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
 
   // Check role requirements
   if (requiredRoles && requiredRoles.length > 0) {
-    // Admin/owner using View As mode can access any route
-    const isAdminOrOwner = roles.some(r => ['owner', 'admin'].includes(typeof r === 'string' ? r : r.role));
-    if (isViewingAs && isAdminOrOwner) {
-      return <>{children}</>;
-    }
-
     if (!hasAnyRole(requiredRoles)) {
       // Instead of showing unauthorized, redirect to appropriate dashboard
       // This provides a smoother UX

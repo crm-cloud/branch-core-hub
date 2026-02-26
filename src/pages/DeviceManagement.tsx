@@ -216,11 +216,10 @@ const DeviceManagement = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Device</TableHead>
-                      <TableHead>Serial No.</TableHead>
                       <TableHead>IP Address</TableHead>
+                      <TableHead>Firmware</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Last Heartbeat</TableHead>
-                      <TableHead>Last Sync</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -240,11 +239,11 @@ const DeviceManagement = () => {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">
-                          {device.serial_number || '—'}
-                        </TableCell>
                         <TableCell className="font-mono text-sm">
                           {String(device.ip_address)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {device.firmware_version || '—'}
                         </TableCell>
                         <TableCell>
                           {device.is_online ? (
@@ -262,11 +261,6 @@ const DeviceManagement = () => {
                         <TableCell className="text-sm text-muted-foreground">
                           {device.last_heartbeat 
                             ? formatDistanceToNow(new Date(device.last_heartbeat), { addSuffix: true })
-                            : 'Never'}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {device.last_sync 
-                            ? formatDistanceToNow(new Date(device.last_sync), { addSuffix: true })
                             : 'Never'}
                         </TableCell>
                         <TableCell className="text-right">

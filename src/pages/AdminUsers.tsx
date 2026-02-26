@@ -65,42 +65,20 @@ export default function AdminUsersPage() {
 
     setIsLoading(true);
     try {
-      let functionName: string;
-      let body: Record<string, unknown>;
-
-      if (['admin', 'owner'].includes(data.role)) {
-        functionName = 'admin-create-user';
-        body = {
+      const { data: session } = await supabase.auth.getSession();
+      
+      const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
           email: data.email,
           fullName: data.fullName,
           phone: data.phone,
           role: data.role,
           branchId: data.branchId || null,
-        };
-      } else if (data.role === 'member') {
-        functionName = 'create-member-user';
-        body = {
-          email: data.email,
-          full_name: data.fullName,
-          phone: data.phone,
-          branch_id: data.branchId,
-        };
-      } else {
-        // manager, staff, trainer
-        functionName = 'create-staff-user';
-        body = {
-          email: data.email,
-          full_name: data.fullName,
-          phone: data.phone,
-          role: data.role,
-          branch_id: data.branchId,
-        };
-      }
-
-      const { data: result, error } = await supabase.functions.invoke(functionName, { body });
+        },
+      });
 
       if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+      if (result.error) throw new Error(result.error);
 
       toast({
         title: 'User Created',

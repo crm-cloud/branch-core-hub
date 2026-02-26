@@ -47,47 +47,20 @@ export default function HRMPage() {
     queryFn: () => fetchEmployees(),
   });
 
-  // Fetch all contracts - use 2-step approach to avoid FK join issues
+  // Fetch all contracts
   const { data: allContracts = [] } = useQuery({
     queryKey: ['all-contracts'],
     queryFn: async () => {
-      const { data: contracts, error } = await supabase
+      const { data, error } = await supabase
         .from('contracts')
-        .select('*')
+        .select(`
+          *,
+          employees(employee_code, profile:user_id(full_name))
+        `)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      if (!contracts || contracts.length === 0) return [];
-
-      // Get employee data separately
-      const empIds = [...new Set(contracts.map(c => c.employee_id).filter(Boolean))];
-      let employeeMap: Record<string, any> = {};
-      if (empIds.length > 0) {
-        const { data: emps } = await supabase
-          .from('employees')
-          .select('id, employee_code, user_id')
-          .in('id', empIds);
-        if (emps) {
-          const userIds = emps.map(e => e.user_id).filter(Boolean);
-          let profileMap: Record<string, any> = {};
-          if (userIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from('profiles')
-              .select('id, full_name')
-              .in('id', userIds);
-            profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]));
-          }
-          employeeMap = Object.fromEntries(emps.map(e => [e.id, {
-            employee_code: e.employee_code,
-            profile: profileMap[e.user_id] || null,
-          }]));
-        }
-      }
-
-      return contracts.map(c => ({
-        ...c,
-        employees: employeeMap[c.employee_id] || null,
-      }));
+      return data;
     },
   });
 

@@ -77,21 +77,18 @@ Deno.serve(async (req) => {
       'lead_followups',
       'contracts', 'staff_attendance', 'payroll_rules',
       'benefit_bookings', 'benefit_usage', 'member_benefit_credits', 'benefit_slots',
-      'benefit_settings', 'benefit_packages',
-      'facilities',
-      'benefit_types',
+      'benefit_settings', 'benefit_packages', 'benefit_types',
       'diet_plans', 'diet_templates', 'fitness_plan_templates', 'member_fitness_plans', 'member_measurements',
       'workout_plans', 'workout_templates', 'ai_plan_logs', 'exercises',
       'referral_rewards', 'referrals', 'referral_settings',
       'wallet_transactions', 'wallets',
-      'device_commands', 'device_access_events', 'biometric_sync_queue', 'access_devices',
+      'device_access_events', 'biometric_sync_queue', 'access_devices',
       'whatsapp_messages', 'communication_logs',
       'approval_requests', 'audit_logs', 'notifications', 'notification_preferences',
       'announcements', 'feedback', 'tasks', 'templates',
       'discount_codes',
       'expenses', 'expense_categories', 'expense_category_templates',
-      'integration_settings', 'settings', 'organization_settings',
-      'error_logs', 'cms_pages',
+      'integration_settings', 'settings',
       'member_branch_history', 'staff_branches', 'branch_managers', 'branch_settings',
       'permissions', 'role_permissions',
       'memberships', 'plan_benefits', 'membership_plans',
@@ -110,16 +107,20 @@ Deno.serve(async (req) => {
     // If rpc doesn't exist, fall back to direct SQL via postgrest
     // We'll use the admin client to run individual deletes as a fallback
     if (truncateError) {
-      console.log('Truncate RPC failed, falling back to per-table deletes:', truncateError.message)
+      // Use raw SQL through the admin client's special endpoint
+      const response = await fetch(`${supabaseUrl}/rest/v1/rpc/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': serviceRoleKey,
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({}),
+      })
+      
+      // Since we can't run raw SQL through the client, delete from each table
       for (const table of tables) {
-        try {
-          const { error: delErr } = await adminClient.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
-          if (delErr) {
-            console.warn(`Delete from ${table} failed:`, delErr.message)
-          }
-        } catch (e) {
-          console.warn(`Delete from ${table} threw:`, e)
-        }
+        await adminClient.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
       }
     }
 

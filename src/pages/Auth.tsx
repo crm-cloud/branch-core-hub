@@ -47,6 +47,17 @@ export default function AuthPage() {
     checkSetup();
   }, []);
 
+  const getRedirectPath = () => {
+    if (roles.some(r => r.role === 'member')) {
+      return '/member-dashboard';
+    }
+    if (roles.some(r => r.role === 'trainer') && 
+        !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+      return '/trainer-dashboard';
+    }
+    return '/dashboard';
+  };
+
   if (isLoading || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--gradient-hero)' }}>
@@ -59,9 +70,8 @@ export default function AuthPage() {
     return <Navigate to="/setup" replace />;
   }
 
-  // All authenticated users go through Gatekeeper
   if (user && !mustSetPassword) {
-    return <Navigate to="/home" replace />;
+    return <Navigate to={getRedirectPath()} replace />;
   }
 
   if (user && mustSetPassword) {

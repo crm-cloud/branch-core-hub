@@ -60,7 +60,7 @@ export function OtpLoginForm() {
     }
 
     toast.success('Welcome back!');
-    navigate('/home');
+    navigate('/dashboard');
   };
 
   const handleBack = () => {
