@@ -217,6 +217,15 @@ export default function TrainersPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* General Clients */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      General Clients
+                    </span>
+                    <span className="font-medium">{generalClientCounts[trainer.id] || 0}</span>
+                  </div>
+
                   {/* PT Client Ratio */}
                   {(() => {
                     const activeClients = ptClientCounts[trainer.id] || 0;
