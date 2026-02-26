@@ -241,7 +241,7 @@ export default function PTSessionsPage() {
                   Show Inactive
                 </Label>
               </div>
-              {['owner', 'admin', 'manager'].includes(profile?.role || '') && (
+              {roles.some(r => ['owner', 'admin', 'manager'].includes(r.role)) && (
                 <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
               )}
             </div>

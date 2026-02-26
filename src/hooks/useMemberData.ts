@@ -259,7 +259,7 @@ export function useTrainerData() {
         .from('members')
         .select('id, member_code, user_id, is_active, fitness_goals')
         .eq('assigned_trainer_id', trainer!.id)
-        .eq('is_active', true);
+        .eq('is_active', true) as { data: any[] | null; error: any };
 
       if (error) throw error;
 
