@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Loader2 } from 'lucide-react';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
+import { getBenefitIcon } from '@/lib/benefitIcons';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 
 interface EditPlanDrawerProps {
@@ -351,7 +352,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
             <div className="flex items-center justify-between py-2">
               <div>
                 <Label>Includes Free Locker</Label>
-                <p className="text-xs text-muted-foreground">Member gets a complimentary locker</p>
+                <p className="text-xs text-muted-foreground">Auto-assigns a physical locker on purchase. For session tracking, add the Locker benefit above.</p>
               </div>
               <Switch
                 checked={formData.includes_free_locker}
@@ -428,8 +429,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
                           checked={benefits[benefit.id]?.enabled || false}
                           onCheckedChange={() => toggleBenefit(benefit.id)}
                         />
-                        <label htmlFor={`edit-${benefit.id}`} className="flex-1 cursor-pointer">
-                          <span className="mr-2">{benefit.icon}</span>
+                        <label htmlFor={`edit-${benefit.id}`} className="flex-1 cursor-pointer flex items-center gap-2">
+                          {(() => { const IconComp = getBenefitIcon(benefit.code); return <IconComp className="h-4 w-4 text-primary" />; })()}
                           {benefit.label}
                         </label>
                       </div>

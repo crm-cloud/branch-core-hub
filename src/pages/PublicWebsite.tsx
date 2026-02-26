@@ -100,7 +100,9 @@ export default function PublicWebsite() {
   const statsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Load cached theme instantly, then fetch from DB
     setTheme(cmsService.getTheme());
+    cmsService.getThemeAsync().then(dbTheme => setTheme(dbTheme)).catch(() => {});
   }, []);
 
   useEffect(() => {
