@@ -117,7 +117,7 @@ export default function TrainerDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Link to="/ai-fitness">
+          <Link to="/trainer-plan-builder">
             <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Dumbbell className="h-8 w-8 text-warning" />
