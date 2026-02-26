@@ -36,10 +36,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private async logErrorToDatabase(error: Error, errorInfo: ErrorInfo) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return; // Skip DB insert when unauthenticated
 
       await (supabase.from('error_logs') as any).insert({
-        user_id: user?.id || null,
+        user_id: session.user?.id || null,
         error_message: error.message || 'Unknown error',
         stack_trace: error.stack || null,
         component_name: errorInfo.componentStack || null,

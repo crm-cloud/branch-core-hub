@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,24 +46,7 @@ interface SeedResult {
   error?: string;
   data?: {
     branch: string;
-    summary: {
-      users: number;
-      trainers: number;
-      members: number;
-      employees: number;
-      benefitTypes: number;
-      membershipPlans: number;
-      ptPackages: number;
-      equipment: number;
-      products: number;
-      categories: number;
-      classes: number;
-      leads: number;
-      dietTemplates: number;
-      lockers: number;
-      announcements: number;
-      tasks: number;
-    };
+    summary: Record<string, number>;
     credentials: {
       password: string;
       users: { email: string; role: string; name: string }[];
@@ -70,23 +54,55 @@ interface SeedResult {
   };
 }
 
+const dataCategories = [
+  { key: 'branch', icon: Building2, label: 'Branch & Settings', description: 'Main branch with complete configuration' },
+  { key: 'users', icon: Users, label: 'Users & Roles', description: 'Owner, Manager, Staff, Trainers, Members' },
+  { key: 'benefits', icon: Sparkles, label: 'Benefit Types', description: 'Ice Bath, Sauna, Steam Room, Pool, Spa, etc.' },
+  { key: 'plans', icon: ClipboardList, label: 'Membership Plans', description: '6 plans: Basic, Premium, Quarterly, Annual, Elite' },
+  { key: 'pt', icon: Dumbbell, label: 'PT Packages', description: '5, 10, 20, 30 session packages' },
+  { key: 'classes', icon: Calendar, label: 'Classes', description: 'Yoga, HIIT, Spin, Zumba, Pilates, Boxing, CrossFit' },
+  { key: 'equipment', icon: Package, label: 'Equipment', description: '15+ gym equipment with maintenance records' },
+  { key: 'products', icon: ShoppingCart, label: 'Products', description: 'Supplements, Apparel, Accessories, Beverages' },
+  { key: 'leads', icon: UserCheck, label: 'Leads', description: '5 leads in various pipeline stages' },
+  { key: 'diet', icon: Utensils, label: 'Diet Templates', description: 'Weight Loss, Muscle Gain, Maintenance plans' },
+  { key: 'lockers', icon: Lock, label: 'Lockers', description: '20 lockers (Small, Medium, Large)' },
+  { key: 'attendance', icon: Trophy, label: 'Attendance', description: '7 days of check-in/out records' },
+  { key: 'announcements', icon: Megaphone, label: 'Announcements', description: 'Sample gym announcements' },
+  { key: 'tasks', icon: ClipboardList, label: 'Tasks', description: 'Staff tasks with priorities' },
+];
+
 export function DemoDataSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SeedResult | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(dataCategories.map(c => c.key));
+
+  const toggleCategory = (key: string) => {
+    setSelectedCategories(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const selectAll = () => setSelectedCategories(dataCategories.map(c => c.key));
+  const selectNone = () => setSelectedCategories([]);
 
   const handleLoadDemoData = async () => {
+    if (selectedCategories.length === 0) {
+      toast.error('Please select at least one category');
+      return;
+    }
+
     setIsLoading(true);
     setResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('seed-test-data');
+      const { data, error } = await supabase.functions.invoke('seed-test-data', {
+        body: { categories: selectedCategories },
+      });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setResult(data as SeedResult);
       
@@ -131,23 +147,6 @@ export function DemoDataSettings() {
       setIsResetting(false);
     }
   };
-
-  const dataCategories = [
-    { icon: Building2, label: 'Branch & Settings', description: 'Main branch with complete configuration' },
-    { icon: Users, label: 'Users & Roles', description: 'Owner, Manager, Staff, Trainers, Members' },
-    { icon: Sparkles, label: 'Benefit Types', description: 'Ice Bath, Sauna, Steam Room, Pool, Spa, etc.' },
-    { icon: ClipboardList, label: 'Membership Plans', description: '6 plans: Basic, Premium, Quarterly, Annual, Elite' },
-    { icon: Dumbbell, label: 'PT Packages', description: '5, 10, 20, 30 session packages' },
-    { icon: Calendar, label: 'Classes', description: 'Yoga, HIIT, Spin, Zumba, Pilates, Boxing, CrossFit' },
-    { icon: Package, label: 'Equipment', description: '15+ gym equipment with maintenance records' },
-    { icon: ShoppingCart, label: 'Products', description: 'Supplements, Apparel, Accessories, Beverages' },
-    { icon: UserCheck, label: 'Leads', description: '5 leads in various pipeline stages' },
-    { icon: Utensils, label: 'Diet Templates', description: 'Weight Loss, Muscle Gain, Maintenance plans' },
-    { icon: Lock, label: 'Lockers', description: '20 lockers (Small, Medium, Large)' },
-    { icon: Trophy, label: 'Attendance', description: '7 days of check-in/out records' },
-    { icon: Megaphone, label: 'Announcements', description: 'Sample gym announcements' },
-    { icon: ClipboardList, label: 'Tasks', description: 'Staff tasks with priorities' },
-  ];
 
   return (
     <div className="space-y-6">
@@ -202,24 +201,45 @@ export function DemoDataSettings() {
             Load Demo Data
           </CardTitle>
           <CardDescription>
-            Populate your gym management system with comprehensive test data to explore all features and workflows.
+            Select which categories to import. Branch & Users are required dependencies for most other categories.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* What will be created */}
-          <div>
-            <h3 className="text-sm font-medium mb-3">What will be created:</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {dataCategories.map((cat, idx) => (
-                <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                  <cat.icon className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+          {/* Selection Controls */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={selectAll}>Select All</Button>
+            <Button variant="outline" size="sm" onClick={selectNone}>Deselect All</Button>
+            <Badge variant="secondary" className="ml-auto">
+              {selectedCategories.length}/{dataCategories.length} selected
+            </Badge>
+          </div>
+
+          {/* Category Checkboxes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {dataCategories.map((cat) => {
+              const isSelected = selectedCategories.includes(cat.key);
+              return (
+                <label
+                  key={cat.key}
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                    isSelected 
+                      ? 'bg-primary/5 border-primary/30' 
+                      : 'bg-muted/30 border-border hover:bg-muted/50'
+                  }`}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleCategory(cat.key)}
+                    className="mt-0.5"
+                  />
+                  <cat.icon className={`h-4 w-4 mt-0.5 shrink-0 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
                   <div>
                     <p className="text-sm font-medium">{cat.label}</p>
                     <p className="text-xs text-muted-foreground">{cat.description}</p>
                   </div>
-                </div>
-              ))}
-            </div>
+                </label>
+              );
+            })}
           </div>
 
           <Separator />
@@ -239,7 +259,7 @@ export function DemoDataSettings() {
           {/* Action Button */}
           <Button 
             onClick={handleLoadDemoData} 
-            disabled={isLoading}
+            disabled={isLoading || selectedCategories.length === 0}
             size="lg"
             className="w-full"
           >
@@ -251,7 +271,7 @@ export function DemoDataSettings() {
             ) : (
               <>
                 <Database className="h-4 w-4 mr-2" />
-                Load Complete Demo Data
+                Load Selected Demo Data ({selectedCategories.length} categories)
               </>
             )}
           </Button>
