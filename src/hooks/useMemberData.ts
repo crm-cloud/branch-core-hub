@@ -257,9 +257,10 @@ export function useTrainerData() {
     queryFn: async () => {
       const query = supabase
         .from('members')
-        .select('id, member_code, user_id, is_active, fitness_goals')
-        .eq('assigned_trainer_id', trainer!.id);
-      const { data, error } = await (query as any).eq('is_active', true);
+        .select('id, member_code, user_id, status, fitness_goals')
+        .eq('assigned_trainer_id', trainer!.id)
+        .eq('status', 'active');
+      const { data, error } = await query;
 
       if (error) throw error;
 

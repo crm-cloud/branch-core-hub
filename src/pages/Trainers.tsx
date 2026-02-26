@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit } from "lucide-react";
+import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit, User } from "lucide-react";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
@@ -45,6 +45,30 @@ export default function TrainersPage() {
       data?.forEach(pkg => {
         if (pkg.trainer_id) {
           counts[pkg.trainer_id] = (counts[pkg.trainer_id] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: !!branchId,
+  });
+
+  // Fetch general training client counts per trainer
+  const { data: generalClientCounts = {} } = useQuery({
+    queryKey: ['general-client-counts', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('assigned_trainer_id')
+        .eq('branch_id', branchId)
+        .eq('status', 'active')
+        .not('assigned_trainer_id', 'is', null);
+      
+      if (error) throw error;
+      
+      const counts: Record<string, number> = {};
+      data?.forEach(m => {
+        if (m.assigned_trainer_id) {
+          counts[m.assigned_trainer_id] = (counts[m.assigned_trainer_id] || 0) + 1;
         }
       });
       return counts;
@@ -92,6 +116,7 @@ export default function TrainersPage() {
   };
 
   const totalActiveClients = Object.values(ptClientCounts).reduce((sum: number, count: number) => sum + count, 0);
+  const totalGeneralClients = Object.values(generalClientCounts).reduce((sum: number, count: number) => sum + count, 0);
   const activeTrainers = trainers?.filter(t => t.is_active).length || 0;
 
   return (
@@ -115,11 +140,17 @@ export default function TrainersPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <StatCard
             title="Total Trainers"
             value={activeTrainers}
             description="Active trainers"
+            icon={Users}
+          />
+          <StatCard
+            title="General Clients"
+            value={totalGeneralClients}
+            description="Assigned members"
             icon={Users}
           />
           <StatCard
@@ -186,6 +217,15 @@ export default function TrainersPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* General Clients */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      General Clients
+                    </span>
+                    <span className="font-medium">{generalClientCounts[trainer.id] || 0}</span>
+                  </div>
+
                   {/* PT Client Ratio */}
                   {(() => {
                     const activeClients = ptClientCounts[trainer.id] || 0;
