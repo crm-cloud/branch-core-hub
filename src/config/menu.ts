@@ -178,9 +178,9 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Finance',
     items: [
-      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin'] },
+      { label: 'Overview', href: '/finance', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin'] },
+      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
