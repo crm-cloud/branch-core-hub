@@ -31,7 +31,7 @@ const SESSION_TYPES = [
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function PTSessionsPage() {
-  const { profile } = useAuth();
+  const { roles } = useAuth();
   const { effectiveBranchId, branchFilter } = useBranchContext();
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
   const [isEditPackageOpen, setIsEditPackageOpen] = useState(false);
