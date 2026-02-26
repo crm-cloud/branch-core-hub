@@ -26,9 +26,11 @@ export interface CheckOutResult {
 export interface MemberAttendanceWithDetails extends MemberAttendance {
   members?: {
     member_code: string;
+    user_id: string | null;
     profiles?: {
       full_name: string | null;
       avatar_url: string | null;
+      phone: string | null;
     } | null;
   } | null;
 }
@@ -85,7 +87,9 @@ export const attendanceService = {
       .order('check_in', { ascending: false });
 
     if (error) throw error;
-    return data as MemberAttendanceWithDetails[];
+    
+    // Enrich with profile data
+    return await this.enrichWithProfiles(data || []);
   },
 
   // Get attendance history for a member
@@ -117,7 +121,28 @@ export const attendanceService = {
       .order('check_in', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return await this.enrichWithProfiles(data || []);
+  },
+
+  // Helper: fetch profiles for attendance records and attach as members.profiles
+  async enrichWithProfiles(records: any[]): Promise<MemberAttendanceWithDetails[]> {
+    const userIds = [...new Set(records.map(r => r.members?.user_id).filter(Boolean))];
+    if (userIds.length === 0) return records;
+    
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, phone')
+      .in('id', userIds);
+    
+    const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+    
+    return records.map(r => ({
+      ...r,
+      members: r.members ? {
+        ...r.members,
+        profiles: r.members.user_id ? profileMap.get(r.members.user_id) || null : null,
+      } : null,
+    }));
   },
 
   // Search member by code, name, phone or email for check-in using search_members RPC

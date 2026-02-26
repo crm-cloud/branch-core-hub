@@ -256,7 +256,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
           <div className="flex items-center justify-between py-2">
             <div>
               <Label>Includes Free Locker</Label>
-              <p className="text-xs text-muted-foreground">Member gets a complimentary locker</p>
+              <p className="text-xs text-muted-foreground">Auto-assigns a physical locker on purchase. For session tracking, add the Locker benefit above.</p>
             </div>
             <Switch
               checked={formData.includes_free_locker}

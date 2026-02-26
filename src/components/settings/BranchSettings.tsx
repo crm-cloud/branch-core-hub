@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Building2, Pencil } from 'lucide-react';
+import { Plus, Building2, Pencil, UserCircle } from 'lucide-react';
 import { useBranches } from '@/hooks/useBranches';
 import { AddBranchDialog } from '@/components/branches/AddBranchDialog';
 import { EditBranchDrawer } from '@/components/branches/EditBranchDrawer';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export function BranchSettings() {
@@ -15,8 +16,30 @@ export function BranchSettings() {
   const [editBranch, setEditBranch] = useState<any>(null);
   const { data: branches = [], isLoading } = useBranches();
   const { hasAnyRole } = useAuth();
+  const [managers, setManagers] = useState<Record<string, string>>({});
 
   const canCreateBranch = hasAnyRole(['owner', 'admin']);
+
+  useEffect(() => {
+    if (branches.length === 0) return;
+    const fetchManagers = async () => {
+      const { data } = await supabase
+        .from('branch_managers')
+        .select('branch_id, user_id, is_primary')
+        .eq('is_primary', true);
+      if (!data || data.length === 0) return;
+      const userIds = data.map(d => d.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+      const profileMap = new Map((profiles || []).map(p => [p.id, p.full_name || 'Unknown']));
+      const mgrs: Record<string, string> = {};
+      data.forEach(d => { mgrs[d.branch_id] = profileMap.get(d.user_id) || 'Unknown'; });
+      setManagers(mgrs);
+    };
+    fetchManagers();
+  }, [branches]);
 
   return (
     <div className="space-y-6">
@@ -55,6 +78,7 @@ export function BranchSettings() {
                 <TableRow>
                   <TableHead>Branch</TableHead>
                   <TableHead>Code</TableHead>
+                  <TableHead>Manager</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Status</TableHead>
@@ -73,6 +97,14 @@ export function BranchSettings() {
                       </div>
                     </TableCell>
                     <TableCell className="font-mono">{branch.code}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <UserCircle className="h-4 w-4 text-muted-foreground" />
+                        <span className={managers[branch.id] ? 'text-foreground' : 'text-muted-foreground italic'}>
+                          {managers[branch.id] || 'No manager'}
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="text-sm">{branch.city}, {branch.state}</div>
                       <div className="text-sm text-muted-foreground">{branch.address}</div>
@@ -99,7 +131,7 @@ export function BranchSettings() {
                 ))}
                 {branches.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No branches found
                     </TableCell>
                   </TableRow>
