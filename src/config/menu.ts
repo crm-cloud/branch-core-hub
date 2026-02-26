@@ -196,7 +196,7 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Admin & HR',
     items: [
-      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin'] },
+      { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
