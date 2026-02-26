@@ -11,15 +11,20 @@ import { toast } from 'sonner';
 
 export function OrganizationSettings() {
   const queryClient = useQueryClient();
-  const { selectedBranch } = useBranchContext();
+  const { effectiveBranchId, selectedBranch } = useBranchContext();
   const [dragActive, setDragActive] = useState(false);
 
+  // Use effectiveBranchId for queries, or null for global settings when 'all' is selected
+  const queryBranchId = selectedBranch === 'all' ? null : effectiveBranchId;
+
   const { data: orgSettings, isLoading } = useQuery({
-    queryKey: ['organization-settings', selectedBranch],
+    queryKey: ['organization-settings', queryBranchId],
     queryFn: async () => {
       let query = supabase.from('organization_settings').select('*');
-      if (selectedBranch) {
-        query = query.eq('branch_id', selectedBranch);
+      if (queryBranchId) {
+        query = query.eq('branch_id', queryBranchId);
+      } else {
+        query = query.is('branch_id', null);
       }
       const { data, error } = await query.maybeSingle();
       if (error) throw error;
@@ -50,9 +55,10 @@ export function OrganizationSettings() {
     mutationFn: async (values: typeof form) => {
       const payload = {
         ...values,
-        branch_id: selectedBranch || null,
+        branch_id: queryBranchId || null,
         logo_url: orgSettings?.logo_url || null,
       };
+      // Use upsert to avoid 409 conflicts
       if (orgSettings?.id) {
         const { error } = await supabase
           .from('organization_settings')
@@ -62,8 +68,14 @@ export function OrganizationSettings() {
       } else {
         const { error } = await supabase
           .from('organization_settings')
-          .insert(payload);
-        if (error) throw error;
+          .upsert(payload, { onConflict: 'branch_id' });
+        if (error) {
+          // Fallback to insert if upsert fails
+          const { error: insertError } = await supabase
+            .from('organization_settings')
+            .insert(payload);
+          if (insertError) throw insertError;
+        }
       }
     },
     onSuccess: () => {
@@ -81,10 +93,9 @@ export function OrganizationSettings() {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
 
-      // Upsert org settings with logo
       const payload = {
         logo_url: publicUrl,
-        branch_id: selectedBranch || null,
+        branch_id: queryBranchId || null,
         name: form.name || null,
         timezone: form.timezone,
         currency: form.currency,

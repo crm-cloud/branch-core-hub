@@ -80,7 +80,7 @@ export async function getEmployee(id: string) {
       .from('profiles')
       .select('id, full_name, email, phone, avatar_url, date_of_birth, address, city, state')
       .eq('id', data.user_id)
-      .single();
+      .maybeSingle();
     profile = profileData;
   }
 

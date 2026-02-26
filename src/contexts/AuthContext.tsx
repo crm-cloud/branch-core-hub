@@ -49,19 +49,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [roles, setRoles] = useState<UserRoleInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, userEmail?: string) => {
+    // Use maybeSingle to avoid 406 errors
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, full_name, avatar_url, phone, must_set_password, emergency_contact_name, emergency_contact_phone')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching profile:', error);
       return null;
     }
-    return data as UserProfile;
+
+    // If profile doesn't exist, attempt to create it (self-healing)
+    if (!data && userEmail) {
+      console.log('Profile missing, auto-creating for user:', userId);
+      const { data: newProfile, error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          email: userEmail,
+          full_name: userEmail,
+        })
+        .select('id, email, full_name, avatar_url, phone, must_set_password, emergency_contact_name, emergency_contact_phone')
+        .single();
+
+      if (insertError) {
+        console.error('Error creating profile:', insertError);
+        return null;
+      }
+      return newProfile as UserProfile;
+    }
+
+    return data as UserProfile | null;
   };
 
   const fetchRoles = async (userId: string) => {
@@ -77,12 +101,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.map(r => ({ role: r.role as AppRole }));
   };
 
+  const hydrateUser = async (userId: string, email?: string) => {
+    setProfileLoaded(false);
+    setRolesLoaded(false);
+
+    const [profileData, rolesData] = await Promise.all([
+      fetchProfile(userId, email),
+      fetchRoles(userId),
+    ]);
+
+    setProfile(profileData);
+    setProfileLoaded(true);
+    setRoles(rolesData);
+    setRolesLoaded(true);
+
+    return { profileData, rolesData };
+  };
+
   const refreshProfile = async () => {
     if (user) {
-      const profileData = await fetchProfile(user.id);
-      if (profileData) setProfile(profileData);
-      const rolesData = await fetchRoles(user.id);
-      setRoles(rolesData);
+      await hydrateUser(user.id, user.email);
     }
   };
 
@@ -93,15 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
 
-        // Defer profile fetching to avoid deadlock
         if (session?.user) {
+          // Defer to avoid deadlock
           setTimeout(() => {
-            fetchProfile(session.user.id).then(setProfile);
-            fetchRoles(session.user.id).then(setRoles);
+            hydrateUser(session.user.id, session.user.email).then(() => {
+              setIsLoading(false);
+            });
           }, 0);
         } else {
           setProfile(null);
           setRoles([]);
+          setProfileLoaded(false);
+          setRolesLoaded(false);
+          setIsLoading(false);
         }
       }
     );
@@ -112,12 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        Promise.all([
-          fetchProfile(session.user.id),
-          fetchRoles(session.user.id)
-        ]).then(([profileData, rolesData]) => {
-          setProfile(profileData);
-          setRoles(rolesData);
+        hydrateUser(session.user.id, session.user.email).then(() => {
           setIsLoading(false);
         });
       } else {
@@ -141,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
+        shouldCreateUser: false, // Prevent OTP from creating new users
       },
     });
     return { error: error as Error | null };
@@ -159,7 +197,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) return { error: updateError as Error };
 
-    // Update profile to mark password as set
     const { error: profileError } = await supabase
       .from('profiles')
       .update({ must_set_password: false })
@@ -184,8 +221,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    sessionStorage.removeItem('current_branch_id');
     await supabase.auth.signOut();
-    queryClient.clear(); // Clear all cached queries on logout
+    queryClient.clear();
     setUser(null);
     setSession(null);
     setProfile(null);
