@@ -8,15 +8,10 @@ import { Button } from '@/components/ui/button';
 import { useTrainerData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  Wallet, 
-  TrendingUp, 
-  Calendar, 
-  DollarSign, 
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  User
+import { generatePayslipPDF } from '@/utils/pdfGenerator';
+import {
+  Wallet, TrendingUp, Calendar, DollarSign, CheckCircle,
+  Clock, AlertCircle, User, Download
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Loader2 } from 'lucide-react';
@@ -24,7 +19,7 @@ import { Loader2 } from 'lucide-react';
 export default function TrainerEarnings() {
   const { profile } = useAuth();
   const { trainer, isLoading: trainerLoading } = useTrainerData();
-  const [selectedMonth, setSelectedMonth] = useState(0); // 0 = current month
+  const [selectedMonth, setSelectedMonth] = useState(0);
 
   const monthDate = subMonths(new Date(), selectedMonth);
   const monthStart = startOfMonth(monthDate).toISOString();
@@ -53,7 +48,7 @@ export default function TrainerEarnings() {
     },
   });
 
-  // Fetch trainer commissions if table exists
+  // Fetch trainer commissions
   const { data: commissions = [] } = useQuery({
     queryKey: ['trainer-commissions', trainer?.id, selectedMonth],
     enabled: !!trainer,
@@ -67,10 +62,7 @@ export default function TrainerEarnings() {
           .lte('created_at', monthEnd)
           .order('created_at', { ascending: false });
 
-        if (error) {
-          console.error('Commissions table not found:', error);
-          return [];
-        }
+        if (error) return [];
         return data || [];
       } catch {
         return [];
@@ -78,13 +70,36 @@ export default function TrainerEarnings() {
     },
   });
 
-  // Calculate earnings (simplified - based on sessions completed)
-  const sessionRate = trainer?.hourly_rate || 500; // Default rate
+  const sessionRate = trainer?.hourly_rate || 500;
   const totalSessionsCompleted = completedSessions.length;
   const estimatedEarnings = totalSessionsCompleted * sessionRate;
   const totalCommissions = commissions.reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
+  const baseSalary = (trainer as any)?.salary || 0;
+  const grossPay = baseSalary + estimatedEarnings + totalCommissions;
+  const pfDeduction = Math.round(baseSalary * 0.12);
+  const netPay = grossPay - pfDeduction;
 
   const isLoading = trainerLoading || sessionsLoading;
+
+  const handleDownloadPayslip = () => {
+    if (!trainer) return;
+    generatePayslipPDF({
+      employeeName: profile?.full_name || 'Trainer',
+      employeeCode: (trainer as any)?.employee_code || trainer.id.slice(0, 8),
+      month: format(monthDate, 'MMMM yyyy'),
+      baseSalary,
+      daysPresent: totalSessionsCompleted,
+      workingDays: 26,
+      proRatedPay: baseSalary,
+      ptCommission: estimatedEarnings + totalCommissions,
+      grossPay,
+      pfDeduction,
+      netPay,
+      department: 'Training',
+      position: 'Personal Trainer',
+      companyName: (trainer as any)?.branch?.name || 'Gym',
+    });
+  };
 
   if (isLoading) {
     return (
@@ -118,9 +133,7 @@ export default function TrainerEarnings() {
               <Wallet className="h-8 w-8 text-success" />
               My Earnings
             </h1>
-            <p className="text-muted-foreground">
-              Track your sessions and earnings
-            </p>
+            <p className="text-muted-foreground">Track your sessions and earnings</p>
           </div>
           <div className="flex gap-2">
             {[0, 1, 2].map((monthOffset) => {
@@ -141,48 +154,33 @@ export default function TrainerEarnings() {
 
         {/* Summary Stats */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard
-            title="Completed Sessions"
-            value={totalSessionsCompleted}
-            icon={CheckCircle}
-            description={format(monthDate, 'MMMM yyyy')}
-            variant="success"
-          />
-          <StatCard
-            title="Session Rate"
-            value={`₹${sessionRate}`}
-            icon={DollarSign}
-            description="Per session"
-            variant="accent"
-          />
-          <StatCard
-            title="Estimated Earnings"
-            value={`₹${estimatedEarnings.toLocaleString()}`}
-            icon={Wallet}
-            description="From sessions"
-            variant="default"
-          />
-          <StatCard
-            title="Commissions"
-            value={`₹${totalCommissions.toLocaleString()}`}
-            icon={TrendingUp}
-            description="Package sales"
-            variant="info"
-          />
+          <StatCard title="Completed Sessions" value={totalSessionsCompleted} icon={CheckCircle} description={format(monthDate, 'MMMM yyyy')} variant="success" />
+          <StatCard title="Session Rate" value={`₹${sessionRate}`} icon={DollarSign} description="Per session" variant="accent" />
+          <StatCard title="Estimated Earnings" value={`₹${estimatedEarnings.toLocaleString()}`} icon={Wallet} description="From sessions" variant="default" />
+          <StatCard title="Commissions" value={`₹${totalCommissions.toLocaleString()}`} icon={TrendingUp} description="Package sales" variant="info" />
         </div>
 
-        {/* Total Earnings Card */}
+        {/* Total Earnings Card with Download */}
         <Card className="border-success/20 bg-success/5">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Estimated Earnings - {format(monthDate, 'MMMM yyyy')}</p>
+                <p className="text-sm text-muted-foreground">Total Estimated Earnings — {format(monthDate, 'MMMM yyyy')}</p>
                 <p className="text-4xl font-bold text-success">
-                  ₹{(estimatedEarnings + totalCommissions).toLocaleString()}
+                  ₹{netPay.toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Base: ₹{baseSalary.toLocaleString()} + Sessions: ₹{estimatedEarnings.toLocaleString()} + Commission: ₹{totalCommissions.toLocaleString()} − PF: ₹{pfDeduction.toLocaleString()}
                 </p>
               </div>
-              <div className="p-4 rounded-full bg-success/10">
-                <Wallet className="h-8 w-8 text-success" />
+              <div className="flex flex-col items-center gap-2">
+                <div className="p-4 rounded-full bg-success/10">
+                  <Wallet className="h-8 w-8 text-success" />
+                </div>
+                <Button size="sm" variant="outline" onClick={handleDownloadPayslip}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Payslip
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -193,11 +191,9 @@ export default function TrainerEarnings() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Completed Sessions - {format(monthDate, 'MMMM yyyy')}
+              Completed Sessions — {format(monthDate, 'MMMM yyyy')}
             </CardTitle>
-            <CardDescription>
-              Sessions you've completed this month
-            </CardDescription>
+            <CardDescription>Sessions you've completed this month</CardDescription>
           </CardHeader>
           <CardContent>
             {completedSessions.length === 0 ? (
@@ -208,10 +204,7 @@ export default function TrainerEarnings() {
             ) : (
               <div className="space-y-3">
                 {completedSessions.map((session: any) => (
-                  <div 
-                    key={session.id} 
-                    className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
-                  >
+                  <div key={session.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="p-2 rounded-full bg-success/10">
                         <CheckCircle className="h-5 w-5 text-success" />
@@ -225,9 +218,7 @@ export default function TrainerEarnings() {
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          <span>
-                            {format(new Date(session.scheduled_at), 'EEE, dd MMM • HH:mm')}
-                          </span>
+                          <span>{format(new Date(session.scheduled_at), 'EEE, dd MMM • HH:mm')}</span>
                           <span>•</span>
                           <span>{session.duration_minutes} min</span>
                         </div>
@@ -254,8 +245,8 @@ export default function TrainerEarnings() {
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium mb-1">Earnings Calculation</p>
                 <p>
-                  Earnings shown are estimates based on completed sessions. Final payment may vary based on 
-                  commission structure, deductions, and company policies. Contact HR for detailed payslip information.
+                  Earnings shown are estimates based on completed sessions and base salary. Final payment may vary based on
+                  commission structure, deductions, and company policies. Download your payslip for detailed breakdown.
                 </p>
               </div>
             </div>

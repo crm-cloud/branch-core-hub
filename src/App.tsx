@@ -80,6 +80,7 @@ import TrainerDashboard from "./pages/TrainerDashboard";
 import MyClients from "./pages/MyClients";
 import TrainerEarnings from "./pages/TrainerEarnings";
 import ScheduleSession from "./pages/ScheduleSession";
+import TrainerPlanBuilder from "./pages/TrainerPlanBuilder";
 
 // Staff-specific pages
 import StaffDashboard from "./pages/StaffDashboard";
@@ -174,7 +175,8 @@ const App = () => (
             <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PaymentsPage /></ProtectedRoute>} />
             <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
             <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PTSessionsPage /></ProtectedRoute>} />
-            <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
+            <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
+            <Route path="/trainer-plan-builder" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerPlanBuilder /></ProtectedRoute>} />
             <Route path="/inventory" element={<Navigate to="/products" replace />} />
             <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
             <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentMaintenancePage /></ProtectedRoute>} />

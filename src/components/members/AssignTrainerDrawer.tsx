@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Dumbbell, Star, Users, Zap } from 'lucide-react';
+import { Dumbbell, Star, Users, Zap, Info } from 'lucide-react';
 
 interface AssignTrainerDrawerProps {
   open: boolean;
@@ -44,24 +44,20 @@ export function AssignTrainerDrawer({
 
       if (error) throw error;
 
-      // Get profile info and utilization for each trainer
       const trainersWithUtilization = await Promise.all(
         (trainerList || []).map(async (trainer: any) => {
-          // Get profile
           const { data: profile } = await supabase
             .from('profiles')
             .select('full_name, avatar_url')
             .eq('id', trainer.user_id)
             .single();
 
-          // Count members assigned to this trainer
           const { count: assignedMembers } = await supabase
             .from('members')
             .select('id', { count: 'exact', head: true })
             .eq('assigned_trainer_id', trainer.id)
             .eq('status', 'active');
 
-          // Count active PT packages
           const { count: ptClients } = await supabase
             .from('member_pt_packages')
             .select('id', { count: 'exact', head: true })
@@ -72,17 +68,10 @@ export function AssignTrainerDrawer({
           const maxClients = trainer.max_clients || 20;
           const utilization = Math.min(100, Math.round((totalClients / maxClients) * 100));
 
-          return {
-            ...trainer,
-            profile,
-            totalClients,
-            maxClients,
-            utilization,
-          };
+          return { ...trainer, profile, totalClients, maxClients, utilization };
         })
       );
 
-      // Sort by utilization (least busy first)
       return trainersWithUtilization.sort((a, b) => a.utilization - b.utilization);
     },
     enabled: open,
@@ -94,13 +83,13 @@ export function AssignTrainerDrawer({
         .from('members')
         .update({ assigned_trainer_id: selectedTrainerId || null })
         .eq('id', memberId);
-
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success(selectedTrainerId ? 'Trainer assigned successfully' : 'Trainer removed');
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
       onOpenChange(false);
     },
     onError: (error: any) => {
@@ -114,7 +103,7 @@ export function AssignTrainerDrawer({
     return 'bg-success';
   };
 
-  const recommendedTrainer = trainers[0]; // Least utilized
+  const recommendedTrainer = trainers[0];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -122,7 +111,7 @@ export function AssignTrainerDrawer({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Dumbbell className="h-5 w-5" />
-            Assign Trainer
+            Assign General Trainer
           </SheetTitle>
         </SheetHeader>
 
@@ -132,6 +121,18 @@ export function AssignTrainerDrawer({
             <CardContent className="pt-4">
               <p className="font-medium">{memberName}</p>
               <p className="text-sm text-muted-foreground">General Training Assignment</p>
+            </CardContent>
+          </Card>
+
+          {/* Info Card — General vs PT */}
+          <Card className="border-info/30 bg-info/5">
+            <CardContent className="pt-4 flex items-start gap-3">
+              <Info className="h-5 w-5 text-info shrink-0 mt-0.5" />
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium text-foreground mb-1">General vs Personal Training</p>
+                <p>A <strong>General Trainer</strong> guides the member's overall gym experience — form checks, basic routines, and general support.</p>
+                <p className="mt-1">For dedicated <strong>Personal Training sessions</strong>, the member needs to purchase a PT package separately. PT sessions are tracked with commissions.</p>
+              </div>
             </CardContent>
           </Card>
 
@@ -146,11 +147,7 @@ export function AssignTrainerDrawer({
                     {recommendedTrainer.profile?.full_name} has the most availability
                   </p>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => setSelectedTrainerId(recommendedTrainer.id)}
-                >
+                <Button size="sm" variant="outline" onClick={() => setSelectedTrainerId(recommendedTrainer.id)}>
                   Select
                 </Button>
               </CardContent>
@@ -165,7 +162,6 @@ export function AssignTrainerDrawer({
           ) : (
             <RadioGroup value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
               <div className="space-y-3">
-                {/* No Trainer Option */}
                 <Card className={`cursor-pointer transition-colors ${selectedTrainerId === 'none' || !selectedTrainerId ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-3">
@@ -179,26 +175,18 @@ export function AssignTrainerDrawer({
                 </Card>
 
                 {trainers.map((trainer: any) => (
-                  <Card 
-                    key={trainer.id} 
+                  <Card
+                    key={trainer.id}
                     className={`cursor-pointer transition-colors ${
-                      selectedTrainerId === trainer.id 
-                        ? 'border-primary bg-primary/5' 
-                        : 'hover:bg-muted/50'
+                      selectedTrainerId === trainer.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
                     } ${trainer.utilization >= 100 ? 'opacity-50' : ''}`}
                   >
                     <CardContent className="pt-4">
                       <div className="flex items-start gap-3">
-                        <RadioGroupItem 
-                          value={trainer.id} 
-                          id={trainer.id} 
-                          disabled={trainer.utilization >= 100}
-                        />
+                        <RadioGroupItem value={trainer.id} id={trainer.id} disabled={trainer.utilization >= 100} />
                         <Avatar className="h-10 w-10">
                           <AvatarImage src={trainer.profile?.avatar_url} />
-                          <AvatarFallback>
-                            {trainer.profile?.full_name?.charAt(0) || 'T'}
-                          </AvatarFallback>
+                          <AvatarFallback>{trainer.profile?.full_name?.charAt(0) || 'T'}</AvatarFallback>
                         </Avatar>
                         <Label htmlFor={trainer.id} className="flex-1 cursor-pointer">
                           <div className="flex items-center justify-between">
@@ -207,10 +195,6 @@ export function AssignTrainerDrawer({
                               <Badge variant="outline" className="text-xs">Current</Badge>
                             )}
                           </div>
-                          
-                          {/* Utilization */}
-                          
-                          {/* Utilization */}
                           <div className="mt-2 space-y-1">
                             <div className="flex items-center justify-between text-xs">
                               <span className="flex items-center gap-1">
@@ -221,12 +205,8 @@ export function AssignTrainerDrawer({
                                 {trainer.utilization}% busy
                               </span>
                             </div>
-                            <Progress 
-                              value={trainer.utilization} 
-                              className={`h-1.5 ${getUtilizationColor(trainer.utilization)}`}
-                            />
+                            <Progress value={trainer.utilization} className={`h-1.5 ${getUtilizationColor(trainer.utilization)}`} />
                           </div>
-
                           {trainer.utilization >= 100 && (
                             <p className="text-xs text-destructive mt-1">At capacity</p>
                           )}
@@ -241,13 +221,8 @@ export function AssignTrainerDrawer({
         </div>
 
         <SheetFooter className="mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={() => assignMutation.mutate()}
-            disabled={assignMutation.isPending}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => assignMutation.mutate()} disabled={assignMutation.isPending}>
             {assignMutation.isPending ? 'Assigning...' : 'Assign Trainer'}
           </Button>
         </SheetFooter>

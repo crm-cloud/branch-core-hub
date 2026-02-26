@@ -1,91 +1,86 @@
 
 
-# Trainer Assignment, Fitness Plans, Progress & Earnings Overhaul
+# Audit & Fix Plan: Branch Manager, Search UI, Demo Data, Stale Data, Branch Selector
 
-## 1. Trainer Assignment — General vs Personal Training
+## Issues Found
 
-**Current state:** `AssignTrainerDrawer` only does "General Training Assignment" (sets `members.assigned_trainer_id`). PT requires separate purchase via `PurchasePTDrawer`. Both work independently but the UI doesn't clarify the distinction.
-
-**Fix:**
-- Rename the drawer subtitle from "General Training Assignment" to show the assignment type clearly
-- Add an info card explaining: "General trainer guides your overall gym experience. For Personal Training sessions, purchase a PT package separately."
-- Ensure that when a PT package is purchased (`PurchasePTDrawer`), it also updates `members.assigned_trainer_id` if not already set (auto-link)
-- In `PurchasePTDrawer`, after successful purchase, invalidate `trainers-utilization` query so trainer client counts update
-- Add `pt_share_percentage` display in PT purchase flow so admin sees what commission the trainer earns
-
-## 2. AI Fitness — Restrict to Admin/Owner Only, Enhance Trainer Manual Plan Creation
-
-**Current state:** AI Fitness page is available to trainers and managers. Members can see workout/diet through MyWorkout/MyDiet but can't generate plans.
+### 1. Branch Manager Assignment Bug (EditBranchDrawer)
+**Problem:** When `formData.managerId` is empty (selecting "No manager assigned" → maps to `""`), the `if (formData.managerId)` check on line 116 is falsy, so the manager update is skipped entirely. You cannot unassign a manager, and the "No manager assigned" text persists even after assigning one until page refresh. Also, the drawer doesn't invalidate `branch-manager` query key, so the current manager display is stale.
 
 **Fix:**
-- Remove `trainer` and `manager` from AI Fitness route in `App.tsx` — only `owner` and `admin` can generate AI plans
-- Remove `AI Fitness` from `trainerMenuConfig` and `managerMenuConfig` in `menu.ts`
-- Create a new **Trainer Plan Builder** page (`/trainer-plan-builder`) for trainers to manually create workout and diet plans:
-  - **Workout tab**: Day-wise plan builder (Day 1, Day 2... Day 7) with exercise name, sets, reps, rest time, equipment, notes per exercise
-  - **Diet tab**: Meal-wise plan (Breakfast, Mid-Morning, Lunch, Evening Snack, Dinner, Pre/Post Workout) with food items, quantity, calories, protein, carbs, fats, fiber per item, meal time
-  - Save as template or assign directly to a client
-  - Trainer can view their clients and assign/override plans
-- Add "Trainer Plan Builder" to `trainerMenuConfig` under Training section
-- Keep existing `AssignPlanDrawer` for assigning templates to members
+- Track whether manager selection changed with a separate flag
+- When manager is intentionally cleared, delete existing `branch_managers` row
+- Invalidate `['branch-manager', branch.id]` and `['potential-managers']` query keys after save
 
-## 3. Member Progress — Record & View with Photos
+### 2. Stale Data After Mutations (System-Wide)
+**Problem:** After creating/editing entities (employees, branch managers, etc.), the UI doesn't reflect changes without manual refresh. Root cause: mutations only invalidate their own narrow query key but not related ones (e.g., creating an employee with manager role doesn't invalidate `branches`, `branch-manager`, or `potential-managers`).
 
-**Current state:** `RecordMeasurementDrawer` exists and supports photos. `MeasurementProgressView` shows measurement history. But trainers have no direct access to record measurements for their clients from the MyClients page.
+**Fix in EditBranchDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branch-manager'] })` after save.
+**Fix in AddEmployeeDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branches'] })` and `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after employee creation.
+**Fix in AddBranchDialog:** Add `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after branch creation.
 
-**Fix:**
-- Add "Record Progress" button to each client card in `MyClients.tsx` that opens `RecordMeasurementDrawer`
-- Add "View Progress" button that opens a drawer/dialog showing `MeasurementProgressView` for that client
-- In the member's `MyProgress` page, add a photo gallery section that shows uploaded progress photos with dates (front/side/back comparison view)
+### 3. Reset Data Uses AlertDialog Instead of Side Drawer
+**Problem:** The "Reset All Data" confirmation uses a center `AlertDialog`. Per project rules, center dialogs are only for simple destructive warnings — this IS a destructive confirmation, so it's actually correct per the design spec. However, user wants it changed.
 
-## 4. Global Plans vs Custom Plans — Plan Assignment Architecture
+**Fix:** Replace the `AlertDialog` with a `Sheet` (right-side drawer) for the reset confirmation flow.
 
-**Current state:** Plans are stored in `member_fitness_plans` (assigned) and `fitness_plan_templates` (templates). The workout shuffler generates daily workouts from a static exercise library. No clear distinction between "global/default" and "custom/override" plans.
+### 4. Remove Demo Data Feature Entirely
+**Problem:** User wants to remove the demo data edge function and UI. Replace with pre-built plan/benefit templates.
 
 **Fix:**
-- Add a "Plan Library" page accessible to admin/owner (`/plan-library`) that manages global workout and diet plan templates
-- When a trainer assigns a custom plan to a member, it overrides any global plan
-- In `MyWorkout`/`MyDiet` member pages, check for custom plan first; if none, fall back to global plan
-- Add `is_override` flag or `priority` field to `member_fitness_plans` to distinguish custom from global
-- The workout shuffler continues to work as a daily variety engine, but assigned plans take precedence
+- Remove `DemoDataSettings` component from Settings page
+- Remove "Demo Data" from `SETTINGS_MENU`
+- Delete `seed-test-data` and `reset-all-data` edge functions
+- Add a "Templates" section in Settings for pre-built plan and benefit templates (read-only starter data that admins can import selectively)
 
-## 5. Trainer Earnings — PDF Download (Payslip)
+### 5. Cmd+K Search Not Aligned with Vuexy Design
+**Problem:** Current search opens as a standard `CommandDialog` (Dialog-based) without the Vuexy-style two-column layout with categorized sections (Popular Searches, Apps & Pages, User Interface, Forms & Charts).
 
-**Current state:** `TrainerEarnings.tsx` shows monthly stats, session list, and commission totals. No PDF download.
+**Fix:** Redesign the `GlobalSearch` component to match the Vuexy reference:
+- Show a two-column grid layout when no search query is typed
+- Left column: "Popular Searches" (Dashboard, Analytics, Members, etc.)
+- Right column: "Apps & Pages" (Calendar, Invoice List, Settings, etc.)
+- Keep the existing search results behavior when user types
+- Add `[esc]` keyboard hint next to close button
+- Increase dialog width to accommodate two columns
 
-**Fix:**
-- Add a "Download Payslip" button to the earnings page header
-- Generate a branded PDF using the existing `pdfGenerator` utility containing:
-  - Trainer name, month, branch
-  - Base salary (from `trainers.salary` or `trainers.hourly_rate`)
-  - Session breakdown (count, rate, total)
-  - Commission breakdown (PT package sales)
-  - Total earnings
-  - Deductions placeholder
-  - Net payable
-- Style as a professional payslip with gym branding
+### 6. Branch Selector Not Working on Some Pages
+**Problem:** The `branchFilter` from `BranchContext` is used by most pages, but some pages don't react to branch changes because they use `effectiveBranchId` (which doesn't change when admin switches "All Branches") or they cache query results without including branch in the query key.
+
+Pages confirmed working: Dashboard, Members, Equipment, Invoices, Attendance, Lockers, etc.
+
+Pages to audit:
+- `Plans.tsx`: Uses `effectiveBranchId` but the `usePlans` hook may not filter by branch
+- `PTSessions.tsx`, `Trainers.tsx`: Use `effectiveBranchId` which returns undefined when "All Branches" selected
+
+**Fix:** Audit the `usePlans` hook and other affected pages to ensure they pass `branchFilter` to their queries and include it in query keys.
 
 ---
 
-## Files to Change
+## Files Summary
 
-| File | Change |
-|------|--------|
-| `src/App.tsx` | Restrict AI Fitness to `owner`/`admin`, add route for trainer plan builder |
-| `src/config/menu.ts` | Remove AI Fitness from trainer/manager menus, add Trainer Plan Builder to trainer menu |
-| `src/pages/MyClients.tsx` | Add "Record Progress" and "View Progress" buttons per client |
-| `src/components/members/PurchasePTDrawer.tsx` | Auto-set `assigned_trainer_id`, invalidate trainer queries, show commission info |
-| `src/components/members/AssignTrainerDrawer.tsx` | Add info card explaining General vs PT training |
-| `src/pages/TrainerEarnings.tsx` | Add PDF payslip download with full breakdown |
-| **New:** `src/pages/TrainerPlanBuilder.tsx` | Trainer manual plan builder (workout day-wise + diet meal-wise with macros) |
-| `src/pages/MyWorkout.tsx` | Priority: custom assigned plan > global plan > shuffler |
-| `src/pages/MyDiet.tsx` | Priority: custom assigned plan > global plan |
+| Action | File | Description |
+|--------|------|-------------|
+| Edit | `src/components/branches/EditBranchDrawer.tsx` | Fix manager assignment/unassignment + invalidate related queries |
+| Edit | `src/components/employees/AddEmployeeDrawer.tsx` | Invalidate branches/potential-managers after creation |
+| Edit | `src/components/branches/AddBranchDialog.tsx` | Invalidate potential-managers after creation |
+| Edit | `src/components/search/GlobalSearch.tsx` | Redesign to Vuexy two-column layout |
+| Edit | `src/components/ui/command.tsx` | Widen CommandDialog for two-column search |
+| Edit | `src/pages/Settings.tsx` | Remove Demo Data from settings menu |
+| Edit | `src/components/settings/DemoDataSettings.tsx` | Replace with Plan/Benefit template importer |
+| Delete | `supabase/functions/seed-test-data/index.ts` | Remove demo data edge function |
+| Delete | `supabase/functions/reset-all-data/index.ts` | Remove reset data edge function |
+| Edit | `src/hooks/usePlans.ts` | Add branch filtering support |
+| Edit | Pages using effectiveBranchId | Fix branch selector reactivity |
 
 ## Execution Order
 
-1. Fix AI Fitness access (restrict to admin/owner)
-2. Build Trainer Plan Builder page (workout + diet manual creation)
-3. Add progress recording/viewing to MyClients
-4. Enhance AssignTrainerDrawer + PurchasePTDrawer
-5. Add payslip PDF download to TrainerEarnings
-6. Implement plan priority logic (custom > global > shuffler)
+| Step | Priority | Description |
+|------|----------|-------------|
+| 1 | Critical | Fix branch manager assignment in EditBranchDrawer |
+| 2 | Critical | Fix stale data — add cross-query invalidation |
+| 3 | High | Remove demo data, replace with template importer |
+| 4 | High | Redesign Cmd+K search to Vuexy style |
+| 5 | High | Fix branch selector on Plans and other pages |
+| 6 | Medium | Replace reset AlertDialog with Sheet |
 

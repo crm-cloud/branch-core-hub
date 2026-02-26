@@ -74,7 +74,7 @@ export const trainerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['trainer'] },
       { label: 'Schedule Session', href: '/schedule-session', icon: Calendar, roles: ['trainer'] },
       { label: 'My Classes', href: '/classes', icon: Calendar, roles: ['trainer'] },
-      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['trainer'] },
+      { label: 'Plan Builder', href: '/trainer-plan-builder', icon: ClipboardList, roles: ['trainer'] },
     ],
   },
   {
@@ -162,7 +162,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
       
-      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
+      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin'] },
     ],
   },
   {
@@ -234,7 +234,7 @@ export const managerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['manager'] },
-      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['manager'] },
+      
     ],
   },
   {
