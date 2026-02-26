@@ -1,53 +1,48 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
 import { useTrainerData } from '@/hooks/useMemberData';
-import { Users, Phone, Calendar, Dumbbell, AlertCircle, Loader2, TrendingUp } from 'lucide-react';
+import { Users, Phone, Calendar, Dumbbell, AlertCircle, Loader2, TrendingUp, Ruler, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { RecordMeasurementDrawer } from '@/components/members/RecordMeasurementDrawer';
+import { MeasurementProgressView } from '@/components/members/MeasurementProgressView';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 export default function MyClients() {
   const { trainer, clients, isLoading: trainerLoading } = useTrainerData();
+  const [measurementDrawer, setMeasurementDrawer] = useState<{ open: boolean; memberId: string; memberName: string }>({ open: false, memberId: '', memberName: '' });
+  const [progressDrawer, setProgressDrawer] = useState<{ open: boolean; memberId: string; memberName: string }>({ open: false, memberId: '', memberName: '' });
 
-  // Get session history for each client - using member_pt_packages to link sessions to members
+  // Get session history for each client
   const { data: sessionStats = {} } = useQuery({
     queryKey: ['client-session-stats', trainer?.id],
     enabled: !!trainer && clients.length > 0,
     queryFn: async (): Promise<Record<string, { completed: number; total: number }>> => {
-      // Get pt package IDs for each client
       const packageIds = clients.map((c: { id: string }) => c.id);
-      
       const { data, error } = await supabase
         .from('pt_sessions')
         .select('member_pt_package_id, status')
         .eq('trainer_id', trainer!.id)
         .in('member_pt_package_id', packageIds);
-
       if (error) throw error;
 
-      // Map package_id back to member_id through clients
       const packageToMember: Record<string, string> = {};
-      clients.forEach((c: { id: string; member_id: string }) => {
-        packageToMember[c.id] = c.member_id;
-      });
+      clients.forEach((c: { id: string; member_id: string }) => { packageToMember[c.id] = c.member_id; });
 
       const stats: Record<string, { completed: number; total: number }> = {};
       (data || []).forEach((session) => {
         const memberId = packageToMember[session.member_pt_package_id];
         if (!memberId) return;
-        if (!stats[memberId]) {
-          stats[memberId] = { completed: 0, total: 0 };
-        }
+        if (!stats[memberId]) stats[memberId] = { completed: 0, total: 0 };
         stats[memberId].total++;
-        if (session.status === 'completed') {
-          stats[memberId].completed++;
-        }
+        if (session.status === 'completed') stats[memberId].completed++;
       });
-
       return stats;
     },
   });
@@ -144,28 +139,29 @@ export default function MyClients() {
             {clients.map((client: any) => {
               const daysLeft = Math.ceil((new Date(client.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
               const stats = sessionStats[client.member_id] || { completed: 0, total: 0 };
-              
+              const clientName = client.member?.profile?.full_name || client.member?.profiles?.full_name || 'Unknown';
+
               return (
                 <Card key={client.id} className="border-border/50">
                   <CardContent className="pt-6">
                     <div className="flex items-start gap-4">
                       <Avatar className="h-14 w-14">
-                        <AvatarImage src={client.member?.profiles?.avatar_url} />
+                        <AvatarImage src={client.member?.profile?.avatar_url || client.member?.profiles?.avatar_url} />
                         <AvatarFallback>
-                          {client.member?.profiles?.full_name?.charAt(0) || client.member?.member_code?.charAt(0)}
+                          {clientName.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h3 className="font-semibold">{client.member?.profiles?.full_name || 'Unknown'}</h3>
+                            <h3 className="font-semibold">{clientName}</h3>
                             <p className="text-sm text-muted-foreground">{client.member?.member_code}</p>
                           </div>
                           <Badge variant={daysLeft <= 7 ? 'destructive' : 'default'}>
                             {daysLeft > 0 ? `${daysLeft} days left` : 'Expired'}
                           </Badge>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-4 mt-4">
                           <div>
                             <p className="text-sm text-muted-foreground">Package</p>
@@ -185,25 +181,41 @@ export default function MyClients() {
                           </div>
                         </div>
 
-                        {client.member?.profiles?.phone && (
+                        {(client.member?.profile?.phone || client.member?.profiles?.phone) && (
                           <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
                             <Phone className="h-4 w-4" />
-                            <span>{client.member.profiles.phone}</span>
+                            <span>{client.member?.profile?.phone || client.member?.profiles?.phone}</span>
                           </div>
                         )}
 
-                        <div className="flex gap-2 mt-4">
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <Button variant="outline" size="sm" asChild>
                             <Link to={`/pt-sessions?member=${client.member_id}`}>
-                              <Calendar className="h-4 w-4 mr-2" />
+                              <Calendar className="h-4 w-4 mr-1" />
                               Sessions
                             </Link>
                           </Button>
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <Link to={`/ai-fitness?member=${client.member_id}`}>
-                              <TrendingUp className="h-4 w-4 mr-2" />
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to="/trainer-plan-builder">
+                              <Dumbbell className="h-4 w-4 mr-1" />
                               Create Plan
                             </Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setMeasurementDrawer({ open: true, memberId: client.member_id, memberName: clientName })}
+                          >
+                            <Ruler className="h-4 w-4 mr-1" />
+                            Record Progress
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setProgressDrawer({ open: true, memberId: client.member_id, memberName: clientName })}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View Progress
                           </Button>
                         </div>
                       </div>
@@ -215,6 +227,31 @@ export default function MyClients() {
           </div>
         )}
       </div>
+
+      {/* Record Measurement Drawer */}
+      <RecordMeasurementDrawer
+        open={measurementDrawer.open}
+        onOpenChange={(open) => setMeasurementDrawer(prev => ({ ...prev, open }))}
+        memberId={measurementDrawer.memberId}
+        memberName={measurementDrawer.memberName}
+      />
+
+      {/* View Progress Drawer */}
+      <Sheet open={progressDrawer.open} onOpenChange={(open) => setProgressDrawer(prev => ({ ...prev, open }))}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Progress — {progressDrawer.memberName}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            {progressDrawer.memberId && (
+              <MeasurementProgressView memberId={progressDrawer.memberId} />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }

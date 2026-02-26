@@ -3,10 +3,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFo
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
 import { usePTPackages, usePurchasePTPackage } from '@/hooks/usePTPackages';
 import { useTrainers } from '@/hooks/useTrainers';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Dumbbell, Calendar, IndianRupee, FileText, CheckCircle } from 'lucide-react';
+import { Dumbbell, Calendar, IndianRupee, FileText, CheckCircle, Percent } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -30,17 +32,16 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
 
   const activePackages = packages.filter(p => p.is_active);
   const activeTrainers = trainers.filter(t => t.is_active);
-
   const selectedPkg = activePackages.find(p => p.id === selectedPackage);
+  const selectedTrainerObj = activeTrainers.find(t => t.id === selectedTrainer);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedPackage || !selectedTrainer) {
       toast.error('Please select a package and trainer');
       return;
     }
-
     if (!selectedPkg) return;
 
     try {
@@ -52,10 +53,27 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
         pricePaid: selectedPkg.price,
       });
 
-      // Invalidate related queries for finance tracking
+      // Auto-link trainer as general trainer if not already assigned
+      const { data: member } = await supabase
+        .from('members')
+        .select('assigned_trainer_id')
+        .eq('id', memberId)
+        .single();
+
+      if (member && !member.assigned_trainer_id) {
+        await supabase
+          .from('members')
+          .update({ assigned_trainer_id: selectedTrainer })
+          .eq('id', memberId);
+      }
+
+      // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['finance-income'] });
+      queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['member-details'] });
 
       setPurchaseResult({ success: true });
       toast.success('PT Package purchased successfully! Invoice created.');
@@ -95,9 +113,7 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
                 <span>Invoice has been created automatically</span>
               </div>
             </div>
-            <Button onClick={handleClose} className="w-full">
-              Done
-            </Button>
+            <Button onClick={handleClose} className="w-full">Done</Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6 py-4">
@@ -112,9 +128,7 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
                     <SelectItem key={pkg.id} value={pkg.id}>
                       <div className="flex items-center gap-2">
                         <span>{pkg.name}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {pkg.total_sessions} sessions
-                        </Badge>
+                        <Badge variant="secondary" className="text-xs">{pkg.total_sessions} sessions</Badge>
                       </div>
                     </SelectItem>
                   ))}
@@ -140,9 +154,7 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
                 </div>
                 <div className="flex items-baseline gap-2">
                   <IndianRupee className="h-4 w-4" />
-                  <span className="text-lg font-bold">
-                    {selectedPkg.price.toLocaleString('en-IN')}
-                  </span>
+                  <span className="text-lg font-bold">{selectedPkg.price.toLocaleString('en-IN')}</span>
                 </div>
               </div>
             )}
@@ -170,10 +182,29 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
               </Select>
             </div>
 
+            {/* Trainer Commission Info */}
+            {selectedTrainerObj && (
+              <Card className="border-info/20 bg-info/5">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Percent className="h-4 w-4 text-info" />
+                    <span className="text-muted-foreground">
+                      Trainer Commission: <strong className="text-foreground">
+                        {(selectedTrainerObj as any).pt_share_percentage || 0}%
+                      </strong>
+                      {selectedPkg && (
+                        <span className="ml-1">
+                          (₹{Math.round(selectedPkg.price * ((selectedTrainerObj as any).pt_share_percentage || 0) / 100).toLocaleString('en-IN')})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <SheetFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
               <Button type="submit" disabled={purchasePT.isPending || !selectedPackage || !selectedTrainer}>
                 {purchasePT.isPending ? 'Processing...' : 'Purchase Package'}
               </Button>
