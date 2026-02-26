@@ -88,7 +88,7 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
                     }`}
                   />
 
-                  {/* Avatar */}
+                  {/* Avatar - show biometric photo if available */}
                   <Avatar className="h-9 w-9 shrink-0">
                     {event.photo_url ? (
                       <AvatarImage src={event.photo_url} alt="Access photo" />
