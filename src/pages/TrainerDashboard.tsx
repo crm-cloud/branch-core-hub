@@ -63,11 +63,18 @@ export default function TrainerDashboard() {
         {/* Primary Stats */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
           <StatCard
-            title="Active Clients"
-            value={clients.length}
+            title="General Clients"
+            value={generalClients.length}
             icon={Users}
-            description="PT clients"
+            description="General training"
             variant="default"
+          />
+          <StatCard
+            title="PT Clients"
+            value={ptClients.length}
+            icon={Dumbbell}
+            description="Personal training"
+            variant="warning"
           />
           <StatCard
             title="Today's Sessions"
