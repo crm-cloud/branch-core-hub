@@ -75,7 +75,7 @@ const EMPTY_MEAL_ITEM: MealItem = { food: '', quantity: '', calories: 0, protein
 
 export default function TrainerPlanBuilder() {
   const { trainer, clients, isLoading } = useTrainerData();
-  const { activeBranchId } = useBranch();
+  const { activeBranchId } = useBranchContext();
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('workout');
