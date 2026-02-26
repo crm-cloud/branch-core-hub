@@ -239,7 +239,9 @@ export default function PTSessionsPage() {
                   Show Inactive
                 </Label>
               </div>
-              <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
+              {['owner', 'admin', 'manager'].includes(profile?.role || '') && (
+                <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
+              )}
             </div>
 
             <AddPTPackageDrawer open={isCreatePackageOpen} onOpenChange={setIsCreatePackageOpen} branchId={branchId} />
