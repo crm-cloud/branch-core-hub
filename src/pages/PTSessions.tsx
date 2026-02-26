@@ -30,7 +30,7 @@ const SESSION_TYPES = [
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function PTSessionsPage() {
-  const { effectiveBranchId } = useBranchContext();
+  const { effectiveBranchId, branchFilter } = useBranchContext();
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
   const [isEditPackageOpen, setIsEditPackageOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<any>(null);
@@ -43,9 +43,10 @@ export default function PTSessionsPage() {
   });
 
   const branchId = effectiveBranchId || "";
-  const { data: packages, isLoading: packagesLoading } = usePTPackages(branchId);
-  const { data: trainers } = useTrainers(branchId);
-  const { data: activePackages } = useActiveMemberPackages(branchId);
+  const queryBranchId = branchFilter || branchId;
+  const { data: packages, isLoading: packagesLoading } = usePTPackages(queryBranchId);
+  const { data: trainers } = useTrainers(queryBranchId);
+  const { data: activePackages } = useActiveMemberPackages(queryBranchId);
   const scheduleSession = useSchedulePTSession();
   const completeSession = useCompletePTSession();
   const cancelSession = useCancelPTSession();

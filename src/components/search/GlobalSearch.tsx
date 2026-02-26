@@ -24,8 +24,13 @@ import {
   Lock,
   ShoppingCart,
   BarChart3,
-  Plus,
   UserPlus,
+  Receipt,
+  Megaphone,
+  ClipboardList,
+  Package,
+  Star,
+  Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -42,20 +47,29 @@ interface GlobalSearchProps {
   className?: string;
 }
 
-const QUICK_ACTIONS = [
-  { label: 'Add New Member', icon: UserPlus, href: '/members', action: 'add-member' },
-  { label: 'Create Invoice', icon: FileText, href: '/invoices', action: 'create-invoice' },
-  { label: 'Go to Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Go to Members', icon: Users, href: '/members' },
-  { label: 'Go to Settings', icon: Settings, href: '/settings' },
-  { label: 'Go to Plans', icon: CreditCard, href: '/plans' },
-  { label: 'Go to Lockers', icon: Lock, href: '/lockers' },
-  { label: 'Go to Classes', icon: Calendar, href: '/classes' },
-  { label: 'Go to Analytics', icon: BarChart3, href: '/analytics' },
-  { label: 'Go to POS', icon: ShoppingCart, href: '/pos' },
-  { label: 'Go to Trainers', icon: Dumbbell, href: '/trainers' },
-  { label: 'Go to Leads', icon: UserPlus, href: '/leads' },
+const POPULAR_SEARCHES = [
+  { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
+  { label: 'Analytics', icon: BarChart3, href: '/analytics' },
+  { label: 'Members', icon: Users, href: '/members' },
+  { label: 'Plans', icon: CreditCard, href: '/plans' },
 ];
+
+const APPS_PAGES = [
+  { label: 'Invoices', icon: Receipt, href: '/invoices' },
+  { label: 'Trainers', icon: Dumbbell, href: '/trainers' },
+  { label: 'Classes', icon: Calendar, href: '/classes' },
+  { label: 'Settings', icon: Settings, href: '/settings' },
+  { label: 'Leads', icon: UserPlus, href: '/leads' },
+  { label: 'PT Sessions', icon: Package, href: '/pt-sessions' },
+  { label: 'Attendance', icon: ClipboardList, href: '/attendance' },
+  { label: 'Lockers', icon: Lock, href: '/lockers' },
+  { label: 'POS', icon: ShoppingCart, href: '/pos' },
+  { label: 'Announcements', icon: Megaphone, href: '/announcements' },
+  { label: 'Feedback', icon: Star, href: '/feedback' },
+  { label: 'Equipment', icon: Zap, href: '/equipment' },
+];
+
+const ALL_PAGES = [...POPULAR_SEARCHES, ...APPS_PAGES];
 
 export function GlobalSearch({ className }: GlobalSearchProps) {
   const [open, setOpen] = useState(false);
@@ -211,10 +225,10 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     }
   };
 
-  const handleQuickAction = (action: typeof QUICK_ACTIONS[0]) => {
+  const handlePageNav = (href: string) => {
     setOpen(false);
     setQuery('');
-    navigate(action.href);
+    navigate(href);
   };
 
   const getIcon = (type: SearchResult['type']) => {
@@ -235,19 +249,20 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     lead: results.filter(r => r.type === 'lead'),
   };
 
-  // Filter quick actions by query
-  const filteredActions = query.length > 0
-    ? QUICK_ACTIONS.filter(a => a.label.toLowerCase().includes(query.toLowerCase()))
-    : QUICK_ACTIONS;
-
   const hasResults = results.length > 0;
+  const hasQuery = query.length >= 2;
+
+  // Filter pages by query
+  const filteredPages = query.length > 0
+    ? ALL_PAGES.filter(a => a.label.toLowerCase().includes(query.toLowerCase()))
+    : [];
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "flex items-center gap-2 h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          "flex items-center gap-2 h-9 w-full max-w-sm rounded-lg border border-input bg-background px-3 py-1 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           className
         )}
       >
@@ -260,26 +275,70 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput 
-          placeholder="Search members, trainers, invoices or type a command..." 
+          placeholder="Search members, trainers, invoices..." 
           value={query}
           onValueChange={setQuery}
         />
-        <CommandList>
-          <CommandEmpty>
-            {isSearching ? 'Searching...' : query.length < 2 ? 'Type at least 2 characters to search' : 'No results found.'}
-          </CommandEmpty>
+        <CommandList className="max-h-[400px]">
+          {hasQuery && !hasResults && filteredPages.length === 0 && (
+            <CommandEmpty>
+              {isSearching ? 'Searching...' : 'No results found.'}
+            </CommandEmpty>
+          )}
 
-          {/* Quick Actions / Pages - shown when no DB results or always */}
-          {!hasResults && filteredActions.length > 0 && (
-            <CommandGroup heading="Quick Actions">
-              {filteredActions.slice(0, 8).map((action) => (
+          {/* Default view: Two-column categories when no query */}
+          {!hasQuery && (
+            <div className="grid grid-cols-2 gap-0">
+              <div className="border-r border-border">
+                <div className="px-3 py-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Popular Searches</p>
+                </div>
+                {POPULAR_SEARCHES.map((item) => (
+                  <button
+                    key={item.href}
+                    onClick={() => handlePageNav(item.href)}
+                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="font-medium">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div>
+                <div className="px-3 py-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Apps & Pages</p>
+                </div>
+                {APPS_PAGES.slice(0, 6).map((item) => (
+                  <button
+                    key={item.href}
+                    onClick={() => handlePageNav(item.href)}
+                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
+                      <item.icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <span className="font-medium">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Filtered page results when typing */}
+          {hasQuery && filteredPages.length > 0 && !hasResults && (
+            <CommandGroup heading="Pages">
+              {filteredPages.map((item) => (
                 <CommandItem
-                  key={action.label}
-                  onSelect={() => handleQuickAction(action)}
+                  key={item.href}
+                  onSelect={() => handlePageNav(item.href)}
                   className="flex items-center gap-3 cursor-pointer"
                 >
-                  <action.icon className="h-4 w-4 text-muted-foreground" />
-                  <span>{action.label}</span>
+                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-muted">
+                    <item.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <span>{item.label}</span>
                 </CommandItem>
               ))}
             </CommandGroup>

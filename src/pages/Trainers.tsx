@@ -18,7 +18,8 @@ import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 import { StatCard } from '@/components/ui/stat-card';
 
 export default function TrainersPage() {
-  const { effectiveBranchId: branchId = '' } = useBranchContext();
+  const { effectiveBranchId, branchFilter } = useBranchContext();
+  const branchId = branchFilter || effectiveBranchId || '';
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<any>(null);

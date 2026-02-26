@@ -115,6 +115,8 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
     onSuccess: () => {
       toast.success('Branch created successfully');
       queryClient.invalidateQueries({ queryKey: ['branches'] });
+      queryClient.invalidateQueries({ queryKey: ['potential-managers'] });
+      queryClient.invalidateQueries({ queryKey: ['branch-manager'] });
       onOpenChange(false);
       setFormData({
         name: '',
