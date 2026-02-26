@@ -1286,6 +1286,47 @@ export type Database = {
           },
         ]
       }
+      device_commands: {
+        Row: {
+          command_type: string
+          device_id: string
+          executed_at: string | null
+          id: string
+          issued_at: string | null
+          issued_by: string | null
+          payload: Json | null
+          status: string
+        }
+        Insert: {
+          command_type?: string
+          device_id: string
+          executed_at?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          payload?: Json | null
+          status?: string
+        }
+        Update: {
+          command_type?: string
+          device_id?: string
+          executed_at?: string | null
+          id?: string
+          issued_at?: string | null
+          issued_by?: string | null
+          payload?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_commands_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "access_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diet_plans: {
         Row: {
           calories_target: number | null
@@ -3025,7 +3066,9 @@ export type Database = {
           branch_id: string
           created_at: string
           created_by: string | null
+          custom_welcome_message: string | null
           fitness_goals: string | null
+          hardware_access_enabled: boolean | null
           health_conditions: string | null
           id: string
           joined_at: string
@@ -3037,6 +3080,7 @@ export type Database = {
           status: Database["public"]["Enums"]["member_status"]
           updated_at: string
           user_id: string | null
+          wiegand_code: string | null
         }
         Insert: {
           assigned_trainer_id?: string | null
@@ -3045,7 +3089,9 @@ export type Database = {
           branch_id: string
           created_at?: string
           created_by?: string | null
+          custom_welcome_message?: string | null
           fitness_goals?: string | null
+          hardware_access_enabled?: boolean | null
           health_conditions?: string | null
           id?: string
           joined_at?: string
@@ -3057,6 +3103,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           updated_at?: string
           user_id?: string | null
+          wiegand_code?: string | null
         }
         Update: {
           assigned_trainer_id?: string | null
@@ -3065,7 +3112,9 @@ export type Database = {
           branch_id?: string
           created_at?: string
           created_by?: string | null
+          custom_welcome_message?: string | null
           fitness_goals?: string | null
+          hardware_access_enabled?: boolean | null
           health_conditions?: string | null
           id?: string
           joined_at?: string
@@ -3077,6 +3126,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           updated_at?: string
           user_id?: string | null
+          wiegand_code?: string | null
         }
         Relationships: [
           {

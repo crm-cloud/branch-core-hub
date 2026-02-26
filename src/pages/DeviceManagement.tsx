@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
-import { fetchDevices, deleteDevice, triggerRelay, getDeviceStats, AccessDevice } from "@/services/deviceService";
+import { fetchDevices, deleteDevice, triggerRelay, sendDeviceCommand, subscribeToCommandStatus, getDeviceStats, AccessDevice } from "@/services/deviceService";
 import { getBiometricStats } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
@@ -74,9 +74,25 @@ const DeviceManagement = () => {
   });
 
   const triggerMutation = useMutation({
-    mutationFn: triggerRelay,
-    onSuccess: (data) => {
-      toast.success(data.message || "Relay triggered successfully");
+    mutationFn: async (deviceId: string) => {
+      // Send via Realtime device_commands table
+      const { id: commandId } = await sendDeviceCommand(deviceId, 'relay_open', { duration: 5 });
+      toast.info("Command sent to device...");
+      
+      // Also fire the edge function as fallback
+      triggerRelay(deviceId).catch(() => {});
+
+      // Subscribe to status updates
+      const unsub = subscribeToCommandStatus(commandId, (status) => {
+        if (status === 'executed') {
+          toast.success("Gate opened successfully");
+          unsub();
+        }
+      });
+
+      // Timeout after 10s
+      setTimeout(() => unsub(), 10000);
+      return { message: 'Command sent' };
     },
     onError: (error: Error) => {
       toast.error(`Failed to trigger relay: ${error.message}`);

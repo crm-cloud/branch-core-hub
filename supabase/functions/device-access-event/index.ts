@@ -58,17 +58,38 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Try to find member by UUID (member.id)
-    const { data: member } = await supabase
+    // Try to find member by UUID (member.id), then fallback to wiegand_code
+    let { data: member } = await supabase
       .from('members')
       .select(`
         id,
         member_code,
         branch_id,
-        user_id
+        user_id,
+        custom_welcome_message,
+        hardware_access_enabled,
+        wiegand_code
       `)
       .eq('id', person_uuid)
       .single();
+
+    // Fallback: try matching by wiegand_code
+    if (!member) {
+      const { data: wiegandMember } = await supabase
+        .from('members')
+        .select(`
+          id,
+          member_code,
+          branch_id,
+          user_id,
+          custom_welcome_message,
+          hardware_access_enabled,
+          wiegand_code
+        `)
+        .eq('wiegand_code', person_uuid)
+        .single();
+      member = wiegandMember;
+    }
 
     let response: AccessEventResponse;
     let eventData: Record<string, unknown> = {
@@ -130,9 +151,13 @@ Deno.serve(async (req) => {
             _method: 'biometric',
           });
 
+          // Build custom welcome message
+          let welcomeMsg = member.custom_welcome_message || `Welcome, ${memberName}!`;
+          welcomeMsg = welcomeMsg.replace('{name}', memberName);
+
           response = {
             action: 'OPEN',
-            message: `Welcome, ${memberName}!`,
+            message: welcomeMsg,
             led_color: 'GREEN',
             relay_delay: device.relay_delay || 5,
             person_name: memberName,

@@ -223,6 +223,54 @@ export const subscribeToAccessEvents = (
   };
 };
 
+export const sendDeviceCommand = async (
+  deviceId: string,
+  commandType: string = 'relay_open',
+  payload: Record<string, unknown> = { duration: 5 }
+): Promise<{ id: string }> => {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from('device_commands')
+    .insert({
+      device_id: deviceId,
+      command_type: commandType,
+      payload: payload as Json,
+      issued_by: user?.id || null,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const subscribeToCommandStatus = (
+  commandId: string,
+  callback: (status: string, executedAt?: string) => void
+) => {
+  const channel = supabase
+    .channel(`device_command_${commandId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'device_commands',
+        filter: `id=eq.${commandId}`,
+      },
+      (payload) => {
+        const row = payload.new as { status: string; executed_at?: string };
+        callback(row.status, row.executed_at || undefined);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
 export const getDeviceStats = async (branchId?: string) => {
   const devices = await fetchDevices(branchId);
   

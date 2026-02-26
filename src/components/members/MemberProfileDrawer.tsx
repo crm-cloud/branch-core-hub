@@ -28,6 +28,7 @@ import { EditProfileDrawer } from './EditProfileDrawer';
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
+import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 
 // ─── Benefits & Usage Tab ───
 function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
@@ -729,13 +730,14 @@ export function MemberProfileDrawer({
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-8">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="membership">Plan</TabsTrigger>
               <TabsTrigger value="benefits">Benefits</TabsTrigger>
               <TabsTrigger value="measurements">Body</TabsTrigger>
               <TabsTrigger value="payments">Pay</TabsTrigger>
               <TabsTrigger value="rewards">Rewards</TabsTrigger>
+              <TabsTrigger value="hardware">Access</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
 
@@ -930,6 +932,18 @@ export function MemberProfileDrawer({
             </TabsContent>
 
             <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} memberGender={(memberDetails?.profiles as any)?.gender} />
+
+            <HardwareBiometricsTab
+              memberId={member.id}
+              memberName={profile?.full_name || 'Member'}
+              memberStatus={member.status}
+              biometricPhotoUrl={(memberDetails as any)?.biometric_photo_url}
+              biometricEnrolled={(memberDetails as any)?.biometric_enrolled}
+              wiegandCode={(memberDetails as any)?.wiegand_code}
+              customWelcomeMessage={(memberDetails as any)?.custom_welcome_message}
+              hardwareAccessEnabled={(memberDetails as any)?.hardware_access_enabled}
+              branchId={member.branch_id}
+            />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {payments.length > 0 ? (
