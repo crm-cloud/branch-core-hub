@@ -15,7 +15,7 @@ import { Loader2 } from 'lucide-react';
 
 export default function TrainerDashboard() {
   const { profile } = useAuth();
-  const { trainer, clients, todaySessions, myClasses, isLoading } = useTrainerData();
+  const { trainer, generalClients, ptClients, todaySessions, myClasses, isLoading } = useTrainerData();
 
   if (isLoading) {
     return (
