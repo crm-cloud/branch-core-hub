@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { useTrainerData } from '@/hooks/useMemberData';
-import { useBranch } from '@/contexts/BranchContext';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { createPlanTemplate, assignPlanToMember } from '@/services/fitnessService';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
