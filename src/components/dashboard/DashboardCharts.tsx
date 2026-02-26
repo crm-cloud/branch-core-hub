@@ -95,39 +95,14 @@ interface MembershipDistributionProps {
   data: ChartData[];
 }
 
-const COLORS = [
-  '#7c3aed', // violet
-  '#06b6d4', // cyan
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ec4899', // pink
-  '#3b82f6', // blue
-  '#f97316', // orange
-  '#8b5cf6', // purple
+const PLAN_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--accent))',
+  'hsl(var(--success))',
+  'hsl(var(--warning))',
+  'hsl(var(--info))',
+  'hsl(var(--destructive))',
 ];
-
-const renderCustomLegend = (props: any, total: number) => {
-  const { payload } = props;
-  return (
-    <div className="flex flex-col gap-2 pl-4">
-      {payload?.map((entry: any, index: number) => {
-        const pct = total > 0 ? ((entry.payload.value / total) * 100).toFixed(0) : 0;
-        return (
-          <div key={`legend-${index}`} className="flex items-center gap-2">
-            <span
-              className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: entry.color }}
-            />
-            <span className="text-sm text-foreground truncate max-w-[120px]">
-              {entry.value}
-            </span>
-            <span className="text-xs text-muted-foreground ml-auto">{pct}%</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
 export function MembershipDistribution({ data }: MembershipDistributionProps) {
   const total = data?.reduce((sum, d) => sum + d.value, 0) || 0;
@@ -139,8 +114,9 @@ export function MembershipDistribution({ data }: MembershipDistributionProps) {
           <CardTitle className="text-lg">Membership Distribution</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-            No active memberships
+          <div className="h-[200px] flex flex-col items-center justify-center text-muted-foreground gap-2">
+            <p>No active memberships</p>
+            <Badge variant="outline" className="text-xs">Add plans to see distribution</Badge>
           </div>
         </CardContent>
       </Card>
@@ -149,62 +125,56 @@ export function MembershipDistribution({ data }: MembershipDistributionProps) {
 
   return (
     <Card className="shadow-lg rounded-2xl border-0">
-      <CardHeader>
-        <CardTitle className="text-lg">Membership Distribution</CardTitle>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Membership Distribution</CardTitle>
+          <div className="text-right">
+            <p className="text-2xl font-bold">{total}</p>
+            <p className="text-xs text-muted-foreground">Active Members</p>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                cx="35%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={3}
-                dataKey="value"
-                label={false}
-              >
-                {data.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
+      <CardContent className="space-y-4">
+        {/* Stacked bar */}
+        <div className="h-4 rounded-full overflow-hidden bg-muted flex">
+          {data.map((plan, i) => {
+            const pct = total > 0 ? (plan.value / total) * 100 : 0;
+            return (
+              <div
+                key={plan.name}
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: PLAN_COLORS[i % PLAN_COLORS.length],
+                  minWidth: pct > 0 ? '8px' : '0',
                 }}
-                formatter={(value: number, name: string) => [`${value} members`, name]}
               />
-              <Legend
-                layout="vertical"
-                align="right"
-                verticalAlign="middle"
-                content={(props) => renderCustomLegend(props, total)}
-              />
-              {/* Center label */}
-              <text
-                x="35%"
-                y="48%"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="fill-foreground text-2xl font-bold"
-              >
-                {total}
-              </text>
-              <text
-                x="35%"
-                y="56%"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="fill-muted-foreground text-xs"
-              >
-                Members
-              </text>
-            </PieChart>
-          </ResponsiveContainer>
+            );
+          })}
+        </div>
+
+        {/* Plan breakdown */}
+        <div className="space-y-3">
+          {data.map((plan, i) => {
+            const pct = total > 0 ? ((plan.value / total) * 100).toFixed(0) : '0';
+            return (
+              <div key={plan.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: PLAN_COLORS[i % PLAN_COLORS.length] }}
+                  />
+                  <span className="text-sm font-medium truncate max-w-[180px]">{plan.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold">{plan.value}</span>
+                  <Badge variant="secondary" className="text-xs min-w-[48px] justify-center">
+                    {pct}%
+                  </Badge>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>

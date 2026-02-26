@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
+import { ViewAsProvider } from "@/contexts/ViewAsContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
 import SetupPage from "./pages/Setup";
@@ -23,7 +24,6 @@ import AttendancePage from "./pages/Attendance";
 import ClassesPage from "./pages/Classes";
 import PTSessionsPage from "./pages/PTSessions";
 import AIFitnessPage from "./pages/AIFitness";
-// Inventory is now part of Products page
 import EquipmentPage from "./pages/Equipment";
 import EquipmentMaintenancePage from "./pages/EquipmentMaintenance";
 import LockersPage from "./pages/Lockers";
@@ -90,6 +90,10 @@ import DeviceManagement from "./pages/DeviceManagement";
 import ApprovalQueue from "./pages/ApprovalQueue";
 import DiscountCouponsPage from "./pages/DiscountCoupons";
 
+// Profile & Embed
+import ProfilePage from "./pages/Profile";
+import EmbedLeadForm from "./pages/EmbedLeadForm";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -112,6 +116,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <BranchProvider>
+          <ViewAsProvider>
           <Routes>
             {/* Public Website */}
             <Route path="/" element={<PublicWebsite />} />
@@ -122,8 +127,14 @@ const App = () => (
             <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
             <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-            {/* Smart Dashboard Redirect - routes to appropriate dashboard based on role */}
+            {/* Embeddable lead form - no auth required */}
+            <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
+
+            {/* Smart Dashboard Redirect */}
             <Route path="/home" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
+
+            {/* Profile - all authenticated roles */}
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
             {/* ==================== MEMBER ROUTES ==================== */}
             <Route path="/member-dashboard" element={<ProtectedRoute requiredRoles={['member']}><MemberDashboard /></ProtectedRoute>} />
@@ -194,7 +205,7 @@ const App = () => (
             {/* Admin user/role management */}
             <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
 
-            {/* Redirects for old routes - now consolidated in Settings */}
+            {/* Redirects for old routes */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
             <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
@@ -202,6 +213,7 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </ViewAsProvider>
           </BranchProvider>
         </AuthProvider>
       </BrowserRouter>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { useViewAs } from '@/contexts/ViewAsContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
@@ -13,23 +14,36 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { 
   Settings, 
   User, 
   LogOut, 
   Moon, 
-  Sun
+  Sun,
+  Eye,
+  X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
+
+type AppRole = Database['public']['Enums']['app_role'];
+
+function mapRoleLabel(role: string): string {
+  return role === 'owner' ? 'Admin' : role;
+}
 
 export function AppHeader() {
   const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
+  const { viewAsRole, setViewAsRole, isViewingAs } = useViewAs();
 
   const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption } = useBranchContext();
 
@@ -46,6 +60,7 @@ export function AppHeader() {
   const primaryRole = roles[0];
   const primaryRoleString = typeof primaryRole === 'string' ? primaryRole : primaryRole?.role || 'user';
   const isMember = roles.some(r => (typeof r === 'string' ? r : r?.role) === 'member');
+  const isAdmin = hasAnyRole(['owner', 'admin']);
 
   // Fetch member code if user is a member
   const { data: memberCode } = useQuery({
@@ -62,8 +77,42 @@ export function AppHeader() {
     enabled: !!user?.id && isMember,
   });
 
+  const handleProfileClick = () => {
+    if (isMember) {
+      navigate('/member-profile');
+    } else {
+      navigate('/profile');
+    }
+  };
+
+  const viewAsOptions: { label: string; role: AppRole }[] = [
+    { label: 'Manager', role: 'manager' },
+    { label: 'Staff', role: 'staff' },
+    { label: 'Trainer', role: 'trainer' },
+    { label: 'Member', role: 'member' },
+  ];
+
   return (
     <>
+      {/* View As Banner */}
+      {isViewingAs && (
+        <div className="bg-warning/90 text-warning-foreground px-4 py-2 flex items-center justify-between text-sm font-medium z-50">
+          <div className="flex items-center gap-2">
+            <Eye className="h-4 w-4" />
+            <span>Viewing as <span className="font-bold capitalize">{mapRoleLabel(viewAsRole!)}</span> — UI preview only, data access unchanged</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setViewAsRole(null)}
+            className="h-7 px-2 text-warning-foreground hover:bg-warning-foreground/10"
+          >
+            <X className="h-4 w-4 mr-1" />
+            Exit
+          </Button>
+        </div>
+      )}
+
       <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         {/* Single Search - GlobalSearch component */}
         <div className="flex-1 max-w-md">
@@ -117,7 +166,7 @@ export function AppHeader() {
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium leading-none">{profile?.full_name || 'User'}</p>
                   <Badge variant="outline" className="text-xs capitalize">
-                    {primaryRoleString}
+                    {mapRoleLabel(primaryRoleString)}
                   </Badge>
                 </div>
                 {memberCode && (
@@ -127,14 +176,46 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+            <DropdownMenuItem onClick={handleProfileClick} className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
-            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Settings</span>
+              </DropdownMenuItem>
+            )}
+            {/* View As - Admin only */}
+            {isAdmin && !isViewingAs && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Eye className="mr-2 h-4 w-4" />
+                    <span>View As</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {viewAsOptions.map((opt) => (
+                      <DropdownMenuItem
+                        key={opt.role}
+                        onClick={() => {
+                          setViewAsRole(opt.role);
+                          // Navigate to the appropriate dashboard
+                          if (opt.role === 'member') navigate('/member-dashboard');
+                          else if (opt.role === 'trainer') navigate('/trainer-dashboard');
+                          else if (opt.role === 'staff') navigate('/staff-dashboard');
+                          else navigate('/dashboard');
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {opt.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut} className="cursor-pointer text-destructive focus:text-destructive">
               <LogOut className="mr-2 h-4 w-4" />

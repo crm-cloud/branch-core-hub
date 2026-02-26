@@ -117,6 +117,34 @@ export default function LeadsPage() {
           ))}
         </div>
 
+        {/* Lead Sources Breakdown */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Lead Sources</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              {(() => {
+                const sourceCounts: Record<string, number> = {};
+                leads.forEach((lead: any) => {
+                  const src = lead.source || 'Direct';
+                  sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+                });
+                return Object.entries(sourceCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([source, count]) => (
+                    <Badge key={source} variant="secondary" className="text-sm px-3 py-1.5 capitalize">
+                      {source}: <span className="font-bold ml-1">{count}</span>
+                    </Badge>
+                  ));
+              })()}
+              {leads.length === 0 && (
+                <p className="text-sm text-muted-foreground">No leads yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>All Leads</CardTitle>
