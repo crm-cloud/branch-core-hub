@@ -52,6 +52,30 @@ export default function TrainersPage() {
     enabled: !!branchId,
   });
 
+  // Fetch general training client counts per trainer
+  const { data: generalClientCounts = {} } = useQuery({
+    queryKey: ['general-client-counts', branchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('assigned_trainer_id')
+        .eq('branch_id', branchId)
+        .eq('status', 'active')
+        .not('assigned_trainer_id', 'is', null);
+      
+      if (error) throw error;
+      
+      const counts: Record<string, number> = {};
+      data?.forEach(m => {
+        if (m.assigned_trainer_id) {
+          counts[m.assigned_trainer_id] = (counts[m.assigned_trainer_id] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: !!branchId,
+  });
+
   // Fetch total revenue this month
   const { data: monthlyRevenue = 0 } = useQuery({
     queryKey: ['trainers-monthly-revenue', branchId],
