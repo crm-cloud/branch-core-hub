@@ -1,179 +1,72 @@
 
 
-# Master IoT Integration: Face Enrollment, Smart Sync & Realtime Commands
+# Fix Plan: Device Management, Avatar Upload, Staff Sync, and View As/User Creation
 
-## Existing Infrastructure Assessment
+## Issue Analysis
 
-The codebase already has a solid foundation:
-- **`access_devices`** table with relay_mode, relay_delay, is_online, last_heartbeat, last_sync
-- **`biometric_sync_queue`** table with member_id, staff_id, photo_url, person_uuid, person_name, sync_type, status
-- **`device_access_events`** table logging all access events with member/staff association
-- **`device-access-event`** edge function that validates membership and returns OPEN/DENIED with LED color + relay delay
-- **`device-sync-data`** edge function for Android polling (returns pending sync items)
-- **`device-trigger-relay`** edge function for manual remote open (already RBAC-secured)
-- **`biometricService.ts`** with queueMemberSync, queueStaffSync, markSyncComplete
-- Members table already has `biometric_photo_url` and `biometric_enrolled` columns
+### 1. Device Management -- API Alignment Issues
+The Device Management page and edge functions are already well-aligned with the API spec. The `device-access-event` endpoint handles face recognition, Wiegand fallback, membership validation, and custom messages. The `device-sync-data` endpoint supports both incremental and full roster modes. The `device-trigger-relay` and `device_commands` Realtime approach for remote open are both implemented.
 
-**What's missing:** `wiegand_code`, `custom_welcome_message`, and `hardware_access_enabled` on members. The sync endpoint doesn't return wiegand_code or custom messages. The remote open uses edge functions but lacks Realtime channel for instant push. No Face Enrollment UI card in MemberProfileDrawer.
+**Actual issues found:**
+- The `addDevice` function in `deviceService.ts` casts `ip_address` as `unknown` (line 89) which is a workaround for a type mismatch -- the database likely stores `inet` type but the TypeScript types may not reflect it. This needs cleanup.
+- The Add Device drawer and Edit Device drawer reference fields like `firmware_version` but there's no input for it in the form -- it's expected to come from the device heartbeat, which is correct.
+- The Device Management page is functionally sound. No major misalignment with the APIs. Minor UI polish needed: add Serial Number (SN) column to the table since that's the primary identifier for SMDT hardware, and show `last_sync` alongside `last_heartbeat`.
 
----
+### 2. Admin Avatar Upload -- Missing from Profile Page
+The Profile page (`src/pages/Profile.tsx`) shows the avatar but has **no upload button**. The `AvatarUpload` component (`src/components/auth/AvatarUpload.tsx`) exists and works perfectly -- it uploads to the `avatars` bucket and updates the profile. It just needs to be integrated into the Profile page, replacing the static `Avatar` display.
 
-## 1. Database Migration: Add Member Hardware Fields
+### 3. Staff Photo Sync -- Like Members
+Members already have biometric photo sync via `HardwareBiometricsTab.tsx` which calls `queueMemberSync()`. Staff already have avatar upload in `EditEmployeeDrawer.tsx` which calls `queueStaffSync()`. The `StaffAvatarUpload` component also queues biometric sync on upload. So staff photo sync **already works** for employees/trainers when their avatar is uploaded via the HRM or Trainer edit flows.
 
-Add 3 new columns to `members` table:
+What's missing: There's no equivalent "Hardware & Biometrics" tab for staff in the employee/trainer profile drawers showing enrollment status, Wiegand code, or sync queue status. The biometric sync queue works but there's no visibility into it for staff.
 
-```sql
-ALTER TABLE public.members 
-  ADD COLUMN wiegand_code text,
-  ADD COLUMN custom_welcome_message text DEFAULT 'Welcome! Enjoy your workout',
-  ADD COLUMN hardware_access_enabled boolean DEFAULT true;
-```
+### 4. View As -- Not Working + Replace with Real Login
+**View As issue:** The ViewAs context works correctly -- it changes the sidebar menu and shows the banner. If it's "not working," it may be because route guards in `App.tsx` still check the **real** roles (from `useAuth`), not the viewAs role. So when the admin navigates to `/member-dashboard`, the `ProtectedRoute` component may block access because the real user doesn't have the `member` role. Need to check and fix `ProtectedRoute.tsx` to respect ViewAs.
 
-Create a **`device_commands`** table for Realtime push commands:
+**User wants specific logins, not demo mode:** The user wants admins to create **real login accounts** for each staff member, trainer, manager, and member -- not a "view as" preview. The system already supports this via:
+- `AdminUsers.tsx` page at `/admin/users` -- creates users with any role
+- `create-staff-user` edge function -- creates trainer/staff/manager accounts
+- `create-member-user` edge function -- creates member accounts
+- `AddEmployeeDrawer`, `AddTrainerDrawer`, `AddMemberDrawer` -- all invoke these functions
 
-```sql
-CREATE TABLE public.device_commands (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_id uuid REFERENCES public.access_devices(id) ON DELETE CASCADE NOT NULL,
-  command_type text NOT NULL DEFAULT 'relay_open',
-  payload jsonb DEFAULT '{}',
-  status text NOT NULL DEFAULT 'pending',
-  issued_by uuid REFERENCES public.profiles(id),
-  issued_at timestamptz DEFAULT now(),
-  executed_at timestamptz
-);
-
--- Enable Realtime for device_commands so Android app can subscribe
-ALTER PUBLICATION supabase_realtime ADD TABLE public.device_commands;
-```
-
-RLS policies:
-- Admin/owner/manager/staff can INSERT into `device_commands`
-- Read access for authenticated users (devices need to read commands)
-- Members table update restricted to admin/owner/manager roles for the new hardware fields
-
-A database trigger to **auto-disable hardware access** when membership is frozen/expired:
-
-```sql
-CREATE OR REPLACE FUNCTION auto_disable_hardware_access()
-RETURNS trigger AS $$
-BEGIN
-  IF NEW.status IN ('frozen', 'expired', 'cancelled') AND OLD.status = 'active' THEN
-    NEW.hardware_access_enabled := false;
-  END IF;
-  IF NEW.status = 'active' AND OLD.status IN ('frozen', 'expired') THEN
-    NEW.hardware_access_enabled := true;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_auto_hardware_access
-  BEFORE UPDATE OF status ON public.members
-  FOR EACH ROW EXECUTE FUNCTION auto_disable_hardware_access();
-```
+The issue is that the `admin-create-user` function only allows `admin`/`owner` roles (line 89-93). For all other roles, `create-staff-user` handles it. The AdminUsers page (`/admin/users`) only calls `admin-create-user` which rejects non-admin roles. This is the bug -- the AdminUsers page should route to the correct edge function based on role selection.
 
 ---
 
-## 2. Member Profile Drawer: Face Enrollment Card
+## Implementation Plan
 
-**File:** `src/components/members/MemberProfileDrawer.tsx`
+### Step 1: Fix AdminUsers Page -- Unified User Creation
+**File:** `src/pages/AdminUsers.tsx`
 
-Add a new **"Hardware & Biometrics"** tab (or card within Overview tab) containing:
+- When role is `admin` or `owner`, call `admin-create-user` (current behavior)
+- When role is `manager`, `staff`, or `trainer`, call `create-staff-user` instead
+- When role is `member`, call `create-member-user` instead
+- This makes the Admin User Management page a **single unified hub** for creating any type of user account
+- Show the generated temporary credentials or confirm "they will set password on first login"
 
-- **Face Enrollment Photo**: Large avatar showing `biometric_photo_url` with an upload button. Uploading triggers `queueMemberSync()` to push to all face terminals. Uses `MemberAvatarUpload`-style component targeting the `member-photos` bucket.
-- **Wiegand Code**: Text input field for the numeric Wiegand ID (card/chip number). Saved to `members.wiegand_code`.
-- **Custom Welcome Message**: Text input with placeholder "Welcome, {name}! Enjoy your workout". Saved to `members.custom_welcome_message`.
-- **Hardware Access Toggle**: Switch component showing Enabled/Disabled. Displays a warning if member is frozen/expired ("Auto-disabled due to frozen membership"). Saved to `members.hardware_access_enabled`.
-- **Enrollment Status**: Badge showing "Enrolled" (green) or "Pending Sync" (yellow) or "Not Enrolled" (gray) based on `biometric_enrolled` status.
-- **Sync Status List**: Shows per-device sync status from `biometric_sync_queue` (which devices have synced, which are pending/failed).
+### Step 2: Add Avatar Upload to Profile Page
+**File:** `src/pages/Profile.tsx`
 
-All fields update the `members` table directly via Supabase mutation with React Query invalidation.
+- Replace the static `Avatar` display (lines 113-119) with the existing `AvatarUpload` component
+- Import `AvatarUpload` from `@/components/auth/AvatarUpload`
+- The AvatarUpload component already handles upload to `avatars` bucket, profile update, and refresh
 
----
+### Step 3: Fix View As Route Protection
+**File:** `src/components/auth/ProtectedRoute.tsx`
 
-## 3. Enhanced Smart Sync Endpoint
+- Import `useViewAs` and check `viewAsRole`
+- When `isViewingAs` is true and the real user is admin/owner, bypass the role check -- allow navigation to any role's pages
+- This makes "View As" actually work for previewing other role dashboards
 
-**File:** `supabase/functions/device-sync-data/index.ts`
+### Step 4: Device Management UI Polish
+**File:** `src/pages/DeviceManagement.tsx`
 
-The current endpoint returns only pending `biometric_sync_queue` items. Enhance it to support a **full roster mode** that the Android app can use for initial sync or periodic refresh:
+- Add `serial_number` and `last_sync` columns to the device table
+- Show branch name in the device row (join from branches context)
+- Clean up the `ip_address` type casting in `deviceService.ts`
 
-**New query parameter:** `?mode=full` (in addition to existing `?device_id=xxx`)
-
-When `mode=full`:
-- Query ALL members for the device's branch where `hardware_access_enabled = true`
-- For each member, return:
-  - `member_id` (person_uuid)
-  - `wiegand_code`
-  - `avatar_url` (biometric_photo_url)
-  - `custom_message` (custom_welcome_message)
-  - `access_allowed` (boolean: true only if member has active membership AND hardware_access_enabled = true)
-  - `person_name`
-- Also include staff with biometric photos from the same branch
-
-When `mode=incremental` (default, current behavior):
-- Keep existing sync queue logic but add `wiegand_code` and `custom_message` to the response payload
-
-**Updated response shape for full sync:**
-```json
-{
-  "device_id": "...",
-  "mode": "full",
-  "members": [
-    {
-      "member_id": "uuid",
-      "wiegand_code": "12345",
-      "avatar_url": "https://...",
-      "custom_message": "Welcome, John!",
-      "access_allowed": true,
-      "person_name": "John Doe"
-    }
-  ],
-  "server_time": "..."
-}
-```
-
----
-
-## 4. Enhanced Access Event Endpoint
-
-**File:** `supabase/functions/device-access-event/index.ts`
-
-Update the response to include the member's `custom_welcome_message`:
-- After finding the member, read `custom_welcome_message` from the members table
-- If set, use it instead of the generic "Welcome, {name}!" message (replacing `{name}` with the actual name)
-- Return the custom message in the `message` field of the response
-
-Also add `wiegand_code` lookup: if the `person_uuid` doesn't match a member ID directly, try matching by `wiegand_code` as a fallback identifier.
-
----
-
-## 5. Realtime Remote Open via `device_commands` Table
-
-**Current state:** The "Remote Open" button calls the `device-trigger-relay` edge function, which logs an event but cannot actually push a signal to the device in real-time.
-
-**New approach:** Use Supabase Realtime channels:
-1. Admin clicks "Remote Open" on Device Management page
-2. Frontend inserts a row into `device_commands` with `command_type: 'relay_open'` and `payload: { duration: 5 }`
-3. The Android app subscribes to Realtime changes on `device_commands` filtered by its `device_id`
-4. When the Android receives the INSERT event, it calls `smdt.setRelayIoValue(1)` for the specified duration
-5. Android then updates the row's `status` to `'executed'` and sets `executed_at`
-
-**Frontend changes in `DeviceManagement.tsx`:**
-- Update the "Remote Open" button handler to insert into `device_commands` instead of (or in addition to) calling the edge function
-- Show real-time feedback: "Command sent..." -> "Executed" when the Android updates the row
-
-**Service update in `deviceService.ts`:**
-- Add `sendDeviceCommand(deviceId, commandType, payload)` function
-- Add `subscribeToCommandStatus(commandId, callback)` for tracking execution
-
----
-
-## 6. Access Log Enhancements
-
-The `LiveAccessLog` component and `device_access_events` table already handle this well. Minor enhancements:
-- Add member's `biometric_photo_url` to the access log display (show the captured face photo alongside the event)
-- Add Wiegand code display in the log entry if present
+### Step 5: Staff Biometric Visibility (Minor)
+No new tab needed. The staff biometric sync already works via `StaffAvatarUpload`. The sync queue status can be viewed on the Device Management page. This is already functional.
 
 ---
 
@@ -181,22 +74,9 @@ The `LiveAccessLog` component and `device_access_events` table already handle th
 
 | Action | File | Description |
 |--------|------|-------------|
-| Migration | SQL | Add wiegand_code, custom_welcome_message, hardware_access_enabled to members; create device_commands table with Realtime; auto-disable trigger |
-| Edit | `src/components/members/MemberProfileDrawer.tsx` | Add "Hardware & Biometrics" tab with face enrollment, wiegand, welcome message, access toggle |
-| Edit | `supabase/functions/device-sync-data/index.ts` | Add full roster sync mode with wiegand_code, custom_message, access_allowed |
-| Edit | `supabase/functions/device-access-event/index.ts` | Use custom_welcome_message in responses, wiegand_code fallback lookup |
-| Edit | `src/services/deviceService.ts` | Add sendDeviceCommand(), subscribeToCommandStatus() |
-| Edit | `src/pages/DeviceManagement.tsx` | Use Realtime device_commands for Remote Open instead of edge function only |
-| Edit | `src/components/devices/LiveAccessLog.tsx` | Show biometric photo in access log entries |
-
-## Execution Order
-
-| Step | Priority | Description |
-|------|----------|-------------|
-| 1 | Critical | Database migration (new columns + device_commands table + trigger) |
-| 2 | Critical | Face Enrollment UI in MemberProfileDrawer |
-| 3 | High | Enhanced device-sync-data endpoint (full roster mode) |
-| 4 | High | Enhanced device-access-event (custom messages + wiegand fallback) |
-| 5 | Medium | Realtime device_commands for Remote Open |
-| 6 | Low | Access log photo display enhancement |
+| Edit | `src/pages/AdminUsers.tsx` | Route to correct edge function per role |
+| Edit | `src/pages/Profile.tsx` | Add AvatarUpload component |
+| Edit | `src/components/auth/ProtectedRoute.tsx` | Respect ViewAs for admin impersonation |
+| Edit | `src/pages/DeviceManagement.tsx` | Add SN/last_sync columns |
+| Edit | `src/services/deviceService.ts` | Clean up ip_address type casting |
 
