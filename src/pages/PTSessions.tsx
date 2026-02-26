@@ -16,6 +16,7 @@ import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell, E
 import { usePTPackages, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession, useUpdatePTPackage } from "@/hooks/usePTPackages";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranchContext } from '@/contexts/BranchContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { AddPTPackageDrawer } from "@/components/pt/AddPTPackageDrawer";
 import { EditPTPackageDrawer } from "@/components/pt/EditPTPackageDrawer";
@@ -30,6 +31,7 @@ const SESSION_TYPES = [
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function PTSessionsPage() {
+  const { roles } = useAuth();
   const { effectiveBranchId, branchFilter } = useBranchContext();
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
   const [isEditPackageOpen, setIsEditPackageOpen] = useState(false);
@@ -239,7 +241,9 @@ export default function PTSessionsPage() {
                   Show Inactive
                 </Label>
               </div>
-              <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
+              {roles.some(r => ['owner', 'admin', 'manager'].includes(r.role)) && (
+                <Button onClick={() => setIsCreatePackageOpen(true)}><Plus className="mr-2 h-4 w-4" />Create Package</Button>
+              )}
             </div>
 
             <AddPTPackageDrawer open={isCreatePackageOpen} onOpenChange={setIsCreatePackageOpen} branchId={branchId} />

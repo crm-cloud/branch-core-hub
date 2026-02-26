@@ -250,8 +250,38 @@ export function useTrainerData() {
     },
   });
 
-  // Get assigned clients
-  const { data: clients = [] } = useQuery({
+  // Get general training clients (assigned_trainer_id)
+  const { data: generalClients = [] } = useQuery({
+    queryKey: ['my-general-clients', trainer?.id],
+    enabled: !!trainer,
+    queryFn: async () => {
+      const query = supabase
+        .from('members')
+        .select('id, member_code, user_id, is_active, fitness_goals')
+        .eq('assigned_trainer_id', trainer!.id);
+      const { data, error } = await (query as any).eq('is_active', true);
+
+      if (error) throw error;
+
+      const withProfiles = await Promise.all(
+        (data || []).map(async (m: any) => {
+          if (m.user_id) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url, phone')
+              .eq('id', m.user_id)
+              .maybeSingle();
+            return { ...m, profile: profileData };
+          }
+          return m;
+        })
+      );
+      return withProfiles;
+    },
+  });
+
+  // Get PT clients (from member_pt_packages)
+  const { data: ptClients = [] } = useQuery({
     queryKey: ['my-pt-clients', trainer?.id],
     enabled: !!trainer,
     queryFn: async () => {
@@ -267,7 +297,6 @@ export function useTrainerData() {
       
       if (error) throw error;
       
-      // Fetch profile data separately for each member
       const clientsWithProfiles = await Promise.all(
         (data || []).map(async (client: any) => {
           if (client.member?.user_id) {
@@ -275,20 +304,15 @@ export function useTrainerData() {
               .from('profiles')
               .select('full_name, avatar_url, phone')
               .eq('id', client.member.user_id)
-              .single();
-            
+              .maybeSingle();
             return {
               ...client,
-              member: {
-                ...client.member,
-                profile: profileData
-              }
+              member: { ...client.member, profile: profileData }
             };
           }
           return client;
         })
       );
-      
       return clientsWithProfiles;
     },
   });
@@ -338,7 +362,9 @@ export function useTrainerData() {
 
   return {
     trainer,
-    clients,
+    generalClients,
+    ptClients,
+    clients: ptClients, // backward compat
     todaySessions,
     myClasses,
     isLoading: trainerLoading,

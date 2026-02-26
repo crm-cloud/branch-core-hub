@@ -15,7 +15,7 @@ import { Loader2 } from 'lucide-react';
 
 export default function TrainerDashboard() {
   const { profile } = useAuth();
-  const { trainer, clients, todaySessions, myClasses, isLoading } = useTrainerData();
+  const { trainer, generalClients, ptClients, todaySessions, myClasses, isLoading } = useTrainerData();
 
   if (isLoading) {
     return (
@@ -61,13 +61,20 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Primary Stats */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
           <StatCard
-            title="Active Clients"
-            value={clients.length}
+            title="General Clients"
+            value={generalClients.length}
             icon={Users}
-            description="PT clients"
+            description="General training"
             variant="default"
+          />
+          <StatCard
+            title="PT Clients"
+            value={ptClients.length}
+            icon={Dumbbell}
+            description="Personal training"
+            variant="warning"
           />
           <StatCard
             title="Today's Sessions"
@@ -110,7 +117,7 @@ export default function TrainerDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Link to="/ai-fitness">
+          <Link to="/trainer-plan-builder">
             <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Dumbbell className="h-8 w-8 text-warning" />
@@ -174,27 +181,39 @@ export default function TrainerDashboard() {
               </Button>
             </CardHeader>
             <CardContent>
-              {clients.length === 0 ? (
+              {generalClients.length === 0 && ptClients.length === 0 ? (
                 <div className="text-center py-8">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No active PT clients</p>
+                  <p className="text-muted-foreground">No clients assigned</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {clients.slice(0, 5).map((client: any) => (
+                  {generalClients.slice(0, 3).map((client: any) => (
                     <div key={client.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center">
                           <User className="h-5 w-5 text-accent" />
                         </div>
                         <div>
-                          <p className="font-medium">{client.member?.profiles?.full_name || client.member?.member_code}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {client.sessions_remaining} sessions left
-                          </p>
+                          <p className="font-medium">{client.profile?.full_name || client.member_code}</p>
+                          <p className="text-sm text-muted-foreground">General Training</p>
                         </div>
                       </div>
-                      <Badge variant="outline">{client.package?.name}</Badge>
+                      <Badge variant="outline">General</Badge>
+                    </div>
+                  ))}
+                  {ptClients.slice(0, 3).map((client: any) => (
+                    <div key={client.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-warning/10 flex items-center justify-center">
+                          <Dumbbell className="h-5 w-5 text-warning" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{client.member?.profile?.full_name || client.member?.member_code}</p>
+                          <p className="text-sm text-muted-foreground">{client.sessions_remaining} sessions left</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">{client.package?.name}</Badge>
                     </div>
                   ))}
                 </div>
