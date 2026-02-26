@@ -140,7 +140,7 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Main',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin'] },
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {
