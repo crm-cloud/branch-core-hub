@@ -89,6 +89,7 @@ import AdminRoles from "./pages/AdminRoles";
 import DeviceManagement from "./pages/DeviceManagement";
 import ApprovalQueue from "./pages/ApprovalQueue";
 import DiscountCouponsPage from "./pages/DiscountCoupons";
+import SystemHealthPage from "./pages/SystemHealth";
 
 // Profile & Embed
 import ProfilePage from "./pages/Profile";
@@ -204,6 +205,7 @@ const App = () => (
             <Route path="/discount-coupons" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DiscountCouponsPage /></ProtectedRoute>} />
             {/* Admin user/role management */}
             <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
+            <Route path="/system-health" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SystemHealthPage /></ProtectedRoute>} />
 
             {/* Redirects for old routes */}
             <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />

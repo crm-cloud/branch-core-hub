@@ -200,6 +200,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
+      { label: 'System Health', href: '/system-health', icon: Activity, roles: ['owner', 'admin'] },
       { label: 'Audit Logs', href: '/audit-logs', icon: ClipboardList, roles: ['owner', 'admin'] },
       { label: 'Settings', href: '/settings', icon: Settings, roles: ['owner', 'admin'] },
     ],
