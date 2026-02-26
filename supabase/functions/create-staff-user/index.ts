@@ -319,6 +319,15 @@ Deno.serve(async (req) => {
       console.log('Trainer created with ID:', trainerId)
     }
 
+    // Extract employee-specific fields from request body
+    const department = sanitizeString(body.department, 50);
+    const position = sanitizeString(body.position, 50);
+    const salary = body.salary !== undefined ? Number(body.salary) || 0 : 0;
+    const empSalaryType = sanitizeString(body.salary_type || body.salaryType, 20);
+    const bankName = sanitizeString(body.bank_name || body.bankName, 100);
+    const bankAccount = sanitizeString(body.bank_account || body.bankAccount, 50);
+    const taxId = sanitizeString(body.tax_id || body.taxId, 50);
+
     // If role is staff or manager, create employee record
     let employeeId = null
     if (role === 'staff' || role === 'manager') {
@@ -330,7 +339,13 @@ Deno.serve(async (req) => {
           branch_id: branchId,
           employee_code: employeeCode,
           hire_date: new Date().toISOString().split('T')[0],
-          position: role === 'manager' ? 'Branch Manager' : 'Staff',
+          position: position || (role === 'manager' ? 'Branch Manager' : 'Staff'),
+          department: department || null,
+          salary: salary,
+          salary_type: empSalaryType || 'monthly',
+          bank_name: bankName || null,
+          bank_account: bankAccount || null,
+          tax_id: taxId || null,
           is_active: true,
         })
         .select('id')
@@ -342,6 +357,22 @@ Deno.serve(async (req) => {
       } else {
         employeeId = employeeData?.id
         console.log('Employee created with ID:', employeeId)
+      }
+
+      // If role is manager, also insert into branch_managers
+      if (role === 'manager') {
+        const { error: bmError } = await supabaseAdmin
+          .from('branch_managers')
+          .insert({
+            user_id: authData.user.id,
+            branch_id: branchId,
+            is_primary: true,
+          })
+        if (bmError) {
+          console.log('Branch manager assignment error:', bmError.message)
+        } else {
+          console.log('Branch manager assignment created for branch:', branchId)
+        }
       }
     }
 

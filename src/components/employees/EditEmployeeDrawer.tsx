@@ -122,6 +122,26 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
             />
           </div>
 
+          {/* Branch (read-only) */}
+          {employee.branch?.name && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground text-xs uppercase tracking-wide">Assigned Branch</Label>
+              <div className="p-3 border rounded-lg bg-muted/30 font-medium text-sm">
+                {employee.branch?.name || 'Not assigned'}
+              </div>
+            </div>
+          )}
+
+          {/* Employee Code (read-only) */}
+          {employee.employee_code && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground text-xs uppercase tracking-wide">Employee Code</Label>
+              <div className="p-3 border rounded-lg bg-muted/30 font-medium text-sm">
+                {employee.employee_code}
+              </div>
+            </div>
+          )}
+
           {/* Active Status */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
             <div>
