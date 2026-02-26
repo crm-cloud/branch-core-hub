@@ -56,7 +56,6 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
   // Form data for creating new user
   const [newUserFormData, setNewUserFormData] = useState({
     email: '',
-    password: '',
     full_name: '',
     phone: '',
     specializations: '',
