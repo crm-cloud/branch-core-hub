@@ -5,32 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useMemberData } from '@/hooks/useMemberData';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, Camera, Key } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
 export default function MemberProfile() {
-  const { profile, updatePassword, refreshProfile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const { member, activeMembership, isLoading } = useMemberData();
   
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   const [formData, setFormData] = useState({
     phone: profile?.phone || '',
@@ -38,15 +27,9 @@ export default function MemberProfile() {
     emergency_contact_phone: profile?.emergency_contact_phone || '',
   });
 
-  const [passwordData, setPasswordData] = useState({
-    newPassword: '',
-    confirmPassword: '',
-  });
-
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update profile phone
       if (profile?.id) {
         const { error: profileError } = await supabase
           .from('profiles')
@@ -70,29 +53,22 @@ export default function MemberProfile() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('Passwords do not match');
+  const handleSendPasswordReset = async () => {
+    if (!profile?.email) {
+      toast.error('No email address found');
       return;
     }
-
-    if (passwordData.newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
-    setIsChangingPassword(true);
+    setIsSendingReset(true);
     try {
-      const { error } = await updatePassword(passwordData.newPassword);
+      const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
       if (error) throw error;
-
-      toast.success('Password changed successfully');
-      setPasswordDialogOpen(false);
-      setPasswordData({ newPassword: '', confirmPassword: '' });
+      toast.success('Password reset email sent! Check your inbox.');
     } catch (error: any) {
-      toast.error('Failed to change password: ' + error.message);
+      toast.error('Failed to send reset email: ' + error.message);
     } finally {
-      setIsChangingPassword(false);
+      setIsSendingReset(false);
     }
   };
 
@@ -138,53 +114,10 @@ export default function MemberProfile() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Key className="h-4 w-4 mr-2" />
-                  Change Password
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Change Password</DialogTitle>
-                  <DialogDescription>
-                    Enter your new password below.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                      id="newPassword"
-                      type="password"
-                      value={passwordData.newPassword}
-                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                      placeholder="Enter new password"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirm Password</Label>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      value={passwordData.confirmPassword}
-                      onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                      placeholder="Confirm new password"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleChangePassword} disabled={isChangingPassword}>
-                    {isChangingPassword && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Change Password
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button variant="outline" onClick={handleSendPasswordReset} disabled={isSendingReset}>
+              <KeyRound className="h-4 w-4 mr-2" />
+              {isSendingReset ? 'Sending...' : 'Reset Password'}
+            </Button>
             {isEditing ? (
               <>
                 <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
@@ -203,14 +136,12 @@ export default function MemberProfile() {
         <Card className="border-border/50">
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row items-center gap-6">
-              <div className="relative">
-                <Avatar className="h-24 w-24">
-                  <AvatarImage src={profile?.avatar_url || undefined} />
-                  <AvatarFallback className="text-2xl bg-accent/10 text-accent">
-                    {getInitials(profile?.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
+              <Avatar className="h-24 w-24">
+                <AvatarImage src={profile?.avatar_url || undefined} />
+                <AvatarFallback className="text-2xl bg-accent/10 text-accent">
+                  {getInitials(profile?.full_name)}
+                </AvatarFallback>
+              </Avatar>
               <div className="text-center sm:text-left">
                 <h2 className="text-2xl font-bold">{profile?.full_name}</h2>
                 <p className="text-muted-foreground">Member ID: {member.member_code}</p>
@@ -235,6 +166,15 @@ export default function MemberProfile() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  Full Name
+                </Label>
+                <Input value={profile?.full_name || ''} disabled />
+                <p className="text-xs text-muted-foreground">Contact admin to change your name</p>
+              </div>
+
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />

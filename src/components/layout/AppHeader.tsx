@@ -31,8 +31,7 @@ export function AppHeader() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
 
-  const showBranchSelector = hasAnyRole(['owner', 'admin', 'manager']);
-  const { selectedBranch, setSelectedBranch, branches } = useBranchContext();
+  const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption } = useBranchContext();
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -73,20 +72,15 @@ export function AppHeader() {
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2">
-        {/* Global Branch Selector */}
-        {showBranchSelector && branches.length > 0 && (
+        {/* Global Branch Selector - RBAC controlled */}
+        {showSelector && branches.length > 0 && (
           <BranchSelector
             branches={branches}
             selectedBranch={selectedBranch}
             onBranchChange={setSelectedBranch}
-            showAllOption={true}
+            showAllOption={showAllOption}
           />
         )}
-
-        {/* Role Badge - visible in header */}
-        <Badge variant="secondary" className="capitalize text-xs hidden md:flex">
-          {primaryRoleString}
-        </Badge>
 
         {/* Theme Toggle */}
         <Button

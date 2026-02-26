@@ -11,9 +11,7 @@ import { toast } from 'sonner';
 import { useBranches } from '@/hooks/useBranches';
 import { UserPlus, Link, Info } from 'lucide-react';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
-
-const DEPARTMENTS = ['Management', 'Fitness', 'Sales', 'Operations', 'Maintenance'];
-const POSITIONS = ['Gym Manager', 'Personal Trainer', 'Receptionist', 'Sales Rep', 'Cleaner'];
+import { DEPARTMENTS, POSITIONS, SALARY_TYPES } from '@/constants/employeeConstants';
 
 interface AddEmployeeDrawerProps {
   open: boolean;
@@ -36,10 +34,13 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
     hire_date: new Date().toISOString().split('T')[0],
     salary: '',
     salary_type: 'monthly',
+    bank_name: '',
+    bank_account: '',
+    tax_id: '',
     role: 'staff' as 'staff' | 'manager',
   });
 
-  // Form data for creating new user (no password - edge function handles it)
+  // Form data for creating new user
   const [newUserFormData, setNewUserFormData] = useState({
     email: '',
     full_name: '',
@@ -50,6 +51,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
     hire_date: new Date().toISOString().split('T')[0],
     salary: '',
     salary_type: 'monthly',
+    bank_name: '',
+    bank_account: '',
+    tax_id: '',
     role: 'staff' as 'staff' | 'manager',
   });
 
@@ -109,6 +113,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
         hire_date: linkFormData.hire_date,
         salary: linkFormData.salary ? Number(linkFormData.salary) : null,
         salary_type: linkFormData.salary_type,
+        bank_name: linkFormData.bank_name || null,
+        bank_account: linkFormData.bank_account || null,
+        tax_id: linkFormData.tax_id || null,
         is_active: true,
       });
 
@@ -165,6 +172,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
           salary: newUserFormData.salary ? Number(newUserFormData.salary) : undefined,
           salaryType: newUserFormData.salary_type,
           hireDate: newUserFormData.hire_date,
+          bankName: newUserFormData.bank_name || undefined,
+          bankAccount: newUserFormData.bank_account || undefined,
+          taxId: newUserFormData.tax_id || undefined,
         },
       });
 
@@ -193,6 +203,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
       hire_date: new Date().toISOString().split('T')[0],
       salary: '',
       salary_type: 'monthly',
+      bank_name: '',
+      bank_account: '',
+      tax_id: '',
       role: 'staff',
     });
     setNewUserFormData({
@@ -205,9 +218,126 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
       hire_date: new Date().toISOString().split('T')[0],
       salary: '',
       salary_type: 'monthly',
+      bank_name: '',
+      bank_account: '',
+      tax_id: '',
       role: 'staff',
     });
   };
+
+  const renderEmploymentFields = (
+    formData: any,
+    setFormData: (data: any) => void
+  ) => (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Department</Label>
+          <Select
+            value={formData.department || 'none'}
+            onValueChange={(value) => setFormData({ ...formData, department: value === 'none' ? '' : value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {DEPARTMENTS.map((dept) => (
+                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Position</Label>
+          <Select
+            value={formData.position || 'none'}
+            onValueChange={(value) => setFormData({ ...formData, position: value === 'none' ? '' : value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select position" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              {POSITIONS.map((pos) => (
+                <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Hire Date</Label>
+          <Input
+            type="date"
+            value={formData.hire_date}
+            onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Salary Type</Label>
+          <Select
+            value={formData.salary_type}
+            onValueChange={(value) => setFormData({ ...formData, salary_type: value })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SALARY_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Salary (₹)</Label>
+        <Input
+          type="number"
+          value={formData.salary}
+          onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+          placeholder="Salary amount"
+        />
+      </div>
+
+      {/* Bank Details */}
+      <div className="space-y-4 p-4 border rounded-lg">
+        <h4 className="font-medium text-sm">Bank Details</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Bank Name</Label>
+            <Input
+              value={formData.bank_name}
+              onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+              placeholder="e.g., HDFC Bank"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Account Number</Label>
+            <Input
+              value={formData.bank_account}
+              onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
+              placeholder="Account number"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tax ID */}
+      <div className="space-y-2">
+        <Label>PAN / Tax ID</Label>
+        <Input
+          value={formData.tax_id}
+          onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+          placeholder="PAN number"
+        />
+      </div>
+    </>
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -317,62 +447,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select
-                    value={newUserFormData.department || 'none'}
-                    onValueChange={(value) => setNewUserFormData({ ...newUserFormData, department: value === 'none' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {DEPARTMENTS.map((dept) => (
-                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Position</Label>
-                  <Select
-                    value={newUserFormData.position || 'none'}
-                    onValueChange={(value) => setNewUserFormData({ ...newUserFormData, position: value === 'none' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select position" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {POSITIONS.map((pos) => (
-                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Hire Date</Label>
-                  <Input
-                    type="date"
-                    value={newUserFormData.hire_date}
-                    onChange={(e) => setNewUserFormData({ ...newUserFormData, hire_date: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Salary (₹)</Label>
-                  <Input
-                    type="number"
-                    value={newUserFormData.salary}
-                    onChange={(e) => setNewUserFormData({ ...newUserFormData, salary: e.target.value })}
-                    placeholder="Monthly salary"
-                  />
-                </div>
-              </div>
+              {renderEmploymentFields(newUserFormData, setNewUserFormData)}
 
               <SheetFooter className="pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -454,62 +529,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select
-                    value={linkFormData.department || 'none'}
-                    onValueChange={(value) => setLinkFormData({ ...linkFormData, department: value === 'none' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {DEPARTMENTS.map((dept) => (
-                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Position</Label>
-                  <Select
-                    value={linkFormData.position || 'none'}
-                    onValueChange={(value) => setLinkFormData({ ...linkFormData, position: value === 'none' ? '' : value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select position" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {POSITIONS.map((pos) => (
-                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Hire Date</Label>
-                  <Input
-                    type="date"
-                    value={linkFormData.hire_date}
-                    onChange={(e) => setLinkFormData({ ...linkFormData, hire_date: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Salary (₹)</Label>
-                  <Input
-                    type="number"
-                    value={linkFormData.salary}
-                    onChange={(e) => setLinkFormData({ ...linkFormData, salary: e.target.value })}
-                    placeholder="Monthly salary"
-                  />
-                </div>
-              </div>
+              {renderEmploymentFields(linkFormData, setLinkFormData)}
 
               <SheetFooter className="pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
