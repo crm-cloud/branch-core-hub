@@ -7,10 +7,11 @@ import { GymLoader } from '@/components/ui/gym-loader';
 /**
  * Gatekeeper: central post-login router.
  * Checks roles + branch assignment before allowing dashboard access.
+ * Priority: owner/admin > manager > staff > trainer > member
  */
 export default function Gatekeeper() {
   const { user, roles, isLoading: authLoading, mustSetPassword } = useAuth();
-  const { branches, isLoading: branchLoading, setSelectedBranch } = useBranchContext();
+  const { branches, isLoading: branchLoading, branchReady, setSelectedBranch } = useBranchContext();
 
   const isLoading = authLoading || branchLoading;
 
@@ -24,6 +25,8 @@ export default function Gatekeeper() {
 
   const destination = useMemo(() => {
     if (isLoading || !user) return null;
+    // Wait for branch context to be ready before evaluating
+    if (!branchReady) return null;
 
     // Must set password first
     if (mustSetPassword) return '/auth/set-password';
@@ -33,37 +36,39 @@ export default function Gatekeeper() {
 
     const isOwnerOrAdmin = roles.some(r => ['owner', 'admin'].includes(r.role));
     const isManager = roles.some(r => r.role === 'manager');
-    const isMember = roles.some(r => r.role === 'member');
-    const isTrainer = roles.some(r => r.role === 'trainer') && !isOwnerOrAdmin && !isManager;
-    const isStaff = roles.some(r => r.role === 'staff') && !isOwnerOrAdmin && !isManager;
 
-    // Member → member dashboard
-    if (isMember) return '/member-dashboard';
+    // 1. Owner/Admin → dashboard directly (highest priority)
+    if (isOwnerOrAdmin) return '/dashboard';
 
-    // Trainer → trainer dashboard
-    if (isTrainer) return '/trainer-dashboard';
-
-    // Staff → staff dashboard
-    if (isStaff) {
-      // Staff must have a branch assigned
-      if (branches.length === 0 && !branchLoading) return '/pending-approval';
-      return '/staff-dashboard';
-    }
-
-    // Manager with multiple branches → branch splash (mandatory)
-    if (isManager && !isOwnerOrAdmin) {
-      if (branches.length === 0 && !branchLoading) return '/pending-approval';
+    // 2. Manager (non-admin) → branch splash if multiple
+    if (isManager) {
+      if (branches.length === 0) return '/pending-approval';
       const savedBranch = sessionStorage.getItem('current_branch_id');
       if (branches.length > 1 && !savedBranch) return '/select-branch';
       return '/dashboard';
     }
 
-    // Owner/Admin → dashboard directly
-    if (isOwnerOrAdmin) return '/dashboard';
+    // 3. Staff → staff dashboard
+    const isStaff = roles.some(r => r.role === 'staff');
+    if (isStaff) {
+      if (branches.length === 0) return '/pending-approval';
+      return '/staff-dashboard';
+    }
+
+    // 4. Trainer → trainer dashboard
+    const isTrainer = roles.some(r => r.role === 'trainer');
+    if (isTrainer) {
+      if (branches.length === 0) return '/pending-approval';
+      return '/trainer-dashboard';
+    }
+
+    // 5. Member → member dashboard (lowest priority)
+    const isMember = roles.some(r => r.role === 'member');
+    if (isMember) return '/member-dashboard';
 
     // Fallback
     return '/pending-approval';
-  }, [isLoading, user, roles, branches, branchLoading, mustSetPassword]);
+  }, [isLoading, user, roles, branches, branchReady, mustSetPassword]);
 
   if (isLoading || !destination) {
     return (

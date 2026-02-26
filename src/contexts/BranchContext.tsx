@@ -11,11 +11,8 @@ interface BranchContextType {
   branchFilter: string | undefined;
   branches: Array<{ id: string; name: string; code: string; [key: string]: any }>;
   isLoading: boolean;
-  /** Whether the branch selector should be visible */
   showSelector: boolean;
-  /** Whether the "All Branches" option should be available */
   showAllOption: boolean;
-  /** Whether branch context is fully initialized and ready */
   branchReady: boolean;
 }
 
@@ -23,16 +20,15 @@ const BranchContext = createContext<BranchContextType | undefined>(undefined);
 
 export function BranchProvider({ children }: { children: ReactNode }) {
   const { data: allBranches = [], isLoading: branchesLoading } = useBranches();
-  const { user, roles, hasAnyRole } = useAuth();
+  const { user, roles, hasAnyRole, isLoading: authLoading } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [initialized, setInitialized] = useState(false);
 
   const isOwnerOrAdmin = hasAnyRole(['owner', 'admin']);
   const isManager = hasAnyRole(['manager']);
-  const isStaffOrTrainerOrMember = hasAnyRole(['staff', 'trainer', 'member']);
 
-  // For managers: fetch their assigned branches from staff_branches
-  const { data: managerBranches = [] } = useQuery({
+  // For managers: fetch their assigned branches
+  const { data: managerBranches = [], isLoading: managerBranchesLoading } = useQuery({
     queryKey: ['manager-branches', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -41,15 +37,13 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         .select('branch_id, branches(id, name, code)')
         .eq('user_id', user.id);
       if (error) throw error;
-      return (data || [])
-        .map((sb: any) => sb.branches)
-        .filter(Boolean);
+      return (data || []).map((sb: any) => sb.branches).filter(Boolean);
     },
     enabled: !!user?.id && isManager && !isOwnerOrAdmin,
   });
 
-  // For staff/trainer: fetch their branch from employees/trainers
-  const { data: staffBranch } = useQuery({
+  // For staff/trainer: fetch their branch
+  const { data: staffBranch, isLoading: staffBranchLoading } = useQuery({
     queryKey: ['staff-home-branch', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -67,11 +61,11 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       if (trainer?.branches) return trainer.branches as any;
       return null;
     },
-    enabled: !!user?.id && (hasAnyRole(['staff', 'trainer'])) && !isOwnerOrAdmin && !isManager,
+    enabled: !!user?.id && hasAnyRole(['staff', 'trainer']) && !isOwnerOrAdmin && !isManager,
   });
 
   // For members: fetch their branch
-  const { data: memberBranch } = useQuery({
+  const { data: memberBranch, isLoading: memberBranchLoading } = useQuery({
     queryKey: ['member-home-branch', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -85,13 +79,23 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     enabled: !!user?.id && hasAnyRole(['member']) && !isOwnerOrAdmin && !isManager && !hasAnyRole(['staff', 'trainer']),
   });
 
-  // Determine the effective branch list based on role
+  // Composite loading: include role-specific query loading
+  const isLoading = useMemo(() => {
+    if (authLoading) return true;
+    if (branchesLoading) return true;
+    // Only wait for role-specific queries if the user actually has that role
+    if (isManager && !isOwnerOrAdmin && managerBranchesLoading) return true;
+    if (hasAnyRole(['staff', 'trainer']) && !isOwnerOrAdmin && !isManager && staffBranchLoading) return true;
+    if (hasAnyRole(['member']) && !isOwnerOrAdmin && !isManager && !hasAnyRole(['staff', 'trainer']) && memberBranchLoading) return true;
+    return false;
+  }, [authLoading, branchesLoading, isOwnerOrAdmin, isManager, managerBranchesLoading, staffBranchLoading, memberBranchLoading, hasAnyRole]);
+
   const branches = useMemo(() => {
     if (isOwnerOrAdmin) return allBranches;
     if (isManager && !isOwnerOrAdmin) return managerBranches;
     if (staffBranch) return [staffBranch];
     if (memberBranch) return [memberBranch];
-    return allBranches; // fallback
+    return allBranches;
   }, [isOwnerOrAdmin, isManager, allBranches, managerBranches, staffBranch, memberBranch]);
 
   const showSelector = useMemo(() => {
@@ -104,10 +108,9 @@ export function BranchProvider({ children }: { children: ReactNode }) {
 
   // Auto-initialize branch selection for restricted roles
   useEffect(() => {
-    if (initialized) return;
+    if (initialized || isLoading) return;
 
     if (isOwnerOrAdmin) {
-      // Restore saved branch for admin/owner too
       const saved = sessionStorage.getItem('current_branch_id');
       if (saved && allBranches.some(b => b.id === saved)) {
         setSelectedBranch(saved);
@@ -124,27 +127,30 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         setSelectedBranch(managerBranches[0].id);
       }
       setInitialized(true);
+      return;
     }
 
     if (staffBranch) {
       setSelectedBranch(staffBranch.id);
       setInitialized(true);
+      return;
     }
 
     if (memberBranch) {
       setSelectedBranch(memberBranch.id);
       setInitialized(true);
+      return;
     }
-  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, initialized, allBranches]);
 
-  const isLoading = branchesLoading;
+    // If no role-specific branch found and not loading, mark initialized anyway
+    if (roles.length > 0) {
+      setInitialized(true);
+    }
+  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, initialized, allBranches, isLoading, roles]);
 
-  // effectiveBranchId: never 'all' for non-admin roles
   const effectiveBranchId = useMemo(() => {
     if (selectedBranch !== 'all') return selectedBranch;
-    // For owner/admin, fall back to first branch if available
     if (isOwnerOrAdmin && branches.length > 0) return branches[0].id;
-    // For other roles, this shouldn't happen but guard anyway
     if (branches.length > 0) return branches[0].id;
     return undefined;
   }, [selectedBranch, branches, isOwnerOrAdmin]);
@@ -153,9 +159,8 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return selectedBranch !== 'all' ? selectedBranch : undefined;
   }, [selectedBranch]);
 
-  const branchReady = initialized && !branchesLoading;
+  const branchReady = initialized && !isLoading;
 
-  // Persist branch selection
   const handleSetBranch = (id: string) => {
     setSelectedBranch(id);
     if (id !== 'all') {
