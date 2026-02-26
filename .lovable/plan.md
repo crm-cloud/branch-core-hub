@@ -1,95 +1,86 @@
 
 
-# Global Branch Context, Search & Branding Architecture Update
+# Deep Audit: Remove All Duplicate Branch Selectors + Fix Build Errors
 
-## Current State Analysis
+## Audit Results
 
-The `BranchContext` already exists and is used by **only 4 pages** (Dashboard, Members, Plans, MemberVoiceWidget). **~18 other pages** create their own local `useBranches()` + `useState('selectedBranch')` pattern, completely ignoring the global context. This means navigating from Dashboard (Branch A selected) to Lockers resets to a different branch -- exactly the bug described.
+Here is every file that has a **duplicate/local** branch selector that conflicts with the global AppHeader selector:
 
-The `GlobalSearch` component already has Cmd+K support and search logic. It uses a `Popover`, not a `Dialog/CommandDialog`, which may cause UX issues (popover positioning vs centered modal).
+| File | Problem | Fix |
+|------|---------|-----|
+| `src/pages/Members.tsx` | Imports `BranchSelector` + `useBranches`, renders per-page selector (line 253) while also using `useBranchContext` | Remove `BranchSelector` import, remove `useBranches` import, remove the `<BranchSelector>` JSX block (lines 253-258) |
+| `src/pages/Dashboard.tsx` | Imports `BranchSelector`, renders per-page selector (line 274-279) while also using `useBranchContext` | Remove `BranchSelector` import, remove the `<BranchSelector>` JSX block |
+| `src/pages/Finance.tsx` | Local `useState('all')` + inline `<Select>` branch dropdown (lines 24, 33-39, 306-316). Does NOT use `useBranchContext` at all | Replace with `useBranchContext()`, remove local state + inline branch query + inline `<Select>` UI |
+| `src/pages/Integrations.tsx` | Local `useState('all')` + `useBranches()` + `<BranchSelector>` (lines 54, 62, 103-108) | Replace with `useBranchContext()`, remove all local branch logic + selector UI |
+| `src/pages/PTSessions.tsx` | Local `useState("")` + `useBranches()` (lines 33-34). **Also has build error: `useTrainers` and `useDeactivateTrainer` not found** | Replace with `useBranchContext()`, fix missing imports |
+| `src/pages/DeviceManagement.tsx` | Uses `useBranchContext` correctly but **has build error: `queryClient` used without declaration** | Add `const queryClient = useQueryClient()` |
+| `src/pages/Trainers.tsx` | Uses `useBranchContext` correctly but **has build error: `useTrainers` and `useDeactivateTrainer` not imported** | Add missing imports from `@/hooks/useTrainers` |
+| `src/components/settings/IntegrationSettings.tsx` | Local `useState('all')` + `useBranches()` + `<BranchSelector>` (lines 57, 65, 108-113) | Replace with `useBranchContext()`, remove local branch logic + selector UI |
+| `src/components/settings/ReferralSettings.tsx` | Local `useState('')` + inline branch query + inline `<Select>` (lines 16, 28-35, 122-133) | Replace with `useBranchContext()`, remove local branch logic + selector UI |
 
-The sidebar logo is hardcoded as `<span className="text-sidebar-primary">Incline</span>` in `AppSidebar.tsx` (line 22) and `AppLayout.tsx` mobile header (line 32).
+### Files that correctly use `useBranches()` and should NOT be changed:
+- `src/contexts/BranchContext.tsx` -- the source of truth
+- `src/components/settings/BranchSettings.tsx` -- manages branches themselves
+- `src/components/employees/AddEmployeeDrawer.tsx` -- needs branch list for assignment dropdown (not filtering)
+- `src/components/settings/UserSettings.tsx` / `AdminUsers.tsx` -- needs branch list for user creation form (not filtering)
 
----
+## Execution Plan
 
-## Task 1: Move Branch Selector to Global Header
+### Fix 1: Build Errors (Critical)
 
-**File: `src/components/layout/AppHeader.tsx`**
+**`src/pages/DeviceManagement.tsx`** -- Add `useQueryClient` import and declaration:
+```typescript
+const queryClient = useQueryClient();
+```
 
-- Import `useBranchContext` and `BranchSelector`
-- Add `BranchSelector` to the header, placed between the search bar and the role badge
-- Only show for admin/owner/manager roles (check via `useAuth().roles`)
-- When a specific branch is selected (not "all"), make the selector text bold via a className override
-- Remove the `useBranches()` import from `BranchContext` since it already provides `branches`
+**`src/pages/Trainers.tsx`** -- Add missing hook imports:
+```typescript
+import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
+```
 
-**Files to migrate from local state to `useBranchContext()`** (remove local `useBranches()` + `useState` and replace with context):
+### Fix 2: Remove Duplicate Selectors from Pages Using Context
 
-| Page | Current Pattern | Change |
-|------|----------------|--------|
-| `Invoices.tsx` | Local `useBranches()` + `selectedBranch` state | Use `useBranchContext()`, remove local `BranchSelector` |
-| `Payments.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Attendance.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Trainers.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Classes.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `PTSessions.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Lockers.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Equipment.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `EquipmentMaintenance.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `AllBookings.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `StaffAttendance.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `AttendanceDashboard.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Feedback.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `Announcements.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `ApprovalQueue.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
-| `WhatsAppChat.tsx` | Local `useBranches()` (no selector) | Use context for default branch |
-| `DeviceManagement.tsx` | Local `useBranches()` + `selectedBranch` state | Same |
+**`src/pages/Members.tsx`:**
+- Remove `import { BranchSelector }` (line 7)
+- Remove `import { useBranches }` (line 22)
+- Remove `<BranchSelector ... />` JSX block (lines 253-258)
 
-For each page:
-- Replace `const { data: branches } = useBranches()` and `const [selectedBranch, setSelectedBranch] = useState(...)` with `const { selectedBranch, effectiveBranchId, branchFilter, branches } = useBranchContext()`
-- Remove the per-page `<BranchSelector>` or `<Select>` component from the page header
-- Update query keys and filter logic to use `branchFilter` (undefined = all) and `effectiveBranchId` (for creates)
+**`src/pages/Dashboard.tsx`:**
+- Remove `import { BranchSelector }` (line 5)
+- Remove `<BranchSelector ... />` JSX block (lines 274-279)
 
-**Pages that should NOT be affected** (global settings): Settings, AdminUsers, AdminRoles, Branches page itself.
+### Fix 3: Migrate Remaining Pages to Global Context
 
----
+**`src/pages/Finance.tsx`:**
+- Replace local `useState('all')` + inline branches query with `useBranchContext()`
+- Remove the inline `<Select>` dropdown (lines 306-316)
+- Replace all `selectedBranch` references with context values
+- Use `effectiveBranchId` for `AddExpenseDrawer` branchId prop
 
-## Task 2: Upgrade Cmd+K Search to Dialog Modal
+**`src/pages/Integrations.tsx`:**
+- Replace `useBranches()` + `useState('all')` with `useBranchContext()`
+- Remove `<BranchSelector>` from JSX
+- Remove `BranchSelector` and `useBranches` imports
 
-**File: `src/components/search/GlobalSearch.tsx`**
+**`src/pages/PTSessions.tsx`:**
+- Replace `useBranches()` + `useState("")` with `useBranchContext()`
+- Use `effectiveBranchId` as `branchId`
+- Add missing hook imports if any
 
-- Replace the `Popover` wrapper with `CommandDialog` (from cmdk) for a proper centered modal experience
-- The keyboard shortcut already exists (lines 47-57) and works -- the issue is likely the Popover not gaining focus properly
-- Add "Quick Actions" group: "Go to Members", "Go to Settings", "Add New Member" etc. as static items shown when query is empty
-- Add "Pages" search: match page names from the menu config against the query
+**`src/components/settings/IntegrationSettings.tsx`:**
+- Replace `useBranches()` + `useState('all')` with `useBranchContext()`
+- Remove `<BranchSelector>` from JSX
 
-Changes:
-- Replace `Popover/PopoverTrigger/PopoverContent` with a trigger button + `CommandDialog`
-- Keep the existing search logic intact
-- Add a `pages` group that filters `adminMenuConfig` items by query match
-- Add quick actions group with common operations
+**`src/components/settings/ReferralSettings.tsx`:**
+- Replace inline branches query + `useState('')` with `useBranchContext()`
+- Remove the inline branch `<Select>` UI
+- Use `effectiveBranchId` for the branch-specific settings query
 
----
+## Summary
 
-## Task 3: Sidebar Logo from Organization Settings
-
-**File: `src/components/layout/AppSidebar.tsx`**
-
-- Add a `useQuery` to fetch `organization_settings` for the `logo_url` and `name` fields
-- Replace hardcoded "Incline" text (line 21-23) with:
-  - If `logo_url` exists: `<img src={logo_url} alt={orgName} className="max-h-8 object-contain" />`
-  - Fallback: `<span className="text-sidebar-primary">{orgName || 'Incline'}</span>`
-- Apply same logic to `MobileNav` (line 89-93) and `AppLayout.tsx` mobile header (line 31-33)
-
----
-
-## Execution Summary
-
-| Priority | File(s) | Change |
-|----------|---------|--------|
-| 1 | `AppHeader.tsx` | Add global `BranchSelector` from context |
-| 2 | 17 page files | Migrate from local branch state to `useBranchContext()`, remove per-page selectors |
-| 3 | `GlobalSearch.tsx` | Switch from Popover to CommandDialog, add pages/quick-actions |
-| 4 | `AppSidebar.tsx`, `AppLayout.tsx` | Dynamic logo from organization_settings |
-
-No database changes required -- all tables and context already exist.
+- **2 build errors** fixed (DeviceManagement missing `queryClient`, Trainers missing imports)
+- **2 pages** with duplicate selectors cleaned (Members, Dashboard -- already on context but render extra selector)
+- **5 files** migrated from local branch state to global context (Finance, Integrations, PTSessions, IntegrationSettings, ReferralSettings)
+- **0 new components** needed
+- Total: **9 files** modified
 
