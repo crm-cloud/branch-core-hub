@@ -43,7 +43,13 @@ export function AppSidebar() {
   const { signOut, roles } = useAuth();
   const location = useLocation();
 
-  const menuSections = getMenuForRole(roles);
+  const userRoleSet = new Set(roles.map(r => r.role));
+  const menuSections = getMenuForRole(roles)
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => item.roles.some(r => userRoleSet.has(r))),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border">
@@ -105,7 +111,13 @@ export function MobileNav() {
   const { signOut, roles } = useAuth();
   const location = useLocation();
 
-  const menuSections = getMenuForRole(roles);
+  const userRoleSet = new Set(roles.map(r => r.role));
+  const menuSections = getMenuForRole(roles)
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => item.roles.some(r => userRoleSet.has(r))),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
