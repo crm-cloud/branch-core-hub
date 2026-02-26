@@ -255,11 +255,11 @@ export function useTrainerData() {
     queryKey: ['my-general-clients', trainer?.id],
     enabled: !!trainer,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const query = supabase
         .from('members')
         .select('id, member_code, user_id, is_active, fitness_goals')
-        .eq('assigned_trainer_id', trainer!.id)
-        .eq('is_active', true) as { data: any[] | null; error: any };
+        .eq('assigned_trainer_id', trainer!.id);
+      const { data, error } = await (query as any).eq('is_active', true);
 
       if (error) throw error;
 
