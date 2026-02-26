@@ -1,111 +1,59 @@
 
 
-# Audit & Fix Plan: Device Sync, Avatar Upload, View-As Removal, Branch Manager, Demo Data, Build Errors
+# Audit & Fix Plan: Branch Manager, Search UI, Demo Data, Stale Data, Branch Selector
 
-## Critical Issues Found
+## Issues Found
 
-### Build Errors (Must Fix First)
-1. **`reset-all-data/index.ts` line 154**: `error` is `unknown` type -- needs `(error as Error).message`
-2. **HMR failures**: Console logs show Gatekeeper.tsx, PendingApproval.tsx, SelectBranch.tsx fail to reload -- these files do NOT exist in the codebase. These are phantom HMR references, likely from stale Vite module graph. No actual imports reference them -- safe to ignore (they don't break the build).
-3. **error_logs RLS 401**: The ErrorBoundary fires on the `/auth` page crash ("useAuth must be used within AuthProvider"). Since the user is unauthenticated at that point, the `TO authenticated` RLS policy blocks the insert. The ErrorBoundary should gracefully handle this (it already does with try/catch, so this is expected silent failure -- not a blocker).
-4. **Auth page crash**: `useAuth` is called inside `AuthPage` component which IS inside `<AuthProvider>` in App.tsx (line 118-125). The real crash is that Auth page renders before AuthProvider finishes initializing. This needs investigation but is likely a race condition in `AuthContext`.
-
----
-
-## 1. Fix Build Error in `reset-all-data/index.ts`
-
-**File:** `supabase/functions/reset-all-data/index.ts` line 154
-**Fix:** Change `error.message` to `(error as Error).message`
-
----
-
-## 2. Device Management -- Align with Hardware API
-
-**Current state:** Device Management page, `deviceService.ts`, Add/Edit drawers are all functional and aligned with the `device-access-event`, `device-sync-data`, `device-heartbeat`, and `device-trigger-relay` edge functions. The service correctly handles CRUD, relay triggers, and Realtime command subscriptions.
-
-**Issues found:**
-- The "Add Device" form works but lacks a "Test Connection" button to verify the device is reachable
-- No visual indication of the sync API endpoint URL that the Android app needs to call
-- Missing: a small info card showing the API endpoints for device provisioning
-
-**Fix:** Add an "API Info" collapsible card on DeviceManagement page showing the edge function URLs for device setup (heartbeat, sync, access-event endpoints) so admins can copy them when configuring Android hardware.
-
----
-
-## 3. Admin Avatar Upload -- Fix Profile Page
-
-**Current state:** The Profile page (`/profile`) displays the avatar but has NO upload button. The `AvatarUpload` component exists but is not used on the Profile page. The `avatars` storage bucket exists and is public.
-
-**Fix:** Import and use `AvatarUpload` component (or add inline upload logic) on the Profile page, replacing the read-only Avatar display. This gives admin/staff/trainer/manager users the ability to upload their profile photo.
-
-**File:** `src/pages/Profile.tsx` -- replace the static Avatar with the `AvatarUpload` component.
-
----
-
-## 4. Staff/Trainer Avatar Sync to Biometric Queue
-
-**Current state:** `StaffAvatarUpload` component already calls `queueStaffSync()` from `biometricService.ts` after upload. `MemberAvatarUpload` calls `queueMemberSync()`. Both are already wired correctly.
-
-**Issue:** When staff/trainers upload avatars through the Employee drawer or Trainer drawer, it uses `StaffAvatarUpload` which handles sync. But on the **Profile page**, there is no avatar upload at all (see #3 above). When we add avatar upload to Profile page, we need to also trigger `queueStaffSync` for staff/trainer roles after upload.
-
-**Fix:** On the Profile page, after avatar upload succeeds, check user role and call the appropriate biometric sync function.
-
----
-
-## 5. Remove "View As" Feature Completely
-
-**Current state:** ViewAsContext, ViewAs dropdown in AppHeader, sidebar role switching, banner -- all implemented.
-
-**Fix:** Remove all View As references:
-- **`src/contexts/ViewAsContext.tsx`**: Delete the file
-- **`src/App.tsx`**: Remove ViewAsProvider import and wrapper
-- **`src/components/layout/AppHeader.tsx`**: Remove viewAs imports, state, banner, dropdown sub-menu
-- **`src/components/layout/AppSidebar.tsx`**: Remove viewAs imports and `effectiveRoles` logic, just use `roles` directly
-- **`src/components/auth/DashboardRedirect.tsx`**: No changes needed (doesn't use ViewAs currently)
-
----
-
-## 6. Branch Manager Assignment Audit
-
-**Current state audit results -- the flow is CORRECT:**
-
-1. **AddBranchDialog**: Creates branch, inserts into `branch_managers` and `staff_branches` if manager selected ✓
-2. **EditBranchDrawer**: Fetches current manager, shows potential managers (owner/admin/manager roles), updates `branch_managers` on save ✓
-3. **AddEmployeeDrawer**: When role is `manager`, inserts into `branch_managers` ✓
-4. **BranchContext**: Fetches manager's assigned branches from `staff_branches` ✓
-5. **Branches page & BranchSettings**: Both fetch and display primary managers ✓
-
-**One minor issue found:** `staff_branches` table has `isOneToOne: true` constraint on `user_id`, meaning a manager can only be assigned to ONE branch via `staff_branches`. This conflicts with the multi-branch manager requirement.
-
-**Fix needed:** The `staff_branches` unique constraint on `user_id` needs to be dropped to allow managers to have multiple branch assignments. This requires a database migration to alter the constraint to be a composite unique on `(user_id, branch_id)` instead of just `user_id`.
-
-Additionally, the `AddEmployeeDrawer` only inserts one `staff_branches` row. For managers needing multiple branches, the `EditBranchDrawer` already handles adding the manager to the specific branch. The flow works but the DB constraint blocks multi-branch.
-
----
-
-## 7. Demo Data Settings -- Make Selectable Categories
-
-**Current state:** `DemoDataSettings.tsx` has a single "Load Demo Data" button that calls `seed-test-data` edge function, which creates ALL categories at once. No granular control.
+### 1. Branch Manager Assignment Bug (EditBranchDrawer)
+**Problem:** When `formData.managerId` is empty (selecting "No manager assigned" → maps to `""`), the `if (formData.managerId)` check on line 116 is falsy, so the manager update is skipped entirely. You cannot unassign a manager, and the "No manager assigned" text persists even after assigning one until page refresh. Also, the drawer doesn't invalidate `branch-manager` query key, so the current manager display is stale.
 
 **Fix:**
-- Add checkboxes next to each `dataCategories` item so admin can select which categories to import
-- Pass the selected categories as a `categories` array in the request body to `seed-test-data`
-- Update `seed-test-data` edge function to accept an optional `categories` filter and only seed selected data types
-- Improve the UI with better card layout per category showing what will be created
+- Track whether manager selection changed with a separate flag
+- When manager is intentionally cleared, delete existing `branch_managers` row
+- Invalidate `['branch-manager', branch.id]` and `['potential-managers']` query keys after save
 
-**Files:**
-- `src/components/settings/DemoDataSettings.tsx` -- add checkbox UI
-- `supabase/functions/seed-test-data/index.ts` -- accept `categories` filter param
+### 2. Stale Data After Mutations (System-Wide)
+**Problem:** After creating/editing entities (employees, branch managers, etc.), the UI doesn't reflect changes without manual refresh. Root cause: mutations only invalidate their own narrow query key but not related ones (e.g., creating an employee with manager role doesn't invalidate `branches`, `branch-manager`, or `potential-managers`).
 
----
+**Fix in EditBranchDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branch-manager'] })` after save.
+**Fix in AddEmployeeDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branches'] })` and `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after employee creation.
+**Fix in AddBranchDialog:** Add `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after branch creation.
 
-## 8. Error Boundary RLS Fix
+### 3. Reset Data Uses AlertDialog Instead of Side Drawer
+**Problem:** The "Reset All Data" confirmation uses a center `AlertDialog`. Per project rules, center dialogs are only for simple destructive warnings — this IS a destructive confirmation, so it's actually correct per the design spec. However, user wants it changed.
 
-The error_logs insert fails for unauthenticated users (401). The current ErrorBoundary already wraps the insert in try/catch so it fails silently. However, we should also allow anonymous inserts for errors that happen before login.
+**Fix:** Replace the `AlertDialog` with a `Sheet` (right-side drawer) for the reset confirmation flow.
 
-**Fix:** Add an RLS policy allowing anonymous inserts to `error_logs` (the table has no sensitive data flowing IN, only error messages). Or better: make the ErrorBoundary skip the DB insert when there's no auth session.
+### 4. Remove Demo Data Feature Entirely
+**Problem:** User wants to remove the demo data edge function and UI. Replace with pre-built plan/benefit templates.
 
-**Recommendation:** Skip DB insert when no auth session exists (simpler, no RLS change needed). The ErrorBoundary already catches the failure -- just add a pre-check.
+**Fix:**
+- Remove `DemoDataSettings` component from Settings page
+- Remove "Demo Data" from `SETTINGS_MENU`
+- Delete `seed-test-data` and `reset-all-data` edge functions
+- Add a "Templates" section in Settings for pre-built plan and benefit templates (read-only starter data that admins can import selectively)
+
+### 5. Cmd+K Search Not Aligned with Vuexy Design
+**Problem:** Current search opens as a standard `CommandDialog` (Dialog-based) without the Vuexy-style two-column layout with categorized sections (Popular Searches, Apps & Pages, User Interface, Forms & Charts).
+
+**Fix:** Redesign the `GlobalSearch` component to match the Vuexy reference:
+- Show a two-column grid layout when no search query is typed
+- Left column: "Popular Searches" (Dashboard, Analytics, Members, etc.)
+- Right column: "Apps & Pages" (Calendar, Invoice List, Settings, etc.)
+- Keep the existing search results behavior when user types
+- Add `[esc]` keyboard hint next to close button
+- Increase dialog width to accommodate two columns
+
+### 6. Branch Selector Not Working on Some Pages
+**Problem:** The `branchFilter` from `BranchContext` is used by most pages, but some pages don't react to branch changes because they use `effectiveBranchId` (which doesn't change when admin switches "All Branches") or they cache query results without including branch in the query key.
+
+Pages confirmed working: Dashboard, Members, Equipment, Invoices, Attendance, Lockers, etc.
+
+Pages to audit:
+- `Plans.tsx`: Uses `effectiveBranchId` but the `usePlans` hook may not filter by branch
+- `PTSessions.tsx`, `Trainers.tsx`: Use `effectiveBranchId` which returns undefined when "All Branches" selected
+
+**Fix:** Audit the `usePlans` hook and other affected pages to ensure they pass `branchFilter` to their queries and include it in query keys.
 
 ---
 
@@ -113,27 +61,26 @@ The error_logs insert fails for unauthenticated users (401). The current ErrorBo
 
 | Action | File | Description |
 |--------|------|-------------|
-| Edit | `supabase/functions/reset-all-data/index.ts` | Fix `error as Error` type cast |
-| Edit | `src/pages/Profile.tsx` | Add AvatarUpload component with biometric sync |
-| Delete | `src/contexts/ViewAsContext.tsx` | Remove View As feature |
-| Edit | `src/App.tsx` | Remove ViewAsProvider |
-| Edit | `src/components/layout/AppHeader.tsx` | Remove View As dropdown/banner |
-| Edit | `src/components/layout/AppSidebar.tsx` | Remove View As role switching |
-| Edit | `src/components/settings/DemoDataSettings.tsx` | Add selectable category checkboxes |
-| Edit | `supabase/functions/seed-test-data/index.ts` | Accept categories filter |
-| Edit | `src/pages/DeviceManagement.tsx` | Add API info card for device provisioning |
-| Edit | `src/components/common/ErrorBoundary.tsx` | Skip DB insert when no auth session |
-| Migration | SQL | Drop `staff_branches` unique constraint on `user_id`, add composite unique on `(user_id, branch_id)` |
+| Edit | `src/components/branches/EditBranchDrawer.tsx` | Fix manager assignment/unassignment + invalidate related queries |
+| Edit | `src/components/employees/AddEmployeeDrawer.tsx` | Invalidate branches/potential-managers after creation |
+| Edit | `src/components/branches/AddBranchDialog.tsx` | Invalidate potential-managers after creation |
+| Edit | `src/components/search/GlobalSearch.tsx` | Redesign to Vuexy two-column layout |
+| Edit | `src/components/ui/command.tsx` | Widen CommandDialog for two-column search |
+| Edit | `src/pages/Settings.tsx` | Remove Demo Data from settings menu |
+| Edit | `src/components/settings/DemoDataSettings.tsx` | Replace with Plan/Benefit template importer |
+| Delete | `supabase/functions/seed-test-data/index.ts` | Remove demo data edge function |
+| Delete | `supabase/functions/reset-all-data/index.ts` | Remove reset data edge function |
+| Edit | `src/hooks/usePlans.ts` | Add branch filtering support |
+| Edit | Pages using effectiveBranchId | Fix branch selector reactivity |
 
 ## Execution Order
 
 | Step | Priority | Description |
 |------|----------|-------------|
-| 1 | Critical | Fix build error in reset-all-data (blocks deployment) |
-| 2 | Critical | Remove View As feature completely |
-| 3 | High | Add avatar upload to Profile page with biometric sync |
-| 4 | High | Fix staff_branches constraint for multi-branch managers |
-| 5 | High | ErrorBoundary: skip DB insert when unauthenticated |
-| 6 | Medium | Make demo data selectable by category |
-| 7 | Medium | Add API info card to Device Management |
+| 1 | Critical | Fix branch manager assignment in EditBranchDrawer |
+| 2 | Critical | Fix stale data — add cross-query invalidation |
+| 3 | High | Remove demo data, replace with template importer |
+| 4 | High | Redesign Cmd+K search to Vuexy style |
+| 5 | High | Fix branch selector on Plans and other pages |
+| 6 | Medium | Replace reset AlertDialog with Sheet |
 
