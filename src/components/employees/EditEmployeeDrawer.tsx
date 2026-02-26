@@ -88,6 +88,8 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
       if (error) throw error;
       
       queryClient.invalidateQueries({ queryKey: ['hrm-employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['branch-managers'] });
       toast.success('Employee updated successfully');
       onOpenChange(false);
     } catch (error: any) {
