@@ -116,6 +116,7 @@ export default function TrainersPage() {
   };
 
   const totalActiveClients = Object.values(ptClientCounts).reduce((sum: number, count: number) => sum + count, 0);
+  const totalGeneralClients = Object.values(generalClientCounts).reduce((sum: number, count: number) => sum + count, 0);
   const activeTrainers = trainers?.filter(t => t.is_active).length || 0;
 
   return (
