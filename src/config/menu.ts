@@ -74,7 +74,7 @@ export const trainerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['trainer'] },
       { label: 'Schedule Session', href: '/schedule-session', icon: Calendar, roles: ['trainer'] },
       { label: 'My Classes', href: '/classes', icon: Calendar, roles: ['trainer'] },
-      { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['trainer'] },
+      { label: 'Plan Builder', href: '/trainer-plan-builder', icon: ClipboardList, roles: ['trainer'] },
     ],
   },
   {
