@@ -1,82 +1,103 @@
 
+## Goal
+Fix login crashes + enforce “Gatekeeper” branch/role setup before any dashboard; fix 400/406 errors; implement manager creation/assignment workflow and robust staff logins.
 
-# Fix Plan: Device Management, Avatar Upload, Staff Sync, and View As/User Creation
+## A) Backend (Lovable Cloud) migrations
+1. **Backfill missing profiles**
+   - Insert `profiles` rows for any `auth.users` referenced by `employees.user_id`, `trainers.user_id`, or `user_roles.user_id` where `profiles.id` is missing.
+2. **Add missing relationships to stop 400 joins**
+   - Add FK: `employees.user_id → profiles.id` (match `members` pattern).
+   - Add FK: `trainers.user_id → profiles.id`.
+3. **Harden profiles creation**
+   - Add RLS policy allowing authenticated users to **insert their own** `profiles` row (`id = auth.uid()`), to prevent 406 `.single()` failures in edge cases (safe guard).
+4. **(Optional but recommended) Fix “one global org settings”**
+   - Add a partial unique index to ensure only one row with `branch_id IS NULL` if you want a true global org config (otherwise keep as-is).
 
-## Issue Analysis
+## B) Auth “Gatekeeper” flow (no branch+role → no dashboard)
+1. **AuthContext hydration**
+   - Add explicit flags: `rolesLoaded`, `profileLoaded` and keep `isLoading=true` until both are fetched after any login/session change.
+   - Change `fetchProfile()` to `.maybeSingle()` (avoid 406), and if missing, attempt to create profile (insert) using the authenticated user’s email.
+2. **Prevent OTP from creating new users**
+   - Update email OTP sign-in to `shouldCreateUser: false`.
+   - Do the same for phone OTP if supported; otherwise disable phone OTP UI until configured.
+3. **New routes/pages**
+   - Create `PendingApprovalPage` (role missing / no branch assignment / incomplete onboarding).
+   - Create `BranchSelectionSplashPage` (manager with >1 assigned branch; mandatory selection every session).
+   - Create `GatekeeperPage` (the post-login router that:
+     - loads roles
+     - resolves branch assignment based on role
+     - forces branch splash for multi-branch managers
+     - stores `current_branch_id` (sessionStorage) and sets BranchContext
+     - routes to correct dashboard)
+4. **Wire routing**
+   - Change `/home` to render `GatekeeperPage` (instead of current `DashboardRedirect`).
+   - Ensure Auth page redirects authenticated users to `/home` only (never directly to `/dashboard`).
+5. **Fix hardcoded redirects**
+   - Update `OtpLoginForm` to navigate to `/home` (not `/dashboard`).
+   - Update `SetPasswordForm` to navigate to `/home` (not `/dashboard`).
 
-### 1. Device Management -- API Alignment Issues
-The Device Management page and edge functions are already well-aligned with the API spec. The `device-access-event` endpoint handles face recognition, Wiegand fallback, membership validation, and custom messages. The `device-sync-data` endpoint supports both incremental and full roster modes. The `device-trigger-relay` and `device_commands` Realtime approach for remote open are both implemented.
+## C) BranchContext “compression audit” (remove `branch_id=all` mistakes)
+1. **Stop using `'all'` as a real branch id**
+   - For non-owner/admin roles, never keep `selectedBranch='all'` once authenticated.
+   - Introduce `branchReady`/`initialized` output and make queries depend on `effectiveBranchId` instead of `selectedBranch`.
+2. **Persist manager branch choice**
+   - Read/write last selected manager branch (`sessionStorage.current_branch_id`) and apply after Gatekeeper selection.
+3. **Update all settings/data queries that use `selectedBranch` directly**
+   - Replace `eq('branch_id', selectedBranch)` with:
+     - `effectiveBranchId` for branch-scoped data
+     - or “global row” logic (`branch_id IS NULL`) for org-wide settings.
 
-**Actual issues found:**
-- The `addDevice` function in `deviceService.ts` casts `ip_address` as `unknown` (line 89) which is a workaround for a type mismatch -- the database likely stores `inet` type but the TypeScript types may not reflect it. This needs cleanup.
-- The Add Device drawer and Edit Device drawer reference fields like `firmware_version` but there's no input for it in the form -- it's expected to come from the device heartbeat, which is correct.
-- The Device Management page is functionally sound. No major misalignment with the APIs. Minor UI polish needed: add Serial Number (SN) column to the table since that's the primary identifier for SMDT hardware, and show `last_sync` alongside `last_heartbeat`.
+## D) Fix the specific 400/406 issues you reported
+1. **400 on `organization_settings?branch_id=eq.all`**
+   - Update `OrganizationSettings` to use `effectiveBranchId` (and only filter when it’s a real UUID).
+   - Update save logic to **upsert** by `branch_id` (prevents 409 conflicts).
+2. **400 on contracts join in HRM**
+   - After adding `employees.user_id → profiles.id` FK, update HRM contracts query to use `profiles:user_id(...)` properly (or do a 2-query merge if preferred).
+3. **406 on profile lookup**
+   - Fixed by: profile backfill + AuthContext `.maybeSingle()` + auto-insert own profile policy.
 
-### 2. Admin Avatar Upload -- Missing from Profile Page
-The Profile page (`src/pages/Profile.tsx`) shows the avatar but has **no upload button**. The `AvatarUpload` component (`src/components/auth/AvatarUpload.tsx`) exists and works perfectly -- it uploads to the `avatars` bucket and updates the profile. It just needs to be integrated into the Profile page, replacing the static `Avatar` display.
+## E) Manager workflow (creation → branch assignment → login → branch selector)
+1. **User provisioning**
+   - Ensure `/admin/users` route points to `AdminUsersPage` (remove redirect to `settings?tab=users` unless that tab actually exists).
+   - Update `create-staff-user` backend function:
+     - use `profiles.upsert(...)` (not `update`) so profile always exists
+     - when role = `manager`, also `upsert` into `branch_managers` with `is_primary=true` for the primary branch.
+2. **On login**
+   - Gatekeeper resolves manager branches via `staff_branches`.
+   - If multiple: show Branch Selection Splash (mandatory).
+   - After selection: branch selector appears in header (manager can switch).
 
-### 3. Staff Photo Sync -- Like Members
-Members already have biometric photo sync via `HardwareBiometricsTab.tsx` which calls `queueMemberSync()`. Staff already have avatar upload in `EditEmployeeDrawer.tsx` which calls `queueStaffSync()`. The `StaffAvatarUpload` component also queues biometric sync on upload. So staff photo sync **already works** for employees/trainers when their avatar is uploaded via the HRM or Trainer edit flows.
+## F) Unified workforce drawer (Edit Employee → primary branch + roles + manager assigned branches)
+1. **Extend `EditEmployeeDrawer`**
+   - Add “Primary Branch” dropdown → updates `employees.branch_id`.
+   - Add “Role” selector (radio group): Staff / Manager (and optionally Trainer if you want to unify further).
+   - If Manager selected:
+     - Show “Assigned Branches” multi-select checklist (writes to `staff_branches` as many rows).
+     - Show “Primary Manager Branch” (writes to `branch_managers` for that branch, admin-only).
+2. **Constraints**
+   - Enforce: Staff/Trainer = exactly one branch; Manager = one-or-many.
+   - UI + backend validation in save handler.
 
-What's missing: There's no equivalent "Hardware & Biometrics" tab for staff in the employee/trainer profile drawers showing enrollment status, Wiegand code, or sync queue status. The biometric sync queue works but there's no visibility into it for staff.
+## Files to change / add
+- Edit: `src/contexts/AuthContext.tsx`
+- Edit: `src/pages/Auth.tsx`
+- Edit: `src/components/auth/OtpLoginForm.tsx`
+- Edit: `src/components/auth/SetPasswordForm.tsx`
+- Edit: `src/contexts/BranchContext.tsx`
+- Edit: `src/components/settings/OrganizationSettings.tsx`
+- Edit: `src/pages/HRM.tsx`
+- Edit: `src/App.tsx` (route wiring for `/home`, `/pending-approval`, `/select-branch`, `/admin/users`)
+- Edit: `supabase/functions/create-staff-user/index.ts`
+- Edit: `supabase/functions/create-member-user/index.ts` (profiles upsert)
+- Add: `src/pages/PendingApproval.tsx`
+- Add: `src/pages/SelectBranch.tsx` (manager splash)
+- Add: `src/pages/Gatekeeper.tsx` (central post-login resolver)
+- Edit: `src/components/employees/EditEmployeeDrawer.tsx`
+- Migration: `supabase/migrations/*_gatekeeper_profiles_fk.sql`
 
-### 4. View As -- Not Working + Replace with Real Login
-**View As issue:** The ViewAs context works correctly -- it changes the sidebar menu and shows the banner. If it's "not working," it may be because route guards in `App.tsx` still check the **real** roles (from `useAuth`), not the viewAs role. So when the admin navigates to `/member-dashboard`, the `ProtectedRoute` component may block access because the real user doesn't have the `member` role. Need to check and fix `ProtectedRoute.tsx` to respect ViewAs.
-
-**User wants specific logins, not demo mode:** The user wants admins to create **real login accounts** for each staff member, trainer, manager, and member -- not a "view as" preview. The system already supports this via:
-- `AdminUsers.tsx` page at `/admin/users` -- creates users with any role
-- `create-staff-user` edge function -- creates trainer/staff/manager accounts
-- `create-member-user` edge function -- creates member accounts
-- `AddEmployeeDrawer`, `AddTrainerDrawer`, `AddMemberDrawer` -- all invoke these functions
-
-The issue is that the `admin-create-user` function only allows `admin`/`owner` roles (line 89-93). For all other roles, `create-staff-user` handles it. The AdminUsers page (`/admin/users`) only calls `admin-create-user` which rejects non-admin roles. This is the bug -- the AdminUsers page should route to the correct edge function based on role selection.
-
----
-
-## Implementation Plan
-
-### Step 1: Fix AdminUsers Page -- Unified User Creation
-**File:** `src/pages/AdminUsers.tsx`
-
-- When role is `admin` or `owner`, call `admin-create-user` (current behavior)
-- When role is `manager`, `staff`, or `trainer`, call `create-staff-user` instead
-- When role is `member`, call `create-member-user` instead
-- This makes the Admin User Management page a **single unified hub** for creating any type of user account
-- Show the generated temporary credentials or confirm "they will set password on first login"
-
-### Step 2: Add Avatar Upload to Profile Page
-**File:** `src/pages/Profile.tsx`
-
-- Replace the static `Avatar` display (lines 113-119) with the existing `AvatarUpload` component
-- Import `AvatarUpload` from `@/components/auth/AvatarUpload`
-- The AvatarUpload component already handles upload to `avatars` bucket, profile update, and refresh
-
-### Step 3: Fix View As Route Protection
-**File:** `src/components/auth/ProtectedRoute.tsx`
-
-- Import `useViewAs` and check `viewAsRole`
-- When `isViewingAs` is true and the real user is admin/owner, bypass the role check -- allow navigation to any role's pages
-- This makes "View As" actually work for previewing other role dashboards
-
-### Step 4: Device Management UI Polish
-**File:** `src/pages/DeviceManagement.tsx`
-
-- Add `serial_number` and `last_sync` columns to the device table
-- Show branch name in the device row (join from branches context)
-- Clean up the `ip_address` type casting in `deviceService.ts`
-
-### Step 5: Staff Biometric Visibility (Minor)
-No new tab needed. The staff biometric sync already works via `StaffAvatarUpload`. The sync queue status can be viewed on the Device Management page. This is already functional.
-
----
-
-## Files Summary
-
-| Action | File | Description |
-|--------|------|-------------|
-| Edit | `src/pages/AdminUsers.tsx` | Route to correct edge function per role |
-| Edit | `src/pages/Profile.tsx` | Add AvatarUpload component |
-| Edit | `src/components/auth/ProtectedRoute.tsx` | Respect ViewAs for admin impersonation |
-| Edit | `src/pages/DeviceManagement.tsx` | Add SN/last_sync columns |
-| Edit | `src/services/deviceService.ts` | Clean up ip_address type casting |
-
+## Verification checklist (after implementation)
+1. Create a Staff user → login → must land on Staff Dashboard (no branch splash), no 400/406.
+2. Create a Manager user with 2 branches → login → must see branch splash → then Dashboard.
+3. Visit Settings → Organization tab as staff/manager → no `branch_id=all` requests.
+4. HRM page → contracts load without 400.
+5. If a legacy user exists without a profile row → login should auto-repair and proceed (or show Pending Approval if role/branch missing).
