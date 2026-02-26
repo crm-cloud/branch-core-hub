@@ -10,8 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -51,15 +50,13 @@ const WHATSAPP_PROVIDERS = [
 ];
 
 export default function IntegrationsPage() {
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { selectedBranch, branchFilter } = useBranchContext();
   const [configSheet, setConfigSheet] = useState<{
     open: boolean;
     type: IntegrationType;
     provider: string;
     existing?: any;
   }>({ open: false, type: 'payment_gateway', provider: '' });
-  
-  const { data: branches = [] } = useBranches();
   const queryClient = useQueryClient();
 
   const { data: integrations = [] } = useQuery({
@@ -100,12 +97,6 @@ export default function IntegrationsPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h1 className="text-2xl font-bold">Integrations</h1>
-          <BranchSelector
-            branches={branches}
-            selectedBranch={selectedBranch}
-            onBranchChange={setSelectedBranch}
-            showAllOption={true}
-          />
         </div>
 
         {/* Stats */}
@@ -345,7 +336,7 @@ export default function IntegrationsPage() {
         <IntegrationConfigSheet 
           {...configSheet} 
           onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
-          branchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+          branchId={branchFilter}
         />
       </div>
     </AppLayout>

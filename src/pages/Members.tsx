@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
+
 import { AddMemberDrawer } from '@/components/members/AddMemberDrawer';
 import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershipDrawer';
 import { PurchasePTDrawer } from '@/components/members/PurchasePTDrawer';
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useBranches } from '@/hooks/useBranches';
+
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useState, useMemo } from 'react';
 import { differenceInDays, format } from 'date-fns';
@@ -250,12 +250,6 @@ export default function MembersPage() {
             <p className="text-muted-foreground">Manage your gym members and their memberships</p>
           </div>
           <div className="flex items-center gap-3">
-            <BranchSelector
-              branches={branches}
-              selectedBranch={selectedBranch}
-              onBranchChange={setSelectedBranch}
-              showAllOption={true}
-            />
             <Button onClick={() => setAddMemberOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Add Member
