@@ -219,7 +219,6 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
     });
     setNewUserFormData({
       email: '',
-      password: '',
       full_name: '',
       phone: '',
       specializations: '',
