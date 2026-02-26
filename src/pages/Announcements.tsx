@@ -14,12 +14,11 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { AddAnnouncementDrawer } from '@/components/announcements/AddAnnouncementDrawer';
 import { BroadcastDrawer } from '@/components/announcements/BroadcastDrawer';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
-  const { data: branches } = useBranches();
-  const defaultBranchId = branches?.[0]?.id || '';
+  const { effectiveBranchId: defaultBranchId = '' } = useBranchContext();
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [showBroadcastDrawer, setShowBroadcastDrawer] = useState(false);
   const [broadcastType, setBroadcastType] = useState<'sms' | 'email' | 'whatsapp'>('whatsapp');

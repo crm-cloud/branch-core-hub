@@ -19,8 +19,7 @@ import {
   Activity
 } from "lucide-react";
 import { toast } from "sonner";
-import { useBranches } from "@/hooks/useBranches";
-import { BranchSelector } from "@/components/dashboard/BranchSelector";
+import { useBranchContext } from '@/contexts/BranchContext';
 import { fetchDevices, deleteDevice, triggerRelay, getDeviceStats, AccessDevice } from "@/services/deviceService";
 import { getBiometricStats } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
@@ -39,28 +38,25 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 
 const DeviceManagement = () => {
-  const queryClient = useQueryClient();
-  const branchesQuery = useBranches();
-  const branches = branchesQuery.data || [];
-  
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const { selectedBranch, branches, effectiveBranchId } = useBranchContext();
+  const selectedBranchFilter = selectedBranch !== 'all' ? selectedBranch : '';
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<AccessDevice | null>(null);
   const [deletingDevice, setDeletingDevice] = useState<AccessDevice | null>(null);
 
   const { data: devices = [], isLoading } = useQuery({
-    queryKey: ['access-devices', selectedBranch],
-    queryFn: () => fetchDevices(selectedBranch || undefined),
+    queryKey: ['access-devices', selectedBranchFilter],
+    queryFn: () => fetchDevices(selectedBranchFilter || undefined),
   });
 
   const { data: deviceStats } = useQuery({
-    queryKey: ['device-stats', selectedBranch],
-    queryFn: () => getDeviceStats(selectedBranch || undefined),
+    queryKey: ['device-stats', selectedBranchFilter],
+    queryFn: () => getDeviceStats(selectedBranchFilter || undefined),
   });
 
   const { data: biometricStats } = useQuery({
-    queryKey: ['biometric-stats', selectedBranch],
-    queryFn: () => getBiometricStats(selectedBranch || undefined),
+    queryKey: ['biometric-stats', selectedBranchFilter],
+    queryFn: () => getBiometricStats(selectedBranchFilter || undefined),
   });
 
   const deleteMutation = useMutation({
@@ -115,12 +111,7 @@ const DeviceManagement = () => {
           <p className="text-muted-foreground">Manage turnstiles, face terminals, and access control devices</p>
         </div>
         <div className="flex items-center gap-4">
-          <BranchSelector
-            branches={branches}
-            selectedBranch={selectedBranch}
-            onBranchChange={setSelectedBranch}
-            showAllOption
-          />
+          {/* Branch selector moved to global header */}
           <Button onClick={() => setIsAddDrawerOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Device
@@ -294,7 +285,7 @@ const DeviceManagement = () => {
 
         {/* Live Access Log */}
         <div className="lg:col-span-1">
-          <LiveAccessLog branchId={selectedBranch || undefined} />
+          <LiveAccessLog branchId={selectedBranchFilter || undefined} />
         </div>
       </div>
 
@@ -303,7 +294,7 @@ const DeviceManagement = () => {
         isOpen={isAddDrawerOpen}
         onClose={() => setIsAddDrawerOpen(false)}
         branches={branches}
-        defaultBranchId={selectedBranch}
+        defaultBranchId={selectedBranchFilter}
       />
 
       {editingDevice && (

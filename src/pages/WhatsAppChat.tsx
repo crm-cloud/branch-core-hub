@@ -6,8 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -36,13 +35,11 @@ interface Message {
 }
 
 export default function WhatsAppChatPage() {
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { selectedBranch, setSelectedBranch, branches } = useBranchContext();
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const { data: branches = [] } = useBranches();
   const queryClient = useQueryClient();
 
   // Realtime subscription for new WhatsApp messages
@@ -201,12 +198,7 @@ export default function WhatsAppChatPage() {
             <MessageSquare className="h-6 w-6 text-green-500" />
             WhatsApp Chat
           </h1>
-          <BranchSelector
-            branches={branches}
-            selectedBranch={selectedBranch}
-            onBranchChange={setSelectedBranch}
-            showAllOption={true}
-          />
+          {/* Branch selector moved to global header */}
         </div>
 
         <div className="grid grid-cols-12 gap-4 h-full">

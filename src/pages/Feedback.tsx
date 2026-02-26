@@ -9,17 +9,14 @@ import { Switch } from '@/components/ui/switch';
 import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 export default function FeedbackPage() {
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const queryClient = useQueryClient();
-
-  const { data: branches = [] } = useBranches();
-  const branchId = selectedBranch || branches?.[0]?.id || '';
+  const { effectiveBranchId: branchId = '' } = useBranchContext();
 
   const { data: feedbackList = [], isLoading } = useQuery({
     queryKey: ['feedback', branchId, statusFilter],
@@ -154,22 +151,7 @@ export default function FeedbackPage() {
             <h1 className="text-2xl font-bold">Member Feedback</h1>
             <p className="text-muted-foreground">Review and manage feedback submitted by members</p>
           </div>
-          <div className="flex items-center gap-4">
-            {branches.length > 1 && (
-              <Select value={branchId} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch: any) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+          {/* Branch selector moved to global header */}
         </div>
 
         {/* Stats */}
