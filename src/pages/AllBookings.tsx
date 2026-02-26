@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
 import { supabase } from '@/integrations/supabase/client';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
@@ -19,14 +19,11 @@ import { useQueryClient } from '@tanstack/react-query';
 
 export default function AllBookingsPage() {
   const queryClient = useQueryClient();
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const { effectiveBranchId: branchId = '' } = useBranchContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [conciergeOpen, setConciergeOpen] = useState(false);
-
-  const branchId = selectedBranch || branches?.[0]?.id || '';
 
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({
@@ -271,20 +268,7 @@ export default function AllBookingsPage() {
               <Plus className="h-4 w-4" />
               New Booking
             </Button>
-            {branches && branches.length > 1 && (
-              <Select value={selectedBranch || branches[0]?.id} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {/* Branch selector moved to global header */}
           </div>
         </div>
 

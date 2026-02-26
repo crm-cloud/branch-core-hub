@@ -7,27 +7,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit } from "lucide-react";
-import { useTrainers, useDeactivateTrainer } from "@/hooks/useTrainers";
-import { useBranches } from "@/hooks/useBranches";
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
-import { Progress } from "@/components/ui/progress";
-import { AddTrainerDrawer } from "@/components/trainers/AddTrainerDrawer";
-import { TrainerProfileDrawer } from "@/components/trainers/TrainerProfileDrawer";
-import { EditTrainerDrawer } from "@/components/trainers/EditTrainerDrawer";
-import { StatCard } from "@/components/ui/stat-card";
+import { useBranchContext } from '@/contexts/BranchContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { Progress } from '@/components/ui/progress';
+import { AddTrainerDrawer } from '@/components/trainers/AddTrainerDrawer';
+import { TrainerProfileDrawer } from '@/components/trainers/TrainerProfileDrawer';
+import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
+import { StatCard } from '@/components/ui/stat-card';
 
 export default function TrainersPage() {
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const { effectiveBranchId: branchId = '' } = useBranchContext();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<any>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<any>(null);
-
-  const branchId = selectedBranch || branches?.[0]?.id || "";
   const { data: trainers, isLoading } = useTrainers(branchId, !showInactive);
   const deactivateTrainer = useDeactivateTrainer();
 
@@ -105,20 +101,7 @@ export default function TrainersPage() {
             <p className="text-muted-foreground">Manage trainers and their profiles</p>
           </div>
           <div className="flex items-center gap-4">
-            {branches && branches.length > 1 && (
-              <Select value={selectedBranch || branches[0]?.id} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {/* Branch selector moved to global header */}
             <Button variant="outline" onClick={() => setShowInactive(!showInactive)}>
               {showInactive ? "Hide Inactive" : "Show Inactive"}
             </Button>

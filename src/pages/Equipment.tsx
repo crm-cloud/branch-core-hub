@@ -8,26 +8,20 @@ import { Plus, Dumbbell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function EquipmentPage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const { data: branches = [] } = useBranches();
+  const { branchFilter, effectiveBranchId } = useBranchContext();
   
   const { data: equipment = [], isLoading } = useQuery({
-    queryKey: ['equipment', selectedBranch],
+    queryKey: ['equipment', branchFilter],
     queryFn: async () => {
       let query = supabase
         .from('equipment')
         .select('*')
         .order('name');
-      
-      if (selectedBranch) {
-        query = query.eq('branch_id', selectedBranch);
-      }
-      
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
       const { data, error } = await query;
       if (error) throw error;
       return data;
@@ -44,7 +38,7 @@ export default function EquipmentPage() {
     return colors[status] || 'bg-muted text-muted-foreground';
   };
 
-  const currentBranchId = selectedBranch || branches[0]?.id || '';
+  const currentBranchId = effectiveBranchId || '';
 
   return (
     <AppLayout>
@@ -52,12 +46,7 @@ export default function EquipmentPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Equipment</h1>
           <div className="flex items-center gap-4">
-            <BranchSelector
-              branches={branches}
-              selectedBranch={selectedBranch}
-              onBranchChange={setSelectedBranch}
-              showAllOption={true}
-            />
+            {/* Branch selector moved to global header */}
             <Button onClick={() => setAddDrawerOpen(true)} disabled={!currentBranchId}>
               <Plus className="mr-2 h-4 w-4" />
               Add Equipment

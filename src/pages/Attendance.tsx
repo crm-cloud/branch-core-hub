@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAttendance } from '@/hooks/useAttendance';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { Clock, UserCheck, UserMinus, Search, Users, LogIn, LogOut, Scan, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -20,16 +20,13 @@ type FlashState = {
 } | null;
 
 export default function AttendancePage() {
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const { effectiveBranchId: branchId } = useBranchContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [flash, setFlash] = useState<FlashState>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const branchId = selectedBranch || branches?.[0]?.id;
 
   const {
     todayAttendance,
@@ -150,19 +147,6 @@ export default function AttendancePage() {
                 <span className="text-muted-foreground">Out</span>
               </div>
             </div>
-            {branches && branches.length > 1 && (
-              <select
-                value={branchId}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="px-3 py-1.5 border rounded-lg bg-background text-sm"
-              >
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
         </div>
 

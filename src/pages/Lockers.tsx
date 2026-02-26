@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useLockers } from '@/hooks/useLockers';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { Lock, Plus, User, Key, Package, MapPin } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -28,14 +28,11 @@ const createLockerSchema = z.object({
 type CreateLockerData = z.infer<typeof createLockerSchema>;
 
 export default function LockersPage() {
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const { effectiveBranchId: branchId } = useBranchContext();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkCreateOpen, setIsBulkCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedLocker, setSelectedLocker] = useState<any>(null);
-
-  const branchId = selectedBranch || branches?.[0]?.id;
 
   const { lockers, createLocker, releaseLocker, isCreating } = useLockers(branchId);
 
@@ -109,19 +106,7 @@ export default function LockersPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {branches && branches.length > 1 && (
-              <select
-                value={branchId}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="px-3 py-2 border rounded-md bg-background"
-              >
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            {/* Branch selector moved to global header */}
 
             <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)}>
               <Package className="w-4 h-4 mr-2" />

@@ -140,18 +140,6 @@ export default function PTSessionsPage() {
             <p className="text-muted-foreground">Manage personal training packages and sessions</p>
           </div>
           <div className="flex items-center gap-4">
-            {branches && branches.length > 1 && (
-              <Select value={selectedBranch || branches[0]?.id} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </div>
         </div>
 

@@ -7,17 +7,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Clock, UserCheck, UserMinus, Users, LogIn, LogOut, Shield } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function StaffAttendancePage() {
-  const { data: branches } = useBranches();
+  const { effectiveBranchId: branchId } = useBranchContext();
   const { user, roles, hasAnyRole } = useAuth();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
-
-  const branchId = selectedBranch || branches?.[0]?.id;
 
   // Role-based access check
   const isAdmin = hasAnyRole(['owner', 'admin']);
@@ -95,21 +92,7 @@ export default function StaffAttendancePage() {
             </p>
           </div>
 
-          {/* Branch selector - only for admin/manager */}
-          {(isAdmin || isManager) && branches && branches.length > 1 && (
-            <Select value={branchId} onValueChange={setSelectedBranch}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          {/* Branch selector moved to global header */}
         </div>
 
         {/* Role indicator */}

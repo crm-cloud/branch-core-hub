@@ -8,40 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  Users, 
-  UserCheck, 
-  Clock, 
-  Search, 
-  Calendar,
-  TrendingUp,
-  Activity
-} from 'lucide-react';
+import { Users, UserCheck, Clock, Search, Calendar, TrendingUp, Activity } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-} from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export default function AttendanceDashboard() {
-  const { data: branches } = useBranches();
+  const { branchFilter } = useBranchContext();
   const { hasAnyRole } = useAuth();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
-
-  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
   const isAdmin = hasAnyRole(['owner', 'admin']);
 
   // Fetch member attendance
@@ -191,21 +170,6 @@ export default function AttendanceDashboard() {
               onChange={(e) => setDateFilter(e.target.value)}
               className="w-[180px]"
             />
-            {isAdmin && branches && branches.length > 1 && (
-              <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Branches" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Branches</SelectItem>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </div>
         </div>
 

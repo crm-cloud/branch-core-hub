@@ -7,19 +7,48 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { Menu, LogOut } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
+function useOrgBranding() {
+  return useQuery({
+    queryKey: ['org-branding'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('organization_settings')
+        .select('logo_url, name')
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+function BrandLogo({ className }: { className?: string }) {
+  const { data: org } = useOrgBranding();
+  
+  if (org?.logo_url) {
+    return <img src={org.logo_url} alt={org.name || 'Logo'} className={cn("max-h-8 object-contain", className)} />;
+  }
+  
+  return (
+    <span className="text-sidebar-primary text-2xl font-bold">
+      {org?.name || 'Incline'}
+    </span>
+  );
+}
 
 export function AppSidebar() {
   const { signOut, roles } = useAuth();
   const location = useLocation();
-
-  // Get role-specific menu based on user's roles
   const menuSections = getMenuForRole(roles);
 
   return (
     <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border">
       <div className="p-6 border-b border-sidebar-border">
         <h1 className="text-2xl font-bold text-sidebar-foreground">
-          <span className="text-sidebar-primary">Incline</span>
+          <BrandLogo />
         </h1>
       </div>
 
@@ -74,8 +103,6 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const { signOut, roles } = useAuth();
   const location = useLocation();
-
-  // Get role-specific menu based on user's roles
   const menuSections = getMenuForRole(roles);
 
   return (
@@ -88,7 +115,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-72 p-0 bg-sidebar">
         <div className="p-6 border-b border-sidebar-border">
           <h1 className="text-2xl font-bold text-sidebar-foreground">
-            <span className="text-sidebar-primary">Incline</span>
+            <BrandLogo />
           </h1>
         </div>
 

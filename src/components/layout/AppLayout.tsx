@@ -4,6 +4,8 @@ import { AppHeader } from './AppHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -11,6 +13,19 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const { profile } = useAuth();
+
+  const { data: org } = useQuery({
+    queryKey: ['org-branding'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('organization_settings')
+        .select('logo_url, name')
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -29,7 +44,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-card">
           <MobileNav />
           <h1 className="text-xl font-bold">
-            <span className="text-accent">Incline</span>
+            {org?.logo_url ? (
+              <img src={org.logo_url} alt={org.name || 'Logo'} className="max-h-7 object-contain" />
+            ) : (
+              <span className="text-accent">{org?.name || 'Incline'}</span>
+            )}
           </h1>
           <div className="flex items-center gap-2">
             <NotificationBell />

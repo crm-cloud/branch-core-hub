@@ -7,30 +7,16 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
 import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
 import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
 import { 
-  FileText, 
-  Plus, 
-  Users, 
-  DollarSign, 
-  TrendingUp, 
-  Clock,
-  Search,
-  MoreHorizontal,
-  Eye,
-  Download,
-  Send
+  FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 export default function InvoicesPage() {
@@ -38,28 +24,17 @@ export default function InvoicesPage() {
   const [viewInvoice, setViewInvoice] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const { data: branches = [] } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
-
-  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
+  const { branchFilter, effectiveBranchId } = useBranchContext();
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ['invoices', branchFilter],
     queryFn: async () => {
       let query = supabase
         .from('invoices')
-        .select(`
-          *,
-          members(member_code, profiles:user_id(full_name, email)),
-          invoice_items(description, reference_type)
-        `)
+        .select(`*, members(member_code, profiles:user_id(full_name, email)), invoice_items(description, reference_type)`)
         .order('created_at', { ascending: false })
         .limit(100);
-
-      if (branchFilter) {
-        query = query.eq('branch_id', branchFilter);
-      }
-
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
       const { data, error } = await query;
       if (error) throw error;
       return data;
@@ -212,12 +187,6 @@ export default function InvoicesPage() {
                   <SelectItem value="overdue">Overdue</SelectItem>
                 </SelectContent>
               </Select>
-              <BranchSelector
-                branches={branches}
-                selectedBranch={selectedBranch}
-                onBranchChange={setSelectedBranch}
-                showAllOption={true}
-              />
             </div>
           </CardContent>
         </Card>
@@ -345,7 +314,7 @@ export default function InvoicesPage() {
       <CreateInvoiceDrawer
         open={createOpen}
         onOpenChange={setCreateOpen}
-        branchId={selectedBranch !== 'all' ? selectedBranch : branches[0]?.id || ''}
+        branchId={effectiveBranchId || ''}
       />
 
       {viewInvoice && (

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { BranchSelector } from '@/components/dashboard/BranchSelector';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,9 +27,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export function AppHeader() {
-  const { profile, signOut, roles, user } = useAuth();
+  const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
+
+  const showBranchSelector = hasAnyRole(['owner', 'admin', 'manager']);
+  const { selectedBranch, setSelectedBranch, branches } = useBranchContext();
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -68,6 +73,16 @@ export function AppHeader() {
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-2">
+        {/* Global Branch Selector */}
+        {showBranchSelector && branches.length > 0 && (
+          <BranchSelector
+            branches={branches}
+            selectedBranch={selectedBranch}
+            onBranchChange={setSelectedBranch}
+            showAllOption={true}
+          />
+        )}
+
         {/* Role Badge - visible in header */}
         <Badge variant="secondary" className="capitalize text-xs hidden md:flex">
           {primaryRoleString}

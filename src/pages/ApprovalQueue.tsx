@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BranchSelector } from '@/components/dashboard/BranchSelector';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -55,15 +54,12 @@ const APPROVAL_TYPE_CONFIG: Record<string, { icon: any; label: string; color: st
 
 export default function ApprovalQueuePage() {
   const { user } = useAuth();
-  const { data: branches = [] } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { branchFilter, selectedBranch, setSelectedBranch, branches } = useBranchContext();
   const [activeTab, setActiveTab] = useState('pending');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
-
-  const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
 
   // Fetch approval requests
   const { data: requests = [], isLoading } = useQuery({
@@ -305,12 +301,7 @@ export default function ApprovalQueuePage() {
             <h1 className="text-3xl font-bold tracking-tight">Approval Queue</h1>
             <p className="text-muted-foreground">Review and process pending requests</p>
           </div>
-          <BranchSelector
-            branches={branches}
-            selectedBranch={selectedBranch}
-            onBranchChange={setSelectedBranch}
-            showAllOption={true}
-          />
+          {/* Branch selector moved to global header */}
         </div>
 
         {/* Stats Cards */}

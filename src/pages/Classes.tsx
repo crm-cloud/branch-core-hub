@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Plus, Users, Clock, CalendarDays, Check, X, UserX, Edit, Phone, User, Search, Filter, Dumbbell, Calendar } from "lucide-react";
 import { useClasses, useClassBookings, useMarkAttendance, useCancelBooking } from "@/hooks/useClasses";
 import { useTrainers } from "@/hooks/useTrainers";
-import { useBranches } from "@/hooks/useBranches";
+import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from "@/contexts/AuthContext";
 import { AddClassDrawer } from "@/components/classes/AddClassDrawer";
 import { EditClassDrawer } from "@/components/classes/EditClassDrawer";
@@ -24,20 +24,16 @@ type TimeFilter = "upcoming" | "past" | "all";
 
 export default function ClassesPage() {
   const { profile } = useAuth();
-  const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const { effectiveBranchId: branchId = '' } = useBranchContext();
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [classToEdit, setClassToEdit] = useState<ClassWithDetails | null>(null);
   
-  // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [classTypeFilter, setClassTypeFilter] = useState<string>("all");
   const [trainerFilter, setTrainerFilter] = useState<string>("all");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
-
-  const branchId = selectedBranch || branches?.[0]?.id || "";
   const { data: classes, isLoading } = useClasses(branchId, { activeOnly: false });
   const { data: trainers } = useTrainers(branchId);
   const { data: bookings } = useClassBookings(selectedClass || "");
@@ -186,20 +182,7 @@ export default function ClassesPage() {
             <p className="text-muted-foreground">Manage group classes and bookings</p>
           </div>
           <div className="flex items-center gap-4">
-            {branches && branches.length > 1 && (
-              <Select value={selectedBranch || branches[0]?.id} onValueChange={setSelectedBranch}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {/* Branch selector moved to global header */}
             <Button onClick={() => setIsCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Create Class

@@ -15,14 +15,14 @@ import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updat
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
-import { useBranches } from '@/hooks/useBranches';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function EquipmentMaintenancePage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { data: branches = [] } = useBranches();
+  const { effectiveBranchId = '' } = useBranchContext();
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ['equipment-list'],
@@ -350,7 +350,7 @@ export default function EquipmentMaintenancePage() {
         <AddEquipmentDrawer
           open={addDrawerOpen}
           onOpenChange={setAddDrawerOpen}
-          branchId={branches[0]?.id || ''}
+          branchId={effectiveBranchId}
         />
       </div>
     </AppLayout>
