@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import { FollowupDrawer } from '@/components/leads/FollowupDrawer';
 import { ConvertMemberDrawer } from '@/components/leads/ConvertMemberDrawer';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function LeadsPage() {
   const { user } = useAuth();
