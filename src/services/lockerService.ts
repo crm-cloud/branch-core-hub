@@ -94,7 +94,7 @@ export const lockerService = {
     // Start a transaction-like operation
     const { data: locker, error: lockerError } = await supabase
       .from('lockers')
-      .update({ status: 'occupied' as LockerStatus })
+      .update({ status: 'assigned' as LockerStatus })
       .eq('id', assignment.locker_id)
       .select()
       .single();

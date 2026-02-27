@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit, User } from "lucide-react";
+import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit, User, Dumbbell, TrendingUp, Star } from "lucide-react";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +14,6 @@ import { Progress } from '@/components/ui/progress';
 import { AddTrainerDrawer } from '@/components/trainers/AddTrainerDrawer';
 import { TrainerProfileDrawer } from '@/components/trainers/TrainerProfileDrawer';
 import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
-import { StatCard } from '@/components/ui/stat-card';
 
 export default function TrainersPage() {
   const { effectiveBranchId, branchFilter } = useBranchContext();
@@ -29,7 +27,6 @@ export default function TrainersPage() {
   const { data: trainers, isLoading } = useTrainers(branchId, !showInactive);
   const deactivateTrainer = useDeactivateTrainer();
 
-  // Fetch PT client counts per trainer
   const { data: ptClientCounts = {} } = useQuery({
     queryKey: ['pt-client-counts', branchId],
     queryFn: async () => {
@@ -38,21 +35,14 @@ export default function TrainersPage() {
         .select('trainer_id')
         .eq('branch_id', branchId)
         .eq('status', 'active');
-      
       if (error) throw error;
-      
       const counts: Record<string, number> = {};
-      data?.forEach(pkg => {
-        if (pkg.trainer_id) {
-          counts[pkg.trainer_id] = (counts[pkg.trainer_id] || 0) + 1;
-        }
-      });
+      data?.forEach(pkg => { if (pkg.trainer_id) counts[pkg.trainer_id] = (counts[pkg.trainer_id] || 0) + 1; });
       return counts;
     },
     enabled: !!branchId,
   });
 
-  // Fetch general training client counts per trainer
   const { data: generalClientCounts = {} } = useQuery({
     queryKey: ['general-client-counts', branchId],
     queryFn: async () => {
@@ -62,78 +52,60 @@ export default function TrainersPage() {
         .eq('branch_id', branchId)
         .eq('status', 'active')
         .not('assigned_trainer_id', 'is', null);
-      
       if (error) throw error;
-      
       const counts: Record<string, number> = {};
-      data?.forEach(m => {
-        if (m.assigned_trainer_id) {
-          counts[m.assigned_trainer_id] = (counts[m.assigned_trainer_id] || 0) + 1;
-        }
-      });
+      data?.forEach(m => { if (m.assigned_trainer_id) counts[m.assigned_trainer_id] = (counts[m.assigned_trainer_id] || 0) + 1; });
       return counts;
     },
     enabled: !!branchId,
   });
 
-  // Fetch total revenue this month
   const { data: monthlyRevenue = 0 } = useQuery({
     queryKey: ['trainers-monthly-revenue', branchId],
     queryFn: async () => {
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
-      
       const { data, error } = await supabase
         .from('trainer_commissions')
         .select('amount')
         .gte('created_at', startOfMonth.toISOString());
-      
       if (error) throw error;
       return (data || []).reduce((sum, c) => sum + (c.amount || 0), 0);
     },
     enabled: !!branchId,
   });
 
-  const openTrainerProfile = (trainer: any) => {
-    setSelectedTrainer(trainer);
-    setProfileOpen(true);
-  };
-
-  const openEditTrainer = (trainer: any, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingTrainer(trainer);
-    setEditOpen(true);
-  };
-
+  const openTrainerProfile = (trainer: any) => { setSelectedTrainer(trainer); setProfileOpen(true); };
+  const openEditTrainer = (trainer: any, e: React.MouseEvent) => { e.stopPropagation(); setEditingTrainer(trainer); setEditOpen(true); };
   const handleDeactivate = async (trainerId: string) => {
-    try {
-      await deactivateTrainer.mutateAsync(trainerId);
-      toast.success("Trainer deactivated");
-    } catch (error) {
-      toast.error("Failed to deactivate trainer");
-    }
+    try { await deactivateTrainer.mutateAsync(trainerId); toast.success("Trainer deactivated"); } catch { toast.error("Failed to deactivate trainer"); }
   };
 
-  const totalActiveClients = Object.values(ptClientCounts).reduce((sum: number, count: number) => sum + count, 0);
+  const totalPTClients = Object.values(ptClientCounts).reduce((sum: number, count: number) => sum + count, 0);
   const totalGeneralClients = Object.values(generalClientCounts).reduce((sum: number, count: number) => sum + count, 0);
   const activeTrainers = trainers?.filter(t => t.is_active).length || 0;
 
   return (
     <AppLayout>
       <div className="space-y-6 p-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Trainers</h1>
-            <p className="text-muted-foreground">Manage trainers and their profiles</p>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white">
+                <Dumbbell className="h-6 w-6" />
+              </div>
+              Trainers
+            </h1>
+            <p className="text-muted-foreground mt-1">Manage trainers, certifications, and client assignments</p>
           </div>
-          <div className="flex items-center gap-4">
-            {/* Branch selector moved to global header */}
-            <Button variant="outline" onClick={() => setShowInactive(!showInactive)}>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => setShowInactive(!showInactive)} className="rounded-xl">
               {showInactive ? "Hide Inactive" : "Show Inactive"}
             </Button>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+            <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
+              <Plus className="h-4 w-4" />
               Add Trainer
             </Button>
           </div>
@@ -141,172 +113,186 @@ export default function TrainersPage() {
 
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-5">
-          <StatCard
-            title="Total Trainers"
-            value={activeTrainers}
-            description="Active trainers"
-            icon={Users}
-          />
-          <StatCard
-            title="General Clients"
-            value={totalGeneralClients}
-            description="Assigned members"
-            icon={Users}
-          />
-          <StatCard
-            title="PT Clients"
-            value={totalActiveClients}
-            description="Active PT packages"
-            icon={Users}
-          />
-          <StatCard
-            title="Monthly Revenue"
-            value={`₹${monthlyRevenue.toLocaleString()}`}
-            description="From commissions"
-            icon={DollarSign}
-          />
-          <StatCard
-            title="Avg Utilization"
-            value={`${activeTrainers > 0 ? Math.round((totalActiveClients / (activeTrainers * 10)) * 100) : 0}%`}
-            description="Client capacity"
-            icon={Calendar}
-          />
+          <Card className="bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-6 translate-x-6" />
+            <CardContent className="pt-6 pb-5 relative z-10">
+              <Dumbbell className="h-5 w-5 opacity-80 mb-2" />
+              <div className="text-3xl font-bold">{activeTrainers}</div>
+              <p className="text-sm opacity-80 mt-0.5">Active Trainers</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-primary/10"><User className="h-4 w-4 text-primary" /></div>
+              </div>
+              <div className="text-2xl font-bold text-foreground">{totalGeneralClients}</div>
+              <p className="text-sm text-muted-foreground mt-0.5">General Clients</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10"><Star className="h-4 w-4 text-amber-600" /></div>
+              </div>
+              <div className="text-2xl font-bold text-foreground">{totalPTClients}</div>
+              <p className="text-sm text-muted-foreground mt-0.5">PT Clients</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10"><DollarSign className="h-4 w-4 text-emerald-600" /></div>
+              </div>
+              <div className="text-2xl font-bold text-foreground">₹{monthlyRevenue.toLocaleString()}</div>
+              <p className="text-sm text-muted-foreground mt-0.5">Monthly Revenue</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10"><TrendingUp className="h-4 w-4 text-sky-600" /></div>
+              </div>
+              <div className="text-2xl font-bold text-foreground">{activeTrainers > 0 ? Math.round(((totalPTClients + totalGeneralClients) / activeTrainers)) : 0}</div>
+              <p className="text-sm text-muted-foreground mt-0.5">Avg Clients/Trainer</p>
+            </CardContent>
+          </Card>
         </div>
 
+        {/* Trainer Cards */}
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Loading trainers...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading trainers...</div>
         ) : trainers?.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              No trainers found. Add your first trainer to get started.
+          <Card className="rounded-2xl shadow-lg">
+            <CardContent className="py-16 text-center">
+              <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6">
+                <Dumbbell className="h-10 w-10 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">No Trainers Yet</h3>
+              <p className="text-muted-foreground mb-6">Add your first trainer to get started</p>
+              <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl">
+                <Plus className="h-4 w-4" /> Add Trainer
+              </Button>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {trainers?.map((trainer) => (
-              <Card 
-                key={trainer.id} 
-                className={`cursor-pointer transition-all hover:shadow-md ${!trainer.is_active ? "opacity-60" : ""}`}
-                onClick={() => openTrainerProfile(trainer)}
-              >
-                <CardHeader>
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={trainer.profile_avatar || undefined} />
-                      <AvatarFallback>
-                        {(trainer.profile_name || trainer.profile_email || "T").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{trainer.profile_name || "Unknown"}</CardTitle>
-                      <CardDescription className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {trainer.profile_email}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!trainer.is_active && <Badge variant="outline">Inactive</Badge>}
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {trainers?.map((trainer) => {
+              const ptClients = ptClientCounts[trainer.id] || 0;
+              const genClients = generalClientCounts[trainer.id] || 0;
+              const maxClients = (trainer as any).max_clients || 10;
+              const ptUtil = Math.min((ptClients / maxClients) * 100, 100);
+              
+              return (
+                <Card 
+                  key={trainer.id} 
+                  className={`group cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 rounded-2xl border-border/50 shadow-lg overflow-hidden ${!trainer.is_active ? "opacity-50" : ""}`}
+                  onClick={() => openTrainerProfile(trainer)}
+                >
+                  {/* Gradient top bar */}
+                  <div className="h-1.5 bg-gradient-to-r from-violet-600 to-indigo-600" />
+                  
+                  <CardContent className="p-5 space-y-4">
+                    {/* Profile Row */}
+                    <div className="flex items-center gap-4">
+                      <Avatar className="h-14 w-14 ring-2 ring-primary/10 ring-offset-2">
+                        <AvatarImage src={trainer.profile_avatar || undefined} />
+                        <AvatarFallback className="bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 font-bold">
+                          {(trainer.profile_name || "T").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-bold text-foreground truncate">{trainer.profile_name || "Unknown"}</h3>
+                        <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                          <Mail className="h-3 w-3 flex-shrink-0" />
+                          {trainer.profile_email}
+                        </p>
+                      </div>
                       <Button 
                         variant="ghost" 
                         size="icon"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"
                         onClick={(e) => openEditTrainer(trainer, e)}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* General Clients */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5 text-muted-foreground" />
-                      General Clients
-                    </span>
-                    <span className="font-medium">{generalClientCounts[trainer.id] || 0}</span>
-                  </div>
 
-                  {/* PT Client Ratio */}
-                  {(() => {
-                    const activeClients = ptClientCounts[trainer.id] || 0;
-                    const maxClients = (trainer as any).max_clients || 10;
-                    const utilization = Math.min((activeClients / maxClients) * 100, 100);
-                    return (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="flex items-center gap-1.5">
-                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                            PT Clients
-                          </span>
-                          <span className="font-medium">
-                            {activeClients}/{maxClients}
-                          </span>
+                    {/* Client Stats */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-muted/50 border border-border/30">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">General</span>
                         </div>
-                        <Progress value={utilization} className="h-2" />
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{utilization.toFixed(0)}% capacity</span>
-                          {utilization >= 80 && (
-                            <Badge variant="destructive" className="text-xs">Near Full</Badge>
-                          )}
-                        </div>
+                        <p className="text-xl font-bold text-foreground">{genClients}</p>
                       </div>
-                    );
-                  })()}
+                      <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Star className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs text-primary">PT Clients</span>
+                        </div>
+                        <p className="text-xl font-bold text-foreground">{ptClients}<span className="text-sm font-normal text-muted-foreground">/{maxClients}</span></p>
+                      </div>
+                    </div>
 
-                  {trainer.profile_phone && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      <span>{trainer.profile_phone}</span>
+                    {/* PT Capacity Bar */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">PT Capacity</span>
+                        <span className={`font-semibold ${ptUtil >= 80 ? 'text-destructive' : ptUtil >= 50 ? 'text-warning' : 'text-success'}`}>
+                          {ptUtil.toFixed(0)}%
+                        </span>
+                      </div>
+                      <Progress value={ptUtil} className="h-2" />
                     </div>
-                  )}
-                  {trainer.specializations && trainer.specializations.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {trainer.specializations.map((spec, idx) => (
-                        <Badge key={idx} variant="secondary">
-                          {spec}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  {trainer.certifications && trainer.certifications.length > 0 && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Award className="h-4 w-4 text-muted-foreground" />
-                      <span>{trainer.certifications.join(", ")}</span>
-                    </div>
-                  )}
-                  {trainer.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{trainer.bio}</p>
-                  )}
-                  {trainer.hourly_rate && (
-                    <p className="text-sm font-medium">₹{trainer.hourly_rate}/hour</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+
+                    {/* Contact & Specs */}
+                    {trainer.profile_phone && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Phone className="h-3.5 w-3.5" />
+                        <span>{trainer.profile_phone}</span>
+                      </div>
+                    )}
+                    
+                    {trainer.specializations && trainer.specializations.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {trainer.specializations.slice(0, 3).map((spec: string, idx: number) => (
+                          <Badge key={idx} variant="secondary" className="text-xs rounded-full px-2.5">
+                            {spec}
+                          </Badge>
+                        ))}
+                        {trainer.specializations.length > 3 && (
+                          <Badge variant="outline" className="text-xs rounded-full">
+                            +{trainer.specializations.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {trainer.certifications && trainer.certifications.length > 0 && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Award className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="truncate">{trainer.certifications.join(", ")}</span>
+                      </div>
+                    )}
+
+                    {trainer.hourly_rate && (
+                      <div className="pt-2 border-t border-border/30 flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Hourly Rate</span>
+                        <span className="text-sm font-bold text-foreground">₹{trainer.hourly_rate}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
-        {/* Add Trainer Drawer */}
-        <AddTrainerDrawer
-          open={isCreateOpen}
-          onOpenChange={setIsCreateOpen}
-          branchId={branchId}
-        />
-
-        {/* Trainer Profile Drawer */}
-        <TrainerProfileDrawer
-          open={profileOpen}
-          onOpenChange={setProfileOpen}
-          trainer={selectedTrainer}
-          onDeactivate={handleDeactivate}
-        />
-
-        {/* Edit Trainer Drawer */}
-        <EditTrainerDrawer
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          trainer={editingTrainer}
-        />
+        <AddTrainerDrawer open={isCreateOpen} onOpenChange={setIsCreateOpen} branchId={branchId} />
+        <TrainerProfileDrawer open={profileOpen} onOpenChange={setProfileOpen} trainer={selectedTrainer} onDeactivate={handleDeactivate} />
+        <EditTrainerDrawer open={editOpen} onOpenChange={setEditOpen} trainer={editingTrainer} />
       </div>
     </AppLayout>
   );

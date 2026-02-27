@@ -16,9 +16,11 @@ import { format } from 'date-fns';
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import { FollowupDrawer } from '@/components/leads/FollowupDrawer';
 import { ConvertMemberDrawer } from '@/components/leads/ConvertMemberDrawer';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function LeadsPage() {
   const { user } = useAuth();
+  const { effectiveBranchId } = useBranchContext();
   const queryClient = useQueryClient();
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
@@ -275,7 +277,7 @@ export default function LeadsPage() {
       <AddLeadDrawer
         open={showAddDrawer}
         onOpenChange={setShowAddDrawer}
-        defaultBranchId={leads[0]?.branch_id}
+        defaultBranchId={effectiveBranchId || leads[0]?.branch_id}
       />
       <FollowupDrawer
         open={showFollowupDrawer}

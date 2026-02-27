@@ -398,7 +398,7 @@ export function MemberProfileDrawer({
             pt_packages(name, total_sessions),
             trainers(user_id)
           ),
-          referrer:referred_by(member_code)
+          referrer:referred_by(member_code, user_id)
         `)
         .eq('id', member.id)
         .single();
@@ -409,7 +409,22 @@ export function MemberProfileDrawer({
     enabled: !!member?.id && open,
   });
 
-  // Fetch payment history
+  // Fetch referrer name from profile
+  const referrerUserId = (memberDetails?.referrer as any)?.user_id;
+  const { data: referrerProfile } = useQuery({
+    queryKey: ['referrer-profile', referrerUserId],
+    queryFn: async () => {
+      if (!referrerUserId) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', referrerUserId)
+        .single();
+      return data;
+    },
+    enabled: !!referrerUserId,
+  });
+
   const { data: payments = [] } = useQuery({
     queryKey: ['member-payments', member?.id],
     queryFn: async () => {
@@ -801,7 +816,7 @@ export function MemberProfileDrawer({
                     <div className="flex items-center gap-2 text-primary">
                       <Gift className="h-4 w-4" />
                       <span className="font-medium">Referred by:</span>
-                      <span>{(memberDetails?.referrer as any)?.member_code || 'Unknown'}</span>
+                      <span>{referrerProfile?.full_name || (memberDetails?.referrer as any)?.member_code || 'Unknown'}</span>
                     </div>
                   </CardContent>
                 </Card>
