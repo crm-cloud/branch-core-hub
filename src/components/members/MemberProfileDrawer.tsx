@@ -409,7 +409,22 @@ export function MemberProfileDrawer({
     enabled: !!member?.id && open,
   });
 
-  // Fetch payment history
+  // Fetch referrer name from profile
+  const referrerUserId = (memberDetails?.referrer as any)?.user_id;
+  const { data: referrerProfile } = useQuery({
+    queryKey: ['referrer-profile', referrerUserId],
+    queryFn: async () => {
+      if (!referrerUserId) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', referrerUserId)
+        .single();
+      return data;
+    },
+    enabled: !!referrerUserId,
+  });
+
   const { data: payments = [] } = useQuery({
     queryKey: ['member-payments', member?.id],
     queryFn: async () => {
