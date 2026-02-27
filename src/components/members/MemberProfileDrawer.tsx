@@ -816,7 +816,7 @@ export function MemberProfileDrawer({
                     <div className="flex items-center gap-2 text-primary">
                       <Gift className="h-4 w-4" />
                       <span className="font-medium">Referred by:</span>
-                      <span>{(memberDetails?.referrer as any)?.member_code || 'Unknown'}</span>
+                      <span>{referrerProfile?.full_name || (memberDetails?.referrer as any)?.member_code || 'Unknown'}</span>
                     </div>
                   </CardContent>
                 </Card>
