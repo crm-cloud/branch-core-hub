@@ -1,86 +1,79 @@
 
 
-# Audit & Fix Plan: Branch Manager, Search UI, Demo Data, Stale Data, Branch Selector
+# Comprehensive Fixes: Lead Creation, Locker Assignment, Referrals, UI Redesigns & Notifications
 
-## Issues Found
+## Root Cause Analysis
 
-### 1. Branch Manager Assignment Bug (EditBranchDrawer)
-**Problem:** When `formData.managerId` is empty (selecting "No manager assigned" → maps to `""`), the `if (formData.managerId)` check on line 116 is falsy, so the manager update is skipped entirely. You cannot unassign a manager, and the "No manager assigned" text persists even after assigning one until page refresh. Also, the drawer doesn't invalidate `branch-manager` query key, so the current manager display is stale.
+### 1. Lead Creation Fails
+`AddLeadDrawer` receives `defaultBranchId={leads[0]?.branch_id}` from `Leads.tsx` (line 278). If no leads exist yet, this is `undefined`, making `branch_id` an empty string. The DB requires `branch_id` NOT NULL.
+**Fix:** Pass `effectiveBranchId` from `BranchContext` instead of `leads[0]?.branch_id`.
 
-**Fix:**
-- Track whether manager selection changed with a separate flag
-- When manager is intentionally cleared, delete existing `branch_managers` row
-- Invalidate `['branch-manager', branch.id]` and `['potential-managers']` query keys after save
+### 2. Referral "Referred by" Shows Code Instead of Name + Rewards Not Generating
+- **Display bug:** MemberProfileDrawer line 401 queries `referrer:referred_by(member_code)` — only fetches `member_code`, not the referrer's name via their profile.
+- **Reward not generating:** No database trigger exists to auto-create `referral_rewards` when a referral status changes to `converted`. The system relies on triggers that don't exist.
+- **Settings save fails:** Screenshot shows "no unique or exclusion constraint matching the ON CONFLICT specification". `referral_settings` has no unique index on `branch_id` — only on `id`. The `upsert(..., { onConflict: 'branch_id' })` call fails.
+**Fix:** Add unique constraint on `referral_settings.branch_id`. Update referrer query to join through `user_id` to `profiles` for `full_name`. Create a DB function/trigger or application-level logic to generate rewards on conversion.
 
-### 2. Stale Data After Mutations (System-Wide)
-**Problem:** After creating/editing entities (employees, branch managers, etc.), the UI doesn't reflect changes without manual refresh. Root cause: mutations only invalidate their own narrow query key but not related ones (e.g., creating an employee with manager role doesn't invalidate `branches`, `branch-manager`, or `potential-managers`).
+### 3. Locker Assignment Fails
+`lockerService.assignLocker()` sets status to `'occupied'` (line 97), but the `locker_status` enum values are: `available`, `assigned`, `maintenance`, `reserved`. There is no `'occupied'` value — it should be `'assigned'`.
+**Fix:** Change `'occupied'` to `'assigned'` in `lockerService.ts`. Also fix `Lockers.tsx` line 85 which checks for `status === 'assigned'` (correct) but the status color function checks for `'occupied'` (line 66, wrong).
 
-**Fix in EditBranchDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branch-manager'] })` after save.
-**Fix in AddEmployeeDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branches'] })` and `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after employee creation.
-**Fix in AddBranchDialog:** Add `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after branch creation.
+### 4. Redesign Membership Plans Page
+Current page is functional but basic. Will enhance with premium Vuexy-style cards, better visual hierarchy, and richer plan cards.
 
-### 3. Reset Data Uses AlertDialog Instead of Side Drawer
-**Problem:** The "Reset All Data" confirmation uses a center `AlertDialog`. Per project rules, center dialogs are only for simple destructive warnings — this IS a destructive confirmation, so it's actually correct per the design spec. However, user wants it changed.
+### 5. Trainers Page — `max_clients` Covers Both Types
+The `max_clients` field on the trainer form should be specifically for PT clients (capacity-limited). General clients are unlimited assignments. Will clarify the label and description.
 
-**Fix:** Replace the `AlertDialog` with a `Sheet` (right-side drawer) for the reset confirmation flow.
+### 6. Manual Refresh Required After Data Entry
+Missing query invalidation in several mutation flows. Need to audit all mutation `onSuccess` handlers and ensure proper `queryClient.invalidateQueries` calls. Also ensure realtime subscriptions are in place for key tables.
 
-### 4. Remove Demo Data Feature Entirely
-**Problem:** User wants to remove the demo data edge function and UI. Replace with pre-built plan/benefit templates.
+### 7. Redesign Unauthorized Page
+Current page is minimal. Will create a modern 2026-style page with animation and better UX.
 
-**Fix:**
-- Remove `DemoDataSettings` component from Settings page
-- Remove "Demo Data" from `SETTINGS_MENU`
-- Delete `seed-test-data` and `reset-all-data` edge functions
-- Add a "Templates" section in Settings for pre-built plan and benefit templates (read-only starter data that admins can import selectively)
-
-### 5. Cmd+K Search Not Aligned with Vuexy Design
-**Problem:** Current search opens as a standard `CommandDialog` (Dialog-based) without the Vuexy-style two-column layout with categorized sections (Popular Searches, Apps & Pages, User Interface, Forms & Charts).
-
-**Fix:** Redesign the `GlobalSearch` component to match the Vuexy reference:
-- Show a two-column grid layout when no search query is typed
-- Left column: "Popular Searches" (Dashboard, Analytics, Members, etc.)
-- Right column: "Apps & Pages" (Calendar, Invoice List, Settings, etc.)
-- Keep the existing search results behavior when user types
-- Add `[esc]` keyboard hint next to close button
-- Increase dialog width to accommodate two columns
-
-### 6. Branch Selector Not Working on Some Pages
-**Problem:** The `branchFilter` from `BranchContext` is used by most pages, but some pages don't react to branch changes because they use `effectiveBranchId` (which doesn't change when admin switches "All Branches") or they cache query results without including branch in the query key.
-
-Pages confirmed working: Dashboard, Members, Equipment, Invoices, Attendance, Lockers, etc.
-
-Pages to audit:
-- `Plans.tsx`: Uses `effectiveBranchId` but the `usePlans` hook may not filter by branch
-- `PTSessions.tsx`, `Trainers.tsx`: Use `effectiveBranchId` which returns undefined when "All Branches" selected
-
-**Fix:** Audit the `usePlans` hook and other affected pages to ensure they pass `branchFilter` to their queries and include it in query keys.
+### 8. Notifications Not Showing All Gym Events
+No database triggers exist to auto-generate notifications for key events (new member, payment received, membership expiring, locker assigned, lead converted, etc.). The `notifications` table exists but nothing populates it automatically.
+**Fix:** Create a comprehensive notification trigger function that fires on key table inserts/updates.
 
 ---
 
-## Files Summary
+## Database Migration Required
 
-| Action | File | Description |
-|--------|------|-------------|
-| Edit | `src/components/branches/EditBranchDrawer.tsx` | Fix manager assignment/unassignment + invalidate related queries |
-| Edit | `src/components/employees/AddEmployeeDrawer.tsx` | Invalidate branches/potential-managers after creation |
-| Edit | `src/components/branches/AddBranchDialog.tsx` | Invalidate potential-managers after creation |
-| Edit | `src/components/search/GlobalSearch.tsx` | Redesign to Vuexy two-column layout |
-| Edit | `src/components/ui/command.tsx` | Widen CommandDialog for two-column search |
-| Edit | `src/pages/Settings.tsx` | Remove Demo Data from settings menu |
-| Edit | `src/components/settings/DemoDataSettings.tsx` | Replace with Plan/Benefit template importer |
-| Delete | `supabase/functions/seed-test-data/index.ts` | Remove demo data edge function |
-| Delete | `supabase/functions/reset-all-data/index.ts` | Remove reset data edge function |
-| Edit | `src/hooks/usePlans.ts` | Add branch filtering support |
-| Edit | Pages using effectiveBranchId | Fix branch selector reactivity |
+```sql
+-- 1. Add unique constraint on referral_settings.branch_id for upsert
+CREATE UNIQUE INDEX IF NOT EXISTS referral_settings_branch_id_unique ON public.referral_settings(branch_id);
+
+-- 2. Create notification trigger function for gym events
+CREATE OR REPLACE FUNCTION notify_gym_event() ... (triggers on payments, memberships, leads, members)
+```
+
+---
+
+## Files to Change
+
+| File | Change |
+|------|--------|
+| **DB Migration** | Add unique index on `referral_settings.branch_id`; create notification triggers for key gym events |
+| `src/services/lockerService.ts` | Change `'occupied'` to `'assigned'` in `assignLocker()` (line 97) |
+| `src/pages/Lockers.tsx` | Fix status color for `'assigned'`; redesign with Vuexy cards, table view for occupied lockers, better stats |
+| `src/pages/Leads.tsx` | Pass `effectiveBranchId` from BranchContext to `AddLeadDrawer` instead of `leads[0]?.branch_id` |
+| `src/components/members/MemberProfileDrawer.tsx` | Update referrer query to fetch profile name via `user_id`; show referrer name instead of code |
+| `src/components/settings/ReferralSettings.tsx` | Already correct once DB unique constraint is added |
+| `src/pages/Plans.tsx` | Redesign with modern 2026 Vuexy-inspired layout: gradient hero cards, comparison table, better benefit display |
+| `src/pages/Trainers.tsx` | Redesign with advanced stats, clarify `max_clients` as PT capacity, modern card layout |
+| `src/components/trainers/AddTrainerDrawer.tsx` | Rename `max_clients` label to "Max PT Clients" with description |
+| `src/pages/Unauthorized.tsx` | Complete redesign with animated illustration, role info, modern glassmorphism style |
+| `src/services/notificationService.ts` | Add helper to create notifications for various gym events |
+| `src/hooks/useLockers.ts` | Add broader query invalidation after mutations |
+| Multiple mutation files | Audit and add missing `queryClient.invalidateQueries` calls in all mutation `onSuccess` handlers |
 
 ## Execution Order
 
-| Step | Priority | Description |
-|------|----------|-------------|
-| 1 | Critical | Fix branch manager assignment in EditBranchDrawer |
-| 2 | Critical | Fix stale data — add cross-query invalidation |
-| 3 | High | Remove demo data, replace with template importer |
-| 4 | High | Redesign Cmd+K search to Vuexy style |
-| 5 | High | Fix branch selector on Plans and other pages |
-| 6 | Medium | Replace reset AlertDialog with Sheet |
+1. Database migration (unique constraint + notification triggers)
+2. Fix critical bugs (locker status enum, lead branch_id, referrer name)
+3. Fix referral settings save
+4. Add missing query invalidations across mutations
+5. Redesign Unauthorized page
+6. Redesign Plans page
+7. Redesign Lockers page with improved workflow
+8. Redesign Trainers page with clarified max_clients
 
