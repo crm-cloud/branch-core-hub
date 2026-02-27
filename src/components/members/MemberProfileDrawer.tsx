@@ -398,7 +398,7 @@ export function MemberProfileDrawer({
             pt_packages(name, total_sessions),
             trainers(user_id)
           ),
-          referrer:referred_by(member_code)
+          referrer:referred_by(member_code, user_id)
         `)
         .eq('id', member.id)
         .single();

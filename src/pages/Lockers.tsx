@@ -62,7 +62,7 @@ export default function LockersPage() {
     switch (status) {
       case 'available':
         return 'bg-success/20 text-success border-success/30';
-      case 'occupied':
+      case 'assigned':
         return 'bg-accent/20 text-accent border-accent/30';
       case 'maintenance':
         return 'bg-warning/20 text-warning border-warning/30';

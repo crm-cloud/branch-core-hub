@@ -277,7 +277,7 @@ export default function LeadsPage() {
       <AddLeadDrawer
         open={showAddDrawer}
         onOpenChange={setShowAddDrawer}
-        defaultBranchId={leads[0]?.branch_id}
+        defaultBranchId={effectiveBranchId || leads[0]?.branch_id}
       />
       <FollowupDrawer
         open={showFollowupDrawer}
