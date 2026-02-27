@@ -20,6 +20,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function LeadsPage() {
   const { user } = useAuth();
+  const { effectiveBranchId } = useBranchContext();
   const queryClient = useQueryClient();
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showAddDrawer, setShowAddDrawer] = useState(false);
