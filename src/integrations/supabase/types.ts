@@ -1783,6 +1783,7 @@ export type Database = {
           resolved_at: string | null
           resolved_by: string | null
           route: string | null
+          source: string | null
           stack_trace: string | null
           status: string
           user_id: string | null
@@ -1796,6 +1797,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
+          source?: string | null
           stack_trace?: string | null
           status?: string
           user_id?: string | null
@@ -1809,6 +1811,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
+          source?: string | null
           stack_trace?: string | null
           status?: string
           user_id?: string | null
@@ -3725,11 +3728,15 @@ export type Database = {
           invoice_id: string | null
           member_id: string | null
           notes: string | null
+          original_payment_id: string | null
           payment_date: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           received_by: string | null
           status: Database["public"]["Enums"]["payment_status"]
           transaction_id: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
         }
         Insert: {
           amount: number
@@ -3739,11 +3746,15 @@ export type Database = {
           invoice_id?: string | null
           member_id?: string | null
           notes?: string | null
+          original_payment_id?: string | null
           payment_date?: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           received_by?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Update: {
           amount?: number
@@ -3753,11 +3764,15 @@ export type Database = {
           invoice_id?: string | null
           member_id?: string | null
           notes?: string | null
+          original_payment_id?: string | null
           payment_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           received_by?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Relationships: [
           {
@@ -3779,6 +3794,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_original_payment_id_fkey"
+            columns: ["original_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
             referencedColumns: ["id"]
           },
         ]
@@ -5374,6 +5396,18 @@ export type Database = {
         Returns: undefined
       }
       generate_renewal_invoices: { Args: never; Returns: undefined }
+      get_inactive_members: {
+        Args: { p_branch_id: string; p_days?: number; p_limit?: number }
+        Returns: {
+          days_absent: number
+          email: string
+          full_name: string
+          last_visit: string
+          member_code: string
+          member_id: string
+          phone: string
+        }[]
+      }
       get_member_id: { Args: { _user_id: string }; Returns: string }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {

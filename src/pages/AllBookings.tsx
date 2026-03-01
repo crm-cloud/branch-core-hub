@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,10 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus } from 'lucide-react';
-import { toast } from 'sonner';
+import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus, ChevronLeft, ChevronRight, List, CalendarDays } from 'lucide-react';
 import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
-import { useQueryClient } from '@tanstack/react-query';
 
 export default function AllBookingsPage() {
   const queryClient = useQueryClient();
@@ -24,6 +22,8 @@ export default function AllBookingsPage() {
   const [dateFilter, setDateFilter] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [conciergeOpen, setConciergeOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({
@@ -47,39 +47,22 @@ export default function AllBookingsPage() {
       const classIds = classes.map(c => c.id);
       const { data: bookings, error } = await supabase
         .from('class_bookings')
-        .select(`
-          *,
-          member:members(id, member_code, user_id)
-        `)
+        .select(`*, member:members(id, member_code, user_id)`)
         .in('class_id', classIds);
 
       if (error) throw error;
 
-      // Get member names
-      const userIds = (bookings || [])
-        .map((b: any) => b.member?.user_id)
-        .filter((id): id is string => !!id);
-
+      const userIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
       let profilesMap: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', userIds);
-        profilesMap = (profiles || []).reduce((acc, p) => {
-          acc[p.id] = p.full_name || '';
-          return acc;
-        }, {} as Record<string, string>);
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+        profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || ''; return acc; }, {} as Record<string, string>);
       }
 
-      const classMap = classes.reduce((acc, c) => {
-        acc[c.id] = { name: c.name, scheduled_at: c.scheduled_at };
-        return acc;
-      }, {} as Record<string, { name: string; scheduled_at: string }>);
+      const classMap = classes.reduce((acc, c) => { acc[c.id] = { name: c.name, scheduled_at: c.scheduled_at }; return acc; }, {} as Record<string, any>);
 
       return (bookings || []).map((b: any) => ({
-        ...b,
-        type: 'class',
+        ...b, type: 'class',
         class_name: classMap[b.class_id]?.name,
         class_time: classMap[b.class_id]?.scheduled_at,
         member_name: b.member?.user_id ? profilesMap[b.member.user_id] : b.member?.member_code,
@@ -104,59 +87,32 @@ export default function AllBookingsPage() {
       const slotIds = slots.map(s => s.id);
       const { data: bookings, error } = await supabase
         .from('benefit_bookings')
-        .select(`
-          *,
-          member:members(id, member_code, user_id)
-        `)
+        .select(`*, member:members(id, member_code, user_id)`)
         .in('slot_id', slotIds);
 
       if (error) throw error;
 
-      // Get member names
-      const userIds = (bookings || [])
-        .map((b: any) => b.member?.user_id)
-        .filter((id): id is string => !!id);
-
+      const userIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
       let profilesMap: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', userIds);
-        profilesMap = (profiles || []).reduce((acc, p) => {
-          acc[p.id] = p.full_name || '';
-          return acc;
-        }, {} as Record<string, string>);
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+        profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || ''; return acc; }, {} as Record<string, string>);
       }
 
-      // Fetch benefit type names
       const benefitTypeIds = [...new Set(slots.map(s => s.benefit_type_id).filter(Boolean))];
       let benefitTypeNames: Record<string, string> = {};
       if (benefitTypeIds.length > 0) {
-        const { data: types } = await supabase
-          .from('benefit_types')
-          .select('id, name')
-          .in('id', benefitTypeIds);
-        benefitTypeNames = (types || []).reduce((acc, t) => {
-          acc[t.id] = t.name;
-          return acc;
-        }, {} as Record<string, string>);
+        const { data: types } = await supabase.from('benefit_types').select('id, name').in('id', benefitTypeIds);
+        benefitTypeNames = (types || []).reduce((acc, t) => { acc[t.id] = t.name; return acc; }, {} as Record<string, string>);
       }
 
       const slotMap = slots.reduce((acc, s) => {
-        acc[s.id] = {
-          benefit_type: s.benefit_type,
-          benefit_name: s.benefit_type_id ? benefitTypeNames[s.benefit_type_id] : s.benefit_type,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          slot_date: s.slot_date,
-        };
+        acc[s.id] = { benefit_type: s.benefit_type, benefit_name: s.benefit_type_id ? benefitTypeNames[s.benefit_type_id] : s.benefit_type, start_time: s.start_time, end_time: s.end_time, slot_date: s.slot_date };
         return acc;
       }, {} as Record<string, any>);
 
       return (bookings || []).map((b: any) => ({
-        ...b,
-        type: 'benefit',
+        ...b, type: 'benefit',
         benefit_name: slotMap[b.slot_id]?.benefit_name || slotMap[b.slot_id]?.benefit_type,
         slot_time: `${slotMap[b.slot_id]?.start_time} - ${slotMap[b.slot_id]?.end_time}`,
         slot_date: slotMap[b.slot_id]?.slot_date,
@@ -171,45 +127,27 @@ export default function AllBookingsPage() {
     queryKey: ['all-pt-sessions', branchId, dateFilter],
     enabled: !!branchId,
     queryFn: async () => {
-      const startDate = new Date(dateFilter);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(dateFilter);
-      endDate.setHours(23, 59, 59, 999);
+      const startDate = new Date(dateFilter); startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(dateFilter); endDate.setHours(23, 59, 59, 999);
 
       const { data: sessions, error } = await supabase
         .from('pt_sessions')
-        .select(`
-          *,
-          member:members(id, member_code, user_id),
-          trainer:trainers(id, user_id)
-        `)
+        .select(`*, member:members(id, member_code, user_id), trainer:trainers(id, user_id)`)
         .eq('branch_id', branchId)
         .gte('session_date', startDate.toISOString())
         .lte('session_date', endDate.toISOString());
 
       if (error) throw error;
 
-      // Get member and trainer names
-      const userIds = [
-        ...(sessions || []).map((s: any) => s.member?.user_id),
-        ...(sessions || []).map((s: any) => s.trainer?.user_id),
-      ].filter((id): id is string => !!id);
-
+      const userIds = [...(sessions || []).map((s: any) => s.member?.user_id), ...(sessions || []).map((s: any) => s.trainer?.user_id)].filter((id): id is string => !!id);
       let profilesMap: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', [...new Set(userIds)]);
-        profilesMap = (profiles || []).reduce((acc, p) => {
-          acc[p.id] = p.full_name || '';
-          return acc;
-        }, {} as Record<string, string>);
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', [...new Set(userIds)]);
+        profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || ''; return acc; }, {} as Record<string, string>);
       }
 
       return (sessions || []).map((s: any) => ({
-        ...s,
-        type: 'pt',
+        ...s, type: 'pt',
         member_name: s.member?.user_id ? profilesMap[s.member.user_id] : s.member?.member_code,
         member_code: s.member?.member_code,
         trainer_name: s.trainer?.user_id ? profilesMap[s.trainer.user_id] : 'Unknown Trainer',
@@ -217,15 +155,67 @@ export default function AllBookingsPage() {
     },
   });
 
-  // Filter by search and status
+  // Fetch monthly bookings for calendar
+  const { data: monthlyBookings = { classes: 0, benefits: 0, pt: 0, byDay: {} as Record<string, number> } } = useQuery({
+    queryKey: ['monthly-bookings-calendar', branchId, format(calendarMonth, 'yyyy-MM')],
+    enabled: !!branchId && viewMode === 'calendar',
+    queryFn: async () => {
+      const ms = startOfMonth(calendarMonth);
+      const me = endOfMonth(calendarMonth);
+
+      const { data: classes } = await supabase
+        .from('classes')
+        .select('id, scheduled_at')
+        .eq('branch_id', branchId)
+        .gte('scheduled_at', ms.toISOString())
+        .lte('scheduled_at', me.toISOString());
+
+      const classIds = (classes || []).map(c => c.id);
+      let classCount = 0;
+      const byDay: Record<string, number> = {};
+
+      if (classIds.length > 0) {
+        const { count } = await supabase.from('class_bookings').select('id', { count: 'exact', head: true }).in('class_id', classIds);
+        classCount = count || 0;
+        // Map class bookings to days
+        for (const cls of classes || []) {
+          const day = format(new Date(cls.scheduled_at), 'yyyy-MM-dd');
+          byDay[day] = (byDay[day] || 0) + 1;
+        }
+      }
+
+      const { data: slots } = await supabase
+        .from('benefit_slots')
+        .select('id, slot_date')
+        .eq('branch_id', branchId)
+        .gte('slot_date', format(ms, 'yyyy-MM-dd'))
+        .lte('slot_date', format(me, 'yyyy-MM-dd'));
+
+      const slotIds = (slots || []).map(s => s.id);
+      let benefitCount = 0;
+      if (slotIds.length > 0) {
+        const { count } = await supabase.from('benefit_bookings').select('id', { count: 'exact', head: true }).in('slot_id', slotIds);
+        benefitCount = count || 0;
+        for (const slot of slots || []) {
+          byDay[slot.slot_date] = (byDay[slot.slot_date] || 0) + 1;
+        }
+      }
+
+      const { count: ptCount } = await supabase
+        .from('pt_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('branch_id', branchId)
+        .gte('session_date', ms.toISOString())
+        .lte('session_date', me.toISOString());
+
+      return { classes: classCount, benefits: benefitCount, pt: ptCount || 0, byDay };
+    },
+  });
+
   const filterBookings = (bookings: any[]) => {
     return bookings.filter(b => {
-      const matchesSearch = !searchQuery || 
-        b.member_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.member_code?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+      const matchesSearch = !searchQuery || b.member_name?.toLowerCase().includes(searchQuery.toLowerCase()) || b.member_code?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
-      
       return matchesSearch && matchesStatus;
     });
   };
@@ -234,41 +224,49 @@ export default function AllBookingsPage() {
   const filteredBenefitBookings = filterBookings(benefitBookings);
   const filteredPTSessions = filterBookings(ptSessions);
 
-  // Stats
   const totalBookings = classBookings.length + benefitBookings.length + ptSessions.length;
-  const confirmedBookings = [...classBookings, ...benefitBookings, ...ptSessions]
-    .filter(b => ['booked', 'confirmed', 'scheduled'].includes(b.status)).length;
-  const attendedBookings = [...classBookings, ...benefitBookings, ...ptSessions]
-    .filter(b => ['attended', 'checked_in', 'completed'].includes(b.status)).length;
+  const confirmedBookings = [...classBookings, ...benefitBookings, ...ptSessions].filter(b => ['booked', 'confirmed', 'scheduled'].includes(b.status)).length;
+  const attendedBookings = [...classBookings, ...benefitBookings, ...ptSessions].filter(b => ['attended', 'checked_in', 'completed'].includes(b.status)).length;
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      booked: 'secondary',
-      confirmed: 'secondary',
-      scheduled: 'secondary',
-      attended: 'default',
-      checked_in: 'default',
-      completed: 'default',
-      cancelled: 'outline',
-      no_show: 'destructive',
+      booked: 'secondary', confirmed: 'secondary', scheduled: 'secondary',
+      attended: 'default', checked_in: 'default', completed: 'default',
+      cancelled: 'outline', no_show: 'destructive',
     };
     return <Badge variant={variants[status] || 'outline'}>{status.replace('_', ' ')}</Badge>;
   };
+
+  // Calendar helpers
+  const calStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
+  const calEnd = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 1 });
+  const calDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">All Bookings</h1>
-            <p className="text-muted-foreground">View all member bookings across classes, benefits, and PT sessions</p>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white">
+                <Calendar className="h-6 w-6" />
+              </div>
+              All Bookings
+            </h1>
+            <p className="text-muted-foreground mt-1">View all member bookings across classes, benefits, and PT sessions</p>
           </div>
-          <div className="flex items-center gap-4">
-            <Button onClick={() => setConciergeOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Booking
+          <div className="flex items-center gap-3">
+            <div className="flex bg-muted rounded-xl p-1">
+              <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('list')} className="rounded-lg gap-1.5">
+                <List className="h-4 w-4" /> List
+              </Button>
+              <Button variant={viewMode === 'calendar' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('calendar')} className="rounded-lg gap-1.5">
+                <CalendarDays className="h-4 w-4" /> Calendar
+              </Button>
+            </div>
+            <Button onClick={() => setConciergeOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
+              <Plus className="h-4 w-4" /> New Booking
             </Button>
-            {/* Branch selector moved to global header */}
           </div>
         </div>
 
@@ -280,213 +278,159 @@ export default function AllBookingsPage() {
           <StatCard title="Date" value={format(new Date(dateFilter), 'dd MMM')} icon={Clock} />
         </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by member name or code..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+        {/* Calendar View */}
+        {viewMode === 'calendar' && (
+          <Card className="rounded-2xl border-border/50 shadow-lg">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>{format(calendarMonth, 'MMMM yyyy')}</CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="icon" onClick={() => setCalendarMonth(d => subMonths(d, 1))} className="rounded-xl"><ChevronLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="sm" onClick={() => setCalendarMonth(new Date())} className="rounded-xl">Today</Button>
+                  <Button variant="outline" size="icon" onClick={() => setCalendarMonth(d => addMonths(d, 1))} className="rounded-xl"><ChevronRight className="h-4 w-4" /></Button>
+                </div>
               </div>
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="w-[180px]"
-              />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="booked">Booked</SelectItem>
-                  <SelectItem value="confirmed">Confirmed</SelectItem>
-                  <SelectItem value="attended">Attended</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                  <SelectItem value="no_show">No Show</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-7 gap-px bg-border rounded-xl overflow-hidden">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+                  <div key={d} className="bg-muted p-2 text-center text-xs font-medium text-muted-foreground">{d}</div>
+                ))}
+                {calDays.map((day, idx) => {
+                  const dayStr = format(day, 'yyyy-MM-dd');
+                  const bookingCount = monthlyBookings.byDay[dayStr] || 0;
+                  const isCurrentMonth = isSameMonth(day, calendarMonth);
+                  const isToday = isSameDay(day, new Date());
+                  const isSelected = dayStr === dateFilter;
+                  return (
+                    <div
+                      key={idx}
+                      className={`bg-card p-2 min-h-[70px] cursor-pointer hover:bg-muted/50 transition-colors ${!isCurrentMonth ? 'opacity-40' : ''} ${isToday ? 'ring-2 ring-primary ring-inset' : ''} ${isSelected ? 'bg-primary/5' : ''}`}
+                      onClick={() => { setDateFilter(dayStr); setViewMode('list'); }}
+                    >
+                      <p className={`text-xs font-medium mb-1 ${isToday ? 'text-primary font-bold' : 'text-muted-foreground'}`}>{format(day, 'd')}</p>
+                      {bookingCount > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0">{bookingCount} booking{bookingCount > 1 ? 's' : ''}</Badge>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Bookings Tabs */}
-        <Tabs defaultValue="classes" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="classes" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Classes ({filteredClassBookings.length})
-            </TabsTrigger>
-            <TabsTrigger value="benefits" className="flex items-center gap-2">
-              <Heart className="h-4 w-4" />
-              Benefits ({filteredBenefitBookings.length})
-            </TabsTrigger>
-            <TabsTrigger value="pt" className="flex items-center gap-2">
-              <Dumbbell className="h-4 w-4" />
-              PT Sessions ({filteredPTSessions.length})
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Class Bookings Tab */}
-          <TabsContent value="classes">
-            <Card>
-              <CardHeader>
-                <CardTitle>Class Bookings</CardTitle>
-                <CardDescription>Member bookings for group classes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loadingClasses ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading...</div>
-                ) : filteredClassBookings.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No class bookings found for this date
+        {/* List View */}
+        {viewMode === 'list' && (
+          <>
+            {/* Filters */}
+            <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
+              <CardContent className="pt-5">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search by member name or code..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 rounded-xl" />
                   </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member</TableHead>
-                        <TableHead>Class</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Booked At</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredClassBookings.map((booking) => (
-                        <TableRow key={booking.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{booking.member_name}</div>
-                              <div className="text-sm text-muted-foreground">{booking.member_code}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{booking.class_name}</TableCell>
-                          <TableCell>
-                            {booking.class_time && format(new Date(booking.class_time), 'HH:mm')}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(booking.status)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {format(new Date(booking.booked_at), 'dd MMM HH:mm')}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                  <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-[180px] rounded-xl" />
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-[150px] rounded-xl"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="booked">Booked</SelectItem>
+                      <SelectItem value="confirmed">Confirmed</SelectItem>
+                      <SelectItem value="attended">Attended</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="no_show">No Show</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* Benefit Bookings Tab */}
-          <TabsContent value="benefits">
-            <Card>
-              <CardHeader>
-                <CardTitle>Benefit Bookings</CardTitle>
-                <CardDescription>Member bookings for sauna, ice bath, and other benefits</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loadingBenefits ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading...</div>
-                ) : filteredBenefitBookings.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No benefit bookings found for this date
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member</TableHead>
-                        <TableHead>Benefit</TableHead>
-                        <TableHead>Time Slot</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Booked At</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredBenefitBookings.map((booking) => (
-                        <TableRow key={booking.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{booking.member_name}</div>
-                              <div className="text-sm text-muted-foreground">{booking.member_code}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{booking.benefit_name}</Badge>
-                          </TableCell>
-                          <TableCell>{booking.slot_time}</TableCell>
-                          <TableCell>{getStatusBadge(booking.status)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {format(new Date(booking.booked_at), 'dd MMM HH:mm')}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+            {/* Booking Tabs */}
+            <Tabs defaultValue="classes" className="space-y-4">
+              <TabsList className="rounded-xl">
+                <TabsTrigger value="classes" className="gap-2 rounded-lg"><Calendar className="h-4 w-4" />Classes ({filteredClassBookings.length})</TabsTrigger>
+                <TabsTrigger value="benefits" className="gap-2 rounded-lg"><Heart className="h-4 w-4" />Benefits ({filteredBenefitBookings.length})</TabsTrigger>
+                <TabsTrigger value="pt" className="gap-2 rounded-lg"><Dumbbell className="h-4 w-4" />PT ({filteredPTSessions.length})</TabsTrigger>
+              </TabsList>
 
-          {/* PT Sessions Tab */}
-          <TabsContent value="pt">
-            <Card>
-              <CardHeader>
-                <CardTitle>PT Sessions</CardTitle>
-                <CardDescription>Scheduled personal training sessions</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loadingPT ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading...</div>
-                ) : filteredPTSessions.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No PT sessions found for this date
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Member</TableHead>
-                        <TableHead>Trainer</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredPTSessions.map((session) => (
-                        <TableRow key={session.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{session.member_name}</div>
-                              <div className="text-sm text-muted-foreground">{session.member_code}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{session.trainer_name}</TableCell>
-                          <TableCell>
-                            {session.session_date && format(new Date(session.session_date), 'HH:mm')}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(session.status)}</TableCell>
-                          <TableCell className="text-muted-foreground max-w-[200px] truncate">
-                            {session.notes || '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              <TabsContent value="classes">
+                <Card className="rounded-2xl">
+                  <CardHeader><CardTitle>Class Bookings</CardTitle><CardDescription>Member bookings for group classes</CardDescription></CardHeader>
+                  <CardContent>
+                    {loadingClasses ? <div className="text-center py-8 text-muted-foreground">Loading...</div> : filteredClassBookings.length === 0 ? <div className="text-center py-8 text-muted-foreground">No class bookings found for this date</div> : (
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Class</TableHead><TableHead>Time</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {filteredClassBookings.map((b) => (
+                            <TableRow key={b.id}>
+                              <TableCell><div className="font-medium">{b.member_name}</div><div className="text-sm text-muted-foreground">{b.member_code}</div></TableCell>
+                              <TableCell>{b.class_name}</TableCell>
+                              <TableCell>{b.class_time && format(new Date(b.class_time), 'HH:mm')}</TableCell>
+                              <TableCell>{getStatusBadge(b.status)}</TableCell>
+                              <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="benefits">
+                <Card className="rounded-2xl">
+                  <CardHeader><CardTitle>Benefit Bookings</CardTitle><CardDescription>Sauna, ice bath, and other benefits</CardDescription></CardHeader>
+                  <CardContent>
+                    {loadingBenefits ? <div className="text-center py-8 text-muted-foreground">Loading...</div> : filteredBenefitBookings.length === 0 ? <div className="text-center py-8 text-muted-foreground">No benefit bookings for this date</div> : (
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Benefit</TableHead><TableHead>Time Slot</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {filteredBenefitBookings.map((b) => (
+                            <TableRow key={b.id}>
+                              <TableCell><div className="font-medium">{b.member_name}</div><div className="text-sm text-muted-foreground">{b.member_code}</div></TableCell>
+                              <TableCell><Badge variant="outline">{b.benefit_name}</Badge></TableCell>
+                              <TableCell>{b.slot_time}</TableCell>
+                              <TableCell>{getStatusBadge(b.status)}</TableCell>
+                              <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="pt">
+                <Card className="rounded-2xl">
+                  <CardHeader><CardTitle>PT Sessions</CardTitle><CardDescription>Personal training sessions</CardDescription></CardHeader>
+                  <CardContent>
+                    {loadingPT ? <div className="text-center py-8 text-muted-foreground">Loading...</div> : filteredPTSessions.length === 0 ? <div className="text-center py-8 text-muted-foreground">No PT sessions for this date</div> : (
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Trainer</TableHead><TableHead>Time</TableHead><TableHead>Status</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {filteredPTSessions.map((s) => (
+                            <TableRow key={s.id}>
+                              <TableCell><div className="font-medium">{s.member_name}</div><div className="text-sm text-muted-foreground">{s.member_code}</div></TableCell>
+                              <TableCell>{s.trainer_name}</TableCell>
+                              <TableCell>{s.session_date && format(new Date(s.session_date), 'HH:mm')}</TableCell>
+                              <TableCell>{getStatusBadge(s.status)}</TableCell>
+                              <TableCell className="text-muted-foreground max-w-[200px] truncate">{s.notes || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </div>
 
       <ConciergeBookingDrawer

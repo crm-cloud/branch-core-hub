@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
     const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
     const oneDayFromNow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const results = {
       payment_reminders: 0,
@@ -44,6 +45,7 @@ Deno.serve(async (req) => {
       class_reminders: 0,
       pt_reminders: 0,
       benefit_reminders: 0,
+      inactive_member_alerts: 0,
     };
     const notifications: any[] = [];
     const commLogs: any[] = [];
@@ -58,59 +60,31 @@ Deno.serve(async (req) => {
     for (const reminder of pendingReminders || []) {
       const member = reminder.members as any;
       if (!member?.user_id) continue;
-
       const name = member.profiles?.full_name || "Member";
       notifications.push({
-        user_id: member.user_id,
-        branch_id: reminder.branch_id,
-        title: "Payment Reminder",
-        message: `Hi ${name}, your payment is ${reminder.reminder_type === "before_due" ? "due soon" : reminder.reminder_type === "on_due" ? "due today" : "overdue"}. Please settle your balance.`,
-        type: "warning",
-        category: "payment",
-        action_url: "/member/invoices",
+        user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
+        message: `Hi ${name}, your payment is ${reminder.reminder_type === "before_due" ? "due soon" : reminder.reminder_type === "on_due" ? "due today" : "overdue"}.`,
+        type: "warning", category: "payment", action_url: "/member/invoices",
       });
-
       commLogs.push({
-        branch_id: reminder.branch_id,
-        type: "notification",
+        branch_id: reminder.branch_id, type: "notification",
         recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-        subject: "Payment Reminder",
-        content: `Payment ${reminder.reminder_type} reminder for ${name}`,
-        status: "sent",
-        member_id: reminder.member_id,
-        sent_at: now.toISOString(),
+        subject: "Payment Reminder", content: `Payment ${reminder.reminder_type} reminder for ${name}`,
+        status: "sent", member_id: reminder.member_id, sent_at: now.toISOString(),
       });
-
       await adminClient.from("payment_reminders").update({ status: "sent", sent_at: now.toISOString() }).eq("id", reminder.id);
       results.payment_reminders++;
     }
 
     // 2. Birthday wishes
-    const { data: birthdayProfiles } = await adminClient
-      .from("profiles")
-      .select("id, full_name, date_of_birth, email, phone");
-
+    const { data: birthdayProfiles } = await adminClient.from("profiles").select("id, full_name, date_of_birth, email, phone");
     for (const profile of birthdayProfiles || []) {
       if (!profile.date_of_birth) continue;
       const dob = new Date(profile.date_of_birth);
       if (dob.getMonth() === now.getMonth() && dob.getDate() === now.getDate()) {
-        // Check if we already sent one today
-        const { count } = await adminClient
-          .from("notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", profile.id)
-          .eq("category", "birthday")
-          .gte("created_at", today + "T00:00:00");
-
+        const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", profile.id).eq("category", "birthday").gte("created_at", today + "T00:00:00");
         if ((count || 0) > 0) continue;
-
-        notifications.push({
-          user_id: profile.id,
-          title: "🎂 Happy Birthday!",
-          message: `Happy Birthday, ${profile.full_name || ""}! Wishing you a great day!`,
-          type: "info",
-          category: "birthday",
-        });
+        notifications.push({ user_id: profile.id, title: "🎂 Happy Birthday!", message: `Happy Birthday, ${profile.full_name || ""}! Wishing you a great day!`, type: "info", category: "birthday" });
         results.birthday_wishes++;
       }
     }
@@ -118,127 +92,116 @@ Deno.serve(async (req) => {
     // 3. Membership expiry reminders (7, 3, 1 day before)
     for (const daysOut of [7, 3, 1]) {
       const targetDate = daysOut === 7 ? sevenDaysFromNow : daysOut === 3 ? threeDaysFromNow : oneDayFromNow;
-
       const { data: expiringMemberships } = await adminClient
         .from("memberships")
         .select("id, member_id, end_date, branch_id, members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email)), membership_plans:plan_id (name)")
-        .eq("status", "active")
-        .eq("end_date", targetDate);
+        .eq("status", "active").eq("end_date", targetDate);
 
       for (const ms of expiringMemberships || []) {
         const member = ms.members as any;
         if (!member?.user_id) continue;
-
-        const { count } = await adminClient
-          .from("notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", member.user_id)
-          .eq("category", "membership")
-          .ilike("message", `%${daysOut} day%`)
-          .gte("created_at", today + "T00:00:00");
-
+        const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", member.user_id).eq("category", "membership").ilike("message", `%${daysOut} day%`).gte("created_at", today + "T00:00:00");
         if ((count || 0) > 0) continue;
-
         const planName = (ms.membership_plans as any)?.name || "your plan";
         notifications.push({
-          user_id: member.user_id,
-          branch_id: ms.branch_id,
-          title: "Membership Expiring Soon",
-          message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now to avoid interruption.`,
-          type: "warning",
-          category: "membership",
-          action_url: "/member/plans",
+          user_id: member.user_id, branch_id: ms.branch_id, title: "Membership Expiring Soon",
+          message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now.`,
+          type: "warning", category: "membership", action_url: "/member/plans",
         });
-
         commLogs.push({
-          branch_id: ms.branch_id,
-          type: "notification",
+          branch_id: ms.branch_id, type: "notification",
           recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-          subject: "Membership Expiry Reminder",
-          content: `${planName} expires in ${daysOut} days for ${member.profiles?.full_name}`,
-          status: "sent",
-          member_id: ms.member_id,
-          sent_at: now.toISOString(),
+          subject: "Membership Expiry Reminder", content: `${planName} expires in ${daysOut} days for ${member.profiles?.full_name}`,
+          status: "sent", member_id: ms.member_id, sent_at: now.toISOString(),
         });
         results.membership_expiry++;
       }
     }
 
-    // 4. Class reminders (classes scheduled tomorrow)
+    // 4. Class reminders (tomorrow)
     const { data: tomorrowClasses } = await adminClient
       .from("class_bookings")
       .select("id, member_id, class_id, classes:class_id (name, scheduled_at, branch_id), members:member_id (user_id, profiles:user_id (full_name))")
       .eq("status", "booked");
-
     for (const booking of tomorrowClasses || []) {
       const cls = booking.classes as any;
-      if (!cls?.scheduled_at) continue;
-      const classDate = cls.scheduled_at.split("T")[0];
-      if (classDate !== tomorrow) continue;
-
+      if (!cls?.scheduled_at || cls.scheduled_at.split("T")[0] !== tomorrow) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
-
-      notifications.push({
-        user_id: member.user_id,
-        branch_id: cls.branch_id,
-        title: "Class Tomorrow",
-        message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`,
-        type: "info",
-        category: "class",
-        action_url: "/member/classes",
-      });
+      notifications.push({ user_id: member.user_id, branch_id: cls.branch_id, title: "Class Tomorrow", message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`, type: "info", category: "class", action_url: "/member/classes" });
       results.class_reminders++;
     }
 
-    // 5. PT session reminders (scheduled tomorrow)
+    // 5. PT session reminders (tomorrow)
     const { data: tomorrowPT } = await adminClient
       .from("pt_sessions")
       .select("id, member_pt_package_id, trainer_id, scheduled_at, member_pt_packages:member_pt_package_id (member_id, branch_id, members:member_id (user_id, profiles:user_id (full_name)))")
-      .eq("status", "scheduled")
-      .gte("scheduled_at", tomorrow + "T00:00:00")
-      .lt("scheduled_at", tomorrow + "T23:59:59");
-
+      .eq("status", "scheduled").gte("scheduled_at", tomorrow + "T00:00:00").lt("scheduled_at", tomorrow + "T23:59:59");
     for (const session of tomorrowPT || []) {
       const pkg = session.member_pt_packages as any;
       const member = pkg?.members;
       if (!member?.user_id) continue;
-
-      notifications.push({
-        user_id: member.user_id,
-        branch_id: pkg.branch_id,
-        title: "PT Session Tomorrow",
-        message: `Reminder: You have a Personal Training session scheduled for tomorrow.`,
-        type: "info",
-        category: "pt_session",
-        action_url: "/member/pt-sessions",
-      });
+      notifications.push({ user_id: member.user_id, branch_id: pkg.branch_id, title: "PT Session Tomorrow", message: `Reminder: You have a Personal Training session scheduled for tomorrow.`, type: "info", category: "pt_session", action_url: "/member/pt-sessions" });
       results.pt_reminders++;
     }
 
-    // 6. Benefit booking reminders (booked for tomorrow)
+    // 6. Benefit booking reminders (tomorrow)
     const { data: tomorrowBenefits } = await adminClient
       .from("benefit_bookings")
       .select("id, member_id, slot_id, benefit_slots:slot_id (slot_date, start_time, branch_id, benefit_type), members:member_id (user_id, profiles:user_id (full_name))")
       .eq("status", "booked");
-
     for (const booking of tomorrowBenefits || []) {
       const slot = booking.benefit_slots as any;
       if (!slot || slot.slot_date !== tomorrow) continue;
-
       const member = booking.members as any;
       if (!member?.user_id) continue;
-
-      notifications.push({
-        user_id: member.user_id,
-        branch_id: slot.branch_id,
-        title: "Benefit Booking Tomorrow",
-        message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`,
-        type: "info",
-        category: "benefit",
-        action_url: "/member/benefits",
-      });
+      notifications.push({ user_id: member.user_id, branch_id: slot.branch_id, title: "Benefit Booking Tomorrow", message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`, type: "info", category: "benefit", action_url: "/member/benefits" });
       results.benefit_reminders++;
+    }
+
+    // 7. Inactive member alerts (no visit in 7+ days)
+    try {
+      const { data: branches } = await adminClient.from("branches").select("id").eq("is_active", true);
+      for (const branch of branches || []) {
+        const { data: inactiveMembers } = await adminClient.rpc("get_inactive_members", {
+          p_branch_id: branch.id,
+          p_days: 7,
+          p_limit: 20,
+        });
+
+        for (const member of inactiveMembers || []) {
+          // Check if we already sent this alert today
+          const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true })
+            .eq("category", "retention").ilike("message", `%${member.member_code}%`).gte("created_at", today + "T00:00:00");
+          if ((count || 0) > 0) continue;
+
+          // Notify admin/staff about inactive member
+          const { data: staffUsers } = await adminClient.from("user_roles").select("user_id").in("role", ["owner", "admin", "staff"]);
+          for (const staff of staffUsers || []) {
+            notifications.push({
+              user_id: staff.user_id, branch_id: branch.id,
+              title: "Inactive Member Alert",
+              message: `${member.full_name} (${member.member_code}) hasn't visited in ${member.days_absent || '7+'} days. Consider reaching out for retention.`,
+              type: "warning", category: "retention",
+            });
+          }
+
+          // Notify the member themselves
+          const { data: memberRow } = await adminClient.from("members").select("user_id").eq("id", member.member_id).single();
+          if (memberRow?.user_id) {
+            notifications.push({
+              user_id: memberRow.user_id, branch_id: branch.id,
+              title: "We Miss You! 💪",
+              message: `Hi ${member.full_name}, we haven't seen you in a while! Come visit the gym today and keep your fitness goals on track.`,
+              type: "info", category: "retention", action_url: "/member/dashboard",
+            });
+          }
+
+          results.inactive_member_alerts++;
+        }
+      }
+    } catch (err) {
+      console.error("Inactive member alerts error:", err);
     }
 
     // Bulk insert notifications
@@ -247,7 +210,6 @@ Deno.serve(async (req) => {
       if (notifErr) console.error("Notification insert error:", notifErr);
     }
 
-    // Bulk insert communication logs
     if (commLogs.length > 0) {
       const { error: logErr } = await adminClient.from("communication_logs").insert(commLogs);
       if (logErr) console.error("Comm log insert error:", logErr);

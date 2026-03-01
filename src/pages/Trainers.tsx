@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import { Plus, Mail, Phone, Award, Users, DollarSign, Calendar, Edit, User, Dumbbell, TrendingUp, Star } from "lucide-react";
+import { Plus, Mail, Phone, Award, Users, DollarSign, Edit, User, Dumbbell, TrendingUp, Star } from "lucide-react";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useTrainers, useDeactivateTrainer } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,7 +17,8 @@ import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 
 export default function TrainersPage() {
   const { effectiveBranchId, branchFilter } = useBranchContext();
-  const branchId = branchFilter || effectiveBranchId || '';
+  // When branchFilter is empty (All Branches), pass '' to fetch all trainers
+  const branchId = branchFilter || '';
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState<any>(null);
@@ -30,50 +31,40 @@ export default function TrainersPage() {
   const { data: ptClientCounts = {} } = useQuery({
     queryKey: ['pt-client-counts', branchId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('member_pt_packages')
-        .select('trainer_id')
-        .eq('branch_id', branchId)
-        .eq('status', 'active');
+      let query = supabase.from('member_pt_packages').select('trainer_id').eq('status', 'active');
+      if (branchId) query = query.eq('branch_id', branchId);
+      const { data, error } = await query;
       if (error) throw error;
       const counts: Record<string, number> = {};
       data?.forEach(pkg => { if (pkg.trainer_id) counts[pkg.trainer_id] = (counts[pkg.trainer_id] || 0) + 1; });
       return counts;
     },
-    enabled: !!branchId,
+    enabled: true,
   });
 
   const { data: generalClientCounts = {} } = useQuery({
     queryKey: ['general-client-counts', branchId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('members')
-        .select('assigned_trainer_id')
-        .eq('branch_id', branchId)
-        .eq('status', 'active')
-        .not('assigned_trainer_id', 'is', null);
+      let query = supabase.from('members').select('assigned_trainer_id').eq('status', 'active').not('assigned_trainer_id', 'is', null);
+      if (branchId) query = query.eq('branch_id', branchId);
+      const { data, error } = await query;
       if (error) throw error;
       const counts: Record<string, number> = {};
       data?.forEach(m => { if (m.assigned_trainer_id) counts[m.assigned_trainer_id] = (counts[m.assigned_trainer_id] || 0) + 1; });
       return counts;
     },
-    enabled: !!branchId,
+    enabled: true,
   });
 
   const { data: monthlyRevenue = 0 } = useQuery({
     queryKey: ['trainers-monthly-revenue', branchId],
     queryFn: async () => {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      const { data, error } = await supabase
-        .from('trainer_commissions')
-        .select('amount')
-        .gte('created_at', startOfMonth.toISOString());
+      const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+      const { data, error } = await supabase.from('trainer_commissions').select('amount').gte('created_at', startOfMonth.toISOString());
       if (error) throw error;
       return (data || []).reduce((sum, c) => sum + (c.amount || 0), 0);
     },
-    enabled: !!branchId,
+    enabled: true,
   });
 
   const openTrainerProfile = (trainer: any) => { setSelectedTrainer(trainer); setProfileOpen(true); };
@@ -89,74 +80,32 @@ export default function TrainersPage() {
   return (
     <AppLayout>
       <div className="space-y-6 p-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white">
-                <Dumbbell className="h-6 w-6" />
-              </div>
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white"><Dumbbell className="h-6 w-6" /></div>
               Trainers
             </h1>
-            <p className="text-muted-foreground mt-1">Manage trainers, certifications, and client assignments</p>
+            <p className="text-muted-foreground mt-1">
+              {branchId ? 'Manage trainers at this branch' : 'Viewing trainers across all branches'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => setShowInactive(!showInactive)} className="rounded-xl">
-              {showInactive ? "Hide Inactive" : "Show Inactive"}
-            </Button>
-            <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
-              <Plus className="h-4 w-4" />
-              Add Trainer
-            </Button>
+            <Button variant="outline" onClick={() => setShowInactive(!showInactive)} className="rounded-xl">{showInactive ? "Hide Inactive" : "Show Inactive"}</Button>
+            <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20"><Plus className="h-4 w-4" />Add Trainer</Button>
           </div>
         </div>
 
-        {/* Stats Grid */}
+        {/* Stats */}
         <div className="grid gap-4 md:grid-cols-5">
           <Card className="bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl overflow-hidden relative">
             <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-6 translate-x-6" />
-            <CardContent className="pt-6 pb-5 relative z-10">
-              <Dumbbell className="h-5 w-5 opacity-80 mb-2" />
-              <div className="text-3xl font-bold">{activeTrainers}</div>
-              <p className="text-sm opacity-80 mt-0.5">Active Trainers</p>
-            </CardContent>
+            <CardContent className="pt-6 pb-5 relative z-10"><Dumbbell className="h-5 w-5 opacity-80 mb-2" /><div className="text-3xl font-bold">{activeTrainers}</div><p className="text-sm opacity-80 mt-0.5">Active Trainers</p></CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
-            <CardContent className="pt-6 pb-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-primary/10"><User className="h-4 w-4 text-primary" /></div>
-              </div>
-              <div className="text-2xl font-bold text-foreground">{totalGeneralClients}</div>
-              <p className="text-sm text-muted-foreground mt-0.5">General Clients</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
-            <CardContent className="pt-6 pb-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10"><Star className="h-4 w-4 text-amber-600" /></div>
-              </div>
-              <div className="text-2xl font-bold text-foreground">{totalPTClients}</div>
-              <p className="text-sm text-muted-foreground mt-0.5">PT Clients</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
-            <CardContent className="pt-6 pb-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10"><DollarSign className="h-4 w-4 text-emerald-600" /></div>
-              </div>
-              <div className="text-2xl font-bold text-foreground">₹{monthlyRevenue.toLocaleString()}</div>
-              <p className="text-sm text-muted-foreground mt-0.5">Monthly Revenue</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
-            <CardContent className="pt-6 pb-5">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10"><TrendingUp className="h-4 w-4 text-sky-600" /></div>
-              </div>
-              <div className="text-2xl font-bold text-foreground">{activeTrainers > 0 ? Math.round(((totalPTClients + totalGeneralClients) / activeTrainers)) : 0}</div>
-              <p className="text-sm text-muted-foreground mt-0.5">Avg Clients/Trainer</p>
-            </CardContent>
-          </Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl"><CardContent className="pt-6 pb-5"><div className="flex items-center gap-2 mb-2"><div className="p-1.5 rounded-lg bg-primary/10"><User className="h-4 w-4 text-primary" /></div></div><div className="text-2xl font-bold text-foreground">{totalGeneralClients}</div><p className="text-sm text-muted-foreground mt-0.5">General Clients</p></CardContent></Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl"><CardContent className="pt-6 pb-5"><div className="flex items-center gap-2 mb-2"><div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10"><Star className="h-4 w-4 text-amber-600" /></div></div><div className="text-2xl font-bold text-foreground">{totalPTClients}</div><p className="text-sm text-muted-foreground mt-0.5">PT Clients</p></CardContent></Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl"><CardContent className="pt-6 pb-5"><div className="flex items-center gap-2 mb-2"><div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10"><DollarSign className="h-4 w-4 text-emerald-600" /></div></div><div className="text-2xl font-bold text-foreground">₹{monthlyRevenue.toLocaleString()}</div><p className="text-sm text-muted-foreground mt-0.5">Monthly Revenue</p></CardContent></Card>
+          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl"><CardContent className="pt-6 pb-5"><div className="flex items-center gap-2 mb-2"><div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10"><TrendingUp className="h-4 w-4 text-sky-600" /></div></div><div className="text-2xl font-bold text-foreground">{activeTrainers > 0 ? Math.round(((totalPTClients + totalGeneralClients) / activeTrainers)) : 0}</div><p className="text-sm text-muted-foreground mt-0.5">Avg Clients/Trainer</p></CardContent></Card>
         </div>
 
         {/* Trainer Cards */}
@@ -165,14 +114,10 @@ export default function TrainersPage() {
         ) : trainers?.length === 0 ? (
           <Card className="rounded-2xl shadow-lg">
             <CardContent className="py-16 text-center">
-              <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6">
-                <Dumbbell className="h-10 w-10 text-primary" />
-              </div>
+              <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6"><Dumbbell className="h-10 w-10 text-primary" /></div>
               <h3 className="text-xl font-semibold mb-2">No Trainers Yet</h3>
               <p className="text-muted-foreground mb-6">Add your first trainer to get started</p>
-              <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl">
-                <Plus className="h-4 w-4" /> Add Trainer
-              </Button>
+              <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl"><Plus className="h-4 w-4" /> Add Trainer</Button>
             </CardContent>
           </Card>
         ) : (
@@ -182,107 +127,29 @@ export default function TrainersPage() {
               const genClients = generalClientCounts[trainer.id] || 0;
               const maxClients = (trainer as any).max_clients || 10;
               const ptUtil = Math.min((ptClients / maxClients) * 100, 100);
-              
               return (
-                <Card 
-                  key={trainer.id} 
-                  className={`group cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 rounded-2xl border-border/50 shadow-lg overflow-hidden ${!trainer.is_active ? "opacity-50" : ""}`}
-                  onClick={() => openTrainerProfile(trainer)}
-                >
-                  {/* Gradient top bar */}
+                <Card key={trainer.id} className={`group cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-1 rounded-2xl border-border/50 shadow-lg overflow-hidden ${!trainer.is_active ? "opacity-50" : ""}`} onClick={() => openTrainerProfile(trainer)}>
                   <div className="h-1.5 bg-gradient-to-r from-violet-600 to-indigo-600" />
-                  
                   <CardContent className="p-5 space-y-4">
-                    {/* Profile Row */}
                     <div className="flex items-center gap-4">
-                      <Avatar className="h-14 w-14 ring-2 ring-primary/10 ring-offset-2">
-                        <AvatarImage src={trainer.profile_avatar || undefined} />
-                        <AvatarFallback className="bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 font-bold">
-                          {(trainer.profile_name || "T").slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-14 w-14 ring-2 ring-primary/10 ring-offset-2"><AvatarImage src={trainer.profile_avatar || undefined} /><AvatarFallback className="bg-gradient-to-br from-violet-100 to-indigo-100 text-violet-700 font-bold">{(trainer.profile_name || "T").slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-base font-bold text-foreground truncate">{trainer.profile_name || "Unknown"}</h3>
-                        <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
-                          <Mail className="h-3 w-3 flex-shrink-0" />
-                          {trainer.profile_email}
-                        </p>
+                        <p className="text-sm text-muted-foreground truncate flex items-center gap-1"><Mail className="h-3 w-3 flex-shrink-0" />{trainer.profile_email}</p>
                       </div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"
-                        onClick={(e) => openEditTrainer(trainer, e)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" onClick={(e) => openEditTrainer(trainer, e)}><Edit className="h-4 w-4" /></Button>
                     </div>
-
-                    {/* Client Stats */}
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-xl bg-muted/50 border border-border/30">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">General</span>
-                        </div>
-                        <p className="text-xl font-bold text-foreground">{genClients}</p>
-                      </div>
-                      <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Star className="h-3.5 w-3.5 text-primary" />
-                          <span className="text-xs text-primary">PT Clients</span>
-                        </div>
-                        <p className="text-xl font-bold text-foreground">{ptClients}<span className="text-sm font-normal text-muted-foreground">/{maxClients}</span></p>
-                      </div>
+                      <div className="p-3 rounded-xl bg-muted/50 border border-border/30"><div className="flex items-center gap-1.5 mb-1"><User className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs text-muted-foreground">General</span></div><p className="text-xl font-bold text-foreground">{genClients}</p></div>
+                      <div className="p-3 rounded-xl bg-primary/5 border border-primary/10"><div className="flex items-center gap-1.5 mb-1"><Star className="h-3.5 w-3.5 text-primary" /><span className="text-xs text-primary">PT Clients</span></div><p className="text-xl font-bold text-foreground">{ptClients}<span className="text-sm font-normal text-muted-foreground">/{maxClients}</span></p></div>
                     </div>
-
-                    {/* PT Capacity Bar */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">PT Capacity</span>
-                        <span className={`font-semibold ${ptUtil >= 80 ? 'text-destructive' : ptUtil >= 50 ? 'text-warning' : 'text-success'}`}>
-                          {ptUtil.toFixed(0)}%
-                        </span>
-                      </div>
-                      <Progress value={ptUtil} className="h-2" />
-                    </div>
-
-                    {/* Contact & Specs */}
-                    {trainer.profile_phone && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Phone className="h-3.5 w-3.5" />
-                        <span>{trainer.profile_phone}</span>
-                      </div>
+                    <div className="space-y-1.5"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">PT Capacity</span><span className={`font-semibold ${ptUtil >= 80 ? 'text-destructive' : ptUtil >= 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{ptUtil.toFixed(0)}%</span></div><Progress value={ptUtil} className="h-2" /></div>
+                    {trainer.profile_phone && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="h-3.5 w-3.5" /><span>{trainer.profile_phone}</span></div>}
+                    {trainer.specializations?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">{trainer.specializations.slice(0, 3).map((spec: string, idx: number) => <Badge key={idx} variant="secondary" className="text-xs rounded-full px-2.5">{spec}</Badge>)}{trainer.specializations.length > 3 && <Badge variant="outline" className="text-xs rounded-full">+{trainer.specializations.length - 3}</Badge>}</div>
                     )}
-                    
-                    {trainer.specializations && trainer.specializations.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {trainer.specializations.slice(0, 3).map((spec: string, idx: number) => (
-                          <Badge key={idx} variant="secondary" className="text-xs rounded-full px-2.5">
-                            {spec}
-                          </Badge>
-                        ))}
-                        {trainer.specializations.length > 3 && (
-                          <Badge variant="outline" className="text-xs rounded-full">
-                            +{trainer.specializations.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-
-                    {trainer.certifications && trainer.certifications.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Award className="h-3.5 w-3.5 text-amber-500" />
-                        <span className="truncate">{trainer.certifications.join(", ")}</span>
-                      </div>
-                    )}
-
-                    {trainer.hourly_rate && (
-                      <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Hourly Rate</span>
-                        <span className="text-sm font-bold text-foreground">₹{trainer.hourly_rate}</span>
-                      </div>
-                    )}
+                    {trainer.certifications?.length > 0 && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Award className="h-3.5 w-3.5 text-amber-500" /><span className="truncate">{trainer.certifications.join(", ")}</span></div>}
+                    {trainer.hourly_rate && <div className="pt-2 border-t border-border/30 flex items-center justify-between"><span className="text-sm text-muted-foreground">Hourly Rate</span><span className="text-sm font-bold text-foreground">₹{trainer.hourly_rate}</span></div>}
                   </CardContent>
                 </Card>
               );
@@ -290,7 +157,7 @@ export default function TrainersPage() {
           </div>
         )}
 
-        <AddTrainerDrawer open={isCreateOpen} onOpenChange={setIsCreateOpen} branchId={branchId} />
+        <AddTrainerDrawer open={isCreateOpen} onOpenChange={setIsCreateOpen} branchId={effectiveBranchId || ''} />
         <TrainerProfileDrawer open={profileOpen} onOpenChange={setProfileOpen} trainer={selectedTrainer} onDeactivate={handleDeactivate} />
         <EditTrainerDrawer open={editOpen} onOpenChange={setEditOpen} trainer={editingTrainer} />
       </div>
