@@ -10,7 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { lockerService } from '@/services/lockerService';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
-import { Search, Receipt, Gift, CheckCircle, CreditCard } from 'lucide-react';
+import { Search, Receipt, Gift, CheckCircle, CreditCard, Link2 } from 'lucide-react';
 
 interface AssignLockerDrawerProps {
   open: boolean;
@@ -31,6 +31,8 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
   const [checkingPlan, setCheckingPlan] = useState(false);
   const [isChargeable, setIsChargeable] = useState(false);
   const [rentalFee, setRentalFee] = useState(500);
+  const [syncWithMembership, setSyncWithMembership] = useState(false);
+  const [membershipEndDate, setMembershipEndDate] = useState<string | null>(null);
 
   const handleMemberSearch = async () => {
     if (!memberSearch.trim() || !branchId) return;
@@ -66,9 +68,9 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         const profile = m.profiles as any;
         if (!profile) return false;
         return (
-          (profile.full_name && profile.full_name.toLowerCase().includes(searchLower)) ||
-          (profile.email && profile.email.toLowerCase().includes(searchLower)) ||
-          (profile.phone && profile.phone.includes(memberSearch))
+          (profile.full_name?.toLowerCase().includes(searchLower)) ||
+          (profile.email?.toLowerCase().includes(searchLower)) ||
+          (profile.phone?.includes(memberSearch))
         );
       });
 
@@ -79,18 +81,18 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
 
       setSearchResults(uniqueResults);
     } catch (error) {
-      console.error('Search error:', error);
       toast.error('Failed to search members');
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Check if selected member's plan includes free locker
+  // Check member plan + fetch membership end date
   useEffect(() => {
     async function checkMemberPlan() {
       if (!selectedMember) {
         setMemberHasFreeLocker(false);
+        setMembershipEndDate(null);
         return;
       }
       
@@ -100,6 +102,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           .from('memberships')
           .select(`
             id,
+            end_date,
             membership_plans!inner(
               includes_free_locker,
               free_locker_size
@@ -113,6 +116,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           .maybeSingle();
 
         if (membership) {
+          setMembershipEndDate(membership.end_date);
           const plan = membership.membership_plans as any;
           const hasFreeLocker = plan?.includes_free_locker === true;
           
@@ -125,10 +129,11 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           }
         } else {
           setMemberHasFreeLocker(false);
+          setMembershipEndDate(null);
         }
       } catch (error) {
-        console.error('Error checking member plan:', error);
         setMemberHasFreeLocker(false);
+        setMembershipEndDate(null);
       } finally {
         setCheckingPlan(false);
       }
@@ -143,11 +148,23 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     setIsAssigning(true);
     try {
       const startDate = new Date().toISOString().split('T')[0];
-      const endDate = new Date(Date.now() + assignMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      let endDate: string;
       
-      // Fee logic: plan free > not chargeable > user-set fee
+      if (syncWithMembership && membershipEndDate) {
+        endDate = membershipEndDate;
+      } else {
+        endDate = new Date(Date.now() + assignMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      }
+      
       const perMonthFee = memberHasFreeLocker ? 0 : (isChargeable ? rentalFee : 0);
-      const feeAmount = perMonthFee * assignMonths;
+      
+      // Calculate months for billing
+      let billingMonths = assignMonths;
+      if (syncWithMembership && membershipEndDate) {
+        const diffDays = Math.ceil((new Date(membershipEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        billingMonths = Math.max(1, Math.ceil(diffDays / 30));
+      }
+      const feeAmount = perMonthFee * billingMonths;
 
       await lockerService.assignLocker({
         locker_id: locker.id,
@@ -164,7 +181,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           locker.id,
           locker.locker_number,
           feeAmount,
-          assignMonths
+          billingMonths
         );
         toast.success(`Locker assigned and invoice of ₹${feeAmount} created`);
       } else if (memberHasFreeLocker) {
@@ -174,6 +191,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
       }
 
       queryClient.invalidateQueries({ queryKey: ['lockers'] });
+      queryClient.invalidateQueries({ queryKey: ['locker-assignments'] });
       onOpenChange(false);
       resetForm();
     } catch (error) {
@@ -191,12 +209,17 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
     setMemberHasFreeLocker(false);
     setIsChargeable(false);
     setRentalFee(500);
+    setSyncWithMembership(false);
+    setMembershipEndDate(null);
   };
 
   if (!locker) return null;
 
   const effectivelyFree = memberHasFreeLocker || !isChargeable;
-  const totalAmount = effectivelyFree ? 0 : rentalFee * assignMonths;
+  const billingMonths = syncWithMembership && membershipEndDate 
+    ? Math.max(1, Math.ceil((new Date(membershipEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30)))
+    : assignMonths;
+  const totalAmount = effectivelyFree ? 0 : rentalFee * billingMonths;
 
   return (
     <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
@@ -227,9 +250,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
                 {isSearching ? 'Searching...' : 'Search'}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Search by name, member code, phone number, or email
-            </p>
           </div>
 
           {/* Search Results */}
@@ -252,9 +272,6 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
                         <span>{member.member_code}</span>
                         {profile?.phone && <span>• {profile.phone}</span>}
                       </div>
-                      {profile?.email && (
-                        <p className="text-xs text-muted-foreground">{profile.email}</p>
-                      )}
                     </div>
                   );
                 })}
@@ -275,29 +292,47 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
               <p className="font-medium">Selected: {(selectedMember.profiles as any)?.full_name}</p>
               <p className="text-sm text-muted-foreground">{selectedMember.member_code}</p>
               {memberHasFreeLocker && (
-                <Badge variant="outline" className="mt-2 text-success border-success/30">
+                <Badge variant="outline" className="mt-2 text-emerald-600 border-emerald-200">
                   <Gift className="w-3 h-3 mr-1" /> Free locker included in plan
                 </Badge>
+              )}
+              {membershipEndDate && (
+                <p className="text-xs text-muted-foreground mt-1">Membership ends: {membershipEndDate}</p>
               )}
             </div>
           )}
 
-          {/* Duration */}
-          <div className="space-y-2">
-            <Label>Duration</Label>
-            <Select value={String(assignMonths)} onValueChange={(v) => setAssignMonths(Number(v))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 3, 6, 12].map((m) => (
-                  <SelectItem key={m} value={String(m)}>{m} Month{m > 1 ? 's' : ''}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Sync with membership toggle */}
+          {selectedMember && membershipEndDate && (
+            <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base flex items-center gap-2">
+                  <Link2 className="h-4 w-4" /> Sync with Membership
+                </Label>
+                <p className="text-sm text-muted-foreground">End locker assignment when membership expires ({membershipEndDate})</p>
+              </div>
+              <Switch checked={syncWithMembership} onCheckedChange={setSyncWithMembership} />
+            </div>
+          )}
 
-          {/* Charge Toggle (hidden if plan includes free locker) */}
+          {/* Duration (hidden when synced) */}
+          {!syncWithMembership && (
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={String(assignMonths)} onValueChange={(v) => setAssignMonths(Number(v))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 3, 6, 12].map((m) => (
+                    <SelectItem key={m} value={String(m)}>{m} Month{m > 1 ? 's' : ''}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Charge Toggle */}
           {!memberHasFreeLocker && (
             <div className="flex flex-row items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
@@ -317,18 +352,17 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
                 value={rentalFee}
                 onChange={(e) => setRentalFee(Number(e.target.value))}
                 min={0}
-                placeholder="500"
               />
             </div>
           )}
 
           {/* Total Amount or Free Assignment Message */}
           {effectivelyFree ? (
-            <div className="p-4 rounded-lg bg-success/10 border border-success/30">
+            <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
               <div className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-success" />
+                <CheckCircle className="w-5 h-5 text-emerald-600" />
                 <div>
-                  <p className="font-medium text-success">Free Assignment</p>
+                  <p className="font-medium text-emerald-700 dark:text-emerald-400">Free Assignment</p>
                   <p className="text-sm text-muted-foreground">
                     {memberHasFreeLocker ? 'Included in membership plan' : 'No invoice will be generated'}
                   </p>
@@ -338,7 +372,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
           ) : (
             <div className="p-4 rounded-lg bg-muted">
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Total Amount:</span>
+                <span className="text-muted-foreground">Total ({billingMonths} month{billingMonths > 1 ? 's' : ''}):</span>
                 <span className="text-xl font-bold">₹{totalAmount.toLocaleString()}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">

@@ -19,8 +19,12 @@ export async function fetchTrainers(
   let query = supabase
     .from("trainers")
     .select("*")
-    .eq("branch_id", branchId)
     .order("created_at", { ascending: false });
+
+  // Only filter by branch if branchId is provided (empty = all branches)
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+  }
 
   if (activeOnly) {
     query = query.eq("is_active", true);
