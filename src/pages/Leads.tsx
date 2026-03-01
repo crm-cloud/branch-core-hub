@@ -162,7 +162,7 @@ export default function LeadsPage() {
             { label: 'Total', value: stats?.total || 0, icon: Users, gradient: true },
             { label: 'New', value: stats?.new || 0, icon: UserPlus },
             { label: 'Contacted', value: stats?.contacted || 0, icon: Phone },
-            { label: 'Qualified', value: stats?.qualified || (stats as any)?.interested || 0, icon: Target },
+            { label: 'Qualified', value: (stats as any)?.qualified || (stats as any)?.interested || 0, icon: Target },
             { label: 'Converted', value: stats?.converted || 0, icon: TrendingUp },
             { label: 'Lost', value: stats?.lost || 0, icon: X },
           ].map((stat) => (
