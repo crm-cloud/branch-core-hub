@@ -32,7 +32,7 @@ export default function PaymentsPage() {
   const [voidingPayment, setVoidingPayment] = useState<any>(null);
   const [voidReason, setVoidReason] = useState('');
 
-  const isAdminOrOwner = roles?.some(r => ['admin', 'owner'].includes(r));
+  const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
 
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['payments', branchFilter],
