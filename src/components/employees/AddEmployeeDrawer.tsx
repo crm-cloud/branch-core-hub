@@ -140,6 +140,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
       toast.success('Employee added successfully');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['all-staff'] });
       queryClient.invalidateQueries({ queryKey: ['available-users-for-employees'] });
       queryClient.invalidateQueries({ queryKey: ['branches'] });
       queryClient.invalidateQueries({ queryKey: ['potential-managers'] });
@@ -186,6 +187,7 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
 
       toast.success('Employee created! They will receive a password setup prompt on first login.');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['all-staff'] });
       queryClient.invalidateQueries({ queryKey: ['branches'] });
       queryClient.invalidateQueries({ queryKey: ['potential-managers'] });
       queryClient.invalidateQueries({ queryKey: ['branch-manager'] });
