@@ -5,13 +5,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddPlanDrawer } from '@/components/plans/AddPlanDrawer';
 import { EditPlanDrawer } from '@/components/plans/EditPlanDrawer';
-import { Plus, Check, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Calendar, Star, IndianRupee, Sparkles } from 'lucide-react';
+import { Plus, Check, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star, IndianRupee, Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { format } from 'date-fns';
 
 export default function PlansPage() {
   const { effectiveBranchId, branchFilter } = useBranchContext();
@@ -20,6 +24,8 @@ export default function PlansPage() {
   const [addPlanOpen, setAddPlanOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlanWithBenefits | null>(null);
+  const [memberListPlanId, setMemberListPlanId] = useState<string | null>(null);
+  const [memberListPlanName, setMemberListPlanName] = useState('');
 
   const { data: memberCounts = {} } = useQuery({
     queryKey: ['plan-member-counts'],
@@ -33,6 +39,36 @@ export default function PlansPage() {
       data?.forEach(m => { counts[m.plan_id] = (counts[m.plan_id] || 0) + 1; });
       return counts;
     },
+  });
+
+  // Fetch members for selected plan
+  const { data: planMembers = [], isLoading: membersLoading } = useQuery({
+    queryKey: ['plan-members', memberListPlanId],
+    queryFn: async () => {
+      if (!memberListPlanId) return [];
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('id, start_date, end_date, member_id, members!inner(id, member_code, user_id)')
+        .eq('plan_id', memberListPlanId)
+        .eq('status', 'active');
+      if (error) throw error;
+      
+      const userIds = data?.map((m: any) => m.members?.user_id).filter(Boolean) || [];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, phone, avatar_url')
+        .in('id', userIds);
+      
+      const profileMap: Record<string, any> = {};
+      profiles?.forEach(p => { profileMap[p.id] = p; });
+
+      return data?.map((m: any) => ({
+        ...m,
+        profile: profileMap[m.members?.user_id] || {},
+        member_code: m.members?.member_code,
+      })) || [];
+    },
+    enabled: !!memberListPlanId,
   });
 
   const formatPrice = (price: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price);
@@ -52,6 +88,13 @@ export default function PlansPage() {
     setEditPlanOpen(true);
   };
 
+  const handleMemberCountClick = (planId: string, planName: string) => {
+    if ((memberCounts[planId] || 0) > 0) {
+      setMemberListPlanId(planId);
+      setMemberListPlanName(planName);
+    }
+  };
+
   const activePlans = plans?.filter(p => p.is_active) || [];
   const totalMembers = Object.values(memberCounts).reduce((a, b) => a + b, 0);
   const mostPopularPlan = plans?.reduce((max, plan) => 
@@ -61,7 +104,6 @@ export default function PlansPage() {
     ? Math.round(plans.reduce((sum, p) => sum + p.price, 0) / plans.length) 
     : 0;
 
-  // Gradient palette for plan cards
   const gradients = [
     'from-violet-600 to-indigo-600',
     'from-emerald-600 to-teal-600',
@@ -91,7 +133,7 @@ export default function PlansPage() {
           </Button>
         </div>
 
-        {/* Stats Row - Hero Style */}
+        {/* Stats Row */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
           <Card className="bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl overflow-hidden relative">
             <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-6 translate-x-6" />
@@ -176,10 +218,7 @@ export default function PlansPage() {
                   key={plan.id} 
                   className={`group relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 rounded-2xl border-border/50 shadow-lg ${!plan.is_active ? 'opacity-50' : ''}`}
                 >
-                  {/* Top gradient bar */}
                   <div className={`h-1.5 bg-gradient-to-r ${plan.is_active ? gradient : 'from-muted to-muted'}`} />
-
-                  {/* Popular badge */}
                   {isPopular && (
                     <div className="absolute top-4 right-4 z-10">
                       <Badge className="bg-amber-500 text-white border-0 gap-1 shadow-md">
@@ -190,32 +229,20 @@ export default function PlansPage() {
                   )}
                   
                   <CardContent className="p-6 space-y-5">
-                    {/* Title & Status */}
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-lg font-bold text-foreground tracking-tight">
-                          {plan.name}
-                        </h3>
-                        {!plan.is_active && (
-                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
-                        )}
+                        <h3 className="text-lg font-bold text-foreground tracking-tight">{plan.name}</h3>
+                        {!plan.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {plan.description || 'No description'}
-                      </p>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{plan.description || 'No description'}</p>
                     </div>
 
-                    {/* Price Display */}
                     <div className="py-3 px-4 rounded-xl bg-muted/50 border border-border/30">
                       <div className="flex items-baseline gap-2">
                         {plan.discounted_price ? (
                           <>
-                            <span className="text-3xl font-extrabold text-foreground">
-                              {formatPrice(plan.discounted_price)}
-                            </span>
-                            <span className="text-base text-muted-foreground line-through">
-                              {formatPrice(plan.price)}
-                            </span>
+                            <span className="text-3xl font-extrabold text-foreground">{formatPrice(plan.discounted_price)}</span>
+                            <span className="text-base text-muted-foreground line-through">{formatPrice(plan.price)}</span>
                             <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                               {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
                             </Badge>
@@ -235,19 +262,21 @@ export default function PlansPage() {
                       </div>
                     </div>
 
-                    {/* Member Count */}
+                    {/* Clickable Member Count */}
                     <div className="flex items-center gap-3">
-                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-                        memberCount > 0 
-                          ? 'bg-primary/10 text-primary' 
-                          : 'bg-muted text-muted-foreground'
-                      }`}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleMemberCountClick(plan.id, plan.name); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                          memberCount > 0 
+                            ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer' 
+                            : 'bg-muted text-muted-foreground cursor-default'
+                        }`}
+                      >
                         <Users className="h-3.5 w-3.5" />
                         {memberCount} {memberCount === 1 ? 'member' : 'members'}
-                      </div>
+                      </button>
                     </div>
 
-                    {/* Benefits */}
                     {plan.plan_benefits && plan.plan_benefits.length > 0 && (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Included Benefits</p>
@@ -266,15 +295,12 @@ export default function PlansPage() {
                             </div>
                           ))}
                           {plan.plan_benefits.length > 5 && (
-                            <p className="text-xs text-primary font-medium pl-7">
-                              +{plan.plan_benefits.length - 5} more benefits
-                            </p>
+                            <p className="text-xs text-primary font-medium pl-7">+{plan.plan_benefits.length - 5} more benefits</p>
                           )}
                         </div>
                       </div>
                     )}
 
-                    {/* Feature Badges */}
                     <div className="flex flex-wrap gap-1.5">
                       {plan.max_freeze_days && plan.max_freeze_days > 0 && (
                         <Badge variant="outline" className="text-xs gap-1 rounded-full">
@@ -290,7 +316,6 @@ export default function PlansPage() {
                       )}
                     </div>
 
-                    {/* Edit Button */}
                     <Button 
                       variant="outline" 
                       className="w-full rounded-xl gap-2 border-border/50 hover:bg-muted/50"
@@ -313,6 +338,59 @@ export default function PlansPage() {
           plan={selectedPlan}
           branchId={defaultBranchId}
         />
+
+        {/* Member List Drawer */}
+        <Sheet open={!!memberListPlanId} onOpenChange={(open) => { if (!open) setMemberListPlanId(null); }}>
+          <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                {memberListPlanName} — Active Members
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              {membersLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+                </div>
+              ) : planMembers.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No active members on this plan</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Expires</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {planMembers.map((m: any) => (
+                      <TableRow key={m.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={m.profile?.avatar_url} />
+                              <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                                {(m.profile?.full_name || '?')[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium text-sm">{m.profile?.full_name || 'Unknown'}</p>
+                              <p className="text-xs text-muted-foreground">{m.profile?.phone || m.profile?.email || ''}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs font-mono">{m.member_code}</TableCell>
+                        <TableCell className="text-sm">{m.end_date ? format(new Date(m.end_date), 'MMM dd, yyyy') : '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </AppLayout>
   );

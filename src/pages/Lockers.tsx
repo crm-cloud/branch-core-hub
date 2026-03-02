@@ -3,9 +3,11 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLockers } from '@/hooks/useLockers';
@@ -39,10 +41,14 @@ export default function LockersPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Release confirmation state
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
+  const [releaseTarget, setReleaseTarget] = useState<{ assignmentId: string; lockerId: string; memberName: string; lockerNumber: string } | null>(null);
+  const [releaseReason, setReleaseReason] = useState('');
 
   const { lockers, createLocker, releaseLocker, isCreating } = useLockers(branchId);
 
-  // Fetch member profiles for assigned lockers
   const assignedMemberIds = lockers.data
     ?.flatMap(l => l.locker_assignments?.filter(a => a.is_active).map(a => a.member_id) || [])
     .filter(Boolean) || [];
@@ -140,6 +146,38 @@ export default function LockersPage() {
     }
   };
 
+  const handleReleaseClick = (assignmentId: string, lockerId: string, memberName: string, lockerNumber: string) => {
+    setReleaseTarget({ assignmentId, lockerId, memberName, lockerNumber });
+    setReleaseReason('');
+    setReleaseConfirmOpen(true);
+  };
+
+  const confirmRelease = async () => {
+    if (!releaseTarget) return;
+    if (!releaseReason.trim()) {
+      toast.error('Please provide a reason for releasing this locker');
+      return;
+    }
+    
+    try {
+      // Log to audit
+      await supabase.from('audit_logs').insert({
+        action: 'LOCKER_RELEASE',
+        table_name: 'locker_assignments',
+        record_id: releaseTarget.assignmentId,
+        action_description: `Released locker ${releaseTarget.lockerNumber} from ${releaseTarget.memberName}. Reason: ${releaseReason}`,
+        actor_name: 'Staff',
+      });
+    } catch {
+      // Non-critical — proceed anyway
+    }
+    
+    releaseLocker({ assignmentId: releaseTarget.assignmentId, lockerId: releaseTarget.lockerId });
+    setReleaseConfirmOpen(false);
+    setReleaseTarget(null);
+    toast.success('Locker released successfully');
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6 p-6">
@@ -175,9 +213,7 @@ export default function LockersPage() {
                   <p className="text-sm text-muted-foreground font-medium">Total Lockers</p>
                   <p className="text-3xl font-bold text-foreground mt-1">{stats.total}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-muted/50">
-                  <Lock className="h-5 w-5 text-muted-foreground" />
-                </div>
+                <div className="p-3 rounded-xl bg-muted/50"><Lock className="h-5 w-5 text-muted-foreground" /></div>
               </div>
             </CardContent>
           </Card>
@@ -188,9 +224,7 @@ export default function LockersPage() {
                   <p className="text-sm text-success font-medium">Available</p>
                   <p className="text-3xl font-bold text-success mt-1">{stats.available}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-success/10">
-                  <Key className="h-5 w-5 text-success" />
-                </div>
+                <div className="p-3 rounded-xl bg-success/10"><Key className="h-5 w-5 text-success" /></div>
               </div>
             </CardContent>
           </Card>
@@ -202,9 +236,7 @@ export default function LockersPage() {
                   <p className="text-3xl font-bold text-primary mt-1">{stats.assigned}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{occupancyRate}% occupancy</p>
                 </div>
-                <div className="p-3 rounded-xl bg-primary/10">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
+                <div className="p-3 rounded-xl bg-primary/10"><User className="h-5 w-5 text-primary" /></div>
               </div>
             </CardContent>
           </Card>
@@ -215,9 +247,7 @@ export default function LockersPage() {
                   <p className="text-sm text-warning font-medium">Maintenance</p>
                   <p className="text-3xl font-bold text-warning mt-1">{stats.maintenance}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-warning/10">
-                  <Wrench className="h-5 w-5 text-warning" />
-                </div>
+                <div className="p-3 rounded-xl bg-warning/10"><Wrench className="h-5 w-5 text-warning" /></div>
               </div>
             </CardContent>
           </Card>
@@ -228,17 +258,10 @@ export default function LockersPage() {
           <div className="flex items-center gap-3 flex-1">
             <div className="relative max-w-xs flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search lockers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 rounded-xl"
-              />
+              <Input placeholder="Search lockers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
             </div>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-36 rounded-xl">
-                <SelectValue placeholder="Filter" />
-              </SelectTrigger>
+              <SelectTrigger className="w-36 rounded-xl"><SelectValue placeholder="Filter" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="available">Available</SelectItem>
@@ -249,22 +272,8 @@ export default function LockersPage() {
             </Select>
           </div>
           <div className="flex items-center gap-1 bg-muted/50 rounded-xl p-1">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'ghost'}
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-              onClick={() => setViewMode('grid')}
-            >
-              <Grid3x3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="icon"
-              className="h-8 w-8 rounded-lg"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="h-4 w-4" />
-            </Button>
+            <Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" className="h-8 w-8 rounded-lg" onClick={() => setViewMode('grid')}><Grid3x3 className="h-4 w-4" /></Button>
+            <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="icon" className="h-8 w-8 rounded-lg" onClick={() => setViewMode('list')}><List className="h-4 w-4" /></Button>
           </div>
         </div>
 
@@ -295,11 +304,7 @@ export default function LockersPage() {
                           <div
                             key={locker.id}
                             onClick={() => openAssignDialog(locker)}
-                            className={`
-                              relative p-3 rounded-xl border-2 text-center transition-all duration-200
-                              ${locker.status === 'available' ? 'cursor-pointer hover:scale-105 hover:shadow-md' : 'cursor-default'}
-                              ${getStatusColor(locker.status)}
-                            `}
+                            className={`relative p-3 rounded-xl border-2 text-center transition-all duration-200 ${locker.status === 'available' ? 'cursor-pointer hover:scale-105 hover:shadow-md' : 'cursor-default'} ${getStatusColor(locker.status)}`}
                             title={memberInfo ? `${memberInfo.full_name} (${memberInfo.member_code})` : area ? `Area: ${area}` : 'Click to assign'}
                           >
                             <div className="font-bold text-sm">{locker.locker_number}</div>
@@ -317,7 +322,12 @@ export default function LockersPage() {
                                 className="absolute -top-1.5 -right-1.5 w-5 h-5 p-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  releaseLocker({ assignmentId: activeAssignment.id, lockerId: locker.id });
+                                  handleReleaseClick(
+                                    activeAssignment.id,
+                                    locker.id,
+                                    memberInfo?.full_name || 'Unknown',
+                                    locker.locker_number
+                                  );
                                 }}
                               >
                                 ×
@@ -333,24 +343,11 @@ export default function LockersPage() {
                         <p>No lockers found</p>
                       </div>
                     )}
-                    {/* Legend */}
                     <div className="flex flex-wrap gap-4 mt-6 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-md bg-success/15 border-2 border-success/30" />
-                        <span className="text-muted-foreground">Available</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-md bg-primary/15 border-2 border-primary/30" />
-                        <span className="text-muted-foreground">Assigned</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-md bg-warning/15 border-2 border-warning/30" />
-                        <span className="text-muted-foreground">Maintenance</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-md bg-info/15 border-2 border-info/30" />
-                        <span className="text-muted-foreground">Reserved</span>
-                      </div>
+                      <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-md bg-success/15 border-2 border-success/30" /><span className="text-muted-foreground">Available</span></div>
+                      <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-md bg-primary/15 border-2 border-primary/30" /><span className="text-muted-foreground">Assigned</span></div>
+                      <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-md bg-warning/15 border-2 border-warning/30" /><span className="text-muted-foreground">Maintenance</span></div>
+                      <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-md bg-info/15 border-2 border-info/30" /><span className="text-muted-foreground">Reserved</span></div>
                     </div>
                   </>
                 ) : (
@@ -386,15 +383,13 @@ export default function LockersPage() {
                             </TableCell>
                             <TableCell>
                               {locker.status === 'available' ? (
-                                <Button size="sm" variant="outline" onClick={() => openAssignDialog(locker)} className="rounded-lg">
-                                  Assign
-                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => openAssignDialog(locker)} className="rounded-lg">Assign</Button>
                               ) : activeAssignment ? (
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="text-destructive hover:text-destructive"
-                                  onClick={() => releaseLocker({ assignmentId: activeAssignment.id, lockerId: locker.id })}
+                                  onClick={() => handleReleaseClick(activeAssignment.id, locker.id, memberInfo?.full_name || 'Unknown', locker.locker_number)}
                                 >
                                   Release
                                 </Button>
@@ -412,9 +407,7 @@ export default function LockersPage() {
 
           <TabsContent value="assigned" className="mt-4">
             <Card className="border-border/50 shadow-lg rounded-2xl">
-              <CardHeader>
-                <CardTitle className="text-lg">Assigned Lockers</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-lg">Assigned Lockers</CardTitle></CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
@@ -455,7 +448,7 @@ export default function LockersPage() {
                               size="sm"
                               variant="ghost"
                               className="text-destructive hover:text-destructive rounded-lg"
-                              onClick={() => releaseLocker({ assignmentId: activeAssignment.id, lockerId: locker.id })}
+                              onClick={() => handleReleaseClick(activeAssignment.id, locker.id, memberInfo?.full_name || 'Unknown', locker.locker_number)}
                             >
                               Release
                             </Button>
@@ -465,9 +458,7 @@ export default function LockersPage() {
                     })}
                     {stats.assigned === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No lockers currently assigned
-                        </TableCell>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No lockers currently assigned</TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -487,19 +478,13 @@ export default function LockersPage() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4 mt-6">
                 <FormField control={form.control} name="locker_number" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Locker Number</FormLabel>
-                    <FormControl><Input placeholder="A-001" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
+                  <FormItem><FormLabel>Locker Number</FormLabel><FormControl><Input placeholder="A-001" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="size" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Size</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="small">Small</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
@@ -510,24 +495,56 @@ export default function LockersPage() {
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="area" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Area / Location</FormLabel>
-                    <FormControl><Input placeholder="e.g. Men's Changing Room" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
+                  <FormItem><FormLabel>Area / Location</FormLabel><FormControl><Input placeholder="e.g. Men's Changing Room" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="notes" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes (Optional)</FormLabel>
-                    <FormControl><Input placeholder="Any notes..." {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
+                  <FormItem><FormLabel>Notes (Optional)</FormLabel><FormControl><Input placeholder="Any notes..." {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
-                <Button type="submit" className="w-full rounded-xl" disabled={isCreating}>
-                  {isCreating ? 'Creating...' : 'Create Locker'}
-                </Button>
+                <Button type="submit" className="w-full rounded-xl" disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Locker'}</Button>
               </form>
             </Form>
+          </SheetContent>
+        </Sheet>
+
+        {/* Release Confirmation Drawer */}
+        <Sheet open={releaseConfirmOpen} onOpenChange={setReleaseConfirmOpen}>
+          <SheetContent className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Release Locker
+              </SheetTitle>
+              <SheetDescription>
+                This action will release the locker and remove the member's access. This is logged in the audit trail.
+              </SheetDescription>
+            </SheetHeader>
+            {releaseTarget && (
+              <div className="space-y-4 mt-6">
+                <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/20">
+                  <p className="text-sm font-medium text-foreground">
+                    Locker <span className="font-bold">#{releaseTarget.lockerNumber}</span> assigned to <span className="font-bold">{releaseTarget.memberName}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    If this member's plan includes a locker benefit, releasing it may need manual re-assignment later.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Reason for Release *</Label>
+                  <Textarea
+                    value={releaseReason}
+                    onChange={(e) => setReleaseReason(e.target.value)}
+                    placeholder="e.g., Member requested release, membership expired, locker maintenance needed..."
+                    rows={3}
+                  />
+                </div>
+                <SheetFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setReleaseConfirmOpen(false)}>Cancel</Button>
+                  <Button variant="destructive" onClick={confirmRelease} disabled={!releaseReason.trim()}>
+                    Confirm Release
+                  </Button>
+                </SheetFooter>
+              </div>
+            )}
           </SheetContent>
         </Sheet>
 
