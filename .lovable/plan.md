@@ -1,76 +1,86 @@
 
 
-# Comprehensive Fix Plan: Real-time Refresh, System Health, Plans, Trainers, AI Fitness, Lockers, Public Website, Communication Hub, WhatsApp Chat
+# Audit & Fix Plan: Branch Manager, Search UI, Demo Data, Stale Data, Branch Selector
 
-## Issues & Root Causes
+## Issues Found
 
-### 1. Staff Creation Requires Hard Refresh
-`AddEmployeeDrawer` invalidates `['employees']` but `Employees.tsx` queries with `['all-staff']`. The query keys don't match, so the list never refreshes after creation.
-**Fix:** Add `queryClient.invalidateQueries({ queryKey: ['all-staff'] })` to `AddEmployeeDrawer` onSuccess. Audit all other drawers/mutation flows for similar mismatches.
+### 1. Branch Manager Assignment Bug (EditBranchDrawer)
+**Problem:** When `formData.managerId` is empty (selecting "No manager assigned" → maps to `""`), the `if (formData.managerId)` check on line 116 is falsy, so the manager update is skipped entirely. You cannot unassign a manager, and the "No manager assigned" text persists even after assigning one until page refresh. Also, the drawer doesn't invalidate `branch-manager` query key, so the current manager display is stale.
 
-### 2. System Health Not Recording Errors
-The `ErrorBoundary` only captures React render crashes (rare). Console errors, network failures, backend function errors, and database constraint violations are NOT captured. The system needs:
-- A global `window.onerror` and `window.onunhandledrejection` listener to catch ALL frontend JS errors
-- Edge functions need try/catch blocks that log to `error_logs`
-- A client-side helper service that wraps console.error to also write to `error_logs`
+**Fix:**
+- Track whether manager selection changed with a separate flag
+- When manager is intentionally cleared, delete existing `branch_managers` row
+- Invalidate `['branch-manager', branch.id]` and `['potential-managers']` query keys after save
 
-**Fix:** Create a `src/services/errorLogService.ts` that installs global error handlers. Add it to `main.tsx`. Update edge functions to log errors. Add `source` field properly.
+### 2. Stale Data After Mutations (System-Wide)
+**Problem:** After creating/editing entities (employees, branch managers, etc.), the UI doesn't reflect changes without manual refresh. Root cause: mutations only invalidate their own narrow query key but not related ones (e.g., creating an employee with manager role doesn't invalidate `branches`, `branch-manager`, or `potential-managers`).
 
-### 3. Plans Page - Member Count Not Clickable
-The plan cards show member counts (e.g., "1 member") but clicking doesn't show a member list.
-**Fix:** Add a Sheet/Drawer that opens when clicking the member count badge, showing the list of active members on that plan (query `memberships` joined with `members` and `profiles`).
+**Fix in EditBranchDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branch-manager'] })` after save.
+**Fix in AddEmployeeDrawer:** Add `queryClient.invalidateQueries({ queryKey: ['branches'] })` and `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after employee creation.
+**Fix in AddBranchDialog:** Add `queryClient.invalidateQueries({ queryKey: ['potential-managers'] })` after branch creation.
 
-### 4. Trainers Not Showing for All Branches
-The `useTrainers` hook has `enabled: !!branchId` — when `branchId` is empty string (All Branches), `!!''` is `false`, so the query is disabled entirely.
-**Fix:** Change `enabled` to `enabled: branchId !== undefined` or simply `enabled: true` since the service already handles empty string correctly.
+### 3. Reset Data Uses AlertDialog Instead of Side Drawer
+**Problem:** The "Reset All Data" confirmation uses a center `AlertDialog`. Per project rules, center dialogs are only for simple destructive warnings — this IS a destructive confirmation, so it's actually correct per the design spec. However, user wants it changed.
 
-### 5. AI Fitness Planner Redesign
-Current page is complex and lacks: default plans, random assignment option, clean plan display.
-**Fix:** Redesign with clearer tabs: "Generate AI Plan", "Templates Library", "Assign to Member". Add a "Quick Shuffle" button for random daily workout generation. Clean up the plan output display.
+**Fix:** Replace the `AlertDialog` with a `Sheet` (right-side drawer) for the reset confirmation flow.
 
-### 6. Locker Release Without Approval
-Currently `releaseLocker` is directly callable without approval. For plans that include lockers, accidental release should be prevented.
-**Fix:** Add a confirmation dialog with a reason field. Log the release action in `audit_logs`. For plans with locker benefit, show a warning that releasing will remove the locker benefit.
+### 4. Remove Demo Data Feature Entirely
+**Problem:** User wants to remove the demo data edge function and UI. Replace with pre-built plan/benefit templates.
 
-### 7. Public Website Not Synced with CMS
-The website loads CMS theme but uses hardcoded trainers, classes, FAQs, stats. These should come from the CMS `ThemeSettings` or the database.
-**Fix:** Update `PublicWebsite.tsx` to use CMS theme data for hero text, colors, contact info. Pull real trainers from DB. Pull real plans for pricing section.
+**Fix:**
+- Remove `DemoDataSettings` component from Settings page
+- Remove "Demo Data" from `SETTINGS_MENU`
+- Delete `seed-test-data` and `reset-all-data` edge functions
+- Add a "Templates" section in Settings for pre-built plan and benefit templates (read-only starter data that admins can import selectively)
 
-### 8. Communication Hub Redesign
-Current Announcements page is basic. Needs unified communication dashboard with realtime logs.
-**Fix:** Redesign `Announcements.tsx` as a full Communication Hub with tabs: Announcements, Broadcast, Logs (realtime), Templates. Add realtime subscription on `communication_logs`.
+### 5. Cmd+K Search Not Aligned with Vuexy Design
+**Problem:** Current search opens as a standard `CommandDialog` (Dialog-based) without the Vuexy-style two-column layout with categorized sections (Popular Searches, Apps & Pages, User Interface, Forms & Charts).
 
-### 9. WhatsApp Chat Redesign
-Current chat UI is functional but dated.
-**Fix:** Redesign with modern chat bubble styling, contact sidebar with avatar/status, message status indicators, better mobile responsiveness. Keep existing realtime subscription.
+**Fix:** Redesign the `GlobalSearch` component to match the Vuexy reference:
+- Show a two-column grid layout when no search query is typed
+- Left column: "Popular Searches" (Dashboard, Analytics, Members, etc.)
+- Right column: "Apps & Pages" (Calendar, Invoice List, Settings, etc.)
+- Keep the existing search results behavior when user types
+- Add `[esc]` keyboard hint next to close button
+- Increase dialog width to accommodate two columns
+
+### 6. Branch Selector Not Working on Some Pages
+**Problem:** The `branchFilter` from `BranchContext` is used by most pages, but some pages don't react to branch changes because they use `effectiveBranchId` (which doesn't change when admin switches "All Branches") or they cache query results without including branch in the query key.
+
+Pages confirmed working: Dashboard, Members, Equipment, Invoices, Attendance, Lockers, etc.
+
+Pages to audit:
+- `Plans.tsx`: Uses `effectiveBranchId` but the `usePlans` hook may not filter by branch
+- `PTSessions.tsx`, `Trainers.tsx`: Use `effectiveBranchId` which returns undefined when "All Branches" selected
+
+**Fix:** Audit the `usePlans` hook and other affected pages to ensure they pass `branchFilter` to their queries and include it in query keys.
 
 ---
 
-## Files to Change
+## Files Summary
 
-| File | Change |
-|------|--------|
-| `src/components/employees/AddEmployeeDrawer.tsx` | Add `['all-staff']` to invalidation list |
-| `src/hooks/useTrainers.ts` | Fix `enabled` condition for empty branchId |
-| `src/services/errorLogService.ts` | **NEW** - Global error capture service (window.onerror, unhandledrejection, console.error wrapper) |
-| `src/main.tsx` | Initialize error log service |
-| `src/components/common/ErrorBoundary.tsx` | Add `source: 'frontend'` to error log inserts |
-| `src/pages/SystemHealth.tsx` | Add "Test Error Capture" button, improve empty state |
-| `src/pages/Plans.tsx` | Add clickable member count → opens member list drawer |
-| `src/pages/Trainers.tsx` | Fix by updating useTrainers enabled condition |
-| `src/pages/AIFitness.tsx` | Redesign with cleaner layout, quick shuffle, better plan display |
-| `src/pages/Lockers.tsx` | Add confirmation dialog with reason for release, audit log warning |
-| `src/pages/PublicWebsite.tsx` | Sync hero/pricing/trainers with CMS and DB data |
-| `src/pages/Announcements.tsx` | Redesign as Communication Hub with realtime logs |
-| `src/pages/WhatsAppChat.tsx` | Redesign with modern 2026 chat UI |
+| Action | File | Description |
+|--------|------|-------------|
+| Edit | `src/components/branches/EditBranchDrawer.tsx` | Fix manager assignment/unassignment + invalidate related queries |
+| Edit | `src/components/employees/AddEmployeeDrawer.tsx` | Invalidate branches/potential-managers after creation |
+| Edit | `src/components/branches/AddBranchDialog.tsx` | Invalidate potential-managers after creation |
+| Edit | `src/components/search/GlobalSearch.tsx` | Redesign to Vuexy two-column layout |
+| Edit | `src/components/ui/command.tsx` | Widen CommandDialog for two-column search |
+| Edit | `src/pages/Settings.tsx` | Remove Demo Data from settings menu |
+| Edit | `src/components/settings/DemoDataSettings.tsx` | Replace with Plan/Benefit template importer |
+| Delete | `supabase/functions/seed-test-data/index.ts` | Remove demo data edge function |
+| Delete | `supabase/functions/reset-all-data/index.ts` | Remove reset data edge function |
+| Edit | `src/hooks/usePlans.ts` | Add branch filtering support |
+| Edit | Pages using effectiveBranchId | Fix branch selector reactivity |
 
 ## Execution Order
-1. Fix query key mismatches (staff, trainers) — critical bugs
-2. Create error log service + install global handlers
-3. Plans member list drawer
-4. AI Fitness page redesign
-5. Locker release workflow improvement
-6. Public website CMS sync
-7. Communication Hub redesign
-8. WhatsApp Chat redesign
+
+| Step | Priority | Description |
+|------|----------|-------------|
+| 1 | Critical | Fix branch manager assignment in EditBranchDrawer |
+| 2 | Critical | Fix stale data — add cross-query invalidation |
+| 3 | High | Remove demo data, replace with template importer |
+| 4 | High | Redesign Cmd+K search to Vuexy style |
+| 5 | High | Fix branch selector on Plans and other pages |
+| 6 | Medium | Replace reset AlertDialog with Sheet |
 

@@ -16,7 +16,7 @@ export function useTrainers(branchId: string, activeOnly = true) {
   return useQuery({
     queryKey: ["trainers", branchId, activeOnly],
     queryFn: () => fetchTrainers(branchId, activeOnly),
-    enabled: !!branchId,
+    enabled: branchId !== undefined,
   });
 }
 

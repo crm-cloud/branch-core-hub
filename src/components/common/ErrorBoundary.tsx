@@ -47,6 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
         route: window.location.pathname,
         browser_info: navigator.userAgent,
         status: 'open',
+        source: 'frontend',
       });
     } catch {
       // Silently fail
