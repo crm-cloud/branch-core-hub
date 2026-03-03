@@ -31,7 +31,7 @@ export default function StaffDashboard() {
         .select('branch_id, branch:branches(id, name)')
         .eq('user_id', user!.id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
       if (employee?.branch_id) return employee.branch;
       const { data: branches } = await supabase.from('branches').select('id, name').eq('is_active', true).limit(1);
       return branches?.[0] || null;
