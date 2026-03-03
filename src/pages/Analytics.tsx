@@ -180,7 +180,7 @@ export default function AnalyticsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('invoices')
-        .select('id, invoice_number, total_amount, status, created_at, member_id, members(full_name)')
+        .select('id, invoice_number, total_amount, status, created_at, member_id, members(member_code, profiles:user_id(full_name))')
         .not('pos_sale_id', 'is', null)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -457,7 +457,7 @@ export default function AnalyticsPage() {
                               <div className="flex items-center gap-3">
                                 <div className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
                                 <div>
-                                  <p className="text-sm font-medium text-slate-800">{(order as any).members?.full_name || 'Walk-in'}</p>
+                                  <p className="text-sm font-medium text-slate-800">{(order as any).members?.profiles?.full_name || 'Walk-in'}</p>
                                   <p className="text-xs text-muted-foreground">{format(new Date(order.created_at), 'dd MMM yyyy')}</p>
                                 </div>
                               </div>

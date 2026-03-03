@@ -55,7 +55,7 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, profile:user_id(full_name))
+          employees(employee_code, user_id, profiles:user_id(full_name))
         `)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -387,11 +387,11 @@ export default function HRMPage() {
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                               <AvatarFallback className="bg-accent/10 text-accent text-xs">
-                                {getInitials(contract.employees?.profile?.full_name)}
+                                {getInitials(contract.employees?.profiles?.full_name)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium">{contract.employees?.profile?.full_name || 'N/A'}</p>
+                              <p className="font-medium">{contract.employees?.profiles?.full_name || 'N/A'}</p>
                               <p className="text-xs text-muted-foreground">{contract.employees?.employee_code}</p>
                             </div>
                           </div>

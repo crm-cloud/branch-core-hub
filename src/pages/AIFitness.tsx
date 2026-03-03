@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2 } from "lucide-react";
+import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight } from "lucide-react";
 import { useGenerateFitnessPlan } from "@/hooks/usePTPackages";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchPlanTemplates, createPlanTemplate, FitnessPlanTemplate } from "@/services/fitnessService";
@@ -18,55 +18,183 @@ import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
+// Default starter templates shown when no templates exist
+const DEFAULT_TEMPLATES = [
+  {
+    id: 'default-beginner',
+    name: 'Beginner Full Body',
+    type: 'workout' as const,
+    description: '3-day full body program for absolute beginners',
+    difficulty: 'beginner',
+    goal: 'General Fitness',
+    isDefault: true,
+    content: {
+      name: 'Beginner Full Body',
+      type: 'workout',
+      difficulty: 'beginner',
+      goal: 'General Fitness',
+      description: '3-day full body program for absolute beginners',
+      weeks: [{
+        week: 1,
+        days: [
+          { day: 'Monday', focus: 'Full Body A', exercises: [
+            { name: 'Bodyweight Squats', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Push-ups (or Knee Push-ups)', sets: 3, reps: '10', rest: '60s' },
+            { name: 'Dumbbell Rows', sets: 3, reps: '10', rest: '60s' },
+            { name: 'Plank Hold', sets: 3, reps: '30s', rest: '45s' },
+          ]},
+          { day: 'Wednesday', focus: 'Full Body B', exercises: [
+            { name: 'Lunges', sets: 3, reps: '10/leg', rest: '60s' },
+            { name: 'Dumbbell Press', sets: 3, reps: '10', rest: '60s' },
+            { name: 'Lat Pulldown', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Russian Twists', sets: 3, reps: '20', rest: '45s' },
+          ]},
+          { day: 'Friday', focus: 'Full Body C', exercises: [
+            { name: 'Goblet Squats', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Incline Push-ups', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Seated Cable Row', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Dead Bug', sets: 3, reps: '10/side', rest: '45s' },
+          ]},
+        ],
+      }],
+    },
+  },
+  {
+    id: 'default-weightloss',
+    name: 'Weight Loss Circuit',
+    type: 'workout' as const,
+    description: 'High-intensity circuit training for maximum calorie burn',
+    difficulty: 'intermediate',
+    goal: 'Weight Loss',
+    isDefault: true,
+    content: {
+      name: 'Weight Loss Circuit',
+      type: 'workout',
+      difficulty: 'intermediate',
+      goal: 'Weight Loss',
+      description: 'High-intensity circuit training for maximum calorie burn',
+      weeks: [{
+        week: 1,
+        days: [
+          { day: 'Monday', focus: 'HIIT Circuit', exercises: [
+            { name: 'Burpees', sets: 4, reps: '10', rest: '30s' },
+            { name: 'Mountain Climbers', sets: 4, reps: '20', rest: '30s' },
+            { name: 'Jump Squats', sets: 4, reps: '15', rest: '30s' },
+            { name: 'Kettlebell Swings', sets: 4, reps: '15', rest: '30s' },
+            { name: 'Battle Ropes', sets: 4, reps: '30s', rest: '30s' },
+          ]},
+          { day: 'Wednesday', focus: 'Cardio + Core', exercises: [
+            { name: 'Treadmill Intervals', sets: 1, reps: '20 min', rest: '-' },
+            { name: 'Bicycle Crunches', sets: 3, reps: '20', rest: '30s' },
+            { name: 'Leg Raises', sets: 3, reps: '15', rest: '30s' },
+            { name: 'Box Jumps', sets: 4, reps: '10', rest: '45s' },
+          ]},
+          { day: 'Friday', focus: 'Full Body Burn', exercises: [
+            { name: 'Deadlifts', sets: 4, reps: '10', rest: '45s' },
+            { name: 'Push Press', sets: 4, reps: '10', rest: '45s' },
+            { name: 'Rowing Machine', sets: 1, reps: '500m', rest: '-' },
+            { name: 'Plank Jacks', sets: 3, reps: '20', rest: '30s' },
+          ]},
+        ],
+      }],
+    },
+  },
+  {
+    id: 'default-muscle',
+    name: 'Muscle Building Split',
+    type: 'workout' as const,
+    description: 'Push/Pull/Legs split for hypertrophy',
+    difficulty: 'intermediate',
+    goal: 'Muscle Gain',
+    isDefault: true,
+    content: {
+      name: 'Muscle Building Split',
+      type: 'workout',
+      difficulty: 'intermediate',
+      goal: 'Muscle Gain',
+      description: 'Push/Pull/Legs split for hypertrophy',
+      weeks: [{
+        week: 1,
+        days: [
+          { day: 'Monday', focus: 'Push (Chest/Shoulders/Triceps)', exercises: [
+            { name: 'Bench Press', sets: 4, reps: '8-10', rest: '90s' },
+            { name: 'Overhead Press', sets: 3, reps: '10', rest: '90s' },
+            { name: 'Incline Dumbbell Press', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Lateral Raises', sets: 3, reps: '15', rest: '45s' },
+            { name: 'Tricep Pushdowns', sets: 3, reps: '12', rest: '45s' },
+          ]},
+          { day: 'Wednesday', focus: 'Pull (Back/Biceps)', exercises: [
+            { name: 'Barbell Rows', sets: 4, reps: '8-10', rest: '90s' },
+            { name: 'Pull-ups', sets: 3, reps: '8', rest: '90s' },
+            { name: 'Face Pulls', sets: 3, reps: '15', rest: '45s' },
+            { name: 'Barbell Curls', sets: 3, reps: '12', rest: '45s' },
+            { name: 'Hammer Curls', sets: 3, reps: '12', rest: '45s' },
+          ]},
+          { day: 'Friday', focus: 'Legs', exercises: [
+            { name: 'Barbell Squats', sets: 4, reps: '8-10', rest: '120s' },
+            { name: 'Romanian Deadlifts', sets: 3, reps: '10', rest: '90s' },
+            { name: 'Leg Press', sets: 3, reps: '12', rest: '90s' },
+            { name: 'Leg Curls', sets: 3, reps: '12', rest: '60s' },
+            { name: 'Calf Raises', sets: 4, reps: '15', rest: '45s' },
+          ]},
+        ],
+      }],
+    },
+  },
+];
+
+// Seeded random shuffle for daily workout
+function seededShuffle<T>(array: T[], seed: string): T[] {
+  const arr = [...array];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  for (let i = arr.length - 1; i > 0; i--) {
+    hash = ((hash << 5) - hash) + i;
+    hash |= 0;
+    const j = Math.abs(hash) % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export default function AIFitnessPage() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"generate" | "templates">("generate");
+  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign">("generate");
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
   const [memberInfo, setMemberInfo] = useState({
-    name: "",
-    age: "",
-    gender: "",
-    height: "",
-    weight: "",
-    fitnessGoals: "",
-    healthConditions: "",
-    experience: "beginner",
-    preferences: "",
+    name: "", age: "", gender: "", height: "", weight: "",
+    fitnessGoals: "", healthConditions: "", experience: "beginner", preferences: "",
   });
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [caloriesTarget, setCaloriesTarget] = useState("");
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [assignDrawerOpen, setAssignDrawerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
+  const [shuffledWorkout, setShuffledWorkout] = useState<any>(null);
 
   const generatePlan = useGenerateFitnessPlan();
 
-  // Fetch templates
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ['fitness-templates', planType],
     queryFn: () => fetchPlanTemplates(undefined, planType),
   });
 
-  // Save as template mutation
   const saveTemplateMutation = useMutation({
     mutationFn: createPlanTemplate,
     onSuccess: () => {
       toast.success("Template saved successfully!");
       queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to save template");
-    },
+    onError: (error: Error) => toast.error(error.message || "Failed to save template"),
   });
 
-  // Delete template mutation
   const deleteTemplateMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const { error } = await supabase
-        .from('fitness_plan_templates')
-        .update({ is_active: false })
-        .eq('id', templateId);
+      const { error } = await supabase.from('fitness_plan_templates').update({ is_active: false }).eq('id', templateId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -76,11 +204,7 @@ export default function AIFitnessPage() {
   });
 
   const handleGenerate = async () => {
-    if (!memberInfo.name) {
-      toast.error("Please enter member name");
-      return;
-    }
-
+    if (!memberInfo.name) { toast.error("Please enter member name"); return; }
     try {
       const plan = await generatePlan.mutateAsync({
         type: planType,
@@ -95,10 +219,7 @@ export default function AIFitnessPage() {
           experience: memberInfo.experience || undefined,
           preferences: memberInfo.preferences || undefined,
         },
-        options: {
-          durationWeeks,
-          caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
-        },
+        options: { durationWeeks, caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined },
       });
       setGeneratedPlan(plan);
       toast.success("Plan generated successfully!");
@@ -107,16 +228,21 @@ export default function AIFitnessPage() {
     }
   };
 
-  const handleCopyPlan = () => {
-    if (generatedPlan) {
-      navigator.clipboard.writeText(JSON.stringify(generatedPlan, null, 2));
-      toast.success("Plan copied to clipboard");
-    }
+  const handleQuickShuffle = () => {
+    const seed = `${profile?.id || 'guest'}-${new Date().toISOString().split('T')[0]}`;
+    const allExercises = DEFAULT_TEMPLATES.flatMap(t =>
+      t.content.weeks.flatMap((w: any) => w.days.flatMap((d: any) => d.exercises))
+    );
+    const shuffled = seededShuffle(allExercises, seed).slice(0, 8);
+    setShuffledWorkout({
+      name: `Daily Workout — ${new Date().toLocaleDateString()}`,
+      exercises: shuffled,
+    });
+    toast.success("Daily workout shuffled!");
   };
 
   const handleSaveTemplate = () => {
     if (!generatedPlan) return;
-
     saveTemplateMutation.mutate({
       name: generatedPlan.name || `${planType} Plan - ${new Date().toLocaleDateString()}`,
       type: planType,
@@ -134,98 +260,129 @@ export default function AIFitnessPage() {
     setAssignDrawerOpen(true);
   };
 
-  const handleAssignTemplate = (template: FitnessPlanTemplate) => {
+  const handleAssignTemplate = (template: any) => {
     setSelectedTemplate(template);
     setAssignDrawerOpen(true);
   };
 
   const getDifficultyColor = (difficulty: string | null) => {
     switch (difficulty) {
-      case 'beginner': return 'bg-success/20 text-success';
-      case 'intermediate': return 'bg-warning/20 text-warning';
-      case 'advanced': return 'bg-destructive/20 text-destructive';
-      default: return 'bg-muted';
+      case 'beginner': return 'bg-success/20 text-success border-success/20';
+      case 'intermediate': return 'bg-warning/20 text-warning border-warning/20';
+      case 'advanced': return 'bg-destructive/20 text-destructive border-destructive/20';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
+
+  const allTemplates = [...templates, ...DEFAULT_TEMPLATES.filter(dt => dt.type === planType && !templates.some((t: any) => t.name === dt.name))];
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Sparkles className="h-8 w-8 text-primary" />
               AI Fitness Planner
             </h1>
-            <p className="text-muted-foreground">Generate personalized workout and diet plans with AI</p>
+            <p className="text-muted-foreground">Generate, manage, and assign personalized workout & diet plans</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Plan type toggle */}
+            <div className="flex items-center rounded-xl bg-muted/50 p-1 gap-1">
+              <Button
+                size="sm"
+                variant={planType === 'workout' ? 'default' : 'ghost'}
+                onClick={() => setPlanType('workout')}
+                className="gap-1.5"
+              >
+                <Dumbbell className="h-4 w-4" /> Workout
+              </Button>
+              <Button
+                size="sm"
+                variant={planType === 'diet' ? 'default' : 'ghost'}
+                onClick={() => setPlanType('diet')}
+                className="gap-1.5"
+              >
+                <Utensils className="h-4 w-4" /> Diet
+              </Button>
+            </div>
+            <Button variant="outline" onClick={handleQuickShuffle} className="gap-1.5">
+              <Shuffle className="h-4 w-4" /> Daily Shuffle
+            </Button>
           </div>
         </div>
 
+        {/* Quick Shuffle Result */}
+        {shuffledWorkout && (
+          <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  {shuffledWorkout.name}
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setSelectedTemplate(null);
+                    setGeneratedPlan({ name: shuffledWorkout.name, type: 'workout', weeks: [{ week: 1, days: [{ day: 'Today', focus: 'Quick Shuffle', exercises: shuffledWorkout.exercises }] }] });
+                    setAssignDrawerOpen(true);
+                  }}>
+                    <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShuffledWorkout(null)}>✕</Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {shuffledWorkout.exercises.map((ex: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-background/80 border border-border/50">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">{i + 1}</div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{ex.name}</p>
+                      <p className="text-xs text-muted-foreground">{ex.sets}×{ex.reps}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Main Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "generate" | "templates")}>
-          <TabsList>
-            <TabsTrigger value="generate" className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              Generate Plan
-            </TabsTrigger>
-            <TabsTrigger value="templates" className="flex items-center gap-2">
-              <Library className="h-4 w-4" />
-              Plan Templates
-            </TabsTrigger>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+          <TabsList className="bg-muted/50">
+            <TabsTrigger value="generate" className="gap-1.5"><Sparkles className="h-4 w-4" /> Generate Plan</TabsTrigger>
+            <TabsTrigger value="templates" className="gap-1.5"><Library className="h-4 w-4" /> Templates Library</TabsTrigger>
+            <TabsTrigger value="assign" className="gap-1.5"><UserPlus className="h-4 w-4" /> Assign to Member</TabsTrigger>
           </TabsList>
 
-          {/* Generate Tab */}
-          <TabsContent value="generate" className="space-y-6">
+          {/* ── GENERATE TAB ── */}
+          <TabsContent value="generate" className="space-y-6 mt-4">
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Input Form */}
-              <Card>
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
                 <CardHeader>
                   <CardTitle>Member Information</CardTitle>
-                  <CardDescription>Enter member details to generate a personalized plan</CardDescription>
+                  <CardDescription>Enter member details to generate a personalized {planType} plan</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Tabs value={planType} onValueChange={(v) => setPlanType(v as "workout" | "diet")}>
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="workout" className="flex items-center gap-2">
-                        <Dumbbell className="h-4 w-4" />
-                        Workout Plan
-                      </TabsTrigger>
-                      <TabsTrigger value="diet" className="flex items-center gap-2">
-                        <Utensils className="h-4 w-4" />
-                        Diet Plan
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-
                   <div className="grid gap-4">
                     <div className="grid gap-2">
                       <Label>Member Name *</Label>
-                      <Input
-                        value={memberInfo.name}
-                        onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })}
-                        placeholder="John Doe"
-                      />
+                      <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="John Doe" />
                     </div>
-
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-3">
                       <div className="grid gap-2">
                         <Label>Age</Label>
-                        <Input
-                          type="number"
-                          value={memberInfo.age}
-                          onChange={(e) => setMemberInfo({ ...memberInfo, age: e.target.value })}
-                          placeholder="25"
-                        />
+                        <Input type="number" value={memberInfo.age} onChange={(e) => setMemberInfo({ ...memberInfo, age: e.target.value })} placeholder="25" />
                       </div>
                       <div className="grid gap-2">
                         <Label>Gender</Label>
-                        <Select
-                          value={memberInfo.gender}
-                          onValueChange={(v) => setMemberInfo({ ...memberInfo, gender: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
+                        <Select value={memberInfo.gender} onValueChange={(v) => setMemberInfo({ ...memberInfo, gender: v })}>
+                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="male">Male</SelectItem>
                             <SelectItem value="female">Female</SelectItem>
@@ -235,13 +392,8 @@ export default function AIFitnessPage() {
                       </div>
                       <div className="grid gap-2">
                         <Label>Experience</Label>
-                        <Select
-                          value={memberInfo.experience}
-                          onValueChange={(v) => setMemberInfo({ ...memberInfo, experience: v })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                        <Select value={memberInfo.experience} onValueChange={(v) => setMemberInfo({ ...memberInfo, experience: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="beginner">Beginner</SelectItem>
                             <SelectItem value="intermediate">Intermediate</SelectItem>
@@ -250,237 +402,136 @@ export default function AIFitnessPage() {
                         </Select>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-2">
                         <Label>Height (cm)</Label>
-                        <Input
-                          type="number"
-                          value={memberInfo.height}
-                          onChange={(e) => setMemberInfo({ ...memberInfo, height: e.target.value })}
-                          placeholder="175"
-                        />
+                        <Input type="number" value={memberInfo.height} onChange={(e) => setMemberInfo({ ...memberInfo, height: e.target.value })} placeholder="175" />
                       </div>
                       <div className="grid gap-2">
                         <Label>Weight (kg)</Label>
-                        <Input
-                          type="number"
-                          value={memberInfo.weight}
-                          onChange={(e) => setMemberInfo({ ...memberInfo, weight: e.target.value })}
-                          placeholder="70"
-                        />
+                        <Input type="number" value={memberInfo.weight} onChange={(e) => setMemberInfo({ ...memberInfo, weight: e.target.value })} placeholder="70" />
                       </div>
                     </div>
-
                     <div className="grid gap-2">
                       <Label>Fitness Goals</Label>
-                      <Textarea
-                        value={memberInfo.fitnessGoals}
-                        onChange={(e) => setMemberInfo({ ...memberInfo, fitnessGoals: e.target.value })}
-                        placeholder="Lose weight, build muscle, improve endurance..."
-                        rows={2}
-                      />
+                      <Textarea value={memberInfo.fitnessGoals} onChange={(e) => setMemberInfo({ ...memberInfo, fitnessGoals: e.target.value })} placeholder="Lose weight, build muscle, improve endurance..." rows={2} />
                     </div>
-
                     <div className="grid gap-2">
                       <Label>Health Conditions</Label>
-                      <Input
-                        value={memberInfo.healthConditions}
-                        onChange={(e) => setMemberInfo({ ...memberInfo, healthConditions: e.target.value })}
-                        placeholder="Any injuries, conditions, or limitations..."
-                      />
+                      <Input value={memberInfo.healthConditions} onChange={(e) => setMemberInfo({ ...memberInfo, healthConditions: e.target.value })} placeholder="Any injuries or limitations..." />
                     </div>
-
                     <div className="grid gap-2">
                       <Label>Preferences</Label>
-                      <Input
-                        value={memberInfo.preferences}
-                        onChange={(e) => setMemberInfo({ ...memberInfo, preferences: e.target.value })}
-                        placeholder={planType === "workout" ? "Home workouts, no equipment..." : "Vegetarian, no dairy..."}
-                      />
+                      <Input value={memberInfo.preferences} onChange={(e) => setMemberInfo({ ...memberInfo, preferences: e.target.value })} placeholder={planType === "workout" ? "Home workouts, no equipment..." : "Vegetarian, no dairy..."} />
                     </div>
-
                     {planType === "workout" ? (
                       <div className="grid gap-2">
                         <Label>Duration (weeks)</Label>
-                        <Input
-                          type="number"
-                          value={durationWeeks}
-                          onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)}
-                        />
+                        <Input type="number" value={durationWeeks} onChange={(e) => setDurationWeeks(parseInt(e.target.value) || 4)} />
                       </div>
                     ) : (
                       <div className="grid gap-2">
                         <Label>Target Calories (optional)</Label>
-                        <Input
-                          type="number"
-                          value={caloriesTarget}
-                          onChange={(e) => setCaloriesTarget(e.target.value)}
-                          placeholder="Auto-calculate based on goals"
-                        />
+                        <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-
                     <Button onClick={handleGenerate} disabled={generatePlan.isPending} className="w-full">
-                      {generatePlan.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Generate {planType === "workout" ? "Workout" : "Diet"} Plan
-                        </>
-                      )}
+                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate {planType === "workout" ? "Workout" : "Diet"} Plan</>)}
                     </Button>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Generated Plan */}
-              <Card>
+              {/* Generated Plan Display */}
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle>Generated Plan</CardTitle>
-                      <CardDescription>
-                        {generatedPlan ? generatedPlan.name : "Your AI-generated plan will appear here"}
-                      </CardDescription>
+                      <CardDescription>{generatedPlan ? generatedPlan.name : "Your AI-generated plan will appear here"}</CardDescription>
                     </div>
                     {generatedPlan && (
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleCopyPlan} title="Copy">
-                          <Copy className="h-4 w-4" />
+                        <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(JSON.stringify(generatedPlan, null, 2)); toast.success("Copied!"); }} title="Copy"><Copy className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="sm" onClick={handleSaveTemplate} disabled={saveTemplateMutation.isPending} title="Save Template">
+                          {saveTemplateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={handleSaveTemplate}
-                          disabled={saveTemplateMutation.isPending}
-                          title="Save as Template"
-                        >
-                          {saveTemplateMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Save className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={handleAssignGeneratedPlan}
-                          title="Assign to Member"
-                        >
-                          <UserPlus className="h-4 w-4" />
-                        </Button>
+                        <Button size="sm" onClick={handleAssignGeneratedPlan} title="Assign"><UserPlus className="h-4 w-4" /></Button>
                       </div>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   {!generatedPlan ? (
-                    <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-                      Fill in member details and click Generate
+                    <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
+                      <Target className="h-16 w-16 mb-4 opacity-30" />
+                      <p className="text-lg font-medium mb-1">No plan generated yet</p>
+                      <p className="text-sm">Fill in member details and click Generate</p>
                     </div>
                   ) : (
                     <ScrollArea className="h-[500px] pr-4">
                       <div className="space-y-4">
-                        {/* Plan Header */}
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge>{generatedPlan.difficulty || generatedPlan.type}</Badge>
-                            {generatedPlan.goal && <Badge variant="outline">{generatedPlan.goal}</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">{generatedPlan.description}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge>{generatedPlan.difficulty || generatedPlan.type}</Badge>
+                          {generatedPlan.goal && <Badge variant="outline">{generatedPlan.goal}</Badge>}
                         </div>
+                        {generatedPlan.description && <p className="text-sm text-muted-foreground">{generatedPlan.description}</p>}
 
-                        {/* Workout Plan */}
-                        {planType === "workout" && generatedPlan.weeks && (
-                          <div className="space-y-4">
-                            {generatedPlan.weeks.map((week: any, weekIdx: number) => (
-                              <div key={weekIdx} className="space-y-2">
-                                <h4 className="font-semibold">Week {week.week}</h4>
-                                {week.days?.map((day: any, dayIdx: number) => (
-                                  <Card key={dayIdx} className="p-3">
-                                    <div className="font-medium text-sm">{day.day} - {day.focus}</div>
-                                    {day.warmup && (
-                                      <p className="text-xs text-muted-foreground">Warmup: {day.warmup}</p>
-                                    )}
-                                    <div className="mt-2 space-y-1">
-                                      {day.exercises?.map((ex: any, exIdx: number) => (
-                                        <div key={exIdx} className="text-sm flex justify-between">
-                                          <span>{ex.name}</span>
-                                          <span className="text-muted-foreground">
-                                            {ex.sets}x{ex.reps} ({ex.rest})
-                                          </span>
-                                        </div>
-                                      ))}
+                        {/* Workout display */}
+                        {planType === "workout" && generatedPlan.weeks?.map((week: any, wi: number) => (
+                          <div key={wi} className="space-y-3">
+                            <h4 className="font-semibold text-sm text-primary">Week {week.week}</h4>
+                            {week.days?.map((day: any, di: number) => (
+                              <Card key={di} className="p-4 rounded-xl border-border/50">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <p className="font-semibold text-sm">{day.day}</p>
+                                    <p className="text-xs text-muted-foreground">{day.focus}</p>
+                                  </div>
+                                  <Badge variant="secondary" className="text-xs">{day.exercises?.length || 0} exercises</Badge>
+                                </div>
+                                {day.warmup && <p className="text-xs text-muted-foreground mb-2">🔥 Warmup: {day.warmup}</p>}
+                                <div className="space-y-1.5">
+                                  {day.exercises?.map((ex: any, ei: number) => (
+                                    <div key={ei} className="flex items-center justify-between text-sm py-1 px-2 rounded-lg hover:bg-muted/50">
+                                      <span className="flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground w-5">{ei + 1}.</span>
+                                        {ex.name}
+                                      </span>
+                                      <span className="text-muted-foreground text-xs">{ex.sets}×{ex.reps} • {ex.rest}</span>
                                     </div>
-                                  </Card>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Diet Plan */}
-                        {planType === "diet" && generatedPlan.meals && (
-                          <div className="space-y-4">
-                            <div className="flex items-center gap-4 text-sm">
-                              <span>Daily Calories: <strong>{generatedPlan.dailyCalories}</strong></span>
-                              {generatedPlan.macros && (
-                                <span>
-                                  P: {generatedPlan.macros.protein} | C: {generatedPlan.macros.carbs} | F: {generatedPlan.macros.fat}
-                                </span>
-                              )}
-                            </div>
-                            {generatedPlan.meals.map((day: any, dayIdx: number) => (
-                              <Card key={dayIdx} className="p-3">
-                                <div className="font-medium text-sm mb-2">{day.day}</div>
-                                <div className="space-y-1 text-sm">
-                                  {day.breakfast && (
-                                    <div className="flex justify-between">
-                                      <span>🌅 {day.breakfast.meal}</span>
-                                      <span className="text-muted-foreground">{day.breakfast.calories} cal</span>
-                                    </div>
-                                  )}
-                                  {day.snack1 && (
-                                    <div className="flex justify-between">
-                                      <span>🍎 {day.snack1.meal}</span>
-                                      <span className="text-muted-foreground">{day.snack1.calories} cal</span>
-                                    </div>
-                                  )}
-                                  {day.lunch && (
-                                    <div className="flex justify-between">
-                                      <span>🍽️ {day.lunch.meal}</span>
-                                      <span className="text-muted-foreground">{day.lunch.calories} cal</span>
-                                    </div>
-                                  )}
-                                  {day.snack2 && (
-                                    <div className="flex justify-between">
-                                      <span>🥜 {day.snack2.meal}</span>
-                                      <span className="text-muted-foreground">{day.snack2.calories} cal</span>
-                                    </div>
-                                  )}
-                                  {day.dinner && (
-                                    <div className="flex justify-between">
-                                      <span>🌙 {day.dinner.meal}</span>
-                                      <span className="text-muted-foreground">{day.dinner.calories} cal</span>
-                                    </div>
-                                  )}
+                                  ))}
                                 </div>
                               </Card>
                             ))}
-                            {generatedPlan.notes && (
-                              <p className="text-sm text-muted-foreground mt-4">{generatedPlan.notes}</p>
-                            )}
+                          </div>
+                        ))}
+
+                        {/* Diet display */}
+                        {planType === "diet" && generatedPlan.meals && (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-4 text-sm p-3 rounded-xl bg-muted/50">
+                              <span>🔥 Daily: <strong>{generatedPlan.dailyCalories} cal</strong></span>
+                              {generatedPlan.macros && <span>P: {generatedPlan.macros.protein} | C: {generatedPlan.macros.carbs} | F: {generatedPlan.macros.fat}</span>}
+                            </div>
+                            {generatedPlan.meals.map((day: any, di: number) => (
+                              <Card key={di} className="p-4 rounded-xl border-border/50">
+                                <p className="font-semibold text-sm mb-3">{day.day}</p>
+                                <div className="space-y-2 text-sm">
+                                  {day.breakfast && <div className="flex justify-between"><span>🌅 {day.breakfast.meal}</span><span className="text-muted-foreground">{day.breakfast.calories} cal</span></div>}
+                                  {day.snack1 && <div className="flex justify-between"><span>🍎 {day.snack1.meal}</span><span className="text-muted-foreground">{day.snack1.calories} cal</span></div>}
+                                  {day.lunch && <div className="flex justify-between"><span>🍽️ {day.lunch.meal}</span><span className="text-muted-foreground">{day.lunch.calories} cal</span></div>}
+                                  {day.snack2 && <div className="flex justify-between"><span>🥜 {day.snack2.meal}</span><span className="text-muted-foreground">{day.snack2.calories} cal</span></div>}
+                                  {day.dinner && <div className="flex justify-between"><span>🌙 {day.dinner.meal}</span><span className="text-muted-foreground">{day.dinner.calories} cal</span></div>}
+                                </div>
+                              </Card>
+                            ))}
                           </div>
                         )}
 
-                        {/* General notes */}
-                        {generatedPlan.notes && planType === "workout" && (
-                          <div className="mt-4 p-3 bg-muted rounded-lg">
-                            <p className="text-sm">{generatedPlan.notes}</p>
+                        {generatedPlan.notes && (
+                          <div className="p-3 bg-muted/50 rounded-xl">
+                            <p className="text-sm text-muted-foreground">{generatedPlan.notes}</p>
                           </div>
                         )}
                       </div>
@@ -491,93 +542,176 @@ export default function AIFitnessPage() {
             </div>
           </TabsContent>
 
-          {/* Templates Tab */}
-          <TabsContent value="templates" className="space-y-6">
-            <div className="flex items-center gap-4 mb-4">
-              <Tabs value={planType} onValueChange={(v) => setPlanType(v as "workout" | "diet")}>
-                <TabsList>
-                  <TabsTrigger value="workout">Workout</TabsTrigger>
-                  <TabsTrigger value="diet">Diet</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-
+          {/* ── TEMPLATES LIBRARY TAB ── */}
+          <TabsContent value="templates" className="space-y-6 mt-4">
             {templatesLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : templates.length === 0 ? (
-              <Card>
+              <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+            ) : allTemplates.length === 0 ? (
+              <Card className="rounded-2xl">
                 <CardContent className="py-12 text-center">
                   <Library className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">No Templates Yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Generate plans using AI and save them as templates to use later.
-                  </p>
-                  <Button onClick={() => setActiveTab("generate")}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Generate First Plan
-                  </Button>
+                  <p className="text-muted-foreground mb-4">Generate plans and save them as templates.</p>
+                  <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-2 h-4 w-4" /> Generate First Plan</Button>
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {templates.map((template) => (
-                  <Card key={template.id} className="hover:border-primary/50 transition-colors">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-lg">{template.name}</CardTitle>
-                          <CardDescription>{template.description}</CardDescription>
-                        </div>
-                        <Badge className={getDifficultyColor(template.difficulty)}>
-                          {template.difficulty || 'intermediate'}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-2 mb-4">
-                        <Badge variant="outline">
-                          {template.type === 'workout' ? <Dumbbell className="h-3 w-3 mr-1" /> : <Utensils className="h-3 w-3 mr-1" />}
-                          {template.type}
-                        </Badge>
-                        {template.goal && <Badge variant="secondary">{template.goal}</Badge>}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          className="flex-1"
-                          onClick={() => handleAssignTemplate(template)}
-                        >
-                          <UserPlus className="h-4 w-4 mr-1" />
-                          Assign
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          onClick={() => deleteTemplateMutation.mutate(template.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              <>
+                {/* Default plans section */}
+                {DEFAULT_TEMPLATES.filter(dt => dt.type === planType).length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Default Starter Plans</h3>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {DEFAULT_TEMPLATES.filter(dt => dt.type === planType).map((template) => (
+                        <Card key={template.id} className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30">
+                          <CardHeader className="pb-2">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <CardTitle className="text-base">{template.name}</CardTitle>
+                                <CardDescription className="text-xs mt-1">{template.description}</CardDescription>
+                              </div>
+                              <Badge className={`border text-xs ${getDifficultyColor(template.difficulty)}`}>{template.difficulty}</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Badge variant="outline" className="text-xs">
+                                <Dumbbell className="h-3 w-3 mr-1" />{template.type}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">{template.goal}</Badge>
+                              <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20">Built-in</Badge>
+                            </div>
+                            <Button size="sm" className="w-full" onClick={() => handleAssignTemplate(template)}>
+                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign to Member
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom saved templates */}
+                {templates.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Your Saved Templates</h3>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {templates.map((template: FitnessPlanTemplate) => (
+                        <Card key={template.id} className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30">
+                          <CardHeader className="pb-2">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <CardTitle className="text-base">{template.name}</CardTitle>
+                                <CardDescription className="text-xs mt-1">{template.description}</CardDescription>
+                              </div>
+                              <Badge className={`border text-xs ${getDifficultyColor(template.difficulty)}`}>{template.difficulty || 'intermediate'}</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Badge variant="outline" className="text-xs">
+                                {template.type === 'workout' ? <Dumbbell className="h-3 w-3 mr-1" /> : <Utensils className="h-3 w-3 mr-1" />}
+                                {template.type}
+                              </Badge>
+                              {template.goal && <Badge variant="secondary" className="text-xs">{template.goal}</Badge>}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="sm" className="flex-1" onClick={() => handleAssignTemplate(template)}>
+                                <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteTemplateMutation.mutate(template.id)}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
+          </TabsContent>
+
+          {/* ── ASSIGN TAB ── */}
+          <TabsContent value="assign" className="mt-4">
+            <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserPlus className="h-5 w-5 text-primary" />
+                  Assign Plan to Member
+                </CardTitle>
+                <CardDescription>Select a plan from templates or generate one, then assign it to a member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Pick from generated */}
+                  {generatedPlan && (
+                    <Card className="p-4 rounded-xl border-primary/20 bg-primary/5 cursor-pointer hover:border-primary/40 transition-colors" onClick={handleAssignGeneratedPlan}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <Sparkles className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{generatedPlan.name || 'Generated Plan'}</p>
+                          <p className="text-xs text-muted-foreground">AI Generated • Click to assign</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">{generatedPlan.difficulty || planType}</Badge>
+                        {generatedPlan.goal && <Badge variant="secondary" className="text-xs">{generatedPlan.goal}</Badge>}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Pick from templates */}
+                  {allTemplates.slice(0, 5).map((template: any) => (
+                    <Card
+                      key={template.id}
+                      className="p-4 rounded-xl cursor-pointer hover:border-primary/30 transition-colors"
+                      onClick={() => handleAssignTemplate(template)}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center">
+                          {template.type === 'workout' ? <Dumbbell className="h-5 w-5 text-muted-foreground" /> : <Utensils className="h-5 w-5 text-muted-foreground" />}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{template.name}</p>
+                          <p className="text-xs text-muted-foreground">{template.isDefault ? 'Built-in' : 'Custom'} • Click to assign</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className={`border text-xs ${getDifficultyColor(template.difficulty)}`}>{template.difficulty || 'intermediate'}</Badge>
+                        {template.goal && <Badge variant="secondary" className="text-xs">{template.goal}</Badge>}
+                      </div>
+                    </Card>
+                  ))}
+
+                  {!generatedPlan && allTemplates.length === 0 && (
+                    <div className="col-span-2 text-center py-12">
+                      <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground mb-4">Generate a plan first or browse templates</p>
+                      <div className="flex gap-3 justify-center">
+                        <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-1 h-4 w-4" /> Generate Plan</Button>
+                        <Button variant="outline" onClick={() => setActiveTab("templates")}><Library className="mr-1 h-4 w-4" /> Browse Templates</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* Assign Plan Drawer */}
       <AssignPlanDrawer
         open={assignDrawerOpen}
         onOpenChange={setAssignDrawerOpen}
         plan={selectedTemplate ? {
           name: selectedTemplate.name,
-          type: selectedTemplate.type as 'workout' | 'diet',
-          description: selectedTemplate.description || undefined,
-          content: selectedTemplate.content,
+          type: (selectedTemplate as any).type as 'workout' | 'diet',
+          description: (selectedTemplate as any).description || undefined,
+          content: (selectedTemplate as any).content,
         } : generatedPlan ? {
           name: generatedPlan.name || `${planType} Plan`,
           type: planType,
