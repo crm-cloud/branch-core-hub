@@ -33,7 +33,7 @@ const createLockerSchema = z.object({
 type CreateLockerData = z.infer<typeof createLockerSchema>;
 
 export default function LockersPage() {
-  const { effectiveBranchId: branchId } = useBranchContext();
+  const { effectiveBranchId: branchId, isLoading: branchLoading } = useBranchContext();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkCreateOpen, setIsBulkCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
