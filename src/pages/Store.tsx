@@ -54,7 +54,7 @@ export default function StorePage() {
         .select(`
           *,
           members(member_code, profiles:user_id(full_name)),
-          invoices(invoice_number)
+          invoices!pos_sales_invoice_id_fkey(invoice_number)
         `)
         .order('sale_date', { ascending: false })
         .limit(100);

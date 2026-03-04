@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -13,10 +13,12 @@ import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsC
 import { TemplateManager } from '@/components/settings/TemplateManager';
 import { ExpenseCategoryManager } from '@/components/settings/ExpenseCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
+import { ThemePicker } from '@/components/settings/ThemePicker';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
   { value: 'branches', label: 'Branches', icon: Building2 },
+  { value: 'appearance', label: 'Appearance', icon: Palette },
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'templates', label: 'Templates', icon: MessageSquare },
@@ -31,6 +33,7 @@ const SETTINGS_MENU = [
 const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   organization: <OrganizationSettings />,
   branches: <BranchSettings />,
+  appearance: <ThemePicker />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
   templates: <TemplateManager />,

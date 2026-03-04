@@ -34,8 +34,8 @@ export default function TrainerEarnings() {
         .from('pt_sessions')
         .select(`
           *,
-          member:members(member_code, user_id, profiles:user_id(full_name)),
-          pt_package:member_pt_packages(package:pt_packages(name, price_per_session))
+          member_pt_package:member_pt_packages(member:members(member_code, user_id), package:pt_packages(name, price_per_session)),
+          trainer:trainers(id, user_id)
         `)
         .eq('trainer_id', trainer!.id)
         .eq('status', 'completed')
@@ -44,7 +44,21 @@ export default function TrainerEarnings() {
         .order('scheduled_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+
+      // Enrich with profile names
+      const userIds = (data || []).map((s: any) => s.member_pt_package?.member?.user_id).filter(Boolean);
+      let profilesMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', [...new Set(userIds)]);
+        profilesMap = (profiles || []).reduce((acc: Record<string, string>, p: any) => { acc[p.id] = p.full_name || ''; return acc; }, {});
+      }
+
+      return (data || []).map((s: any) => ({
+        ...s,
+        _member_name: s.member_pt_package?.member?.user_id ? profilesMap[s.member_pt_package.member.user_id] : s.member_pt_package?.member?.member_code || 'Unknown',
+        _member_code: s.member_pt_package?.member?.member_code,
+        _package_name: s.member_pt_package?.package?.name,
+      }));
     },
   });
 
@@ -213,7 +227,7 @@ export default function TrainerEarnings() {
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
                           <p className="font-medium">
-                            {session.member?.profiles?.full_name || session.member?.member_code}
+                            {session._member_name || session._member_code || 'Unknown'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -227,7 +241,7 @@ export default function TrainerEarnings() {
                     <div className="text-right">
                       <p className="font-semibold text-success">₹{sessionRate}</p>
                       <Badge variant="outline" className="text-xs">
-                        {session.pt_package?.package?.name || 'Session'}
+                        {session._package_name || 'Session'}
                       </Badge>
                     </div>
                   </div>

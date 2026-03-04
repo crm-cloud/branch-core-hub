@@ -33,7 +33,7 @@ const createLockerSchema = z.object({
 type CreateLockerData = z.infer<typeof createLockerSchema>;
 
 export default function LockersPage() {
-  const { effectiveBranchId: branchId } = useBranchContext();
+  const { effectiveBranchId: branchId, isLoading: branchLoading } = useBranchContext();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkCreateOpen, setIsBulkCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -177,6 +177,16 @@ export default function LockersPage() {
     setReleaseTarget(null);
     toast.success('Locker released successfully');
   };
+
+  if (branchLoading || !branchId) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>

@@ -109,7 +109,7 @@ export default function POSPage() {
       const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('pos_sales')
-        .select('*, invoices(invoice_number)')
+        .select('*, invoices!pos_sales_invoice_id_fkey(invoice_number)')
         .gte('sale_date', `${today}T00:00:00`)
         .lte('sale_date', `${today}T23:59:59`)
         .order('sale_date', { ascending: false });
