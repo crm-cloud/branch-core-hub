@@ -132,14 +132,14 @@ export default function AllBookingsPage() {
 
       const { data: sessions, error } = await supabase
         .from('pt_sessions')
-        .select(`*, member:members(id, member_code, user_id), trainer:trainers(id, user_id)`)
+        .select(`*, member_pt_package:member_pt_packages(member:members(id, member_code, user_id)), trainer:trainers(id, user_id)`)
         .eq('branch_id', branchId)
         .gte('session_date', startDate.toISOString())
         .lte('session_date', endDate.toISOString());
 
       if (error) throw error;
 
-      const userIds = [...(sessions || []).map((s: any) => s.member?.user_id), ...(sessions || []).map((s: any) => s.trainer?.user_id)].filter((id): id is string => !!id);
+      const userIds = [...(sessions || []).map((s: any) => s.member_pt_package?.member?.user_id), ...(sessions || []).map((s: any) => s.trainer?.user_id)].filter((id): id is string => !!id);
       let profilesMap: Record<string, string> = {};
       if (userIds.length > 0) {
         const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', [...new Set(userIds)]);
@@ -148,8 +148,8 @@ export default function AllBookingsPage() {
 
       return (sessions || []).map((s: any) => ({
         ...s, type: 'pt',
-        member_name: s.member?.user_id ? profilesMap[s.member.user_id] : s.member?.member_code,
-        member_code: s.member?.member_code,
+        member_name: s.member_pt_package?.member?.user_id ? profilesMap[s.member_pt_package.member.user_id] : s.member_pt_package?.member?.member_code,
+        member_code: s.member_pt_package?.member?.member_code,
         trainer_name: s.trainer?.user_id ? profilesMap[s.trainer.user_id] : 'Unknown Trainer',
       }));
     },

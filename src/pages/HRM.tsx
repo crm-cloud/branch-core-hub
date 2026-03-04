@@ -55,7 +55,7 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, user_id, profiles:user_id(full_name))
+          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name))
         `)
         .order('created_at', { ascending: false })
         .limit(50);

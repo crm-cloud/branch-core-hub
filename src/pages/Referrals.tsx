@@ -28,10 +28,9 @@ export default function ReferralsPage() {
     queryKey: ['referral-members'],
     enabled: !!user,
     queryFn: async (): Promise<any[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('members')
         .select('id, member_code, user_id')
-        .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(200);
       if (error) throw error;

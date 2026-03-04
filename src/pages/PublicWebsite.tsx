@@ -107,18 +107,21 @@ export default function PublicWebsite() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('membership_plans')
-        .select('id, name, price, duration_months, features, is_popular')
+        .select('id, name, price, duration_days, features, is_popular')
         .eq('is_active', true)
         .order('price', { ascending: true })
         .limit(4);
       if (error) return [];
-      return (data || []).map((p: any) => ({
+      return (data || []).map((p: any) => {
+        const months = Math.round((p.duration_days || 30) / 30);
+        return {
         name: p.name,
         price: p.price,
-        duration: p.duration_months === 1 ? '1 Month' : p.duration_months === 3 ? '3 Months' : `${p.duration_months} Months`,
+        duration: months === 1 ? '1 Month' : months === 3 ? '3 Months' : `${months} Months`,
         features: p.features || [],
         isPopular: p.is_popular || false,
-      }));
+      };
+      });
     },
     staleTime: 300000,
   });
