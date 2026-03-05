@@ -87,7 +87,7 @@ export default function PublicWebsite() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('trainers')
-        .select('id, specializations, bio, user_id, profiles:user_id(full_name, avatar_url)')
+        .select('id, specializations, bio, user_id, profiles:trainers_user_id_profiles_fkey(full_name, avatar_url)')
         .eq('is_active', true)
         .limit(8);
       if (error) return [];
@@ -107,7 +107,7 @@ export default function PublicWebsite() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('membership_plans')
-        .select('id, name, price, duration_days, features, is_popular')
+        .select('id, name, price, duration_days')
         .eq('is_active', true)
         .order('price', { ascending: true })
         .limit(4);
@@ -118,8 +118,8 @@ export default function PublicWebsite() {
         name: p.name,
         price: p.price,
         duration: months === 1 ? '1 Month' : months === 3 ? '3 Months' : `${months} Months`,
-        features: p.features || [],
-        isPopular: p.is_popular || false,
+        features: [],
+        isPopular: false,
       };
       });
     },

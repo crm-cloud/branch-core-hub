@@ -52,8 +52,14 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
         return <Navigate to="/trainer-dashboard" replace />;
       }
       
-      // Staff or admin trying to access higher-level routes
-      if (roles.some(r => ['owner', 'admin', 'manager', 'staff'].includes(r.role))) {
+      // Staff trying to access higher-level routes (without admin privileges)
+      if (roles.some(r => r.role === 'staff') && 
+          !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+        return <Navigate to="/staff-dashboard" replace />;
+      }
+      
+      // Admin/Manager/Owner trying to access restricted routes
+      if (roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
         return <Navigate to="/dashboard" replace />;
       }
       
