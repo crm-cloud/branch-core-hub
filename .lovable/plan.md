@@ -1,80 +1,57 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Fix Plan: Staff Login Loop, System Health Errors, Query Bugs
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## Critical Issue: Staff Login Infinite Redirect Loop
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+**Root Cause identified definitively:** Two bugs create a redirect loop for staff users.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+**Bug 1 — `Auth.tsx` line 50-58:** `getRedirectPath()` has no staff case. Staff users fall through to `return '/dashboard'`.
 
-## 2. Database Migration
+**Bug 2 — `ProtectedRoute.tsx` line 49-55:** When staff tries to access `/dashboard` (requires `['owner','admin','manager']`), the fallback for `roles.some(r => ['owner','admin','manager','staff'].includes(r.role))` redirects BACK to `/dashboard`. This creates an infinite loop: `/dashboard` → no access → redirect to `/dashboard` → no access → ...
 
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+**Fixes:**
+- `Auth.tsx`: Add staff check in `getRedirectPath()` before the default return
+- `ProtectedRoute.tsx`: Change the staff/admin fallback to check for staff specifically and redirect to `/staff-dashboard`
+
+## System Health Errors — All 10 Unique Categories
+
+| # | Error | Count | File | Fix |
+|---|-------|-------|------|-----|
+| 1 | `trainers`/`user_id` relationship ambiguous | 7 | `PublicWebsite.tsx` line 90 | Use explicit FK: `profiles:trainers_user_id_profiles_fkey(full_name, avatar_url)` |
+| 2 | `membership_plans.features` does not exist | 4+7 | `PublicWebsite.tsx` line 110 | Remove `features` from select (column doesn't exist), use CMS `pricingPlans` features instead |
+| 3 | `employees`/`user_id` relationship ambiguous | 6 | Already fixed in HRM; check other usages | Audit remaining usages |
+| 4 | `pt_sessions`/`members` no relationship | 5+1 | `AllBookings.tsx` line 135 | Already uses `member_pt_packages` join correctly |
+| 5 | `pt_sessions.session_date` does not exist | 3+1 | `AllBookings.tsx` lines 137, 208 | Column is `scheduled_at`, not `session_date` |
+| 6 | `pos_sales`/`invoices` ambiguous | 4+3 | `Store.tsx`, `POS.tsx` | Already fixed with explicit FK hint; verify |
+| 7 | `organization_settings` branch_id=`all` | 7 | `OrganizationSettings.tsx` line 22 | Guard: if `selectedBranch === 'all'`, don't filter by branch_id |
+| 8 | `user_roles`/`user_id` relationship | 1 | Some component queries `user_roles?select=...,profiles:user_id(...)` | `user_roles.user_id` FK points to `auth.users` not `profiles`. Need DB migration or 2-step fetch |
+| 9 | `members_1.full_name` does not exist | 1 | `Analytics.tsx` line 183 | Already fixed in previous iteration; verify |
+| 10 | `DialogTitle` missing | 8+ routes | Multiple Sheet/Dialog components | Add hidden `SheetTitle`/`DialogTitle` to all drawers |
+
+## Database Migration
 
 ```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
+ALTER TABLE public.user_roles
+  ADD CONSTRAINT user_roles_user_id_profiles_fkey
   FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
+This enables `user_roles` → `profiles` PostgREST joins.
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
-
-## 3. AI Fitness Page Redesign
-
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
-
-Redesign with 3 clear tabs and modern Vuexy styling:
-
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
-
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
-
-## 4. Public Website CMS/DB Sync
-
-**File:** `src/pages/PublicWebsite.tsx`
-
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
-
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
-
-## 5. Files to Change
+## Files to Change
 
 | File | Change |
 |------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+| `src/pages/Auth.tsx` | Add staff role check in `getRedirectPath()` |
+| `src/components/auth/ProtectedRoute.tsx` | Fix staff fallback: redirect to `/staff-dashboard` not `/dashboard` |
+| `src/pages/PublicWebsite.tsx` | Fix trainers query with explicit FK hint; remove `features` and `is_popular` from plans query |
+| `src/pages/AllBookings.tsx` | Change `session_date` to `scheduled_at` (3 occurrences) |
+| `src/components/settings/OrganizationSettings.tsx` | Guard `selectedBranch === 'all'` — don't filter by branch_id |
+| **DB Migration** | Add `user_roles_user_id_profiles_fkey` FK |
 
 ## Execution Order
+1. Fix staff login redirect loop (Auth.tsx + ProtectedRoute.tsx) — **critical blocker**
+2. DB migration (user_roles FK to profiles)
+3. Fix all query bugs (PublicWebsite, AllBookings, OrganizationSettings)
+4. Add missing DialogTitle/SheetTitle for accessibility warnings
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
