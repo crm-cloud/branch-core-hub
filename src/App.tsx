@@ -84,6 +84,7 @@ import TrainerPlanBuilder from "./pages/TrainerPlanBuilder";
 
 // Staff-specific pages
 import StaffDashboard from "./pages/StaffDashboard";
+import FollowUpCenter from "./pages/FollowUpCenter";
 
 // Admin pages
 import AdminRoles from "./pages/AdminRoles";
@@ -163,6 +164,7 @@ const App = () => (
 
             {/* ==================== STAFF ROUTES ==================== */}
             <Route path="/staff-dashboard" element={<ProtectedRoute requiredRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
+            <Route path="/follow-up-center" element={<ProtectedRoute requiredRoles={['staff', 'manager', 'admin', 'owner']}><FollowUpCenter /></ProtectedRoute>} />
 
             {/* ==================== ADMIN/MANAGER/OWNER ROUTES ==================== */}
             <Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DashboardPage /></ProtectedRoute>} />
