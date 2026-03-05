@@ -98,6 +98,7 @@ export const staffMenuConfig: MenuSection[] = [
     title: 'Core',
     items: [
       { label: 'Dashboard', href: '/staff-dashboard', icon: LayoutDashboard, roles: ['staff'] },
+      { label: 'Follow-Up Center', href: '/follow-up-center', icon: Target, roles: ['staff'] },
     ],
   },
   {
@@ -110,11 +111,21 @@ export const staffMenuConfig: MenuSection[] = [
     ],
   },
   {
+    title: 'Training & Bookings',
+    items: [
+      { label: 'Classes', href: '/classes', icon: Calendar, roles: ['staff'] },
+      { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['staff'] },
+      { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['staff'] },
+      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['staff'] },
+    ],
+  },
+  {
     title: 'Operations',
     items: [
       { label: 'POS', href: '/pos', icon: ShoppingCart, roles: ['staff'] },
       { label: 'Invoices', href: '/invoices', icon: FileText, roles: ['staff'] },
-      
+      { label: 'Payments', href: '/payments', icon: Wallet, roles: ['staff'] },
+      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['staff'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['staff'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['staff'] },
     ],
