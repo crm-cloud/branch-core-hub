@@ -84,6 +84,7 @@ import TrainerPlanBuilder from "./pages/TrainerPlanBuilder";
 
 // Staff-specific pages
 import StaffDashboard from "./pages/StaffDashboard";
+import FollowUpCenter from "./pages/FollowUpCenter";
 
 // Admin pages
 import AdminRoles from "./pages/AdminRoles";
@@ -163,6 +164,7 @@ const App = () => (
 
             {/* ==================== STAFF ROUTES ==================== */}
             <Route path="/staff-dashboard" element={<ProtectedRoute requiredRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
+            <Route path="/follow-up-center" element={<ProtectedRoute requiredRoles={['staff', 'manager', 'admin', 'owner']}><FollowUpCenter /></ProtectedRoute>} />
 
             {/* ==================== ADMIN/MANAGER/OWNER ROUTES ==================== */}
             <Route path="/dashboard" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><DashboardPage /></ProtectedRoute>} />
@@ -172,14 +174,14 @@ const App = () => (
             <Route path="/attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><AttendancePage /></ProtectedRoute>} />
             <Route path="/feedback" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><FeedbackPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><InvoicesPage /></ProtectedRoute>} />
-            <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PaymentsPage /></ProtectedRoute>} />
+            <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><PaymentsPage /></ProtectedRoute>} />
             <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
-            <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PTSessionsPage /></ProtectedRoute>} />
+            <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer', 'staff']}><PTSessionsPage /></ProtectedRoute>} />
             <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
             <Route path="/trainer-plan-builder" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerPlanBuilder /></ProtectedRoute>} />
             <Route path="/inventory" element={<Navigate to="/products" replace />} />
             <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
-            <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentMaintenancePage /></ProtectedRoute>} />
+            <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><EquipmentMaintenancePage /></ProtectedRoute>} />
             <Route path="/lockers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LockersPage /></ProtectedRoute>} />
             <Route path="/hrm" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><HRMPage /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><TasksPage /></ProtectedRoute>} />
@@ -199,7 +201,7 @@ const App = () => (
             <Route path="/products" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/product-categories" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ProductCategoriesPage /></ProtectedRoute>} />
             <Route path="/benefit-tracking" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><BenefitTrackingPage /></ProtectedRoute>} />
-            <Route path="/all-bookings" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><AllBookingsPage /></ProtectedRoute>} />
+            <Route path="/all-bookings" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><AllBookingsPage /></ProtectedRoute>} />
             <Route path="/whatsapp-chat" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><WhatsAppChatPage /></ProtectedRoute>} />
             <Route path="/devices" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><DeviceManagement /></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><ApprovalQueue /></ProtectedRoute>} />
