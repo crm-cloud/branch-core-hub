@@ -84,7 +84,7 @@ export default function FollowUpCenter() {
         .from('leads')
         .select('id, name, phone, email, source, status, follow_up_date, notes, created_at')
         .eq('branch_id', branchId!)
-        .in('status', ['new', 'contacted', 'interested'])
+        .in('status', ['new', 'contacted', 'qualified'])
         .order('follow_up_date', { ascending: true, nullsFirst: false })
         .limit(50);
       if (error) throw error;
