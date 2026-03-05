@@ -55,6 +55,10 @@ export default function AuthPage() {
         !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
       return '/trainer-dashboard';
     }
+    if (roles.some(r => r.role === 'staff') && 
+        !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
+      return '/staff-dashboard';
+    }
     return '/dashboard';
   };
 

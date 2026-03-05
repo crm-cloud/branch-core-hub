@@ -134,8 +134,8 @@ export default function AllBookingsPage() {
         .from('pt_sessions')
         .select(`*, member_pt_package:member_pt_packages(member:members(id, member_code, user_id)), trainer:trainers(id, user_id)`)
         .eq('branch_id', branchId)
-        .gte('session_date', startDate.toISOString())
-        .lte('session_date', endDate.toISOString());
+        .gte('scheduled_at', startDate.toISOString())
+        .lte('scheduled_at', endDate.toISOString());
 
       if (error) throw error;
 
@@ -205,8 +205,8 @@ export default function AllBookingsPage() {
         .from('pt_sessions')
         .select('id', { count: 'exact', head: true })
         .eq('branch_id', branchId)
-        .gte('session_date', ms.toISOString())
-        .lte('session_date', me.toISOString());
+        .gte('scheduled_at', ms.toISOString())
+        .lte('scheduled_at', me.toISOString());
 
       return { classes: classCount, benefits: benefitCount, pt: ptCount || 0, byDay };
     },

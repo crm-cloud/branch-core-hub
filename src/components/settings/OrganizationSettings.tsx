@@ -18,7 +18,7 @@ export function OrganizationSettings() {
     queryKey: ['organization-settings', selectedBranch],
     queryFn: async () => {
       let query = supabase.from('organization_settings').select('*');
-      if (selectedBranch) {
+      if (selectedBranch && selectedBranch !== 'all') {
         query = query.eq('branch_id', selectedBranch);
       }
       const { data, error } = await query.maybeSingle();
