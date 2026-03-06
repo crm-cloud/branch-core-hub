@@ -10,8 +10,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { AdBannerManager } from '@/components/banners/AdBannerManager';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function StorePage() {
+  const { selectedBranch } = useBranchContext();
+  const BannerManager = () => selectedBranch && selectedBranch !== 'all' ? <AdBannerManager branchId={selectedBranch} /> : <p className="text-center text-muted-foreground py-8">Select a branch to manage banners</p>;
 
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['store-products'],
@@ -305,6 +309,7 @@ export default function StorePage() {
                   Store Orders ({memberStoreOrders.length})
                 </TabsTrigger>
                 <TabsTrigger value="products">Products</TabsTrigger>
+                <TabsTrigger value="banners">Ad Banners</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pos-history" className="mt-4">
@@ -444,6 +449,10 @@ export default function StorePage() {
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="banners" className="mt-4">
+                <BannerManager />
               </TabsContent>
             </Tabs>
           </div>

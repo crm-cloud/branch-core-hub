@@ -82,6 +82,50 @@ export type Database = {
           },
         ]
       }
+      ad_banners: {
+        Row: {
+          branch_id: string
+          created_at: string | null
+          display_order: number | null
+          id: string
+          image_url: string
+          is_active: boolean | null
+          redirect_url: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          image_url: string
+          is_active?: boolean | null
+          redirect_url?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          image_url?: string
+          is_active?: boolean | null
+          redirect_url?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_banners_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_plan_logs: {
         Row: {
           created_at: string
@@ -2190,6 +2234,50 @@ export type Database = {
           },
         ]
       }
+      follow_up_activities: {
+        Row: {
+          action_taken: string
+          branch_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          next_follow_up_date: string | null
+          notes: string | null
+          reference_id: string
+          reference_type: string
+        }
+        Insert: {
+          action_taken: string
+          branch_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          next_follow_up_date?: string | null
+          notes?: string | null
+          reference_id: string
+          reference_type: string
+        }
+        Update: {
+          action_taken?: string
+          branch_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          next_follow_up_date?: string | null
+          notes?: string | null
+          reference_id?: string
+          reference_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_activities_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           branch_id: string | null
@@ -4179,11 +4267,13 @@ export type Database = {
           branch_id: string
           created_at: string
           description: string | null
+          duration_months: number | null
           gst_inclusive: boolean | null
           gst_percentage: number | null
           id: string
           is_active: boolean | null
           name: string
+          package_type: string
           price: number
           session_type: string | null
           total_sessions: number
@@ -4194,11 +4284,13 @@ export type Database = {
           branch_id: string
           created_at?: string
           description?: string | null
+          duration_months?: number | null
           gst_inclusive?: boolean | null
           gst_percentage?: number | null
           id?: string
           is_active?: boolean | null
           name: string
+          package_type?: string
           price: number
           session_type?: string | null
           total_sessions: number
@@ -4209,11 +4301,13 @@ export type Database = {
           branch_id?: string
           created_at?: string
           description?: string | null
+          duration_months?: number | null
           gst_inclusive?: boolean | null
           gst_percentage?: number | null
           id?: string
           is_active?: boolean | null
           name?: string
+          package_type?: string
           price?: number
           session_type?: string | null
           total_sessions?: number
@@ -4895,6 +4989,7 @@ export type Database = {
           paid_at: string | null
           percentage: number | null
           pt_package_id: string | null
+          release_date: string | null
           session_id: string | null
           status: string
           trainer_id: string
@@ -4910,6 +5005,7 @@ export type Database = {
           paid_at?: string | null
           percentage?: number | null
           pt_package_id?: string | null
+          release_date?: string | null
           session_id?: string | null
           status?: string
           trainer_id: string
@@ -4925,6 +5021,7 @@ export type Database = {
           paid_at?: string | null
           percentage?: number | null
           pt_package_id?: string | null
+          release_date?: string | null
           session_id?: string | null
           status?: string
           trainer_id?: string

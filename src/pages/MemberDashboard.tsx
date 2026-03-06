@@ -12,10 +12,11 @@ import {
   Calendar, Clock, CreditCard, Dumbbell, FileText, 
   TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { getBenefitIcon } from '@/lib/benefitIcons';
+import useEmblaCarousel from 'embla-carousel-react';
 
 export default function MemberDashboard() {
   const { profile } = useAuth();
@@ -31,6 +32,39 @@ export default function MemberDashboard() {
   } = useMemberData();
 
   const isFrozen = activeMembership?.status === 'frozen';
+  const [emblaRef] = useEmblaCarousel({ loop: true });
+
+  // Fetch freeze details for frozen state
+  const { data: freezeDetails } = useQuery({
+    queryKey: ['freeze-details', activeMembership?.id],
+    enabled: !!activeMembership?.id && isFrozen,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('membership_freeze_history')
+        .select('*')
+        .eq('membership_id', activeMembership!.id)
+        .in('status', ['approved', 'pending'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Fetch ad banners
+  const { data: banners = [] } = useQuery({
+    queryKey: ['member-banners', member?.branch_id],
+    enabled: !!member?.branch_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('ad_banners')
+        .select('*')
+        .eq('branch_id', member!.branch_id)
+        .eq('is_active', true)
+        .order('display_order');
+      return data || [];
+    },
+  });
 
   // Fetch assigned locker
   const { data: assignedLocker } = useQuery({
@@ -155,10 +189,20 @@ export default function MemberDashboard() {
             </p>
           </div>
           {isFrozen ? (
-            <Badge className="w-fit bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20">
-              <Snowflake className="h-3.5 w-3.5 mr-1" />
-              Membership Frozen
-            </Badge>
+            <div className="text-right">
+              <Badge className="w-fit bg-blue-500/10 text-blue-600 border-blue-500/30 hover:bg-blue-500/20">
+                <Snowflake className="h-3.5 w-3.5 mr-1" />
+                FROZEN — {activeMembership?.plan?.name || 'Plan'}
+              </Badge>
+              {freezeDetails?.end_date && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {differenceInDays(new Date(freezeDetails.end_date), new Date()) > 0
+                    ? `${differenceInDays(new Date(freezeDetails.end_date), new Date())} days remaining`
+                    : 'Freeze ending soon'}
+                  {' • Ends '}{format(new Date(freezeDetails.end_date), 'dd MMM yyyy')}
+                </p>
+              )}
+            </div>
           ) : (
             <Badge variant={activeMembership ? "default" : "destructive"} className="w-fit">
               {activeMembership ? 'Active Membership' : 'No Active Membership'}
@@ -166,11 +210,30 @@ export default function MemberDashboard() {
           )}
         </div>
 
+        {/* Ad Banners Carousel */}
+        {banners.length > 0 && (
+          <div className="overflow-hidden rounded-2xl" ref={emblaRef}>
+            <div className="flex">
+              {banners.map((banner: any) => (
+                <div key={banner.id} className="flex-[0_0_100%] min-w-0">
+                  {banner.redirect_url ? (
+                    <a href={banner.redirect_url} target="_blank" rel="noreferrer">
+                      <img src={banner.image_url} alt={banner.title || 'Promotion'} className="w-full h-40 md:h-52 object-cover rounded-2xl" />
+                    </a>
+                  ) : (
+                    <img src={banner.image_url} alt={banner.title || 'Promotion'} className="w-full h-40 md:h-52 object-cover rounded-2xl" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Frozen Alert */}
         {isFrozen && (
           <Alert className="border-blue-500/30 bg-blue-500/5">
             <Snowflake className="h-4 w-4 text-blue-500" />
-            <AlertTitle className="text-blue-600">Membership Frozen</AlertTitle>
+            <AlertTitle className="text-blue-600">Membership Frozen — {activeMembership?.plan?.name}</AlertTitle>
             <AlertDescription className="flex flex-col sm:flex-row sm:items-center gap-3">
               <span className="text-muted-foreground">Your membership is currently paused. Gym access and bookings are disabled.</span>
               <Button size="sm" variant="outline" className="w-fit border-blue-500/30 text-blue-600 hover:bg-blue-500/10" asChild>
