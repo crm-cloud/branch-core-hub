@@ -81,6 +81,7 @@ export function FreezeMembershipDrawer({ open, onOpenChange, membership, memberN
           branch_id: membership.branch_id,
           member_id: membership.member_id,
           total_amount: freezeFeeAmount,
+          subtotal: freezeFeeAmount,
           status: 'pending' as const,
           due_date: startDate,
         };

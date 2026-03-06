@@ -56,6 +56,7 @@ export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership
           branch_id: (activeMembership as any).branch_id,
           member_id: (activeMembership as any).member_id,
           total_amount: freezeFee,
+          subtotal: freezeFee,
           status: 'pending' as const,
           due_date: format(startDate, 'yyyy-MM-dd'),
         };
