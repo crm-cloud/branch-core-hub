@@ -305,6 +305,7 @@ export default function StorePage() {
                   Store Orders ({memberStoreOrders.length})
                 </TabsTrigger>
                 <TabsTrigger value="products">Products</TabsTrigger>
+                <TabsTrigger value="banners">Ad Banners</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pos-history" className="mt-4">
