@@ -77,10 +77,18 @@ export function FreezeMembershipDrawer({ open, onOpenChange, membership, memberN
 
       // Generate freeze fee invoice if paid freeze
       if (isPaidFreeze && freezeFeeAmount > 0) {
-        const { data: invoice, error: invErr } = await supabase.from('invoices').insert({
-          branch_id: membership.branch_id, member_id: membership.member_id,
-          total_amount: freezeFeeAmount, status: 'pending', due_date: startDate,
-        }).select().single();
+        const invoicePayload = {
+          branch_id: membership.branch_id,
+          member_id: membership.member_id,
+          total_amount: freezeFeeAmount,
+          status: 'pending' as const,
+          due_date: startDate,
+        };
+        const { data: invoice, error: invErr } = await supabase
+          .from('invoices')
+          .insert(invoicePayload)
+          .select()
+          .single();
         if (invErr) console.error('Failed to create freeze fee invoice:', invErr);
         else {
           await supabase.from('invoice_items').insert({

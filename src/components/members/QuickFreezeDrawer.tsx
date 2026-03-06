@@ -52,10 +52,18 @@ export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership
 
       // Generate freeze fee invoice if paid
       if (isPaidFreeze && freezeFee > 0 && (activeMembership as any).branch_id && (activeMembership as any).member_id) {
-        const { data: invoice } = await supabase.from('invoices').insert({
-          branch_id: (activeMembership as any).branch_id, member_id: (activeMembership as any).member_id,
-          total_amount: freezeFee, status: 'pending', due_date: format(startDate, 'yyyy-MM-dd'),
-        }).select().single();
+        const invoicePayload = {
+          branch_id: (activeMembership as any).branch_id,
+          member_id: (activeMembership as any).member_id,
+          total_amount: freezeFee,
+          status: 'pending' as const,
+          due_date: format(startDate, 'yyyy-MM-dd'),
+        };
+        const { data: invoice } = await supabase
+          .from('invoices')
+          .insert(invoicePayload)
+          .select()
+          .single();
         if (invoice) {
           await supabase.from('invoice_items').insert({
             invoice_id: invoice.id, description: 'Membership Freeze Fee',

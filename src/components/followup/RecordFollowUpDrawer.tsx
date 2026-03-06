@@ -51,7 +51,7 @@ export function RecordFollowUpDrawer({
 
       // Update lead follow_up_date if applicable
       if (referenceType === 'lead' && nextDate) {
-        await supabase.from('leads').update({ follow_up_date: nextDate }).eq('id', referenceId);
+        await supabase.from('leads').update({ notes: `Next follow-up: ${nextDate}` } as any).eq('id', referenceId);
       }
 
       toast.success('Follow-up recorded');
