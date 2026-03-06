@@ -72,9 +72,9 @@ export default function TrainerEarnings() {
           .from('trainer_commissions' as any)
           .select('*')
           .eq('trainer_id', trainer!.id)
-          .gte('created_at', monthStart)
-          .lte('created_at', monthEnd)
-          .order('created_at', { ascending: false });
+          .gte('release_date', monthStart.split('T')[0])
+          .lte('release_date', monthEnd.split('T')[0])
+          .order('release_date', { ascending: false });
 
         if (error) return [];
         return data || [];

@@ -246,8 +246,8 @@ export async function calculatePayroll(employeeId: string, month: string) {
       .from('trainer_commissions')
       .select('amount')
       .eq('trainer_id', trainerLink.id)
-      .gte('created_at', startDate)
-      .lte('created_at', endDate);
+      .gte('release_date', startDate)
+      .lte('release_date', endDate);
     ptCommission = commissions?.reduce((s, c) => s + (c.amount || 0), 0) || 0;
   }
 
