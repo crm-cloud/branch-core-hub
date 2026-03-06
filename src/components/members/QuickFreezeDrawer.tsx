@@ -61,7 +61,7 @@ export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership
         };
         const { data: invoice } = await supabase
           .from('invoices')
-          .insert(invoicePayload)
+          .insert([invoicePayload])
           .select()
           .single();
         if (invoice) {

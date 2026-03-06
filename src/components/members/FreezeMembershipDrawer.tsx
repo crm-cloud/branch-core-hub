@@ -86,7 +86,7 @@ export function FreezeMembershipDrawer({ open, onOpenChange, membership, memberN
         };
         const { data: invoice, error: invErr } = await supabase
           .from('invoices')
-          .insert(invoicePayload)
+          .insert([invoicePayload])
           .select()
           .single();
         if (invErr) console.error('Failed to create freeze fee invoice:', invErr);
