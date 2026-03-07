@@ -1,80 +1,122 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Comprehensive Audit & Fix Plan
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## 1. CRITICAL: Frozen Membership Shows "No Plan" — Allows Overriding
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+**Root cause:** In `MemberProfileDrawer.tsx` line 542:
+```ts
+const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active');
+```
+This ignores `frozen` memberships entirely. A frozen member sees "No Plan" → "Add Plan" → can purchase a new plan, which creates a second membership record and effectively overrides the frozen one.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
-
-## 2. Database Migration
-
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
-
-```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
-  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+**Fix:** Change to find `active` OR `frozen` membership:
+```ts
+const activeMembership = memberDetails?.memberships?.find(
+  (m: any) => m.status === 'active' || m.status === 'frozen'
+);
 ```
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
+Also apply the same fix in:
+- `Members.tsx` line 97-103 (`getActiveMembership` logic) — must include `frozen` status
+- `PurchaseMembershipDrawer.tsx` line 72-86 — the `active-membership-check` query only checks `status = 'active'`. Must also check `status = 'frozen'` so the drawer blocks purchase when frozen
+- The button text logic (line 666) should show "Frozen" text instead of "Add Plan" for frozen members
 
-## 3. AI Fitness Page Redesign
+**Additionally:** Add a server-side guard in the purchase flow — before inserting a new membership, check if any `active` or `frozen` membership exists and block if so.
 
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
+## 2. Branch Selector — Classes, PT Sessions, Lockers
 
-Redesign with 3 clear tabs and modern Vuexy styling:
+**Classes page** (line 27): Uses `effectiveBranchId` directly — works correctly.  
+**PT Sessions** (line 47-48): Uses `effectiveBranchId` and `branchFilter` — works correctly.  
+**Lockers** (line 36): Already has `branchLoading` guard from prior fix — works correctly.
 
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+No code changes needed here. The branch selector itself works; the issue was likely transient loading states already fixed.
 
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
+## 3. Sidebar Shows "Default" Instead of Organization Name
 
-## 4. Public Website CMS/DB Sync
+**Root cause:** `BrandLogo` component (AppSidebar.tsx line 28-39) queries `organization_settings` for `name`. The stored value in the database is literally "Default" — it's not a code bug, it's a data issue. However, the fallback text says `'Incline'` which is the project name.
 
-**File:** `src/pages/PublicWebsite.tsx`
+**Fix:** Update the fallback to show nothing/logo when name is "Default", and surface the org name editor more prominently. Also, ensure the sidebar respects theme colors better.
 
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+## 4. Theme System — Sidebar Always Dark
 
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+**Root cause:** All 6 themes in `ThemeContext.tsx` define dark sidebar backgrounds (`--sidebar-background` with low lightness values like 10-12%). This means regardless of theme choice, the sidebar is always a dark color variant.
 
-## 5. Files to Change
+**Fix:** Add a `sidebarMode` option (`'light' | 'dark'`) to the theme system. When `light`, use high-lightness sidebar values (white/light background with dark text). Update the sidebar CSS to use `--sidebar-foreground` properly. This gives a modern 2026 look where the sidebar can be white/light with colored accents.
+
+## 5. Analytics Page UI/UX Audit
+
+The Analytics page already uses Vuexy-style rounded cards, gradient stat cards, and recharts. However, it has hardcoded `text-slate-800` colors instead of using theme-aware CSS variables, meaning it won't adapt to themes properly.
+
+**Fix:** Replace all `text-slate-800` with `text-foreground`, `text-slate-600` with `text-muted-foreground`, `shadow-indigo-100` with `shadow-primary/5` to make it theme-aware. Also add branch filtering (currently missing — queries all branches).
+
+## 6. System Health — Database Error Audit
+
+Need to query current errors. Known remaining issues from prior fixes:
+- `membership_plans.features` column doesn't exist (PublicWebsite)
+- `pt_sessions.session_date` → should be `scheduled_at` (already fixed in AllBookings, check TrainerDashboard)
+- DialogTitle accessibility warnings across multiple drawers
+
+**Fix:** Run through all error categories and apply remaining fixes.
+
+## 7. Profile — Recent Activity Human-Readable
+
+**Current state:** Line 291 shows `activity.action_description` which comes from the `audit_log_trigger_function`. The trigger generates descriptions like: `Rajat Lekhari created lockers "d4f8-4e80-94b7-5561063d6bfe"` — using UUIDs when the record has no human-readable name column.
+
+**Fix:** The trigger already tries `name`, `full_name`, `member_code`, `invoice_number`, `title` fields. For tables like `lockers`, the record name falls back to the UUID. Update the trigger to also check `locker_number` for lockers. Additionally, in the Profile UI, truncate/format the description to hide UUIDs.
+
+## 8. Occupancy Gauge — Hardcoded Capacity of 50
+
+**Root cause:** `OccupancyGauge` component (line 10) defaults `capacity = 50`. The Dashboard passes no capacity prop (line 340).
+
+**Fix:** 
+- Add a `capacity` column to `branches` table (or use `organization_settings`)
+- Query the branch capacity in the Dashboard and pass it to `OccupancyGauge`
+- Provide a UI field in Branch Settings to configure capacity
+
+## 9. Staff Dashboard — Daily Operations Audit
+
+The staff menu (config/menu.ts lines 96-145) already has: Dashboard, Follow-Up Center, Members, Attendance, Leads, Feedback, Classes, PT Sessions, All Bookings, Benefit Tracking, POS, Invoices, Payments, Equipment, Lockers, Tasks, WhatsApp, Announcements, Staff Attendance.
+
+This is comprehensive for daily operations. Staff should NOT have access to: Plans management, Trainers management, Analytics, Finance Overview, Settings, System Health, Audit Logs, HRM, Device Management.
+
+**Current state:** Staff menu correctly excludes these admin items. No changes needed to menu config.
+
+**Fix:** Ensure the `ProtectedRoute` in `App.tsx` blocks staff from admin-only routes (already done).
+
+---
+
+## Database Migration
+
+```sql
+-- Add branch_capacity to branches
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS capacity integer DEFAULT 50;
+
+-- Update audit trigger to include locker_number
+-- (Update the audit_log_trigger_function to check locker_number)
+```
+
+## Files to Change
 
 | File | Change |
 |------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+| `src/components/members/MemberProfileDrawer.tsx` | Include `frozen` status in activeMembership lookup; show "FROZEN - [Plan Name]" instead of "No Plan"; block purchase actions |
+| `src/pages/Members.tsx` | Include `frozen` in active membership detection |
+| `src/components/members/PurchaseMembershipDrawer.tsx` | Block purchase when membership is frozen; query both active AND frozen |
+| `src/contexts/ThemeContext.tsx` | Add light sidebar mode option; update theme definitions |
+| `src/components/layout/AppSidebar.tsx` | Support light/dark sidebar via theme context |
+| `src/components/dashboard/OccupancyGauge.tsx` | Accept capacity from branch settings |
+| `src/pages/Dashboard.tsx` | Query branch capacity; pass to OccupancyGauge |
+| `src/pages/Analytics.tsx` | Replace hardcoded slate colors with theme-aware variables; add branch filtering |
+| `src/pages/Profile.tsx` | Format activity descriptions to hide UUIDs |
+| **DB Migration** | Add `capacity` to `branches`; update audit trigger for `locker_number` |
 
 ## Execution Order
+1. Fix frozen membership logic (critical business bug)
+2. Fix PurchaseMembershipDrawer to block frozen members
+3. Theme system light sidebar + org name fix
+4. Occupancy capacity from branch settings
+5. Analytics page theme-aware colors
+6. Profile activity human-readable formatting
+7. System health error fixes
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
