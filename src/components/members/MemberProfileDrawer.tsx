@@ -539,7 +539,7 @@ export function MemberProfileDrawer({
   if (!member) return null;
 
   const profile = memberDetails?.profiles || member.profiles;
-  const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active');
+  const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active' || m.status === 'frozen');
   const activePTPackage = memberDetails?.member_pt_packages?.find((p: any) => p.status === 'active');
   
   const daysLeft = activeMembership 
@@ -623,8 +623,10 @@ export function MemberProfileDrawer({
           <div className="grid grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-4 text-center">
-                {activeMembership ? (
-                  daysLeft > 0 ? (
+              {activeMembership ? (
+                  activeMembership.status === 'frozen' ? (
+                    <div className="text-lg font-bold text-info">FROZEN</div>
+                  ) : daysLeft > 0 ? (
                     <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
                   ) : (
                     <div className="text-lg font-bold text-destructive">EXPIRED</div>
@@ -661,9 +663,10 @@ export function MemberProfileDrawer({
               variant={activeMembership && daysLeft > 0 ? 'outline' : 'default'} 
               className="flex-1"
               onClick={() => { onOpenChange(false); onPurchaseMembership(); }}
+              disabled={activeMembership?.status === 'frozen'}
             >
               <CreditCard className="h-4 w-4 mr-2" />
-              {activeMembership && daysLeft > 0 ? 'Upgrade Plan' : (activeMembership && daysLeft <= 0 ? 'Renew Plan' : 'Add Plan')}
+              {activeMembership?.status === 'frozen' ? 'Frozen – Cannot Purchase' : activeMembership && daysLeft > 0 ? 'Upgrade Plan' : (activeMembership && daysLeft <= 0 ? 'Renew Plan' : 'Add Plan')}
             </Button>
             <Button 
               variant="outline" 
