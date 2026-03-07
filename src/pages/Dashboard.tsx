@@ -337,7 +337,7 @@ export default function DashboardPage() {
 
         {/* CRM Widgets Row */}
         <div className="grid gap-6 md:grid-cols-4">
-          <OccupancyGauge currentlyIn={stats?.currentlyIn || 0} />
+          <OccupancyGauge currentlyIn={stats?.currentlyIn || 0} capacity={branches?.find(b => b.id === branchFilter)?.capacity || 50} />
           <HourlyAttendanceChart data={hourlyAttendanceData} />
           <AccountsReceivableWidget
             data={receivablesData?.items || []}

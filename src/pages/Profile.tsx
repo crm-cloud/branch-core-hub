@@ -288,7 +288,11 @@ export default function ProfilePage() {
                         </div>
                         <div className="pb-4">
                           <p className="text-sm font-medium">
-                            {activity.action_description || `${activity.action} on ${activity.table_name}`}
+                            {(activity.action_description || `${activity.action} on ${activity.table_name}`)
+                              .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '')
+                              .replace(/\s*""\s*/g, '')
+                              .replace(/\s{2,}/g, ' ')
+                              .trim()}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {format(new Date(activity.created_at), 'MMM dd, yyyy HH:mm')}
