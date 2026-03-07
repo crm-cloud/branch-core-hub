@@ -1,11 +1,13 @@
 import { useTheme, ThemeId } from '@/contexts/ThemeContext';
-import { Check } from 'lucide-react';
+import { Check, Sun, Moon } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 export function ThemePicker() {
-  const { currentTheme, setTheme, themes } = useTheme();
+  const { currentTheme, setTheme, themes, sidebarMode, setSidebarMode } = useTheme();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold">App Theme</h3>
         <p className="text-sm text-muted-foreground">Choose a color theme for the dashboard</p>
@@ -33,6 +35,24 @@ export function ThemePicker() {
             <span className="text-xs font-medium">{theme.name}</span>
           </button>
         ))}
+      </div>
+
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-semibold flex items-center gap-2">
+              {sidebarMode === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              Sidebar Style
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {sidebarMode === 'light' ? 'Light, clean sidebar' : 'Dark, immersive sidebar'}
+            </p>
+          </div>
+          <Switch
+            checked={sidebarMode === 'light'}
+            onCheckedChange={(checked) => setSidebarMode(checked ? 'light' : 'dark')}
+          />
+        </div>
       </div>
     </div>
   );

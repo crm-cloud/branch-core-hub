@@ -32,9 +32,10 @@ function BrandLogo({ className }: { className?: string }) {
     return <img src={org.logo_url} alt={org.name || 'Logo'} className={cn("max-h-8 object-contain", className)} />;
   }
   
+  const displayName = org?.name && org.name !== 'Default' ? org.name : 'Incline';
   return (
     <span className="text-sidebar-primary text-2xl font-bold">
-      {org?.name || 'Incline'}
+      {displayName}
     </span>
   );
 }
@@ -52,7 +53,7 @@ export function AppSidebar() {
     .filter(section => section.items.length > 0);
 
   return (
-    <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border">
+    <aside className="hidden lg:flex w-64 flex-col bg-sidebar border-r border-sidebar-border shadow-sm">
       <div className="p-6 border-b border-sidebar-border">
         <h1 className="text-2xl font-bold text-sidebar-foreground">
           <BrandLogo />

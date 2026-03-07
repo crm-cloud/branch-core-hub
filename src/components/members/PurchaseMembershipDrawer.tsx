@@ -76,8 +76,7 @@ export function PurchaseMembershipDrawer({
         .from('memberships')
         .select('*, membership_plans(name)')
         .eq('member_id', memberId)
-        .eq('status', 'active')
-        .gte('end_date', format(new Date(), 'yyyy-MM-dd'))
+        .in('status', ['active', 'frozen'])
         .maybeSingle();
       if (error) throw error;
       return data;

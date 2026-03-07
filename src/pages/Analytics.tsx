@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, CreditCard, TrendingUp, Calendar, AlertCircle, DollarSign, ShoppingBag, Package, ArrowUp, ArrowDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useBranchContext } from '@/contexts/BranchContext';
 import { format, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getDay } from 'date-fns';
 import {
   BarChart,
@@ -27,48 +28,50 @@ const CHART_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--c
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function AnalyticsPage() {
-  // Basic stats query
-  const { data: stats } = useQuery({
-    queryKey: ['analytics-stats'],
-    queryFn: async () => {
-      const [membersRes, paymentsRes, invoicesRes] = await Promise.all([
-        supabase.from('members').select('id', { count: 'exact', head: true }),
-        supabase.from('payments').select('amount').eq('status', 'completed'),
-        supabase.from('invoices').select('total_amount, amount_paid, status'),
-      ]);
+  const { branchFilter } = useBranchContext();
 
+  const { data: stats } = useQuery({
+    queryKey: ['analytics-stats', branchFilter],
+    queryFn: async () => {
+      let membersQ = supabase.from('members').select('id', { count: 'exact', head: true });
+      let paymentsQ = supabase.from('payments').select('amount').eq('status', 'completed');
+      let invoicesQ = supabase.from('invoices').select('total_amount, amount_paid, status');
+      if (branchFilter) {
+        membersQ = membersQ.eq('branch_id', branchFilter);
+        paymentsQ = paymentsQ.eq('branch_id', branchFilter);
+        invoicesQ = invoicesQ.eq('branch_id', branchFilter);
+      }
+      const [membersRes, paymentsRes, invoicesRes] = await Promise.all([membersQ, paymentsQ, invoicesQ]);
       const totalRevenue = paymentsRes.data?.reduce((sum, p) => sum + p.amount, 0) || 0;
       const pendingAmount = invoicesRes.data
         ?.filter((i: any) => i.status === 'pending' || i.status === 'partial' || i.status === 'overdue')
         .reduce((sum, i) => sum + ((i.total_amount || 0) - (i.amount_paid || 0)), 0) || 0;
-
       return { totalMembers: membersRes.count || 0, totalRevenue, pendingAmount };
     },
     refetchInterval: 60000,
   });
 
-  // Total expenses
   const { data: totalExpenses = 0 } = useQuery({
-    queryKey: ['analytics-total-expenses'],
+    queryKey: ['analytics-total-expenses', branchFilter],
     queryFn: async () => {
-      const { data } = await supabase.from('expenses').select('amount').eq('status', 'approved');
+      let q = supabase.from('expenses').select('amount').eq('status', 'approved');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       return data?.reduce((sum, e) => sum + e.amount, 0) || 0;
     },
   });
 
-  // Monthly revenue for last 12 months
   const { data: revenueByMonth = [], isLoading: revenueLoading } = useQuery({
-    queryKey: ['analytics-revenue-by-month'],
+    queryKey: ['analytics-revenue-by-month', branchFilter],
     queryFn: async () => {
       const months = [];
       for (let i = 11; i >= 0; i--) {
         const date = subMonths(new Date(), i);
         const monthStart = startOfMonth(date).toISOString();
         const monthEnd = endOfMonth(date).toISOString();
-        const { data } = await supabase
-          .from('payments').select('amount')
-          .gte('payment_date', monthStart).lte('payment_date', monthEnd)
-          .eq('status', 'completed');
+        let q = supabase.from('payments').select('amount').gte('payment_date', monthStart).lte('payment_date', monthEnd).eq('status', 'completed');
+        if (branchFilter) q = q.eq('branch_id', branchFilter);
+        const { data } = await q;
         months.push({
           name: format(date, 'MMM'),
           fullMonth: format(date, 'MMM yyyy'),
@@ -79,11 +82,12 @@ export default function AnalyticsPage() {
     },
   });
 
-  // Membership growth
   const { data: memberGrowth = [], isLoading: growthLoading } = useQuery({
-    queryKey: ['analytics-member-growth'],
+    queryKey: ['analytics-member-growth', branchFilter],
     queryFn: async () => {
-      const { data } = await supabase.from('members').select('created_at').order('created_at');
+      let q = supabase.from('members').select('created_at').order('created_at');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       if (!data || data.length === 0) return [];
       const grouped = data.reduce((acc: Record<string, number>, m) => {
         const month = format(new Date(m.created_at), 'yyyy-MM');
@@ -98,17 +102,18 @@ export default function AnalyticsPage() {
     },
   });
 
-  // Member retention / status data
   const { data: memberStatusData = [] } = useQuery({
-    queryKey: ['analytics-member-status'],
+    queryKey: ['analytics-member-status', branchFilter],
     queryFn: async () => {
-      const { data } = await supabase.from('memberships').select('status');
+      let q = supabase.from('memberships').select('status, branch_id');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       if (!data || data.length === 0) return [];
       const counts: Record<string, number> = {};
       data.forEach((m: any) => { const s = m.status || 'unknown'; counts[s] = (counts[s] || 0) + 1; });
       const colorMap: Record<string, string> = {
-        active: 'hsl(142, 71%, 45%)', expired: 'hsl(0, 84%, 60%)',
-        frozen: 'hsl(217, 91%, 60%)', cancelled: 'hsl(25, 95%, 53%)',
+        active: 'hsl(var(--success))', expired: 'hsl(var(--destructive))',
+        frozen: 'hsl(var(--info))', cancelled: 'hsl(var(--warning))',
       };
       return Object.entries(counts).map(([name, value]) => ({
         name: name.charAt(0).toUpperCase() + name.slice(1), value,
@@ -117,11 +122,12 @@ export default function AnalyticsPage() {
     },
   });
 
-  // Revenue by plan type
   const { data: revenueByPlan = [], isLoading: planLoading } = useQuery({
-    queryKey: ['analytics-revenue-by-plan'],
+    queryKey: ['analytics-revenue-by-plan', branchFilter],
     queryFn: async () => {
-      const { data } = await supabase.from('memberships').select(`price_paid, membership_plans(name)`);
+      let q = supabase.from('memberships').select('price_paid, membership_plans(name), branch_id');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       if (!data || data.length === 0) return [];
       const grouped = data.reduce((acc: Record<string, number>, m: any) => {
         const planName = m.membership_plans?.name || 'Other';
@@ -134,28 +140,25 @@ export default function AnalyticsPage() {
     },
   });
 
-  // ===== NEW: Weekly Earnings =====
   const { data: weeklyEarnings = [] } = useQuery({
-    queryKey: ['analytics-weekly-earnings'],
+    queryKey: ['analytics-weekly-earnings', branchFilter],
     queryFn: async () => {
       const now = new Date();
       const weekStart = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
       const weekEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
-      const { data } = await supabase
-        .from('payments').select('amount, payment_date')
-        .gte('payment_date', weekStart).lte('payment_date', weekEnd)
-        .eq('status', 'completed');
+      let q = supabase.from('payments').select('amount, payment_date').gte('payment_date', weekStart).lte('payment_date', weekEnd).eq('status', 'completed');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       const dayTotals: number[] = [0, 0, 0, 0, 0, 0, 0];
       data?.forEach((p) => {
         const d = getDay(new Date(p.payment_date));
-        const idx = d === 0 ? 6 : d - 1; // Mon=0 ... Sun=6
+        const idx = d === 0 ? 6 : d - 1;
         dayTotals[idx] += p.amount;
       });
       return DAY_NAMES.map((name, i) => ({ name, earnings: dayTotals[i] }));
     },
   });
 
-  // ===== NEW: Popular Products =====
   const { data: popularProducts = [] } = useQuery({
     queryKey: ['analytics-popular-products'],
     queryFn: async () => {
@@ -174,16 +177,17 @@ export default function AnalyticsPage() {
     },
   });
 
-  // ===== NEW: Recent Store Orders =====
   const { data: storeOrders = [] } = useQuery({
-    queryKey: ['analytics-store-orders'],
+    queryKey: ['analytics-store-orders', branchFilter],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('invoices')
         .select('id, invoice_number, total_amount, status, created_at, member_id, members(member_code, profiles:user_id(full_name))')
         .not('pos_sale_id', 'is', null)
         .order('created_at', { ascending: false })
         .limit(10);
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
       return data || [];
     },
   });
@@ -211,29 +215,29 @@ export default function AnalyticsPage() {
     <AppLayout>
       <div className="space-y-6">
         {/* Hero Gradient Card */}
-        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20 p-6 text-white">
+        <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl shadow-lg shadow-primary/20 p-6 text-primary-foreground">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Gym Analytics</h1>
-              <p className="text-white/70 text-sm mt-1">Complete business performance insights</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">Complete business performance insights</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               <div className="text-center">
                 <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
-                <p className="text-white/70 text-xs mt-1">Total Members</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Members</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">₹{((stats?.totalRevenue || 0) / 1000).toFixed(0)}k</p>
-                <p className="text-white/70 text-xs mt-1">Total Revenue</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Revenue</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">{collectionRate}%</p>
-                <p className="text-white/70 text-xs mt-1">Collection Rate</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Collection Rate</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">₹{((stats?.pendingAmount || 0) / 1000).toFixed(0)}k</p>
-                {(stats?.pendingAmount || 0) > 0 && <Badge className="bg-pink-500 text-white text-xs mt-1">Due</Badge>}
-                <p className="text-white/70 text-xs mt-1">Pending Dues</p>
+                {(stats?.pendingAmount || 0) > 0 && <Badge className="bg-destructive text-destructive-foreground text-xs mt-1">Due</Badge>}
+                <p className="text-primary-foreground/70 text-xs mt-1">Pending Dues</p>
               </div>
             </div>
           </div>
@@ -241,10 +245,10 @@ export default function AnalyticsPage() {
 
         {/* Earning Reports + Member Retention */}
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-primary" />
                 Earning Reports
               </CardTitle>
               <CardDescription>Revenue trends over the last 12 months</CardDescription>
@@ -260,7 +264,7 @@ export default function AnalyticsPage() {
                       <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
                       <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
                       <Tooltip formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label, payload) => payload[0]?.payload?.fullMonth || label} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                      <Bar dataKey="revenue" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -270,33 +274,33 @@ export default function AnalyticsPage() {
               <div className="mt-4 space-y-3">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600 font-medium">Earnings</span>
-                    <span className="font-bold text-slate-800">{formatCurrency(stats?.totalRevenue || 0)}</span>
+                    <span className="text-muted-foreground font-medium">Earnings</span>
+                    <span className="font-bold text-foreground">{formatCurrency(stats?.totalRevenue || 0)}</span>
                   </div>
-                  <Progress value={100} className="h-2 [&>div]:bg-violet-500" />
+                  <Progress value={100} className="h-2 [&>div]:bg-primary" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600 font-medium">Profit</span>
-                    <span className="font-bold text-green-600">{formatCurrency(netProfit)}</span>
+                    <span className="text-muted-foreground font-medium">Profit</span>
+                    <span className="font-bold text-success">{formatCurrency(netProfit)}</span>
                   </div>
-                  <Progress value={stats?.totalRevenue ? (netProfit / stats.totalRevenue) * 100 : 0} className="h-2 [&>div]:bg-green-500" />
+                  <Progress value={stats?.totalRevenue ? (netProfit / stats.totalRevenue) * 100 : 0} className="h-2 [&>div]:bg-success" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600 font-medium">Expenses</span>
-                    <span className="font-bold text-orange-500">{formatCurrency(totalExpenses)}</span>
+                    <span className="text-muted-foreground font-medium">Expenses</span>
+                    <span className="font-bold text-warning">{formatCurrency(totalExpenses)}</span>
                   </div>
-                  <Progress value={stats?.totalRevenue ? (totalExpenses / stats.totalRevenue) * 100 : 0} className="h-2 [&>div]:bg-orange-400" />
+                  <Progress value={stats?.totalRevenue ? (totalExpenses / stats.totalRevenue) * 100 : 0} className="h-2 [&>div]:bg-warning" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <Users className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
                 Member Retention
               </CardTitle>
               <CardDescription>Membership status distribution</CardDescription>
@@ -315,7 +319,7 @@ export default function AnalyticsPage() {
                     </ResponsiveContainer>
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="text-center">
-                        <p className="text-3xl font-bold text-slate-800">{retentionRate}%</p>
+                        <p className="text-3xl font-bold text-foreground">{retentionRate}%</p>
                         <p className="text-xs text-muted-foreground">Active</p>
                       </div>
                     </div>
@@ -328,8 +332,8 @@ export default function AnalyticsPage() {
                 {memberStatusData.map((entry) => (
                   <div key={entry.name} className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.fill }} />
-                    <span className="text-xs text-slate-600">{entry.name}</span>
-                    <span className="text-xs font-bold text-slate-800 ml-auto">{entry.value}</span>
+                    <span className="text-xs text-muted-foreground">{entry.name}</span>
+                    <span className="text-xs font-bold text-foreground ml-auto">{entry.value}</span>
                   </div>
                 ))}
               </div>
@@ -337,13 +341,12 @@ export default function AnalyticsPage() {
           </Card>
         </div>
 
-        {/* NEW: Weekly Earnings + Popular Products + Recent Store Orders */}
+        {/* Weekly Earnings + Popular Products + Recent Store Orders */}
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Widget A: Weekly Earning Reports */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
                 Weekly Earnings
               </CardTitle>
               <CardDescription>This week's daily revenue</CardDescription>
@@ -356,50 +359,49 @@ export default function AnalyticsPage() {
                     <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
                     <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip formatter={(value: number) => [formatCurrency(value), 'Earnings']} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                    <Bar dataKey="earnings" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="earnings" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
               <div className="mt-4 space-y-3 border-t pt-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-green-50 flex items-center justify-center"><TrendingUp className="h-4 w-4 text-green-600" /></div>
-                    <div><p className="text-sm font-medium text-slate-800">Net Profit</p><p className="text-xs text-muted-foreground">Weekly income - expenses</p></div>
+                    <div className="h-9 w-9 rounded-lg bg-success/10 flex items-center justify-center"><TrendingUp className="h-4 w-4 text-success" /></div>
+                    <div><p className="text-sm font-medium text-foreground">Net Profit</p><p className="text-xs text-muted-foreground">Weekly income - expenses</p></div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-slate-800">{formatCurrency(weeklyTotal - (totalExpenses / 4))}</p>
-                    <span className="text-xs text-green-600 flex items-center gap-0.5 justify-end"><ArrowUp className="h-3 w-3" />Net</span>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(weeklyTotal - (totalExpenses / 4))}</p>
+                    <span className="text-xs text-success flex items-center gap-0.5 justify-end"><ArrowUp className="h-3 w-3" />Net</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-violet-50 flex items-center justify-center"><DollarSign className="h-4 w-4 text-violet-600" /></div>
-                    <div><p className="text-sm font-medium text-slate-800">Total Income</p><p className="text-xs text-muted-foreground">Payments collected</p></div>
+                    <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center"><DollarSign className="h-4 w-4 text-primary" /></div>
+                    <div><p className="text-sm font-medium text-foreground">Total Income</p><p className="text-xs text-muted-foreground">Payments collected</p></div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-slate-800">{formatCurrency(weeklyTotal)}</p>
-                    <span className="text-xs text-green-600 flex items-center gap-0.5 justify-end"><ArrowUp className="h-3 w-3" />Income</span>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(weeklyTotal)}</p>
+                    <span className="text-xs text-success flex items-center gap-0.5 justify-end"><ArrowUp className="h-3 w-3" />Income</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-orange-50 flex items-center justify-center"><AlertCircle className="h-4 w-4 text-orange-500" /></div>
-                    <div><p className="text-sm font-medium text-slate-800">Total Expenses</p><p className="text-xs text-muted-foreground">Approved expenses</p></div>
+                    <div className="h-9 w-9 rounded-lg bg-warning/10 flex items-center justify-center"><AlertCircle className="h-4 w-4 text-warning" /></div>
+                    <div><p className="text-sm font-medium text-foreground">Total Expenses</p><p className="text-xs text-muted-foreground">Approved expenses</p></div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-slate-800">{formatCurrency(totalExpenses)}</p>
-                    <span className="text-xs text-orange-500 flex items-center gap-0.5 justify-end"><ArrowDown className="h-3 w-3" />Cost</span>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(totalExpenses)}</p>
+                    <span className="text-xs text-warning flex items-center gap-0.5 justify-end"><ArrowDown className="h-3 w-3" />Cost</span>
                   </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Widget B: Popular Products */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <Package className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
                 Popular Products
               </CardTitle>
               <CardDescription>Total {totalProductsSold} items sold</CardDescription>
@@ -410,11 +412,11 @@ export default function AnalyticsPage() {
                   {popularProducts.map((product, i) => (
                     <div key={i} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg bg-violet-50 flex items-center justify-center">
-                          <ShoppingBag className="h-5 w-5 text-violet-500" />
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <ShoppingBag className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-slate-800 truncate max-w-[140px]">{product.name}</p>
+                          <p className="text-sm font-medium text-foreground truncate max-w-[140px]">{product.name}</p>
                           <p className="text-xs text-muted-foreground">{formatCurrency(product.price)}</p>
                         </div>
                       </div>
@@ -430,11 +432,10 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
-          {/* Widget C: Recent Store Orders */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <ShoppingBag className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5 text-primary" />
                 Recent Store Orders
               </CardTitle>
               <CardDescription>POS &amp; store sales overview</CardDescription>
@@ -451,17 +452,17 @@ export default function AnalyticsPage() {
                     {ordersByStatus(tab).length > 0 ? (
                       <div className="space-y-3">
                         {ordersByStatus(tab).map((order: any) => {
-                          const dotColor = tab === 'new' ? 'bg-blue-500' : tab === 'processing' ? 'bg-orange-500' : 'bg-green-500';
+                          const dotColor = tab === 'new' ? 'bg-info' : tab === 'processing' ? 'bg-warning' : 'bg-success';
                           return (
                             <div key={order.id} className="flex items-center justify-between py-1">
                               <div className="flex items-center gap-3">
                                 <div className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
                                 <div>
-                                  <p className="text-sm font-medium text-slate-800">{(order as any).members?.profiles?.full_name || 'Walk-in'}</p>
+                                  <p className="text-sm font-medium text-foreground">{(order as any).members?.profiles?.full_name || 'Walk-in'}</p>
                                   <p className="text-xs text-muted-foreground">{format(new Date(order.created_at), 'dd MMM yyyy')}</p>
                                 </div>
                               </div>
-                              <span className="text-sm font-bold text-slate-800">{formatCurrency(order.total_amount)}</span>
+                              <span className="text-sm font-bold text-foreground">{formatCurrency(order.total_amount)}</span>
                             </div>
                           );
                         })}
@@ -478,10 +479,10 @@ export default function AnalyticsPage() {
 
         {/* Charts Row 2 */}
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
                 Membership Growth
               </CardTitle>
               <CardDescription>New and total members over time</CardDescription>
@@ -497,8 +498,8 @@ export default function AnalyticsPage() {
                     <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                     <Legend />
-                    <Area type="monotone" dataKey="totalMembers" name="Total Members" stroke="hsl(262, 83%, 58%)" fill="hsl(262, 83%, 58%, 0.15)" />
-                    <Area type="monotone" dataKey="newMembers" name="New Members" stroke="hsl(142, 71%, 45%)" fill="hsl(142, 71%, 45%, 0.15)" />
+                    <Area type="monotone" dataKey="totalMembers" name="Total Members" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.15)" />
+                    <Area type="monotone" dataKey="newMembers" name="New Members" stroke="hsl(var(--success))" fill="hsl(var(--success) / 0.15)" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -507,10 +508,10 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
                 Revenue by Plan
               </CardTitle>
               <CardDescription>Top performing membership plans</CardDescription>

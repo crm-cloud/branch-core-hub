@@ -881,6 +881,7 @@ export type Database = {
       branches: {
         Row: {
           address: string | null
+          capacity: number | null
           city: string | null
           closing_time: string | null
           code: string
@@ -899,6 +900,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          capacity?: number | null
           city?: string | null
           closing_time?: string | null
           code: string
@@ -917,6 +919,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          capacity?: number | null
           city?: string | null
           closing_time?: string | null
           code?: string
