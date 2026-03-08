@@ -1069,7 +1069,7 @@ export function MemberProfileDrawer({
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {/* Pending / Partial Invoices */}
-              <PendingInvoicesSection memberId={member.id} />
+              <PendingInvoicesSection memberId={member.id} branchId={member.branch_id} />
 
               {/* Payment History */}
               <Card>
