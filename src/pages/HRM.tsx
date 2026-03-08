@@ -790,6 +790,13 @@ export default function HRMPage() {
         onOpenChange={setEditEmployeeOpen}
         employee={editingEmployee}
       />
+
+      {/* Edit Trainer Drawer */}
+      <EditTrainerDrawer
+        open={editTrainerOpen}
+        onOpenChange={setEditTrainerOpen}
+        trainer={editingTrainer}
+      />
     </AppLayout>
   );
 }
