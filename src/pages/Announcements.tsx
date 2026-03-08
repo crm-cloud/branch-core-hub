@@ -121,12 +121,9 @@ export default function AnnouncementsPage() {
                       <TabsTrigger value="email" className="flex-1 rounded-lg gap-1"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
                     </TabsList>
                     {(['whatsapp', 'sms', 'email'] as const).map((type) => {
-                      const dbForType = (dbTemplates || []).filter((t: any) => t.type === type && t.is_active !== false);
-                      const fallback = dbForType.length > 0 ? [] : getTemplatesByType(type);
-                      const allTemplates = [
-                        ...dbForType.map((t: any) => ({ id: t.id, name: t.name, content: t.content, category: t.trigger || t.type, isDb: true })),
-                        ...fallback.map((t) => ({ id: t.id, name: t.name, content: t.content, category: t.category, isDb: false })),
-                      ];
+                      const allTemplates = (dbTemplates || [])
+                        .filter((t: any) => t.type === type && t.is_active !== false)
+                        .map((t: any) => ({ id: t.id, name: t.name, content: t.content, category: t.type, isDb: true }));
                       return (
                         <TabsContent key={type} value={type} className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
                           {allTemplates.length === 0 ? (
