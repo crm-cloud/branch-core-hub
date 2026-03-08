@@ -301,7 +301,7 @@ export default function FinancePage() {
         {/* Revenue Report + Budget Card Row */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Revenue Report - Wide */}
-          <Card className="lg:col-span-2 rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="lg:col-span-2 rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
               <CardTitle className="text-base font-bold text-slate-800">Revenue Report</CardTitle>
               <CardDescription>Monthly earnings vs expenses</CardDescription>
