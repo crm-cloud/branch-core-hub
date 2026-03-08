@@ -307,7 +307,7 @@ export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollSt
         email: p?.email || null,
         department: 'Training',
         position: (t as any).specialization || 'Trainer',
-        salary: (t as any).salary || 0,
+        salary: (t as any).fixed_salary || 0,
         staff_type: 'trainer' as const,
         source_id: t.id,
         is_active: t.is_active ?? true,

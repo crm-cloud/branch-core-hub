@@ -9,7 +9,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Megaphone, MessageSquare, Mail, Phone, Send, Trash2, FileText, Copy, Radio, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { communicationService } from '@/services/communicationService';
-import { messageTemplates, getTemplatesByType } from '@/data/messageTemplates';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { AddAnnouncementDrawer } from '@/components/announcements/AddAnnouncementDrawer';
@@ -122,12 +121,9 @@ export default function AnnouncementsPage() {
                       <TabsTrigger value="email" className="flex-1 rounded-lg gap-1"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
                     </TabsList>
                     {(['whatsapp', 'sms', 'email'] as const).map((type) => {
-                      const dbForType = (dbTemplates || []).filter((t: any) => t.type === type && t.is_active !== false);
-                      const fallback = dbForType.length > 0 ? [] : getTemplatesByType(type);
-                      const allTemplates = [
-                        ...dbForType.map((t: any) => ({ id: t.id, name: t.name, content: t.content, category: t.trigger || t.type, isDb: true })),
-                        ...fallback.map((t) => ({ id: t.id, name: t.name, content: t.content, category: t.category, isDb: false })),
-                      ];
+                      const allTemplates = (dbTemplates || [])
+                        .filter((t: any) => t.type === type && t.is_active !== false)
+                        .map((t: any) => ({ id: t.id, name: t.name, content: t.content, category: t.type, isDb: true }));
                       return (
                         <TabsContent key={type} value={type} className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
                           {allTemplates.length === 0 ? (
@@ -137,10 +133,7 @@ export default function AnnouncementsPage() {
                               <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                   <CardTitle className="text-sm font-medium">{template.name}</CardTitle>
-                                  <div className="flex gap-1">
-                                    {!template.isDb && <Badge variant="secondary" className="text-[10px] rounded-full">Default</Badge>}
-                                    <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
-                                  </div>
+                                  <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
                                 </div>
                               </CardHeader>
                               <CardContent>
