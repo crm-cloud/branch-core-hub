@@ -241,7 +241,7 @@ export function TrainerProfileDrawer({ open, onOpenChange, trainer, onDeactivate
                           {recentSessions.map((session: any) => (
                             <TableRow key={session.id}>
                               <TableCell className="text-sm">{format(new Date(session.scheduled_at), 'MMM d, h:mm a')}</TableCell>
-                              <TableCell className="text-sm">{session.member?.profiles?.full_name || 'Unknown'}</TableCell>
+                              <TableCell className="text-sm">{session.member_pt_packages?.members?.profiles?.full_name || 'Unknown'}</TableCell>
                               <TableCell><Badge variant={session.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{session.status}</Badge></TableCell>
                             </TableRow>
                           ))}
