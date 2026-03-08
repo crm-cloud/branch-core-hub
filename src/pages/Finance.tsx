@@ -36,7 +36,7 @@ export default function FinancePage() {
     queryFn: async () => {
       let query = supabase
         .from('payments')
-        .select('*, member:members(member_code), invoice:invoices(invoice_number, pos_sale_id)')
+        .select('*, member:members(member_code), invoice:invoices(invoice_number, pos_sale_id), income_category:income_categories(name)')
         .eq('status', 'completed');
 
       if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
