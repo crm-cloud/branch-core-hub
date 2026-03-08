@@ -380,7 +380,7 @@ export default function FinancePage() {
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-700 truncate">{tx.description}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
                         <p className="text-xs text-muted-foreground">{tx.member || tx.method}</p>
                       </div>
                       <span className={`text-sm font-bold ${tx.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
