@@ -13,6 +13,7 @@ import { useUpdateTrainer } from '@/hooks/useTrainers';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { queueStaffSync } from '@/services/biometricService';
 import { supabase } from '@/integrations/supabase/client';
+import { StaffBiometricsTab } from '@/components/common/StaffBiometricsTab';
 
 interface EditTrainerDrawerProps {
   open: boolean;
