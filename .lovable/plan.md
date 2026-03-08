@@ -1,71 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Plan: Duration-Based PT Progress Timeline & Commission Audit Confirmation
+## 1. Critical Query Bug Fixes
 
-## Commission Audit Result
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-The amortization is **working correctly**. Jessica's 3-month package (₹45,000, 40% commission = ₹18,000) generated exactly 3 commission rows:
-- ₹6,000 — release Mar 7, 2026
-- ₹6,000 — release Apr 6, 2026  
-- ₹6,000 — release May 6, 2026
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-All with status `pending`. The HRM payroll already filters by `release_date`, so only the current month's ₹6,000 will count. No fix needed.
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-## UI Enhancement: Duration Progress Timeline
+## 2. Database Migration
 
-Replace the plain "89d left" text in the Active Packages table with a visual elapsed/remaining progress bar.
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-### File: `src/pages/PTSessions.tsx`
-
-**Lines 359-363** — Replace the text-only progress cell with a visual component:
-
-```text
-┌──────────────────────────────────────┐
-│ ██████████░░░░░░░░░░  1d / 90d      │
-│ Started Mar 7 · Ends Jun 5          │
-└──────────────────────────────────────┘
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-- Calculate `totalDays = expiry_date - start_date`
-- Calculate `elapsedDays = today - start_date`
-- Calculate `percentage = (elapsedDays / totalDays) * 100`
-- Render a `Progress` bar (from `@/components/ui/progress`) with the percentage
-- Below the bar: `{elapsedDays}d / {totalDays}d` text
-- For session-based packages: keep existing `remaining/total sessions` text with a similar bar (`(total - remaining) / total * 100`)
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-### File: `src/services/ptService.ts`
+## 3. AI Fitness Page Redesign
 
-**Lines 131-141** — Add `start_date` to the select query (it's already returned via `*` wildcard, but ensure it's available in the mapped result). The `*` already includes `start_date` and `expiry_date`, so no service change needed.
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
 
-### Changes Summary
+Redesign with 3 clear tabs and modern Vuexy styling:
+
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
+
+## 4. Public Website CMS/DB Sync
+
+**File:** `src/pages/PublicWebsite.tsx`
+
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/PTSessions.tsx` | Import `Progress` component; replace plain text progress with visual bar showing elapsed/total days for duration packages, and used/total sessions for session packages |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
-### Implementation Detail
+## Execution Order
 
-For the progress cell (lines 359-363), replace with:
-
-```tsx
-<TableCell>
-  {pkg.sessions_total > 0 ? (
-    <div className="space-y-1 min-w-[120px]">
-      <Progress value={((pkg.sessions_total - pkg.sessions_remaining) / pkg.sessions_total) * 100} className="h-2" />
-      <span className="text-xs text-muted-foreground">
-        {pkg.sessions_total - pkg.sessions_remaining}/{pkg.sessions_total} sessions
-      </span>
-    </div>
-  ) : (
-    <div className="space-y-1 min-w-[140px]">
-      <Progress value={elapsed/total * 100} className="h-2" />
-      <span className="text-xs text-muted-foreground">
-        {elapsedDays}d / {totalDays}d elapsed
-      </span>
-    </div>
-  )}
-</TableCell>
-```
-
-Color the bar green when < 75%, amber when 75-90%, red when > 90% elapsed.
-
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data
