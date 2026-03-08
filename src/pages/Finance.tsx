@@ -461,7 +461,7 @@ export default function FinancePage() {
               </TabsContent>
 
               <TabsContent value="expenses">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
