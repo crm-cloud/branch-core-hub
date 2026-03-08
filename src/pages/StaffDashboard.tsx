@@ -253,7 +253,7 @@ export default function StaffDashboard() {
                 <div className="space-y-3">
                   {followUpLeads.map((lead: any) => (
                     <div key={lead.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                      <div><p className="font-medium">{lead.name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
+                      <div><p className="font-medium">{lead.full_name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
                         {lead.follow_up_date && <p className="text-xs text-amber-500 mt-0.5">Follow-up: {format(new Date(lead.follow_up_date), 'dd MMM')}</p>}
                       </div>
                       <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>{lead.status}</Badge>

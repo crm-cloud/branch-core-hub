@@ -62,7 +62,7 @@ export function TrainerProfileDrawer({ open, onOpenChange, trainer, onDeactivate
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pt_sessions')
-        .select(`*, member:member_id (member_code, profiles:user_id (full_name))`)
+        .select(`*, member_pt_packages!inner(member_id, members!inner(member_code, profiles:user_id(full_name)))`)
         .eq('trainer_id', trainer.id)
         .order('scheduled_at', { ascending: false })
         .limit(20);

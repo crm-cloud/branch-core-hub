@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { leadService } from '@/services/leadService';
+import { useBranches } from '@/hooks/useBranches';
 import { toast } from 'sonner';
-import { UserPlus, Phone, Mail, ArrowRight } from 'lucide-react';
+import { UserPlus, Phone, Mail, ArrowRight, Building2 } from 'lucide-react';
 
 interface ConvertMemberDrawerProps {
   open: boolean;
@@ -15,17 +19,26 @@ interface ConvertMemberDrawerProps {
 
 export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberDrawerProps) {
   const queryClient = useQueryClient();
+  const { branches } = useBranches();
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+
+  // Pre-select the lead's branch if available
+  const effectiveBranchId = selectedBranchId || lead?.branch_id || '';
 
   const convertMutation = useMutation({
-    mutationFn: () => leadService.convertToMember(lead?.id, lead?.branch_id),
+    mutationFn: () => {
+      if (!effectiveBranchId) throw new Error('Please select a branch');
+      return leadService.convertToMember(lead?.id, effectiveBranchId);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onOpenChange(false);
+      setSelectedBranchId('');
       toast.success('Lead converted to member!');
     },
-    onError: () => toast.error('Conversion failed'),
+    onError: (err: any) => toast.error(err?.message || 'Conversion failed'),
   });
 
   if (!lead) return null;
@@ -75,6 +88,34 @@ export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberD
             </CardContent>
           </Card>
 
+          {/* Branch Selector */}
+          <Card className="border-primary/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3 mb-3">
+                <Building2 className="h-5 w-5 text-primary" />
+                <Label className="font-medium">Select Branch *</Label>
+              </div>
+              <Select
+                value={effectiveBranchId}
+                onValueChange={setSelectedBranchId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a branch for this member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(branches || []).filter((b: any) => b.is_active).map((branch: any) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name} ({branch.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-2">
+                The member will be registered at the selected branch
+              </p>
+            </CardContent>
+          </Card>
+
           <Card className="bg-success/5 border-success/20">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -82,7 +123,8 @@ export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberD
                 <div>
                   <h4 className="font-medium">What happens next?</h4>
                   <ul className="text-sm text-muted-foreground mt-2 space-y-1">
-                    <li>• A new member profile will be created</li>
+                    <li>• A login account will be created for the member</li>
+                    <li>• A new member profile will be created at the selected branch</li>
                     <li>• Lead status will be marked as converted</li>
                     <li>• You can then assign a membership plan</li>
                   </ul>
@@ -96,7 +138,7 @@ export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberD
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button 
             onClick={() => convertMutation.mutate()} 
-            disabled={convertMutation.isPending}
+            disabled={convertMutation.isPending || !effectiveBranchId}
             className="bg-success hover:bg-success/90"
           >
             {convertMutation.isPending ? 'Converting...' : 'Convert to Member'}

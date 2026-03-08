@@ -60,7 +60,7 @@ export default function HRMPage() {
         .select(`
           *,
           employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name)),
-          trainers(user_id, specialization)
+          trainers(user_id, specializations)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
