@@ -363,31 +363,38 @@ export default function HRMPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              {staff.staff_type === 'employee' && staff.employeeRecord && (
-                                <>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    onClick={() => {
-                                      setSelectedEmployee(staff.employeeRecord);
-                                      setContractDrawerOpen(true);
-                                    }}
-                                  >
-                                    <FileText className="mr-1 h-3 w-3" />
-                                    Contract
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setEditingEmployee(staff.employeeRecord);
-                                      setEditEmployeeOpen(true);
-                                    }}
-                                  >
-                                    <Edit className="h-3 w-3" />
-                                  </Button>
-                                </>
-                              )}
+                              {/* Contract button for all staff types */}
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  if (staff.staff_type === 'trainer' && staff.trainerRecord) {
+                                    setSelectedEmployee({ ...staff.trainerRecord, id: staff.source_id, staff_type: 'trainer', salary: staff.salary });
+                                  } else if (staff.employeeRecord) {
+                                    setSelectedEmployee(staff.employeeRecord);
+                                  }
+                                  setContractDrawerOpen(true);
+                                }}
+                              >
+                                <FileText className="mr-1 h-3 w-3" />
+                                Contract
+                              </Button>
+                              {/* Edit button */}
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => {
+                                  if (staff.staff_type === 'trainer' && staff.trainerRecord) {
+                                    setEditingTrainer(staff.trainerRecord);
+                                    setEditTrainerOpen(true);
+                                  } else if (staff.employeeRecord) {
+                                    setEditingEmployee(staff.employeeRecord);
+                                    setEditEmployeeOpen(true);
+                                  }
+                                }}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
