@@ -17,11 +17,10 @@ import type { Database } from "@/integrations/supabase/types";
 type PTPackageInsert = Database["public"]["Tables"]["pt_packages"]["Insert"];
 type PTPackageUpdate = Database["public"]["Tables"]["pt_packages"]["Update"];
 
-export function usePTPackages(branchId: string) {
+export function usePTPackages(branchId?: string) {
   return useQuery({
-    queryKey: ["pt-packages", branchId],
+    queryKey: ["pt-packages", branchId ?? "all"],
     queryFn: () => fetchPTPackages(branchId),
-    enabled: !!branchId,
   });
 }
 
