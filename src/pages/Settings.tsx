@@ -11,7 +11,7 @@ import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
 import { TemplateManager } from '@/components/settings/TemplateManager';
-import { ExpenseCategoryManager } from '@/components/settings/ExpenseCategoryManager';
+import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 
@@ -23,7 +23,7 @@ const SETTINGS_MENU = [
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'templates', label: 'Templates', icon: MessageSquare },
   { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
-  { value: 'expenses', label: 'Expenses', icon: Receipt },
+  { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
   { value: 'integrations', label: 'Integrations', icon: Plug },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
@@ -38,7 +38,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   referrals: <ReferralSettings />,
   templates: <TemplateManager />,
   'plan-templates': <PlanBenefitTemplates />,
-  expenses: <ExpenseCategoryManager />,
+  'finance-categories': <FinanceCategoryManager />,
   integrations: <IntegrationSettings />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,

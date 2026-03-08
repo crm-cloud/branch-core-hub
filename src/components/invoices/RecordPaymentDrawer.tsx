@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, IndianRupee } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 
 interface RecordPaymentDrawerProps {
   open: boolean;
@@ -36,6 +37,20 @@ export function RecordPaymentDrawer({
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [transactionId, setTransactionId] = useState('');
   const [notes, setNotes] = useState('');
+  const [incomeCategoryId, setIncomeCategoryId] = useState<string>('');
+
+  const { data: incomeCategories = [] } = useQuery({
+    queryKey: ['income-categories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('income_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const recordPayment = useMutation({
     mutationFn: async () => {
@@ -60,6 +75,7 @@ export function RecordPaymentDrawer({
           transaction_id: transactionId || null,
           notes: notes || null,
           received_by: user?.id,
+          income_category_id: incomeCategoryId || null,
         });
 
       if (paymentError) throw paymentError;
@@ -102,6 +118,7 @@ export function RecordPaymentDrawer({
     setPaymentMethod('cash');
     setTransactionId('');
     setNotes('');
+    setIncomeCategoryId('');
   };
 
   // Reset amount when invoice changes
@@ -193,7 +210,22 @@ export function RecordPaymentDrawer({
             </Select>
           </div>
 
-          {/* Transaction ID */}
+          {/* Income Category */}
+          <div className="space-y-2">
+            <Label>Income Category</Label>
+            <Select value={incomeCategoryId} onValueChange={setIncomeCategoryId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {incomeCategories.map((cat: any) => (
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+
           {paymentMethod !== 'cash' && (
             <div className="space-y-2">
               <Label>Transaction ID</Label>

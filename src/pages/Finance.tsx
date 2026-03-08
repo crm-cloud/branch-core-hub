@@ -36,7 +36,7 @@ export default function FinancePage() {
     queryFn: async () => {
       let query = supabase
         .from('payments')
-        .select('*, member:members(member_code), invoice:invoices(invoice_number, pos_sale_id)')
+        .select('*, member:members(member_code), invoice:invoices(invoice_number, pos_sale_id), income_category:income_categories(name)')
         .eq('status', 'completed');
 
       if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
@@ -422,6 +422,7 @@ export default function FinancePage() {
                         <TableRow>
                           <TableHead>Date</TableHead>
                           <TableHead>Type</TableHead>
+                          <TableHead>Category</TableHead>
                           <TableHead>Member</TableHead>
                           <TableHead>Invoice</TableHead>
                           <TableHead>Method</TableHead>
@@ -437,6 +438,9 @@ export default function FinancePage() {
                                 {payment.type}
                               </Badge>
                             </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.income_category?.name || '-'}</Badge>
+                            </TableCell>
                             <TableCell>{payment.member?.member_code || '-'}</TableCell>
                             <TableCell>{payment.invoice?.invoice_number || '-'}</TableCell>
                             <TableCell>
@@ -449,7 +453,7 @@ export default function FinancePage() {
                         ))}
                         {combinedIncomeData.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                               No income transactions found
                             </TableCell>
                           </TableRow>

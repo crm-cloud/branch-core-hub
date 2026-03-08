@@ -2295,6 +2295,33 @@ export type Database = {
           },
         ]
       }
+      income_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_system: boolean | null
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system?: boolean | null
+          name: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       integration_settings: {
         Row: {
           branch_id: string | null
@@ -3840,6 +3867,7 @@ export type Database = {
           branch_id: string
           created_at: string
           id: string
+          income_category_id: string | null
           invoice_id: string | null
           member_id: string | null
           notes: string | null
@@ -3858,6 +3886,7 @@ export type Database = {
           branch_id: string
           created_at?: string
           id?: string
+          income_category_id?: string | null
           invoice_id?: string | null
           member_id?: string | null
           notes?: string | null
@@ -3876,6 +3905,7 @@ export type Database = {
           branch_id?: string
           created_at?: string
           id?: string
+          income_category_id?: string | null
           invoice_id?: string | null
           member_id?: string | null
           notes?: string | null
@@ -3895,6 +3925,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_income_category_id_fkey"
+            columns: ["income_category_id"]
+            isOneToOne: false
+            referencedRelation: "income_categories"
             referencedColumns: ["id"]
           },
           {
