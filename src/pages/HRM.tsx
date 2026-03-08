@@ -59,12 +59,35 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name))
+          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name)),
+          trainers(user_id, specialization)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data;
+      
+      // For trainer contracts, resolve the name from profiles
+      const trainerUserIds = (data || [])
+        .filter((c: any) => c.trainer_id && !c.employee_id && c.trainers?.user_id)
+        .map((c: any) => c.trainers.user_id);
+      
+      let trainerProfiles: any[] = [];
+      if (trainerUserIds.length > 0) {
+        const { data: tp } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', trainerUserIds);
+        trainerProfiles = tp || [];
+      }
+      
+      return (data || []).map((c: any) => ({
+        ...c,
+        _resolvedName: c.employees?.profiles?.full_name 
+          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.full_name 
+          || null,
+        _resolvedCode: c.employees?.employee_code || (c.trainers ? 'Trainer' : null),
+        _isTrainer: !!c.trainer_id && !c.employee_id,
+      }));
     },
   });
 
