@@ -32,7 +32,7 @@ import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 
 // ─── Pending Invoices Section ───
-function PendingInvoicesSection({ memberId }: { memberId: string }) {
+function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
   const [paymentDrawerOpen, setPaymentDrawerOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const queryClient = useQueryClient();
