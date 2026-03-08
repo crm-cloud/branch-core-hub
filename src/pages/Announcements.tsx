@@ -188,7 +188,7 @@ export default function AnnouncementsPage() {
               <p className="text-xs text-muted-foreground">WhatsApp</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10 w-fit mb-1.5"><Phone className="h-4 w-4 text-sky-500" /></div>
               <div className="text-2xl font-bold text-foreground">{smsCount}</div>
