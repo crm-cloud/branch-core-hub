@@ -61,11 +61,13 @@ Thank you for choosing Incline Fitness!
 Best regards,
 Team Incline Fitness`;
 
-  const handleWhatsAppShare = () => {
+  const handleWhatsAppShare = async () => {
     const formattedPhone = phone.replace(/\D/g, '');
     const phoneNumber = formattedPhone.startsWith('91') ? formattedPhone : `91${formattedPhone}`;
-    const encodedMessage = encodeURIComponent(whatsappMessage);
-    window.open(`https://wa.me/${phoneNumber}?text=${encodedMessage}`, '_blank');
+    await communicationService.sendWhatsApp(phoneNumber, whatsappMessage, {
+      branchId: invoice.branch_id,
+      memberId: invoice.member_id,
+    });
     toast.success('Opening WhatsApp...');
   };
 
