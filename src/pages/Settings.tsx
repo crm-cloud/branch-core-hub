@@ -23,7 +23,7 @@ const SETTINGS_MENU = [
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'templates', label: 'Templates', icon: MessageSquare },
   { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
-  { value: 'expenses', label: 'Expenses', icon: Receipt },
+  { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
   { value: 'integrations', label: 'Integrations', icon: Plug },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
