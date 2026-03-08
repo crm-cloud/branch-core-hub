@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
 import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
-import { 
+import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
+import {
   Plus, 
   Users, 
   FileText, 
@@ -39,6 +40,8 @@ export default function HRMPage() {
   const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
   const [editEmployeeOpen, setEditEmployeeOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<any>(null);
+  const [editTrainerOpen, setEditTrainerOpen] = useState(false);
+  const [editingTrainer, setEditingTrainer] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [searchTerm, setSearchTerm] = useState('');
   const queryClient = useQueryClient();
@@ -56,12 +59,35 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name))
+          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name)),
+          trainers(user_id, specialization)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data;
+      
+      // For trainer contracts, resolve the name from profiles
+      const trainerUserIds = (data || [])
+        .filter((c: any) => c.trainer_id && !c.employee_id && c.trainers?.user_id)
+        .map((c: any) => c.trainers.user_id);
+      
+      let trainerProfiles: any[] = [];
+      if (trainerUserIds.length > 0) {
+        const { data: tp } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', trainerUserIds);
+        trainerProfiles = tp || [];
+      }
+      
+      return (data || []).map((c: any) => ({
+        ...c,
+        _resolvedName: c.employees?.profiles?.full_name 
+          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.full_name 
+          || null,
+        _resolvedCode: c.employees?.employee_code || (c.trainers ? 'Trainer' : null),
+        _isTrainer: !!c.trainer_id && !c.employee_id,
+      }));
     },
   });
 
@@ -337,31 +363,38 @@ export default function HRMPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              {staff.staff_type === 'employee' && staff.employeeRecord && (
-                                <>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    onClick={() => {
-                                      setSelectedEmployee(staff.employeeRecord);
-                                      setContractDrawerOpen(true);
-                                    }}
-                                  >
-                                    <FileText className="mr-1 h-3 w-3" />
-                                    Contract
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setEditingEmployee(staff.employeeRecord);
-                                      setEditEmployeeOpen(true);
-                                    }}
-                                  >
-                                    <Edit className="h-3 w-3" />
-                                  </Button>
-                                </>
-                              )}
+                              {/* Contract button for all staff types */}
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  if (staff.staff_type === 'trainer' && staff.trainerRecord) {
+                                    setSelectedEmployee({ ...staff.trainerRecord, id: staff.source_id, staff_type: 'trainer', salary: staff.salary });
+                                  } else if (staff.employeeRecord) {
+                                    setSelectedEmployee(staff.employeeRecord);
+                                  }
+                                  setContractDrawerOpen(true);
+                                }}
+                              >
+                                <FileText className="mr-1 h-3 w-3" />
+                                Contract
+                              </Button>
+                              {/* Edit button */}
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => {
+                                  if (staff.staff_type === 'trainer' && staff.trainerRecord) {
+                                    setEditingTrainer(staff.trainerRecord);
+                                    setEditTrainerOpen(true);
+                                  } else if (staff.employeeRecord) {
+                                    setEditingEmployee(staff.employeeRecord);
+                                    setEditEmployeeOpen(true);
+                                  }
+                                }}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -407,12 +440,15 @@ export default function HRMPage() {
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                               <AvatarFallback className="bg-accent/10 text-accent text-xs">
-                                {getInitials(contract.employees?.profiles?.full_name)}
+                                {getInitials(contract._resolvedName)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium">{contract.employees?.profiles?.full_name || 'N/A'}</p>
-                              <p className="text-xs text-muted-foreground">{contract.employees?.employee_code}</p>
+                              <p className="font-medium">{contract._resolvedName || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {contract._isTrainer && <Badge className="border bg-info/10 text-info border-info/20 mr-1 text-[10px] px-1 py-0">Trainer</Badge>}
+                                {contract._resolvedCode}
+                              </p>
                             </div>
                           </div>
                         </TableCell>
@@ -753,6 +789,13 @@ export default function HRMPage() {
         open={editEmployeeOpen}
         onOpenChange={setEditEmployeeOpen}
         employee={editingEmployee}
+      />
+
+      {/* Edit Trainer Drawer */}
+      <EditTrainerDrawer
+        open={editTrainerOpen}
+        onOpenChange={setEditTrainerOpen}
+        trainer={editingTrainer}
       />
     </AppLayout>
   );

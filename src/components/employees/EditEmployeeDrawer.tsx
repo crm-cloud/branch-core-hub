@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { queueStaffSync } from '@/services/biometricService';
 import { DEPARTMENTS, POSITIONS, SALARY_TYPES } from '@/constants/employeeConstants';
+import { StaffBiometricsTab } from '@/components/common/StaffBiometricsTab';
 
 interface EditEmployeeDrawerProps {
   open: boolean;
@@ -256,6 +257,16 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
               placeholder="PAN number"
             />
           </div>
+
+          {/* Hardware & Biometrics */}
+          <StaffBiometricsTab
+            staffId={employee.id}
+            staffType="employee"
+            staffName={employee.profile?.full_name || 'Employee'}
+            branchId={employee.branch_id}
+            biometricPhotoUrl={employee.biometric_photo_url}
+            biometricEnrolled={employee.biometric_enrolled}
+          />
 
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

@@ -13,6 +13,7 @@ import { useUpdateTrainer } from '@/hooks/useTrainers';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { queueStaffSync } from '@/services/biometricService';
 import { supabase } from '@/integrations/supabase/client';
+import { StaffBiometricsTab } from '@/components/common/StaffBiometricsTab';
 
 interface EditTrainerDrawerProps {
   open: boolean;
@@ -303,6 +304,16 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
               placeholder="Aadhar/PAN number"
             />
           </div>
+
+          {/* Hardware & Biometrics */}
+          <StaffBiometricsTab
+            staffId={trainer.id}
+            staffType="trainer"
+            staffName={trainer.profile_name || 'Trainer'}
+            branchId={trainer.branch_id}
+            biometricPhotoUrl={trainer.biometric_photo_url}
+            biometricEnrolled={trainer.biometric_enrolled}
+          />
 
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
