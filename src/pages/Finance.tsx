@@ -286,7 +286,7 @@ export default function FinancePage() {
             <p className="text-muted-foreground text-sm">Track income, expenses and financial health</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setAddExpenseOpen(true)} className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-200 hover:shadow-xl">
+            <Button onClick={() => setAddExpenseOpen(true)} className="shadow-lg shadow-primary/20 hover:shadow-xl">
               <Plus className="h-4 w-4 mr-2" />
               Add Expense
             </Button>
