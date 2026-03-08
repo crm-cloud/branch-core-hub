@@ -1,64 +1,97 @@
 
 
-# Plan: PT Analytics Enhancement, Template Sync, Communication Logs Audit
+# Implementation Plan: PT Analytics, Template Sync, Communication Logs
 
-## Issue 1: PT Sessions — Better KPI Widgets + Top Performer
+## 1. PT Analytics — Top Performer + Package Type Donut + Revenue by Trainer
 
-**Current state:** Two charts exist — "Session Status Distribution" (pie) and "Sessions by Trainer" (bar). Both only use `sessions` from the first trainer and `activePackages`. No monthly package revenue, no top performer highlight.
+**File: `src/pages/PTSessions.tsx`**
 
-**Fix — Replace the 2-chart row with a 3-widget layout:**
+**Add imports:** `Crown`, `IndianRupee` from lucide-react
 
-| Widget | Data Source | Visual |
-|--------|-----------|--------|
-| **Top Performer** | `activePackages` grouped by `trainer_id` → count clients + total revenue. Rank by revenue. | Hero card with trainer name, avatar, client count, revenue, gold crown icon |
-| **Package Type Split** | `activePackages` grouped by `sessions_total > 0` (session-based) vs `sessions_total === 0` (duration/monthly) | Donut chart with 2 segments + center total |
-| **Revenue by Trainer** | `activePackages` grouped by `trainer_id` → sum `price_paid` | Horizontal bar chart (replaces current "Sessions by Trainer") |
+**Replace the Charts Row (lines 194-224)** with a 3-widget grid:
 
-Keep the existing "Session Status Distribution" pie chart but move it into a combined row.
+### Widget A: Top Performer Card
+- Group `activePackages` by `trainer_id` → sum `price_paid` per trainer, count clients
+- Find the trainer with highest total revenue
+- Render a hero-style card with gold gradient, crown icon, trainer name, client count, total revenue
 
-**File:** `src/pages/PTSessions.tsx` — replace lines 194-224 with new widget grid.
+### Widget B: Package Type Split (Donut)
+- Split `activePackages` into session-based (`sessions_total > 0`) vs duration-based (`sessions_total === 0`)
+- Render a `PieChart` donut with 2 segments + total in center label
 
-## Issue 2: Two Template Systems Not Synced
+### Widget C: Revenue by Trainer (Horizontal Bar)
+- Group `activePackages` by `trainer_id` → sum `price_paid`
+- Map to trainer names from `trainers` array
+- Render a `BarChart` with `layout="vertical"`, formatted ₹ values on XAxis
 
-**Audit findings:**
-- **Hardcoded templates** (`src/data/messageTemplates.ts`): 20+ static templates used by the Announcements page "Templates" sheet. Read-only, no DB persistence.
-- **DB templates** (`TemplateManager` in Settings → Templates tab): Full CRUD against `templates` table in database. These are the "real" templates.
-- **The Announcements page ignores DB templates entirely** — it imports from `messageTemplates.ts` and never queries the `templates` table.
+**Add computed data above return:**
+```ts
+const trainerRevenue = useMemo(() => {
+  const map = new Map<string, { name: string; revenue: number; clients: number }>();
+  activePackages?.forEach(pkg => {
+    const id = pkg.trainer_id || 'unknown';
+    const existing = map.get(id) || { name: pkg.trainer_name || 'Unassigned', revenue: 0, clients: 0 };
+    existing.revenue += pkg.price_paid || 0;
+    existing.clients += 1;
+    map.set(id, existing);
+  });
+  return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+}, [activePackages]);
 
-**Fix — Unify both systems:**
-- Update the Announcements page "Templates" sheet to fetch from the `templates` DB table (same source as Settings TemplateManager)
-- Keep the hardcoded templates as **seed/fallback** — show them in a separate "Default Templates" section only if no DB templates exist
-- When user clicks a DB template, populate the broadcast drawer with its content (same as current behavior)
+const topPerformer = trainerRevenue[0];
+const packageTypeSplit = [
+  { name: 'Session-Based', value: activePackages?.filter(p => p.sessions_total > 0).length || 0 },
+  { name: 'Duration-Based', value: activePackages?.filter(p => p.sessions_total === 0).length || 0 },
+].filter(d => d.value > 0);
+```
 
-**Files:** `src/pages/Announcements.tsx` — replace the template sheet content (lines 110-144) with a DB query + fallback to hardcoded templates.
+## 2. Template Sync — Announcements Uses DB Templates
 
-## Issue 3: Communication Logs Always Empty
+**File: `src/pages/Announcements.tsx`**
 
-**Audit findings:**
-- The realtime subscription and polling query are correctly wired
-- The `communicationService.fetchCommunicationLogs()` query works fine
-- **Root cause:** No actual communication logs are being written. The `sendEmail` method just does `console.log`, `sendWhatsApp` and `sendSMS` open browser URLs but never call `logCommunication`. The only path that writes logs is the `send-broadcast` edge function — which requires Resend API key to actually send emails.
-- So the table is genuinely empty — the system never logs WhatsApp/SMS opens.
+**Changes:**
+- Add `useQuery` for DB templates: `queryKey: ['db-templates'], queryFn: () => communicationService.fetchTemplates()`
+- In the Templates sheet (lines 119-141), prioritize DB templates; if none exist, fall back to hardcoded `getTemplatesByType`
+- DB templates have `type` field matching `sms`/`email`/`whatsapp` — filter the same way
+- Show DB template `name`, `content`, and `trigger` as badge instead of `category`
 
-**Fix:**
-- Update `communicationService.sendWhatsApp()` and `sendSMS()` to also call `logCommunication` so every outbound message attempt gets recorded
-- These methods need to become `async` and accept `branchId` + optional `memberId` params
-- Update all callers (member profile, broadcast drawer, invoice share) to pass branch context
+**Template rendering logic:**
+```tsx
+const dbTemplatesForType = dbTemplates?.filter(t => t.type === type && t.is_active) || [];
+const fallbackTemplates = dbTemplatesForType.length > 0 ? [] : getTemplatesByType(type);
+// Render dbTemplatesForType first, then fallbackTemplates with a "Default" badge
+```
 
-**Files:**
-- `src/services/communicationService.ts` — make `sendWhatsApp` and `sendSMS` async, add `logCommunication` calls
-- Callers that use these methods will need minor updates to pass `branchId`
+## 3. Communication Logs — Record WhatsApp/SMS Opens
 
-## Execution Order
-1. PT Sessions KPI widgets + top performer card
-2. Template sync — Announcements page reads from DB templates
-3. Communication log writing for WhatsApp/SMS opens
+**File: `src/services/communicationService.ts`**
+
+**Changes to `sendWhatsApp` (line 88):**
+- Make it `async`, add optional `options?: { branchId?: string; memberId?: string }` param
+- After `window.open`, call `this.logCommunication(...)` with type `'whatsapp'`, status `'sent'`
+- Wrap in try/catch so logging failure doesn't break the UX
+
+**Changes to `sendSMS` (line 113):**
+- Same pattern: make `async`, add `options` param, log after opening
+
+**Callers that need `branchId` passed:**
+- `InvoiceShareDrawer.tsx` — already has invoice data, add branchId prop or derive from invoice
+- `SendPaymentLinkDrawer.tsx` — already has invoice context
+- `MemberProfileDrawer.tsx` — has member's branch_id
+- These callers currently call `communicationService.sendWhatsApp(phone, msg)` — add optional 3rd arg `{ branchId }`
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/PTSessions.tsx` | Replace chart row with top performer card + package type donut + revenue-by-trainer bar |
-| `src/pages/Announcements.tsx` | Template sheet fetches from DB `templates` table with hardcoded fallback |
-| `src/services/communicationService.ts` | Make `sendWhatsApp`/`sendSMS` async, log to `communication_logs` |
+| `src/pages/PTSessions.tsx` | Add `useMemo` import, add `Crown`/`IndianRupee` icons, replace chart row with 3 analytics widgets |
+| `src/pages/Announcements.tsx` | Add DB template query, update template sheet to show DB templates with hardcoded fallback |
+| `src/services/communicationService.ts` | Make `sendWhatsApp`/`sendSMS` async with logging |
+| `src/components/invoices/InvoiceShareDrawer.tsx` | Pass `branchId` to `sendWhatsApp`/`sendSMS` calls |
+| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Pass `branchId` to `sendWhatsApp` calls |
+
+## Execution Order
+1. Communication service logging fix (foundation)
+2. Announcements template sync
+3. PT analytics widgets
 
