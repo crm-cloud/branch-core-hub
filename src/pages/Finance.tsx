@@ -438,6 +438,9 @@ export default function FinancePage() {
                                 {payment.type}
                               </Badge>
                             </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{payment.income_category?.name || '-'}</Badge>
+                            </TableCell>
                             <TableCell>{payment.member?.member_code || '-'}</TableCell>
                             <TableCell>{payment.invoice?.invoice_number || '-'}</TableCell>
                             <TableCell>
