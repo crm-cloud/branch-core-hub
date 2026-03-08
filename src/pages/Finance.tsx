@@ -333,7 +333,7 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="text-3xl font-bold text-slate-800">{formatCurrency(totalIncome)}</p>
+                <p className="text-3xl font-bold text-foreground">{formatCurrency(totalIncome)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Total Income</p>
               </div>
               <div className="h-[80px]">
