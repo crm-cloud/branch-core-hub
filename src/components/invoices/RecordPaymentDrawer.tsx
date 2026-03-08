@@ -75,6 +75,7 @@ export function RecordPaymentDrawer({
           transaction_id: transactionId || null,
           notes: notes || null,
           received_by: user?.id,
+          income_category_id: incomeCategoryId || null,
         });
 
       if (paymentError) throw paymentError;
