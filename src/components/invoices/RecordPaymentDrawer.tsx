@@ -210,7 +210,22 @@ export function RecordPaymentDrawer({
             </Select>
           </div>
 
-          {/* Transaction ID */}
+          {/* Income Category */}
+          <div className="space-y-2">
+            <Label>Income Category</Label>
+            <Select value={incomeCategoryId} onValueChange={setIncomeCategoryId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {incomeCategories.map((cat: any) => (
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+
           {paymentMethod !== 'cash' && (
             <div className="space-y-2">
               <Label>Transaction ID</Label>
