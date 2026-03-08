@@ -347,7 +347,7 @@ export default function PTSessionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Member</TableHead><TableHead>Package</TableHead><TableHead>Trainer</TableHead><TableHead>Sessions</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
+                    <TableHead>Member</TableHead><TableHead>Package</TableHead><TableHead>Trainer</TableHead><TableHead>Progress</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
