@@ -465,7 +465,7 @@ export default function FinancePage() {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle className="text-base font-bold text-slate-800">Expense Transactions</CardTitle>
+                        <CardTitle className="text-base font-bold text-foreground">Expense Transactions</CardTitle>
                         <CardDescription>Manage expense submissions and approvals</CardDescription>
                       </div>
                       <Tabs value={expenseTab} onValueChange={setExpenseTab}>
