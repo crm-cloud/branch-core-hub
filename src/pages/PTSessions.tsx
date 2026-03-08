@@ -358,10 +358,31 @@ export default function PTSessionsPage() {
                       <TableCell>{pkg.package_name}</TableCell>
                       <TableCell>{pkg.trainer_name || "-"}</TableCell>
                       <TableCell>
-                        {pkg.sessions_total > 0 
-                          ? `${pkg.sessions_remaining}/${pkg.sessions_total} sessions`
-                          : `${Math.max(0, Math.ceil((new Date(pkg.expiry_date).getTime() - Date.now()) / 86400000))}d left`
-                        }
+                        {(() => {
+                          if (pkg.sessions_total > 0) {
+                            const used = pkg.sessions_total - pkg.sessions_remaining;
+                            const pct = Math.round((used / pkg.sessions_total) * 100);
+                            return (
+                              <div className="space-y-1 min-w-[130px]">
+                                <Progress value={pct} className={`h-2 ${pct >= 90 ? '[&>div]:bg-destructive' : pct >= 75 ? '[&>div]:bg-amber-500' : '[&>div]:bg-emerald-500'}`} />
+                                <p className="text-xs text-muted-foreground">{used}/{pkg.sessions_total} sessions</p>
+                              </div>
+                            );
+                          }
+                          const start = new Date(pkg.start_date || pkg.created_at);
+                          const end = new Date(pkg.expiry_date);
+                          const totalDays = Math.max(1, differenceInDays(end, start));
+                          const elapsed = Math.max(0, differenceInDays(new Date(), start));
+                          const pct = Math.min(100, Math.round((elapsed / totalDays) * 100));
+                          const daysLeft = Math.max(0, differenceInDays(end, new Date()));
+                          return (
+                            <div className="space-y-1 min-w-[150px]">
+                              <Progress value={pct} className={`h-2 ${pct >= 90 ? '[&>div]:bg-destructive' : pct >= 75 ? '[&>div]:bg-amber-500' : '[&>div]:bg-emerald-500'}`} />
+                              <p className="text-xs text-muted-foreground">{elapsed}d / {totalDays}d · {daysLeft}d left</p>
+                              <p className="text-[10px] text-muted-foreground/70">{format(start, "MMM d")} → {format(end, "MMM d")}</p>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>{format(new Date(pkg.expiry_date), "PP")}</TableCell>
                       <TableCell><Badge variant={pkg.status === "active" ? "default" : "secondary"}>{pkg.status}</Badge></TableCell>
