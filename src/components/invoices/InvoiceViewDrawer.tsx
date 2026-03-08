@@ -17,7 +17,7 @@ interface InvoiceViewDrawerProps {
   onSendPaymentLink?: () => void;
 }
 
-export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment }: InvoiceViewDrawerProps) {
+export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment, onSendPaymentLink }: InvoiceViewDrawerProps) {
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: async () => {
