@@ -440,12 +440,15 @@ export default function HRMPage() {
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                               <AvatarFallback className="bg-accent/10 text-accent text-xs">
-                                {getInitials(contract.employees?.profiles?.full_name)}
+                                {getInitials(contract._resolvedName)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-medium">{contract.employees?.profiles?.full_name || 'N/A'}</p>
-                              <p className="text-xs text-muted-foreground">{contract.employees?.employee_code}</p>
+                              <p className="font-medium">{contract._resolvedName || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {contract._isTrainer && <Badge className="border bg-info/10 text-info border-info/20 mr-1 text-[10px] px-1 py-0">Trainer</Badge>}
+                                {contract._resolvedCode}
+                              </p>
                             </div>
                           </div>
                         </TableCell>
