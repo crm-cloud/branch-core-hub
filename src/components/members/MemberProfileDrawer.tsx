@@ -29,6 +29,89 @@ import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 import { HardwareBiometricsTab } from './HardwareBiometricsTab';
+import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
+
+// ─── Pending Invoices Section ───
+function PendingInvoicesSection({ memberId }: { memberId: string }) {
+  const [paymentDrawerOpen, setPaymentDrawerOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const queryClient = useQueryClient();
+
+  const { data: pendingInvoices = [] } = useQuery({
+    queryKey: ['member-pending-invoices', memberId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type')
+        .eq('member_id', memberId)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!memberId,
+  });
+
+  if (pendingInvoices.length === 0) return null;
+
+  return (
+    <>
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            Pending Dues ({pendingInvoices.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {pendingInvoices.map((inv: any) => {
+            const due = (inv.total_amount || 0) - (inv.amount_paid || 0);
+            return (
+              <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-background border">
+                <div>
+                  <p className="text-sm font-medium">{inv.invoice_number}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Total: ₹{inv.total_amount?.toLocaleString('en-IN')} · Paid: ₹{(inv.amount_paid || 0).toLocaleString('en-IN')}
+                  </p>
+                  {inv.due_date && (
+                    <p className="text-xs text-muted-foreground">Due: {format(new Date(inv.due_date), 'dd MMM yyyy')}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive" className="text-xs">₹{due.toLocaleString('en-IN')}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedInvoice(inv);
+                      setPaymentDrawerOpen(true);
+                    }}
+                  >
+                    <IndianRupee className="h-3 w-3 mr-1" />Pay
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {selectedInvoice && (
+        <RecordPaymentDrawer
+          open={paymentDrawerOpen}
+          onOpenChange={(open) => {
+            setPaymentDrawerOpen(open);
+            if (!open) {
+              queryClient.invalidateQueries({ queryKey: ['member-pending-invoices', memberId] });
+              queryClient.invalidateQueries({ queryKey: ['member-payments', memberId] });
+            }
+          }}
+          invoice={selectedInvoice}
+        />
+      )}
+    </>
+  );
+}
 
 // ─── Benefits & Usage Tab ───
 function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
