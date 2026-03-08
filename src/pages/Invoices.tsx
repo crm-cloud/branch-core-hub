@@ -337,9 +337,25 @@ export default function InvoicesPage() {
           open={!!viewInvoice}
           onOpenChange={(open) => !open && setViewInvoice(null)}
           invoiceId={viewInvoice.id}
-          onRecordPayment={() => {}}
+          onRecordPayment={() => {
+            setPaymentInvoice(viewInvoice);
+            setViewInvoice(null);
+          }}
         />
       )}
+
+      <RecordPaymentDrawer
+        open={!!paymentInvoice}
+        onOpenChange={(open) => !open && setPaymentInvoice(null)}
+        invoiceId={paymentInvoice?.id}
+        branchId={paymentInvoice?.branch_id || effectiveBranchId || ''}
+      />
+
+      <SendPaymentLinkDrawer
+        open={!!paymentLinkInvoice}
+        onOpenChange={(open) => !open && setPaymentLinkInvoice(null)}
+        invoice={paymentLinkInvoice}
+      />
     </AppLayout>
   );
 }

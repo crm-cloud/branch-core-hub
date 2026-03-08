@@ -657,9 +657,15 @@ export function MemberProfileDrawer({
             <Card>
               <CardContent className="pt-4 text-center">
                 <div className="text-2xl font-bold text-primary">
-                  {activePTPackage?.sessions_remaining || 0}
+                  {activePTPackage ? (
+                    activePTPackage.sessions_total > 0
+                      ? activePTPackage.sessions_remaining
+                      : `${Math.max(0, Math.ceil((new Date(activePTPackage.expiry_date).getTime() - Date.now()) / 86400000))}d`
+                  ) : 0}
                 </div>
-                <p className="text-xs text-muted-foreground">PT Sessions</p>
+                <p className="text-xs text-muted-foreground">
+                  {activePTPackage?.sessions_total > 0 ? 'PT Sessions' : activePTPackage ? 'PT Duration' : 'PT Sessions'}
+                </p>
               </CardContent>
             </Card>
             <Card>
