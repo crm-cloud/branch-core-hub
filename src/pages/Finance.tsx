@@ -303,7 +303,7 @@ export default function FinancePage() {
           {/* Revenue Report - Wide */}
           <Card className="lg:col-span-2 rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">Revenue Report</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">Revenue Report</CardTitle>
               <CardDescription>Monthly earnings vs expenses</CardDescription>
             </CardHeader>
             <CardContent>
