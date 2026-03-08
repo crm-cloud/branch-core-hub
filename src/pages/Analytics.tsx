@@ -588,6 +588,102 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* PT Analytics Section */}
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Top Performer Hero Card */}
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-12 w-12 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+                  <Trophy className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-sm opacity-80">Top PT Performer</p>
+                  <h3 className="text-xl font-bold">{ptStats?.topTrainer?.name || 'No data'}</h3>
+                </div>
+              </div>
+              {ptStats?.topTrainer && (
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="bg-primary-foreground/10 rounded-xl p-3 text-center">
+                    <p className="text-2xl font-bold">{formatCurrency(ptStats.topTrainer.revenue)}</p>
+                    <p className="text-xs opacity-70">Revenue</p>
+                  </div>
+                  <div className="bg-primary-foreground/10 rounded-xl p-3 text-center">
+                    <p className="text-2xl font-bold">{ptStats.topTrainer.clients}</p>
+                    <p className="text-xs opacity-70">Clients</p>
+                  </div>
+                </div>
+              )}
+              {!ptStats?.topTrainer && (
+                <p className="text-sm opacity-60 mt-2">No PT packages sold yet</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* PT Revenue + Packages Sold */}
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
+            <CardContent className="p-6 space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-accent" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">PT Revenue</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(ptStats?.totalRevenue || 0)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-info/10 flex items-center justify-center">
+                  <Dumbbell className="h-5 w-5 text-info" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Packages Sold</p>
+                  <p className="text-2xl font-bold text-foreground">{ptStats?.totalSold || 0}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
+                  <Award className="h-5 w-5 text-success" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Active Packages</p>
+                  <p className="text-2xl font-bold text-foreground">{ptStats?.activePackages || 0}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Revenue by Trainer */}
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
+            <CardHeader>
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <Dumbbell className="h-5 w-5 text-primary" />
+                Revenue by Trainer
+              </CardTitle>
+              <CardDescription>Top performing trainers by PT sales</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(ptStats?.trainerStats || []).length > 0 ? (
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ptStats?.trainerStats} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                      <XAxis type="number" tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" width={80} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(value: number) => [formatCurrency(value), 'Revenue']} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                  <div className="text-center"><Dumbbell className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>No PT data yet</p></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppLayout>
   );
