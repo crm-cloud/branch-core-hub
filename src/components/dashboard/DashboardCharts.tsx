@@ -338,7 +338,7 @@ export function PendingApprovalsWidget({ count }: PendingApprovalsWidgetProps) {
 
   return (
     <Card 
-      className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0 cursor-pointer hover:shadow-xl transition-shadow"
+      className="shadow-lg shadow-primary/10 rounded-2xl border-0 cursor-pointer hover:shadow-xl transition-shadow"
       onClick={() => navigate('/approvals')}
     >
       <CardContent className="p-4">

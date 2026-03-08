@@ -53,7 +53,7 @@ export function StatCard({
         )}
       </CardHeader>
       <CardContent>
-        <div className={cn('text-2xl font-bold text-slate-800', variantStyles[variant] !== 'text-foreground' && variantStyles[variant])}>
+        <div className={cn('text-2xl font-bold text-foreground', variantStyles[variant] !== 'text-foreground' && variantStyles[variant])}>
           {typeof value === 'number' ? value.toLocaleString() : value}
         </div>
         {description && (

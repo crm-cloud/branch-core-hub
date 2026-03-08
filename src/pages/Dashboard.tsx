@@ -294,7 +294,7 @@ export default function DashboardPage() {
                 {(stats?.expiringMemberships || 0) > 0 && (
                   <Badge className="bg-destructive text-destructive-foreground text-xs mt-1 border-0">Action Needed</Badge>
                 )}
-                <p className="text-white/70 text-xs mt-1">Expiring Soon</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Expiring Soon</p>
               </div>
             </div>
           </div>
