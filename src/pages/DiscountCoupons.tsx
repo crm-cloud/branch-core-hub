@@ -118,7 +118,7 @@ export default function DiscountCouponsPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map(s => (
-            <Card key={s.label} className="rounded-xl border-none shadow-lg shadow-indigo-100/50">
+            <Card key={s.label} className="rounded-xl border-none shadow-lg shadow-primary/5">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className={`rounded-lg p-2.5 bg-muted ${s.color}`}>
                   <s.icon className="h-5 w-5" />
@@ -133,7 +133,7 @@ export default function DiscountCouponsPage() {
         </div>
 
         {/* Filters */}
-        <Card className="rounded-xl border-none shadow-lg shadow-indigo-100/50">
+        <Card className="rounded-xl border-none shadow-lg shadow-primary/5">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -154,7 +154,7 @@ export default function DiscountCouponsPage() {
         </Card>
 
         {/* Table */}
-        <Card className="rounded-xl border-none shadow-lg shadow-indigo-100/50">
+        <Card className="rounded-xl border-none shadow-lg shadow-primary/5">
           <CardContent className="p-0">
             <Table>
               <TableHeader>

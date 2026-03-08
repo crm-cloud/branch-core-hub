@@ -90,13 +90,13 @@ export default function StorePage() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      pending: 'bg-yellow-500/10 text-yellow-500',
-      processing: 'bg-blue-500/10 text-blue-500',
-      shipped: 'bg-purple-500/10 text-purple-500',
-      delivered: 'bg-green-500/10 text-green-500',
+      pending: 'bg-warning/10 text-warning',
+      processing: 'bg-info/10 text-info',
+      shipped: 'bg-accent/10 text-accent',
+      delivered: 'bg-success/10 text-success',
       cancelled: 'bg-destructive/10 text-destructive',
-      completed: 'bg-green-500/10 text-green-500',
-      paid: 'bg-green-500/10 text-green-500',
+      completed: 'bg-success/10 text-success',
+      paid: 'bg-success/10 text-success',
     };
     return colors[status] || 'bg-muted text-muted-foreground';
   };
@@ -133,12 +133,12 @@ export default function StorePage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-800">Store Management</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Store Management</h1>
             <p className="text-muted-foreground text-sm">POS, products & online store overview</p>
           </div>
           <div className="flex gap-2">
             <Link to="/pos">
-              <Button className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-200 hover:shadow-xl">
+              <Button className="shadow-lg shadow-primary/20 hover:shadow-xl">
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Open POS
               </Button>
@@ -153,28 +153,28 @@ export default function StorePage() {
         </div>
 
         {/* Hero Card */}
-        <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl shadow-lg shadow-primary/20 p-6 text-primary-foreground">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold tracking-tight">Store Overview</h2>
-              <p className="text-white/70 text-sm mt-1">Today's sales & inventory at a glance</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">Today's sales & inventory at a glance</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               <div className="text-center">
                 <p className="text-2xl font-bold">{posSales.length}</p>
-                <p className="text-white/70 text-xs mt-1">Total Sales</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Sales</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold">{products.length}</p>
-                <p className="text-white/70 text-xs mt-1">Products</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Products</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold">₹{todayPosTotal.toLocaleString()}</p>
-                <p className="text-white/70 text-xs mt-1">Today's POS</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Today's POS</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold">₹{totalRevenue.toLocaleString()}</p>
-                <p className="text-white/70 text-xs mt-1">Total Revenue</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Revenue</p>
               </div>
             </div>
           </div>
@@ -183,21 +183,21 @@ export default function StorePage() {
         {/* Profit / Stock / Low Stock Row */}
         <div className="grid gap-6 md:grid-cols-3">
           {/* Profit Card with sparkline */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Profit</CardTitle>
-                <div className="h-8 w-8 rounded-xl bg-green-50 flex items-center justify-center">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
+                <div className="h-8 w-8 rounded-xl bg-success/10 flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4 text-success" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-slate-800">₹{totalRevenue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-foreground">₹{totalRevenue.toLocaleString()}</p>
               <div className="h-[50px] mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={sparklineData}>
-                    <Line type="monotone" dataKey="value" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -205,30 +205,30 @@ export default function StorePage() {
           </Card>
 
           {/* Stock Value with donut */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Stock Value</CardTitle>
-                <div className="h-8 w-8 rounded-xl bg-blue-50 flex items-center justify-center">
-                  <Boxes className="h-4 w-4 text-blue-600" />
+                <div className="h-8 w-8 rounded-xl bg-info/10 flex items-center justify-center">
+                  <Boxes className="h-4 w-4 text-info" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-slate-800">₹{(inventoryStats?.totalValue || 0).toLocaleString()}</p>
+              <p className="text-2xl font-bold text-foreground">₹{(inventoryStats?.totalValue || 0).toLocaleString()}</p>
               <div className="flex items-center gap-3 mt-2">
                 <div className="h-[50px] w-[50px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={stockGaugeData} cx="50%" cy="50%" innerRadius={16} outerRadius={24} dataKey="value" startAngle={90} endAngle={-270}>
-                        <Cell fill="hsl(217, 91%, 60%)" />
+                        <Cell fill="hsl(var(--info))" />
                         <Cell fill="hsl(var(--muted))" />
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{inventoryStats?.totalItems || 0} items</p>
+                  <p className="text-sm font-medium text-foreground">{inventoryStats?.totalItems || 0} items</p>
                   <p className="text-xs text-muted-foreground">in stock</p>
                 </div>
               </div>
@@ -236,27 +236,27 @@ export default function StorePage() {
           </Card>
 
           {/* Low Stock Alert */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Alert</CardTitle>
-                <div className={`h-8 w-8 rounded-xl flex items-center justify-center ${(inventoryStats?.lowStockItems || 0) > 0 ? 'bg-orange-50' : 'bg-green-50'}`}>
-                  <AlertTriangle className={`h-4 w-4 ${(inventoryStats?.lowStockItems || 0) > 0 ? 'text-orange-500' : 'text-green-600'}`} />
+                <div className={`h-8 w-8 rounded-xl flex items-center justify-center ${(inventoryStats?.lowStockItems || 0) > 0 ? 'bg-warning/10' : 'bg-success/10'}`}>
+                  <AlertTriangle className={`h-4 w-4 ${(inventoryStats?.lowStockItems || 0) > 0 ? 'text-warning' : 'text-success'}`} />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <p className={`text-2xl font-bold ${(inventoryStats?.lowStockItems || 0) > 0 ? 'text-orange-500' : 'text-green-600'}`}>
+              <p className={`text-2xl font-bold ${(inventoryStats?.lowStockItems || 0) > 0 ? 'text-warning' : 'text-success'}`}>
                 {inventoryStats?.lowStockItems || 0}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {(inventoryStats?.lowStockItems || 0) > 0 ? 'Items need restocking' : 'All stock levels are healthy'}
               </p>
               <div className="mt-3 flex gap-3 text-xs">
-                <div className="rounded-lg bg-violet-50 px-2.5 py-1.5 font-medium text-violet-600">
+                <div className="rounded-lg bg-accent/10 px-2.5 py-1.5 font-medium text-accent">
                   {pendingOrders} pending orders
                 </div>
-                <div className="rounded-lg bg-green-50 px-2.5 py-1.5 font-medium text-green-600">
+                <div className="rounded-lg bg-success/10 px-2.5 py-1.5 font-medium text-success">
                   {todayPosSales.length} sales today
                 </div>
               </div>
@@ -267,24 +267,24 @@ export default function StorePage() {
         {/* Transactions + Tables */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Recent Transactions Timeline */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">Recent Transactions</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">Recent Transactions</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {posSales.slice(0, 8).map((sale: any) => (
                   <div key={sale.id} className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
                       <CreditCard className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {sale.members?.profiles?.full_name || sale.members?.member_code || 'Walk-in'}
                       </p>
                       <p className="text-xs text-muted-foreground capitalize">{sale.payment_method}</p>
                     </div>
-                    <span className="text-sm font-bold text-green-600">
+                    <span className="text-sm font-bold text-success">
                       +₹{sale.total_amount?.toLocaleString()}
                     </span>
                   </div>
@@ -313,7 +313,7 @@ export default function StorePage() {
               </TabsList>
 
               <TabsContent value="pos-history" className="mt-4">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardContent className="pt-6">
                     {posLoading ? (
                       <div className="flex items-center justify-center py-8">
@@ -360,7 +360,7 @@ export default function StorePage() {
               </TabsContent>
 
               <TabsContent value="online-orders" className="mt-4">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardContent className="pt-6">
                     {ordersLoading ? (
                       <div className="flex items-center justify-center py-8">
@@ -407,9 +407,9 @@ export default function StorePage() {
               </TabsContent>
 
               <TabsContent value="products" className="mt-4">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base font-bold text-slate-800">Available Products</CardTitle>
+                    <CardTitle className="text-base font-bold text-foreground">Available Products</CardTitle>
                     <Link to="/products">
                       <Button variant="outline" size="sm">
                         Manage Products
@@ -425,7 +425,7 @@ export default function StorePage() {
                     ) : (
                       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
                         {products.map((product: any) => (
-                          <Card key={product.id} className="overflow-hidden rounded-xl border-none shadow-md shadow-indigo-50">
+                          <Card key={product.id} className="overflow-hidden rounded-xl border-none shadow-md shadow-primary/5">
                             <div className="aspect-square bg-muted flex items-center justify-center">
                               {product.image_url ? (
                                 <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
@@ -434,9 +434,9 @@ export default function StorePage() {
                               )}
                             </div>
                             <CardContent className="p-4">
-                              <h3 className="font-medium truncate text-slate-800">{product.name}</h3>
+                              <h3 className="font-medium truncate text-foreground">{product.name}</h3>
                               <p className="text-sm text-muted-foreground">{product.category || 'General'}</p>
-                              <p className="text-lg font-bold mt-2 text-violet-600">₹{product.price}</p>
+                              <p className="text-lg font-bold mt-2 text-primary">₹{product.price}</p>
                             </CardContent>
                           </Card>
                         ))}

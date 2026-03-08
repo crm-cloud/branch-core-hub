@@ -157,9 +157,13 @@
 }
 
 @layer components {
-  /* Glass effect for cards */
+  /* Glass effect for cards — 2026 frosted-glass aesthetic */
   .glass {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+    @apply bg-card/70 backdrop-blur-xl border border-white/20 shadow-lg shadow-primary/5;
+  }
+
+  .glass-card {
+    @apply bg-card/75 backdrop-blur-xl border border-white/15 shadow-xl shadow-primary/10 rounded-2xl;
   }
 
   /* Gradient text */

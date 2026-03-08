@@ -282,11 +282,11 @@ export default function FinancePage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-800">Finance Dashboard</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Finance Dashboard</h1>
             <p className="text-muted-foreground text-sm">Track income, expenses and financial health</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setAddExpenseOpen(true)} className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-200 hover:shadow-xl">
+            <Button onClick={() => setAddExpenseOpen(true)} className="shadow-lg shadow-primary/20 hover:shadow-xl">
               <Plus className="h-4 w-4 mr-2" />
               Add Expense
             </Button>
@@ -301,9 +301,9 @@ export default function FinancePage() {
         {/* Revenue Report + Budget Card Row */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Revenue Report - Wide */}
-          <Card className="lg:col-span-2 rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="lg:col-span-2 rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">Revenue Report</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">Revenue Report</CardTitle>
               <CardDescription>Monthly earnings vs expenses</CardDescription>
             </CardHeader>
             <CardContent>
@@ -317,8 +317,8 @@ export default function FinancePage() {
                       formatter={(value: number, name: string) => [formatCurrency(Math.abs(value)), name === 'earning' ? 'Earning' : 'Expense']}
                       contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     />
-                    <Bar dataKey="earning" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} name="earning" />
-                    <Bar dataKey="expense" fill="hsl(25, 95%, 53%)" radius={[0, 0, 6, 6]} name="expense" />
+                    <Bar dataKey="earning" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} name="earning" />
+                    <Bar dataKey="expense" fill="hsl(var(--warning))" radius={[0, 0, 6, 6]} name="expense" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -326,20 +326,20 @@ export default function FinancePage() {
           </Card>
 
           {/* Budget Summary Card */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">{new Date().getFullYear()} Budget</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">{new Date().getFullYear()} Budget</CardTitle>
               <CardDescription>Financial summary</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="text-3xl font-bold text-slate-800">{formatCurrency(totalIncome)}</p>
+                <p className="text-3xl font-bold text-foreground">{formatCurrency(totalIncome)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Total Income</p>
               </div>
               <div className="h-[80px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={sparklineData}>
-                    <Line type="monotone" dataKey="value" stroke="hsl(262, 83%, 58%)" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -366,9 +366,9 @@ export default function FinancePage() {
         {/* Transactions Timeline + Income/Expense Tables */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Recent Transactions Timeline */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">Recent Transactions</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">Recent Transactions</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -380,7 +380,7 @@ export default function FinancePage() {
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-700 truncate">{tx.description}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
                         <p className="text-xs text-muted-foreground">{tx.member || tx.method}</p>
                       </div>
                       <span className={`text-sm font-bold ${tx.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
@@ -411,9 +411,9 @@ export default function FinancePage() {
               </TabsList>
 
               <TabsContent value="income">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardHeader>
-                    <CardTitle className="text-base font-bold text-slate-800">Income Transactions</CardTitle>
+                    <CardTitle className="text-base font-bold text-foreground">Income Transactions</CardTitle>
                     <CardDescription>All income including memberships, POS sales, and other payments</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -461,11 +461,11 @@ export default function FinancePage() {
               </TabsContent>
 
               <TabsContent value="expenses">
-                <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+                <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle className="text-base font-bold text-slate-800">Expense Transactions</CardTitle>
+                        <CardTitle className="text-base font-bold text-foreground">Expense Transactions</CardTitle>
                         <CardDescription>Manage expense submissions and approvals</CardDescription>
                       </div>
                       <Tabs value={expenseTab} onValueChange={setExpenseTab}>

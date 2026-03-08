@@ -99,7 +99,7 @@ export default function AnnouncementsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
                 <Radio className="h-6 w-6" />
               </div>
               Communication Hub
@@ -166,7 +166,7 @@ export default function AnnouncementsPage() {
 
         {/* Stats */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-          <Card className="bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl overflow-hidden relative">
+          <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-lg shadow-primary/20 rounded-2xl overflow-hidden relative">
             <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -translate-y-4 translate-x-4" />
             <CardContent className="pt-5 pb-4 relative z-10">
               <Megaphone className="h-4 w-4 opacity-80 mb-1.5" />
@@ -174,28 +174,28 @@ export default function AnnouncementsPage() {
               <p className="text-xs opacity-80">Announcements</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 w-fit mb-1.5"><CheckCircle className="h-4 w-4 text-emerald-600" /></div>
               <div className="text-2xl font-bold text-foreground">{sentCount}</div>
               <p className="text-xs text-muted-foreground">Messages Sent</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 w-fit mb-1.5"><MessageSquare className="h-4 w-4 text-emerald-500" /></div>
               <div className="text-2xl font-bold text-foreground">{whatsappCount}</div>
               <p className="text-xs text-muted-foreground">WhatsApp</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10 w-fit mb-1.5"><Phone className="h-4 w-4 text-sky-500" /></div>
               <div className="text-2xl font-bold text-foreground">{smsCount}</div>
               <p className="text-xs text-muted-foreground">SMS</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 w-fit mb-1.5"><Mail className="h-4 w-4 text-amber-500" /></div>
               <div className="text-2xl font-bold text-foreground">{emailCount}</div>

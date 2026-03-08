@@ -43,7 +43,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <Card className={cn('rounded-xl border-none shadow-lg shadow-indigo-100 transition-all hover:shadow-xl', className)}>
+    <Card className={cn('rounded-xl border-none shadow-lg shadow-primary/10 transition-all hover:shadow-xl', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         {Icon && (
@@ -53,7 +53,7 @@ export function StatCard({
         )}
       </CardHeader>
       <CardContent>
-        <div className={cn('text-2xl font-bold text-slate-800', variantStyles[variant] !== 'text-foreground' && variantStyles[variant])}>
+        <div className={cn('text-2xl font-bold text-foreground', variantStyles[variant] !== 'text-foreground' && variantStyles[variant])}>
           {typeof value === 'number' ? value.toLocaleString() : value}
         </div>
         {description && (

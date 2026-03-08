@@ -1,71 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Plan: PT Analytics, Dashboard Theme Fix & Global Theme Audit
+## 1. Critical Query Bug Fixes
 
-## Issue 1: Analytics Missing PT Data
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-The Analytics page has no PT-related widgets. Need to add:
-- **PT Revenue card** — total revenue from `member_pt_packages` (`price_paid`)
-- **Top Performer Trainer** — trainer with highest PT sales (revenue + client count)
-- **PT Packages Sold** — count of active packages
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-Add a new React Query fetching PT stats and render a dedicated row with a hero-style top trainer card + PT revenue/packages stat cards.
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-## Issue 2: Dashboard Hero Uses Hardcoded Slate Colors
+## 2. Database Migration
 
-`Dashboard.tsx` line 267 uses `text-slate-800` and line 277 uses `from-slate-800 to-slate-900`. These bypass the theme system entirely, so switching to Rose/Ocean/Amber changes nothing on the dashboard hero.
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-**Fix:** Replace with theme tokens:
-- `text-slate-800` → `text-foreground`
-- `from-slate-800 to-slate-900` → `from-primary to-primary/80` (matches Analytics page pattern)
-
-## Issue 3: Global Theme Audit — Hardcoded Colors Breaking Non-Emerald Themes
-
-**Root cause:** 275 instances across 13 files use hardcoded Tailwind colors (`shadow-indigo-*`, `text-slate-*`, `bg-slate-*`, `from-violet-600 to-indigo-600`) instead of CSS variable tokens. These look fine on the default Indigo theme but clash with Rose, Amber, Ocean, and Slate themes.
-
-Additionally, the `.glass` CSS class exists but is barely used. Cards should adopt a modern glass-morphism aesthetic (backdrop blur + subtle transparency) for a 2026 feel.
-
-### Files requiring hardcoded color replacement:
-
-| File | Hardcoded instances | Fix |
-|------|-------------------|-----|
-| `src/components/ui/stat-card.tsx` | `shadow-indigo-100`, `text-slate-800` | → `shadow-primary/10`, `text-foreground` |
-| `src/components/dashboard/DashboardCharts.tsx` | `shadow-indigo-500/20` (5x) | → `shadow-primary/10` |
-| `src/pages/Dashboard.tsx` | `text-slate-800`, `from-slate-800 to-slate-900` | → `text-foreground`, `from-primary to-primary/80` |
-| `src/pages/Analytics.tsx` | Already uses `shadow-primary/5` — OK ✓ | Minor: hero card OK |
-| `src/pages/Store.tsx` | `text-slate-800` (3x), `shadow-indigo-100` (8x), `text-slate-700` | → theme tokens |
-| `src/pages/Leads.tsx` | `from-violet-600 to-indigo-600`, `shadow-indigo-500/20`, `shadow-slate-200/50` | → `from-primary to-primary/80`, `shadow-primary/10` |
-| `src/pages/Announcements.tsx` | `from-violet-600 to-indigo-600`, `shadow-indigo-500/20` | → theme tokens |
-| `src/pages/AllBookings.tsx` | `from-violet-600 to-indigo-600` | → `from-primary to-primary/80` |
-| `src/pages/DiscountCoupons.tsx` | `shadow-indigo-100/50` (3x) | → `shadow-primary/5` |
-| `src/pages/Members.tsx` | Likely hardcoded | → audit + fix |
-| `src/pages/Finance.tsx` | Likely hardcoded | → audit + fix |
-| `src/pages/HRM.tsx` | Likely hardcoded | → audit + fix |
-
-### Glass-morphism upgrade
-
-Update the `.glass` class and card base to support a modern frosted-glass effect:
-```css
-.glass {
-  @apply bg-card/70 backdrop-blur-xl border border-white/20 shadow-lg;
-}
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-Update `Card` component default to include subtle glass when used with a new `glass` variant, and ensure all major dashboard/analytics cards use `shadow-primary/10` for theme-aware depth.
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-## Files to Change
+## 3. AI Fitness Page Redesign
+
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
+
+Redesign with 3 clear tabs and modern Vuexy styling:
+
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
+
+## 4. Public Website CMS/DB Sync
+
+**File:** `src/pages/PublicWebsite.tsx`
+
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/Analytics.tsx` | Add PT revenue query, top performer widget, PT stats cards |
-| `src/pages/Dashboard.tsx` | Replace hardcoded slate colors with theme tokens |
-| `src/components/ui/stat-card.tsx` | Replace `shadow-indigo-100` → `shadow-primary/10`, `text-slate-800` → `text-foreground` |
-| `src/components/dashboard/DashboardCharts.tsx` | Replace all `shadow-indigo-500/20` → `shadow-primary/10` |
-| `src/pages/Store.tsx` | Replace all `text-slate-*`, `shadow-indigo-*` with theme tokens |
-| `src/pages/Leads.tsx` | Replace hardcoded gradient + shadow colors |
-| `src/pages/Announcements.tsx` | Replace hardcoded gradient + shadow colors |
-| `src/pages/AllBookings.tsx` | Replace hardcoded gradient |
-| `src/pages/DiscountCoupons.tsx` | Replace `shadow-indigo-100/50` |
-| `src/index.css` | Enhance `.glass` class for modern frosted-glass look |
-| Remaining pages with hardcoded colors | Audit and fix (Members, Finance, HRM, etc.) |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
+## Execution Order
+
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

@@ -130,7 +130,7 @@ export default function LeadsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
                 <Target className="h-6 w-6" />
               </div>
               Lead Management
@@ -166,7 +166,7 @@ export default function LeadsPage() {
             { label: 'Converted', value: stats?.converted || 0, icon: TrendingUp },
             { label: 'Lost', value: stats?.lost || 0, icon: X },
           ].map((stat) => (
-            <Card key={stat.label} className={stat.gradient ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl' : 'rounded-2xl border-border/50 shadow-lg shadow-slate-200/50'}>
+            <Card key={stat.label} className={stat.gradient ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-lg shadow-primary/20 rounded-2xl' : 'rounded-2xl border-border/50 shadow-lg shadow-primary/5'}>
               <CardContent className="pt-5 pb-4">
                 <stat.icon className={`h-4 w-4 mb-2 ${stat.gradient ? 'opacity-80' : 'text-muted-foreground'}`} />
                 <div className={`text-2xl font-bold ${stat.gradient ? '' : 'text-foreground'}`}>{stat.value}</div>
@@ -177,7 +177,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Filters */}
-        <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
+        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
           <CardContent className="pt-5 pb-4">
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">

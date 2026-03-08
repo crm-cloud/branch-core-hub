@@ -264,7 +264,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-800">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Welcome back, {profile?.full_name?.split(' ')[0] || 'Admin'}!
             </h1>
             <p className="text-muted-foreground">
@@ -274,27 +274,27 @@ export default function DashboardPage() {
         </div>
 
         {/* Hero Gradient Card */}
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl shadow-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl shadow-lg shadow-primary/20 p-6 text-primary-foreground">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
-              <p className="text-white/70 text-sm mt-1">Real-time overview of your business</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">Real-time overview of your business</p>
             </div>
             <div className="grid grid-cols-3 gap-8">
               <div className="text-center">
                 <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
-                <p className="text-white/70 text-xs mt-1">Total Members</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Members</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
-                <p className="text-white/70 text-xs mt-1">Revenue This Month</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Revenue This Month</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">{stats?.expiringMemberships || 0}</p>
                 {(stats?.expiringMemberships || 0) > 0 && (
-                  <Badge className="bg-pink-500 text-white text-xs mt-1 border-0">Action Needed</Badge>
+                  <Badge className="bg-destructive text-destructive-foreground text-xs mt-1 border-0">Action Needed</Badge>
                 )}
-                <p className="text-white/70 text-xs mt-1">Expiring Soon</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Expiring Soon</p>
               </div>
             </div>
           </div>
