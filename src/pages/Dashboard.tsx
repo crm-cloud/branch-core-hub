@@ -278,7 +278,7 @@ export default function DashboardPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Gym Health</h2>
-              <p className="text-white/70 text-sm mt-1">Real-time overview of your business</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">Real-time overview of your business</p>
             </div>
             <div className="grid grid-cols-3 gap-8">
               <div className="text-center">
