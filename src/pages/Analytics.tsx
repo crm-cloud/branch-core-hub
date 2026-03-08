@@ -177,6 +177,57 @@ export default function AnalyticsPage() {
     },
   });
 
+  // PT Analytics
+  const { data: ptStats } = useQuery({
+    queryKey: ['analytics-pt-stats', branchFilter],
+    queryFn: async () => {
+      let q = supabase.from('member_pt_packages').select('id, price_paid, trainer_id, status, trainers(user_id)');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
+      if (!data || data.length === 0) return { totalRevenue: 0, activePackages: 0, totalSold: 0, topTrainer: null, trainerStats: [] };
+
+      const totalRevenue = data.reduce((sum, p) => sum + (p.price_paid || 0), 0);
+      const activePackages = data.filter((p: any) => p.status === 'active').length;
+      const totalSold = data.length;
+
+      // Group by trainer
+      const trainerMap: Record<string, { revenue: number; clients: number; userId: string | null }> = {};
+      data.forEach((p: any) => {
+        const tid = p.trainer_id || 'unknown';
+        if (!trainerMap[tid]) trainerMap[tid] = { revenue: 0, clients: 0, userId: (p.trainers as any)?.user_id || null };
+        trainerMap[tid].revenue += p.price_paid || 0;
+        trainerMap[tid].clients += 1;
+      });
+
+      const trainerStats = Object.entries(trainerMap)
+        .map(([id, s]) => ({ trainerId: id, ...s }))
+        .sort((a, b) => b.revenue - a.revenue);
+
+      // Resolve top trainer name
+      let topTrainer: { name: string; revenue: number; clients: number } | null = null;
+      if (trainerStats.length > 0 && trainerStats[0].userId) {
+        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', trainerStats[0].userId).single();
+        topTrainer = { name: profile?.full_name || 'Unknown', revenue: trainerStats[0].revenue, clients: trainerStats[0].clients };
+      }
+
+      // Resolve all trainer names for the chart
+      const userIds = trainerStats.map(t => t.userId).filter(Boolean) as string[];
+      let profilesMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+        profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || 'Unknown'; return acc; }, {} as Record<string, string>);
+      }
+
+      const resolvedTrainerStats = trainerStats.slice(0, 5).map(t => ({
+        name: t.userId ? (profilesMap[t.userId] || 'Unknown') : 'Unknown',
+        revenue: t.revenue,
+        clients: t.clients,
+      }));
+
+      return { totalRevenue, activePackages, totalSold, topTrainer, trainerStats: resolvedTrainerStats };
+    },
+  });
+
   const { data: storeOrders = [] } = useQuery({
     queryKey: ['analytics-store-orders', branchFilter],
     queryFn: async () => {
