@@ -625,26 +625,47 @@ export function MemberProfileDrawer({
               <CardContent className="pt-4 text-center">
               {activeMembership ? (
                   activeMembership.status === 'frozen' ? (
-                    <div className="text-lg font-bold text-info">FROZEN</div>
+                    <>
+                      <div className="text-lg font-bold text-warning">FROZEN</div>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">
+                        {activeMembership.membership_plans?.name || 'Plan'}
+                      </p>
+                    </>
                   ) : daysLeft > 0 ? (
-                    <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
+                    <>
+                      <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {activeMembership.membership_plans?.name || 'Days Left'}
+                      </p>
+                    </>
                   ) : (
-                    <div className="text-lg font-bold text-destructive">EXPIRED</div>
+                    <>
+                      <div className="text-lg font-bold text-destructive">EXPIRED</div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {activeMembership.membership_plans?.name || 'Plan Status'}
+                      </p>
+                    </>
                   )
                 ) : (
-                  <div className="text-sm font-bold text-muted-foreground">No Plan</div>
+                  <>
+                    <div className="text-sm font-bold text-muted-foreground">No Plan</div>
+                    <p className="text-xs text-muted-foreground">Days Left</p>
+                  </>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  {activeMembership && daysLeft <= 0 ? 'Plan Status' : 'Days Left'}
-                </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-4 text-center">
                 <div className="text-2xl font-bold text-primary">
-                  {activePTPackage?.sessions_remaining || 0}
+                  {activePTPackage ? (
+                    activePTPackage.sessions_total > 0
+                      ? activePTPackage.sessions_remaining
+                      : `${Math.max(0, Math.ceil((new Date(activePTPackage.expiry_date).getTime() - Date.now()) / 86400000))}d`
+                  ) : 0}
                 </div>
-                <p className="text-xs text-muted-foreground">PT Sessions</p>
+                <p className="text-xs text-muted-foreground">
+                  {activePTPackage?.sessions_total > 0 ? 'PT Sessions' : activePTPackage ? 'PT Duration' : 'PT Sessions'}
+                </p>
               </CardContent>
             </Card>
             <Card>

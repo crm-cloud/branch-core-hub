@@ -7,16 +7,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { FileText, Printer, Download, IndianRupee, CreditCard } from 'lucide-react';
+import { FileText, Printer, Download, IndianRupee, CreditCard, Link2 } from 'lucide-react';
 
 interface InvoiceViewDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invoiceId: string | null;
   onRecordPayment: () => void;
+  onSendPaymentLink?: () => void;
 }
 
-export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment }: InvoiceViewDrawerProps) {
+export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment, onSendPaymentLink }: InvoiceViewDrawerProps) {
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: async () => {
@@ -245,10 +246,16 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
 
           {/* Actions */}
           {dueAmount > 0 && (
-            <Button className="w-full" onClick={() => { onOpenChange(false); onRecordPayment(); }}>
-              <CreditCard className="h-4 w-4 mr-2" />
-              Record Payment (₹{dueAmount.toLocaleString()} due)
-            </Button>
+            <div className="space-y-2">
+              <Button className="w-full" onClick={() => { onOpenChange(false); onRecordPayment(); }}>
+                <CreditCard className="h-4 w-4 mr-2" />
+                Record Payment (₹{dueAmount.toLocaleString()} due)
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => { onOpenChange(false); onSendPaymentLink?.(); }}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Send Payment Link
+              </Button>
+            </div>
           )}
         </div>
       </SheetContent>

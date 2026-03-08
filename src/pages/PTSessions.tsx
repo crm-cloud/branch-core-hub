@@ -347,7 +347,7 @@ export default function PTSessionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Member</TableHead><TableHead>Package</TableHead><TableHead>Trainer</TableHead><TableHead>Sessions</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
+                    <TableHead>Member</TableHead><TableHead>Package</TableHead><TableHead>Trainer</TableHead><TableHead>Progress</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -356,7 +356,12 @@ export default function PTSessionsPage() {
                       <TableCell className="font-medium">{pkg.member_name}</TableCell>
                       <TableCell>{pkg.package_name}</TableCell>
                       <TableCell>{pkg.trainer_name || "-"}</TableCell>
-                      <TableCell>{pkg.sessions_remaining}/{pkg.sessions_total}</TableCell>
+                      <TableCell>
+                        {pkg.sessions_total > 0 
+                          ? `${pkg.sessions_remaining}/${pkg.sessions_total} sessions`
+                          : `${Math.max(0, Math.ceil((new Date(pkg.expiry_date).getTime() - Date.now()) / 86400000))}d left`
+                        }
+                      </TableCell>
                       <TableCell>{format(new Date(pkg.expiry_date), "PP")}</TableCell>
                       <TableCell><Badge variant={pkg.status === "active" ? "default" : "secondary"}>{pkg.status}</Badge></TableCell>
                     </TableRow>

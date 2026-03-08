@@ -9,6 +9,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
 import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
+import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
+import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDrawer';
 import { 
   FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send
 } from 'lucide-react';
@@ -22,6 +24,8 @@ import {
 export default function InvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<any>(null);
+  const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
+  const [paymentLinkInvoice, setPaymentLinkInvoice] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const { branchFilter, effectiveBranchId } = useBranchContext();
@@ -285,9 +289,20 @@ export default function InvoicesPage() {
                                   <Download className="mr-2 h-4 w-4" />
                                   Download
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                  const memberProfile = (invoice.members as any)?.profiles;
+                                  setPaymentLinkInvoice({
+                                    id: invoice.id,
+                                    invoice_number: invoice.invoice_number,
+                                    total_amount: invoice.total_amount,
+                                    amount_paid: invoice.amount_paid || 0,
+                                    member_name: memberProfile?.full_name,
+                                    member_phone: memberProfile?.phone,
+                                    member_email: memberProfile?.email,
+                                  });
+                                }}>
                                   <Send className="mr-2 h-4 w-4" />
-                                  Send
+                                  Send Payment Link
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -322,9 +337,25 @@ export default function InvoicesPage() {
           open={!!viewInvoice}
           onOpenChange={(open) => !open && setViewInvoice(null)}
           invoiceId={viewInvoice.id}
-          onRecordPayment={() => {}}
+          onRecordPayment={() => {
+            setPaymentInvoice(viewInvoice);
+            setViewInvoice(null);
+          }}
         />
       )}
+
+      <RecordPaymentDrawer
+        open={!!paymentInvoice}
+        onOpenChange={(open) => !open && setPaymentInvoice(null)}
+        invoice={paymentInvoice}
+        branchId={paymentInvoice?.branch_id || effectiveBranchId || ''}
+      />
+
+      <SendPaymentLinkDrawer
+        open={!!paymentLinkInvoice}
+        onOpenChange={(open) => !open && setPaymentLinkInvoice(null)}
+        invoice={paymentLinkInvoice}
+      />
     </AppLayout>
   );
 }
