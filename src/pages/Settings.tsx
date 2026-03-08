@@ -11,7 +11,7 @@ import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
 import { TemplateManager } from '@/components/settings/TemplateManager';
-import { ExpenseCategoryManager } from '@/components/settings/ExpenseCategoryManager';
+import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 
