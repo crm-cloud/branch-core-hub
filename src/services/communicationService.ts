@@ -85,11 +85,26 @@ export const communicationService = {
   },
 
   // WhatsApp integration (opens WhatsApp with pre-filled message)
-  sendWhatsApp(phone: string, message: string) {
+  async sendWhatsApp(phone: string, message: string, options?: { branchId?: string; memberId?: string }) {
     const formattedPhone = phone.replace(/\D/g, '');
     const encodedMessage = encodeURIComponent(message);
     const url = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
     window.open(url, '_blank');
+    // Log to communication_logs
+    if (options?.branchId) {
+      try {
+        await this.logCommunication({
+          branch_id: options.branchId,
+          type: 'whatsapp',
+          recipient: phone,
+          content: message.slice(0, 500),
+          status: 'sent',
+          member_id: options.memberId,
+        });
+      } catch (e) {
+        console.error('Failed to log WhatsApp communication:', e);
+      }
+    }
     return url;
   },
 
