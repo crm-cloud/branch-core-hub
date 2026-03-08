@@ -133,7 +133,7 @@ export default function DiscountCouponsPage() {
         </div>
 
         {/* Filters */}
-        <Card className="rounded-xl border-none shadow-lg shadow-indigo-100/50">
+        <Card className="rounded-xl border-none shadow-lg shadow-primary/5">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
