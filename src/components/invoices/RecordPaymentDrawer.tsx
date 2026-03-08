@@ -37,6 +37,20 @@ export function RecordPaymentDrawer({
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [transactionId, setTransactionId] = useState('');
   const [notes, setNotes] = useState('');
+  const [incomeCategoryId, setIncomeCategoryId] = useState<string>('');
+
+  const { data: incomeCategories = [] } = useQuery({
+    queryKey: ['income-categories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('income_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const recordPayment = useMutation({
     mutationFn: async () => {
