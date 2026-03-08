@@ -32,11 +32,10 @@ export function useMemberPTPackages(memberId: string) {
   });
 }
 
-export function useActiveMemberPackages(branchId: string) {
+export function useActiveMemberPackages(branchId?: string) {
   return useQuery({
-    queryKey: ["active-member-packages", branchId],
+    queryKey: ["active-member-packages", branchId ?? "all"],
     queryFn: () => fetchActiveMemberPackages(branchId),
-    enabled: !!branchId,
   });
 }
 

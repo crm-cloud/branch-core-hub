@@ -128,11 +128,11 @@ export async function fetchMemberPTPackages(
   }));
 }
 
-// Fetch active PT packages for a branch
+// Fetch active PT packages for a branch (optional branchId = all branches)
 export async function fetchActiveMemberPackages(
-  branchId: string
+  branchId?: string
 ): Promise<MemberPTPackageWithDetails[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("member_pt_packages")
     .select(`
       *,
@@ -140,9 +140,14 @@ export async function fetchActiveMemberPackages(
       trainer:trainers(user_id),
       member:members(member_code, user_id)
     `)
-    .eq("branch_id", branchId)
     .eq("status", "active")
     .order("created_at", { ascending: false });
+
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 

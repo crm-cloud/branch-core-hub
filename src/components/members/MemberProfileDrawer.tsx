@@ -985,20 +985,30 @@ export function MemberProfileDrawer({
             />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
-              {payments.length > 0 ? (
-                <div className="space-y-2">
-                  {payments.map((payment: any) => (
-                    <Card key={payment.id}>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between">
+              {/* Pending / Partial Invoices */}
+              <PendingInvoicesSection memberId={member.id} />
+
+              {/* Payment History */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    Payment History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {payments.length > 0 ? (
+                    <div className="space-y-2">
+                      {payments.map((payment: any) => (
+                        <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                           <div>
-                            <p className="font-medium">₹{payment.amount}</p>
+                            <p className="font-medium text-sm">₹{payment.amount}</p>
                             <p className="text-xs text-muted-foreground">
                               {payment.invoices?.invoice_number || 'No invoice'}
                             </p>
                           </div>
                           <div className="text-right">
-                            <Badge variant="outline" className="capitalize">
+                            <Badge variant="outline" className="capitalize text-xs">
                               {payment.payment_method?.replace('_', ' ')}
                             </Badge>
                             <p className="text-xs text-muted-foreground mt-1">
@@ -1011,17 +1021,13 @@ export function MemberProfileDrawer({
                             )}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="pt-4 text-center text-muted-foreground">
-                    No payment history
-                  </CardContent>
-                </Card>
-              )}
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No payment history</p>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="measurements" className="space-y-4 mt-4">

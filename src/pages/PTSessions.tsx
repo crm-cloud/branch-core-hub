@@ -46,9 +46,10 @@ export default function PTSessionsPage() {
   });
 
   const branchId = effectiveBranchId || "";
-  const queryBranchId = branchFilter || branchId;
+  // branchFilter is undefined when "All Branches" is selected — pass undefined to fetch all
+  const queryBranchId = branchFilter || undefined;
   const { data: packages, isLoading: packagesLoading } = usePTPackages(queryBranchId);
-  const { data: trainers } = useTrainers(queryBranchId);
+  const { data: trainers } = useTrainers(queryBranchId || branchId);
   const { data: activePackages } = useActiveMemberPackages(queryBranchId);
   const scheduleSession = useSchedulePTSession();
   const completeSession = useCompletePTSession();
