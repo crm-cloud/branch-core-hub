@@ -332,7 +332,7 @@ export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: s
     .gte('check_in', `${startDate}T00:00:00`)
     .lte('check_in', `${endDate}T23:59:59`);
 
-  const workingDays = 26;
+  const workingDays = getWorkingDaysInMonth(month);
   const daysPresent = attendance?.length || 0;
   const baseSalary = staff.salary || 0;
   const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
