@@ -24,6 +24,8 @@ import {
 export default function InvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<any>(null);
+  const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
+  const [paymentLinkInvoice, setPaymentLinkInvoice] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const { branchFilter, effectiveBranchId } = useBranchContext();
