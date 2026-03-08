@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
 import { queueStaffSync } from '@/services/biometricService';
 import { DEPARTMENTS, POSITIONS, SALARY_TYPES } from '@/constants/employeeConstants';
+import { StaffBiometricsTab } from '@/components/common/StaffBiometricsTab';
 
 interface EditEmployeeDrawerProps {
   open: boolean;
