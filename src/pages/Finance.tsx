@@ -326,7 +326,7 @@ export default function FinancePage() {
           </Card>
 
           {/* Budget Summary Card */}
-          <Card className="rounded-2xl border-none shadow-lg shadow-indigo-100">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
               <CardTitle className="text-base font-bold text-slate-800">{new Date().getFullYear()} Budget</CardTitle>
               <CardDescription>Financial summary</CardDescription>
