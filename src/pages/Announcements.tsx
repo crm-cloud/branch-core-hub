@@ -9,7 +9,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Megaphone, MessageSquare, Mail, Phone, Send, Trash2, FileText, Copy, Radio, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { communicationService } from '@/services/communicationService';
-import { messageTemplates, getTemplatesByType } from '@/data/messageTemplates';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { AddAnnouncementDrawer } from '@/components/announcements/AddAnnouncementDrawer';
