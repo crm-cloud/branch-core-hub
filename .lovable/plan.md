@@ -1,80 +1,90 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Fix Plan: PT Invoice Gap, Frozen Plan Display, Duration PT UI, Payment Links
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## 1. CRITICAL: PT Package Purchase Creates No Invoice or Payment
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+**Root Cause:** The `purchase_pt_package` RPC creates `member_pt_packages` and `trainer_commissions` but never creates an `invoice` or `payment` record. The UI toast says "Invoice created automatically" — that's a lie.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+**Fix — Update the DB function** to also:
+- Insert into `invoices` (branch_id, member_id, total_amount, amount_paid = price_paid, status = 'paid', subtotal, due_date)
+- Insert into `invoice_items` (description = 'PT Package - [name]', reference_type = 'pt_package', reference_id = member_package_id)
+- Insert into `payments` (invoice_id, member_id, branch_id, amount = price_paid, payment_method = 'cash', status = 'completed')
 
-## 2. Database Migration
+This mirrors how membership purchases work. The RPC already has all the data it needs.
 
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+## 2. Frozen Membership — Show Plan Name + Days
 
-```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
-  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+**Current:** `MemberProfileDrawer.tsx` line 628 shows "FROZEN" text but doesn't display the plan name. The "Days Left" label doesn't change.
+
+**Fix in MemberProfileDrawer.tsx:**
+- Line 628: Change from just "FROZEN" to "FROZEN" with plan name subtitle
+- Show frozen days remaining (query `membership_freeze_history` for active freeze, calculate end_date - today)
+- Add plan name display: `activeMembership?.membership_plans?.name`
+
+## 3. Duration-Based PT Shows "0/0" Sessions
+
+**Current:** `PTSessions.tsx` line 359 shows `sessions_remaining/sessions_total` for all packages. Duration packages have 0/0 which is confusing.
+
+**Fix in PTSessions.tsx line 359:**
+```
+// If duration-based (sessions_total === 0), show days remaining instead
+{pkg.sessions_total > 0 
+  ? `${pkg.sessions_remaining}/${pkg.sessions_total}` 
+  : `${differenceInDays(new Date(pkg.expiry_date), new Date())}d left`}
 ```
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
+Also fix the column header from "Sessions" to "Progress" and apply same logic in `PurchasePTDrawer.tsx` package selection badge.
 
-## 3. AI Fitness Page Redesign
+## 4. Ad Banner Tab — Already Exists, Improve Visibility
 
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
+The banner tab IS present at `Store.tsx` line 312. The `AdBannerManager` component works. The issue is likely that user expected it elsewhere or the tab isn't prominent enough.
 
-Redesign with 3 clear tabs and modern Vuexy styling:
+**Fix:** No structural change needed. The banner management UI already works with upload, toggle, delete. Just ensure the `BannerManager` renders even when `selectedBranch === 'all'` by picking the first branch or showing a branch selector prompt.
 
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+## 5. Invoice Payment Link — Send Razorpay Link via WhatsApp/Email
 
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
+**Current state:** 
+- `InvoiceShareDrawer.tsx` sends text-only messages via WhatsApp/Email/SMS — no payment link
+- `Invoices.tsx` line 288 "Send" dropdown item does nothing (no onClick handler)
+- Razorpay integration exists (`create-payment-order` edge function)
 
-## 4. Public Website CMS/DB Sync
+**Fix:**
+- Add a **"Send Payment Link"** button to `InvoiceViewDrawer.tsx` (next to "Record Payment")
+- Create a new `SendPaymentLinkDrawer.tsx` that:
+  - Shows invoice summary (total, paid, due)
+  - Lets staff choose: Full Payment / Partial Amount / Due Amount
+  - Generates a payment link URL (using the existing payment page route with invoice_id parameter)
+  - Pre-fills WhatsApp message template with the payment link
+  - Opens WhatsApp/Email with the link embedded
+- Wire the "Send" action in `Invoices.tsx` to open this drawer
+- The payment link points to a member-facing payment page that calls the `create-payment-order` edge function
 
-**File:** `src/pages/PublicWebsite.tsx`
+## DB Migration
 
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+```sql
+-- Update purchase_pt_package to create invoice + payment
+CREATE OR REPLACE FUNCTION public.purchase_pt_package(...)
+  -- Add invoice creation after member_pt_packages insert
+  -- Add invoice_items for the PT package
+  -- Add payment record
+```
 
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
-
-## 5. Files to Change
+## Files to Change
 
 | File | Change |
 |------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+| **DB Migration** | Update `purchase_pt_package` RPC to create invoice + invoice_items + payment |
+| `src/components/members/MemberProfileDrawer.tsx` | Show plan name when frozen; show freeze days remaining |
+| `src/pages/PTSessions.tsx` | Show days remaining for duration-based packages instead of "0/0" |
+| `src/components/members/PurchasePTDrawer.tsx` | Show duration info in package selection badge |
+| **NEW** `src/components/invoices/SendPaymentLinkDrawer.tsx` | Payment link generation + WhatsApp/Email sharing |
+| `src/components/invoices/InvoiceViewDrawer.tsx` | Add "Send Payment Link" button |
+| `src/pages/Invoices.tsx` | Wire "Send" dropdown action + add RecordPaymentDrawer + SendPaymentLinkDrawer |
 
 ## Execution Order
+1. DB migration — fix `purchase_pt_package` to create invoices/payments
+2. Frozen membership plan name + days display
+3. Duration-based PT "days left" instead of "0/0 sessions"
+4. Payment link drawer + invoice page wiring
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
