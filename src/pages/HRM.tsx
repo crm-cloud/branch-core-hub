@@ -572,7 +572,7 @@ export default function HRMPage() {
                     <TableRow>
                       <TableHead>Staff Member</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Base Pay</TableHead>
+                      <TableHead>Days</TableHead>
                       <TableHead>PT Commission</TableHead>
                       <TableHead>Gross</TableHead>
                       <TableHead>PF (12%)</TableHead>
