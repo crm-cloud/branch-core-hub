@@ -291,7 +291,7 @@ export function ExpiringMembersWidget({ data }: ExpiringMembersWidgetProps) {
   const navigate = useNavigate();
 
   return (
-    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0 border-l-4 border-l-destructive">
+    <Card className="shadow-lg shadow-primary/10 rounded-2xl border-0 border-l-4 border-l-destructive">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-destructive" />
