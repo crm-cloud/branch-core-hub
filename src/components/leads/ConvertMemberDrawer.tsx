@@ -19,7 +19,7 @@ interface ConvertMemberDrawerProps {
 
 export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberDrawerProps) {
   const queryClient = useQueryClient();
-  const { branches } = useBranches();
+  const { data: branches = [] } = useBranches();
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
 
   // Pre-select the lead's branch if available
