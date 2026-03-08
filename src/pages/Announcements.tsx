@@ -166,7 +166,7 @@ export default function AnnouncementsPage() {
 
         {/* Stats */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-          <Card className="bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl overflow-hidden relative">
+          <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-lg shadow-primary/20 rounded-2xl overflow-hidden relative">
             <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -translate-y-4 translate-x-4" />
             <CardContent className="pt-5 pb-4 relative z-10">
               <Megaphone className="h-4 w-4 opacity-80 mb-1.5" />
