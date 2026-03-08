@@ -233,6 +233,18 @@ export interface PayrollStaffItem {
   is_active: boolean;
   avatar_url: string | null;
   employeeRecord?: any; // raw employee record for contract/edit actions
+  trainerRecord?: any; // raw trainer record for contract/edit actions
+}
+
+export function getWorkingDaysInMonth(month: string): number {
+  const [year, m] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, m, 0).getDate();
+  let workingDays = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const day = new Date(year, m - 1, d).getDay();
+    if (day !== 0) workingDays++; // Exclude Sundays only (Mon-Sat = working)
+  }
+  return workingDays;
 }
 
 export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollStaffItem[]> {
