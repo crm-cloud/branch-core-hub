@@ -347,7 +347,7 @@ export default function InvoicesPage() {
       <RecordPaymentDrawer
         open={!!paymentInvoice}
         onOpenChange={(open) => !open && setPaymentInvoice(null)}
-        invoiceId={paymentInvoice?.id}
+        invoice={paymentInvoice}
         branchId={paymentInvoice?.branch_id || effectiveBranchId || ''}
       />
 
