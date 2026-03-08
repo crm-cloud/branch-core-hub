@@ -413,7 +413,7 @@ export default function FinancePage() {
               <TabsContent value="income">
                 <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardHeader>
-                    <CardTitle className="text-base font-bold text-slate-800">Income Transactions</CardTitle>
+                    <CardTitle className="text-base font-bold text-foreground">Income Transactions</CardTitle>
                     <CardDescription>All income including memberships, POS sales, and other payments</CardDescription>
                   </CardHeader>
                   <CardContent>
