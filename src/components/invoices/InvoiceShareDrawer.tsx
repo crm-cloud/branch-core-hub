@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone } from 'lucide-react';
 import { format } from 'date-fns';
+import { communicationService } from '@/services/communicationService';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
