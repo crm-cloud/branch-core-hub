@@ -283,7 +283,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-3 gap-8">
               <div className="text-center">
                 <p className="text-3xl font-bold">{stats?.totalMembers || 0}</p>
-                <p className="text-white/70 text-xs mt-1">Total Members</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Total Members</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
