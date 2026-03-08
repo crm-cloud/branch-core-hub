@@ -9,6 +9,7 @@ import { useTrainers } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Dumbbell, Calendar, IndianRupee, FileText, CheckCircle, Percent } from 'lucide-react';
+import { createNotification } from '@/services/notificationService';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 
