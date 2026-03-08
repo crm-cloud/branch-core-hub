@@ -118,6 +118,7 @@ export function RecordPaymentDrawer({
     setPaymentMethod('cash');
     setTransactionId('');
     setNotes('');
+    setIncomeCategoryId('');
   };
 
   // Reset amount when invoice changes

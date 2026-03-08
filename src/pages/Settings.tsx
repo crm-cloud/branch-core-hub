@@ -38,7 +38,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   referrals: <ReferralSettings />,
   templates: <TemplateManager />,
   'plan-templates': <PlanBenefitTemplates />,
-  expenses: <ExpenseCategoryManager />,
+  'finance-categories': <FinanceCategoryManager />,
   integrations: <IntegrationSettings />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
