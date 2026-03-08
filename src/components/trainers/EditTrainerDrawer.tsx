@@ -305,6 +305,16 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
             />
           </div>
 
+          {/* Hardware & Biometrics */}
+          <StaffBiometricsTab
+            staffId={trainer.id}
+            staffType="trainer"
+            staffName={trainer.profile_name || 'Trainer'}
+            branchId={trainer.branch_id}
+            biometricPhotoUrl={trainer.biometric_photo_url}
+            biometricEnrolled={trainer.biometric_enrolled}
+          />
+
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
