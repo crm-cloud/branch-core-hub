@@ -392,7 +392,7 @@ export async function calculatePayroll(employeeId: string, month: string) {
 
   const attendance = await fetchEmployeeAttendance(employeeId, startDate, endDate);
   
-  const workingDays = 26;
+  const workingDays = getWorkingDaysInMonth(month);
   const daysPresent = attendance.length;
   const baseSalary = employee.salary || 0;
   const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
