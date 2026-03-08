@@ -64,7 +64,7 @@ interface AttendanceChartProps {
 
 export function AttendanceChart({ data }: AttendanceChartProps) {
   return (
-    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0">
+    <Card className="shadow-lg shadow-primary/10 rounded-2xl border-0">
       <CardHeader>
         <CardTitle className="text-lg">Weekly Attendance</CardTitle>
       </CardHeader>
