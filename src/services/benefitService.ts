@@ -207,7 +207,7 @@ export async function fetchBenefitUsageHistory(
     .from('benefit_usage')
     .select(`
       *,
-      profiles:recorded_by(full_name)
+      profiles:benefit_usage_recorded_by_profiles_fkey(full_name)
     `)
     .eq('membership_id', membershipId)
     .order('usage_date', { ascending: false })

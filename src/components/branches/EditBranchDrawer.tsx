@@ -41,7 +41,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     queryFn: async () => {
       const { data, error } = await supabase
         .from('branch_managers')
-        .select('user_id, profiles:user_id (full_name)')
+        .select('user_id, profiles:branch_managers_user_id_profiles_fkey(full_name)')
         .eq('branch_id', branch.id)
         .eq('is_primary', true)
         .maybeSingle();

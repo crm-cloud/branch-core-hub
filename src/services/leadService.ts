@@ -112,53 +112,35 @@ export const leadService = {
     // Fetch the lead first
     const lead = await this.fetchLeadById(leadId);
     if (!lead) throw new Error('Lead not found');
-    
-    // Generate member code
-    const memberCode = `MEM${Date.now().toString(36).toUpperCase()}`;
-    
-    // First, create a profile for the lead so the member has a name
-    // Email is required in profiles, so we generate one if missing
-    const profileEmail = lead.email || `lead_${leadId}@placeholder.local`;
-    
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        full_name: lead.full_name || 'Unknown',
-        phone: lead.phone || null,
-        email: profileEmail,
-      } as any)
-      .select()
-      .single();
 
-    if (profileError) throw profileError;
-    
-    // Create member from lead with user_id linking to profile
-    const { data: member, error: memberError } = await supabase
-      .from('members')
-      .insert({
-        branch_id: branchId,
-        member_code: memberCode,
-        user_id: profile.id, // Link to the profile so member has a name!
-        lead_id: leadId,
-        status: 'active',
+    // Generate a placeholder email if lead has none
+    const email = lead.email || `lead-${leadId.slice(0, 8)}@placeholder.local`;
+
+    // Use the create-member-user edge function which properly creates auth user + profile + member
+    const { data, error } = await supabase.functions.invoke('create-member-user', {
+      body: {
+        email,
+        fullName: lead.full_name || 'Unknown',
+        phone: lead.phone || null,
+        branchId,
         source: lead.source || 'lead_conversion',
-      })
-      .select()
-      .single();
-    
-    if (memberError) throw memberError;
-    
+      },
+    });
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
     // Update lead status to converted
     await supabase
       .from('leads')
       .update({
         status: 'converted',
         converted_at: new Date().toISOString(),
-        converted_member_id: member.id,
+        converted_member_id: data.memberId,
       })
       .eq('id', leadId);
-    
-    return member;
+
+    return data;
   },
 
   async getLeadStats(branchId?: string) {

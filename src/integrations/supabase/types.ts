@@ -712,6 +712,13 @@ export type Database = {
             referencedRelation: "memberships"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "benefit_usage_recorded_by_profiles_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       biometric_sync_queue: {
@@ -812,6 +819,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_managers_user_id_profiles_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2433,6 +2447,7 @@ export type Database = {
           due_date: string | null
           id: string
           invoice_number: string | null
+          invoice_type: string | null
           member_id: string | null
           next_reminder_at: string | null
           notes: string | null
@@ -2458,6 +2473,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           invoice_number?: string | null
+          invoice_type?: string | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
@@ -2483,6 +2499,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           invoice_number?: string | null
+          invoice_type?: string | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
