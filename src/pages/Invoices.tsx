@@ -289,9 +289,20 @@ export default function InvoicesPage() {
                                   <Download className="mr-2 h-4 w-4" />
                                   Download
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                  const memberProfile = (invoice.members as any)?.profiles;
+                                  setPaymentLinkInvoice({
+                                    id: invoice.id,
+                                    invoice_number: invoice.invoice_number,
+                                    total_amount: invoice.total_amount,
+                                    amount_paid: invoice.amount_paid || 0,
+                                    member_name: memberProfile?.full_name,
+                                    member_phone: memberProfile?.phone,
+                                    member_email: memberProfile?.email,
+                                  });
+                                }}>
                                   <Send className="mr-2 h-4 w-4" />
-                                  Send
+                                  Send Payment Link
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
