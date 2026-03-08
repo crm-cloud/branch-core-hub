@@ -368,7 +368,7 @@ export default function FinancePage() {
           {/* Recent Transactions Timeline */}
           <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-800">Recent Transactions</CardTitle>
+              <CardTitle className="text-base font-bold text-foreground">Recent Transactions</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
