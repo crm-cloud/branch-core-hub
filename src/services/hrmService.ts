@@ -232,6 +232,7 @@ export interface PayrollStaffItem {
   source_id: string; // original employee or trainer id
   is_active: boolean;
   avatar_url: string | null;
+  employeeRecord?: any; // raw employee record for contract/edit actions
 }
 
 export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollStaffItem[]> {
@@ -281,6 +282,7 @@ export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollSt
         source_id: emp.id,
         is_active: emp.is_active ?? true,
         avatar_url: p?.avatar_url || null,
+        employeeRecord: { ...emp, profile: p },
       };
     }),
     ...(trainers || []).filter(t => !empUserIds.has(t.user_id)).map(t => {
