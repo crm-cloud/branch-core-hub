@@ -282,7 +282,7 @@ export default function FinancePage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-800">Finance Dashboard</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Finance Dashboard</h1>
             <p className="text-muted-foreground text-sm">Track income, expenses and financial health</p>
           </div>
           <div className="flex flex-wrap gap-2">
