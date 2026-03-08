@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
 import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
-import { 
+import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
+import {
   Plus, 
   Users, 
   FileText, 
