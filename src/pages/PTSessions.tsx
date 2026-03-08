@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format, differenceInDays } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell, Eye, EyeOff } from "lucide-react";
+import { Plus, Package, Calendar, Check, X, Edit, TrendingUp, Users, Dumbbell, Eye, EyeOff, Crown, IndianRupee } from "lucide-react";
 import { usePTPackages, useActiveMemberPackages, useTrainerSessions, useCompletePTSession, useCancelPTSession, useSchedulePTSession, useUpdatePTPackage } from "@/hooks/usePTPackages";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -70,10 +70,25 @@ export default function PTSessionsPage() {
     { name: "Cancelled", value: sessions?.filter((s) => s.status === "cancelled").length || 0 },
   ].filter((d) => d.value > 0);
 
-  const trainerSessionsData = trainers?.slice(0, 5).map((t: any) => ({
-    name: t.profiles?.full_name?.split(" ")[0] || "Trainer",
-    sessions: activePackages?.filter((p) => p.trainer_id === t.id).reduce((acc, p) => acc + (p.sessions_total - p.sessions_remaining), 0) || 0,
-  })) || [];
+  // Revenue & performance analytics
+  const trainerRevenue = useMemo(() => {
+    const map = new Map<string, { name: string; revenue: number; clients: number }>();
+    activePackages?.forEach((pkg: any) => {
+      const id = pkg.trainer_id || 'unknown';
+      const existing = map.get(id) || { name: pkg.trainer_name || 'Unassigned', revenue: 0, clients: 0 };
+      existing.revenue += pkg.price_paid || 0;
+      existing.clients += 1;
+      map.set(id, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+  }, [activePackages]);
+
+  const topPerformer = trainerRevenue[0];
+
+  const packageTypeSplit = useMemo(() => [
+    { name: 'Session-Based', value: activePackages?.filter((p: any) => p.sessions_total > 0).length || 0 },
+    { name: 'Duration-Based', value: activePackages?.filter((p: any) => p.sessions_total === 0).length || 0 },
+  ].filter(d => d.value > 0), [activePackages]);
 
   const openEditDrawer = (pkg: any) => {
     setEditingPackage(pkg);
@@ -191,37 +206,92 @@ export default function PTSessionsPage() {
           </Card>
         </div>
 
-        {/* Charts Row */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader><CardTitle className="text-lg">Session Status Distribution</CardTitle></CardHeader>
+        {/* Analytics Row */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Top Performer */}
+          <Card className="bg-gradient-to-br from-amber-500/10 to-yellow-500/5 border-amber-500/20 shadow-lg shadow-amber-500/10 rounded-2xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full -translate-y-6 translate-x-6" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <div className="p-1.5 rounded-full bg-amber-500/20"><Crown className="h-4 w-4 text-amber-600" /></div>
+                Top Performer
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="relative z-10">
+              {topPerformer ? (
+                <div className="space-y-2">
+                  <p className="text-xl font-bold text-foreground">{topPerformer.name}</p>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Revenue</p>
+                      <p className="text-lg font-bold text-amber-700 dark:text-amber-400 flex items-center"><IndianRupee className="h-3.5 w-3.5" />{topPerformer.revenue.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Clients</p>
+                      <p className="text-lg font-bold text-foreground">{topPerformer.clients}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">No active packages</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Package Type Donut */}
+          <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+            <CardHeader className="pb-0"><CardTitle className="text-sm font-medium">Package Type Split</CardTitle></CardHeader>
             <CardContent>
-              {sessionStatusData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
+              {packageTypeSplit.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie data={sessionStatusData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {sessionStatusData.map((_, index) => (<Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />))}
+                    <Pie data={packageTypeSplit} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      <Cell fill="hsl(var(--chart-1))" />
+                      <Cell fill="hsl(var(--chart-2))" />
                     </Pie>
                     <Tooltip /><Legend />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : (<div className="h-[250px] flex items-center justify-center text-muted-foreground">No session data available</div>)}
+              ) : (<div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">No packages</div>)}
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-lg">Sessions by Trainer</CardTitle></CardHeader>
+
+          {/* Revenue by Trainer */}
+          <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+            <CardHeader className="pb-0"><CardTitle className="text-sm font-medium">Revenue by Trainer</CardTitle></CardHeader>
             <CardContent>
-              {trainerSessionsData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={trainerSessionsData} layout="vertical">
-                    <XAxis type="number" /><YAxis type="category" dataKey="name" width={80} /><Tooltip />
-                    <Bar dataKey="sessions" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+              {trainerRevenue.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={trainerRevenue.slice(0, 5)} layout="vertical">
+                    <XAxis type="number" tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 12 }} />
+                    <Tooltip formatter={(value: number) => [`₹${value.toLocaleString()}`, 'Revenue']} />
+                    <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              ) : (<div className="h-[250px] flex items-center justify-center text-muted-foreground">No trainer data available</div>)}
+              ) : (<div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">No revenue data</div>)}
             </CardContent>
           </Card>
         </div>
+
+        {/* Session Status */}
+        <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+          <CardHeader><CardTitle className="text-sm font-medium">Session Status Distribution</CardTitle></CardHeader>
+          <CardContent>
+            {sessionStatusData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={sessionStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                    {sessionStatusData.map((_, index) => (<Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />))}
+                  </Pie>
+                  <Tooltip /><Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (<div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">No session data</div>)}
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="packages" className="space-y-4">
           <TabsList>

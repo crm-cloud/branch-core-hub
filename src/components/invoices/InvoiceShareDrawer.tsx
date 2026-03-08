@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone } from 'lucide-react';
 import { format } from 'date-fns';
+import { communicationService } from '@/services/communicationService';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
@@ -60,11 +61,13 @@ Thank you for choosing Incline Fitness!
 Best regards,
 Team Incline Fitness`;
 
-  const handleWhatsAppShare = () => {
+  const handleWhatsAppShare = async () => {
     const formattedPhone = phone.replace(/\D/g, '');
     const phoneNumber = formattedPhone.startsWith('91') ? formattedPhone : `91${formattedPhone}`;
-    const encodedMessage = encodeURIComponent(whatsappMessage);
-    window.open(`https://wa.me/${phoneNumber}?text=${encodedMessage}`, '_blank');
+    await communicationService.sendWhatsApp(phoneNumber, whatsappMessage, {
+      branchId: invoice.branch_id,
+      memberId: invoice.member_id,
+    });
     toast.success('Opening WhatsApp...');
   };
 
@@ -74,9 +77,11 @@ Team Incline Fitness`;
     toast.success('Opening email client...');
   };
 
-  const handleSMSShare = () => {
-    const smsLink = `sms:${phone}?body=${encodeURIComponent(smsMessage)}`;
-    window.location.href = smsLink;
+  const handleSMSShare = async () => {
+    await communicationService.sendSMS(phone, smsMessage, {
+      branchId: invoice.branch_id,
+      memberId: invoice.member_id,
+    });
     toast.success('Opening SMS...');
   };
 

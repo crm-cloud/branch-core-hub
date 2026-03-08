@@ -1,97 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Implementation Plan: PT Analytics, Template Sync, Communication Logs
+## 1. Critical Query Bug Fixes
 
-## 1. PT Analytics — Top Performer + Package Type Donut + Revenue by Trainer
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-**File: `src/pages/PTSessions.tsx`**
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-**Add imports:** `Crown`, `IndianRupee` from lucide-react
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-**Replace the Charts Row (lines 194-224)** with a 3-widget grid:
+## 2. Database Migration
 
-### Widget A: Top Performer Card
-- Group `activePackages` by `trainer_id` → sum `price_paid` per trainer, count clients
-- Find the trainer with highest total revenue
-- Render a hero-style card with gold gradient, crown icon, trainer name, client count, total revenue
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-### Widget B: Package Type Split (Donut)
-- Split `activePackages` into session-based (`sessions_total > 0`) vs duration-based (`sessions_total === 0`)
-- Render a `PieChart` donut with 2 segments + total in center label
-
-### Widget C: Revenue by Trainer (Horizontal Bar)
-- Group `activePackages` by `trainer_id` → sum `price_paid`
-- Map to trainer names from `trainers` array
-- Render a `BarChart` with `layout="vertical"`, formatted ₹ values on XAxis
-
-**Add computed data above return:**
-```ts
-const trainerRevenue = useMemo(() => {
-  const map = new Map<string, { name: string; revenue: number; clients: number }>();
-  activePackages?.forEach(pkg => {
-    const id = pkg.trainer_id || 'unknown';
-    const existing = map.get(id) || { name: pkg.trainer_name || 'Unassigned', revenue: 0, clients: 0 };
-    existing.revenue += pkg.price_paid || 0;
-    existing.clients += 1;
-    map.set(id, existing);
-  });
-  return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-}, [activePackages]);
-
-const topPerformer = trainerRevenue[0];
-const packageTypeSplit = [
-  { name: 'Session-Based', value: activePackages?.filter(p => p.sessions_total > 0).length || 0 },
-  { name: 'Duration-Based', value: activePackages?.filter(p => p.sessions_total === 0).length || 0 },
-].filter(d => d.value > 0);
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-## 2. Template Sync — Announcements Uses DB Templates
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-**File: `src/pages/Announcements.tsx`**
+## 3. AI Fitness Page Redesign
 
-**Changes:**
-- Add `useQuery` for DB templates: `queryKey: ['db-templates'], queryFn: () => communicationService.fetchTemplates()`
-- In the Templates sheet (lines 119-141), prioritize DB templates; if none exist, fall back to hardcoded `getTemplatesByType`
-- DB templates have `type` field matching `sms`/`email`/`whatsapp` — filter the same way
-- Show DB template `name`, `content`, and `trigger` as badge instead of `category`
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
 
-**Template rendering logic:**
-```tsx
-const dbTemplatesForType = dbTemplates?.filter(t => t.type === type && t.is_active) || [];
-const fallbackTemplates = dbTemplatesForType.length > 0 ? [] : getTemplatesByType(type);
-// Render dbTemplatesForType first, then fallbackTemplates with a "Default" badge
-```
+Redesign with 3 clear tabs and modern Vuexy styling:
 
-## 3. Communication Logs — Record WhatsApp/SMS Opens
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
 
-**File: `src/services/communicationService.ts`**
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
 
-**Changes to `sendWhatsApp` (line 88):**
-- Make it `async`, add optional `options?: { branchId?: string; memberId?: string }` param
-- After `window.open`, call `this.logCommunication(...)` with type `'whatsapp'`, status `'sent'`
-- Wrap in try/catch so logging failure doesn't break the UX
+## 4. Public Website CMS/DB Sync
 
-**Changes to `sendSMS` (line 113):**
-- Same pattern: make `async`, add `options` param, log after opening
+**File:** `src/pages/PublicWebsite.tsx`
 
-**Callers that need `branchId` passed:**
-- `InvoiceShareDrawer.tsx` — already has invoice data, add branchId prop or derive from invoice
-- `SendPaymentLinkDrawer.tsx` — already has invoice context
-- `MemberProfileDrawer.tsx` — has member's branch_id
-- These callers currently call `communicationService.sendWhatsApp(phone, msg)` — add optional 3rd arg `{ branchId }`
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
 
-## Files to Change
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/PTSessions.tsx` | Add `useMemo` import, add `Crown`/`IndianRupee` icons, replace chart row with 3 analytics widgets |
-| `src/pages/Announcements.tsx` | Add DB template query, update template sheet to show DB templates with hardcoded fallback |
-| `src/services/communicationService.ts` | Make `sendWhatsApp`/`sendSMS` async with logging |
-| `src/components/invoices/InvoiceShareDrawer.tsx` | Pass `branchId` to `sendWhatsApp`/`sendSMS` calls |
-| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Pass `branchId` to `sendWhatsApp` calls |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
 ## Execution Order
-1. Communication service logging fix (foundation)
-2. Announcements template sync
-3. PT analytics widgets
 
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

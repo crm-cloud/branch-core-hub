@@ -35,7 +35,12 @@ export default function AnnouncementsPage() {
   const { data: commLogs = [], isLoading: logsLoading } = useQuery({
     queryKey: ['communication-logs'],
     queryFn: () => communicationService.fetchCommunicationLogs(),
-    refetchInterval: 10000, // Auto-refresh every 10s for near-realtime
+    refetchInterval: 10000,
+  });
+
+  const { data: dbTemplates = [] } = useQuery({
+    queryKey: ['db-templates'],
+    queryFn: () => communicationService.fetchTemplates(),
   });
 
   // Realtime subscription for communication logs
@@ -116,30 +121,43 @@ export default function AnnouncementsPage() {
                       <TabsTrigger value="sms" className="flex-1 rounded-lg gap-1"><Phone className="h-3.5 w-3.5" />SMS</TabsTrigger>
                       <TabsTrigger value="email" className="flex-1 rounded-lg gap-1"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
                     </TabsList>
-                    {(['whatsapp', 'sms', 'email'] as const).map((type) => (
-                      <TabsContent key={type} value={type} className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
-                        {getTemplatesByType(type).map((template) => (
-                          <Card key={template.id} className="cursor-pointer hover:border-primary/50 transition-colors rounded-xl" onClick={() => handleTemplateSelect(type, template.content)}>
-                            <CardHeader className="pb-2">
-                              <div className="flex items-center justify-between">
-                                <CardTitle className="text-sm font-medium">{template.name}</CardTitle>
-                                <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
-                              </div>
-                            </CardHeader>
-                            <CardContent>
-                              <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">{template.content.slice(0, 150)}...</p>
-                              <Button variant="ghost" size="sm" className="mt-2 w-full rounded-lg" onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(template.content);
-                                toast.success('Template copied');
-                              }}>
-                                <Copy className="h-3 w-3 mr-1" />Copy
-                              </Button>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </TabsContent>
-                    ))}
+                    {(['whatsapp', 'sms', 'email'] as const).map((type) => {
+                      const dbForType = (dbTemplates || []).filter((t: any) => t.type === type && t.is_active !== false);
+                      const fallback = dbForType.length > 0 ? [] : getTemplatesByType(type);
+                      const allTemplates = [
+                        ...dbForType.map((t: any) => ({ id: t.id, name: t.name, content: t.content, category: t.trigger || t.type, isDb: true })),
+                        ...fallback.map((t) => ({ id: t.id, name: t.name, content: t.content, category: t.category, isDb: false })),
+                      ];
+                      return (
+                        <TabsContent key={type} value={type} className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                          {allTemplates.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-8">No templates for this channel</p>
+                          ) : allTemplates.map((template) => (
+                            <Card key={template.id} className="cursor-pointer hover:border-primary/50 transition-colors rounded-xl" onClick={() => handleTemplateSelect(type, template.content)}>
+                              <CardHeader className="pb-2">
+                                <div className="flex items-center justify-between">
+                                  <CardTitle className="text-sm font-medium">{template.name}</CardTitle>
+                                  <div className="flex gap-1">
+                                    {!template.isDb && <Badge variant="secondary" className="text-[10px] rounded-full">Default</Badge>}
+                                    <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
+                                  </div>
+                                </div>
+                              </CardHeader>
+                              <CardContent>
+                                <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">{template.content.slice(0, 150)}...</p>
+                                <Button variant="ghost" size="sm" className="mt-2 w-full rounded-lg" onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(template.content);
+                                  toast.success('Template copied');
+                                }}>
+                                  <Copy className="h-3 w-3 mr-1" />Copy
+                                </Button>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+                      );
+                    })}
                   </Tabs>
                 </div>
               </SheetContent>
