@@ -107,6 +107,7 @@ function PendingInvoicesSection({ memberId, branchId }: { memberId: string; bran
             }
           }}
           invoice={selectedInvoice}
+          branchId={branchId}
         />
       )}
     </>
