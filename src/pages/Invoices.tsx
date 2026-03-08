@@ -9,6 +9,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
 import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
+import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
+import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDrawer';
 import { 
   FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send
 } from 'lucide-react';
