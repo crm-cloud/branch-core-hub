@@ -83,7 +83,7 @@ export default function HRMPage() {
   });
 
   // Fetch unified payroll staff (employees + trainers)
-  const { data: payrollStaff = [] } = useQuery({
+  const { data: payrollStaff = [], isLoading: isLoadingStaff } = useQuery({
     queryKey: ['hrm-payroll-staff'],
     queryFn: () => fetchAllPayrollStaff(),
   });
@@ -106,19 +106,22 @@ export default function HRMPage() {
     enabled: payrollStaff.length > 0,
   });
 
-  // Filter employees
-  const filteredEmployees = employees.filter((emp: any) => {
-    const name = emp.profile?.full_name || '';
-    const code = emp.employee_code || '';
-    return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      code.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter unified staff by search
+  const filteredStaff = payrollStaff.filter((s: PayrollStaffItem) => {
+    const term = searchTerm.toLowerCase();
+    return (s.name || '').toLowerCase().includes(term) ||
+      (s.code || '').toLowerCase().includes(term) ||
+      (s.department || '').toLowerCase().includes(term);
   });
 
+  // Stats from unified staff list
   const stats = {
-    total: employees.length,
-    active: employees.filter((e: any) => e.is_active).length,
-    totalSalary: employees.reduce((sum: number, e: any) => sum + (e.salary || 0), 0),
+    total: payrollStaff.length,
+    active: payrollStaff.length, // fetchAllPayrollStaff already filters active
+    totalSalary: payrollStaff.reduce((sum: number, s: PayrollStaffItem) => sum + (s.salary || 0), 0),
     activeContracts: allContracts.filter((c: any) => c.status === 'active').length,
+    trainers: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'trainer').length,
+    employees: payrollStaff.filter((s: PayrollStaffItem) => s.staff_type === 'employee').length,
   };
 
   const getStatusColor = (status: string) => {
@@ -137,24 +140,33 @@ export default function HRMPage() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  const getStaffTypeBadge = (staff: PayrollStaffItem) => {
+    if (staff.staff_type === 'trainer') {
+      return <Badge className="border bg-info/10 text-info border-info/20"><Dumbbell className="mr-1 h-3 w-3 inline" />Trainer</Badge>;
+    }
+    if (staff.department === 'Management') {
+      return <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>;
+    }
+    return <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+  };
+
   // Payroll processing
   const processPayroll = useMutation({
-    mutationFn: async (employeeId: string) => {
-      const employee = employees.find((e: any) => e.id === employeeId);
-      if (!employee) throw new Error('Employee not found');
-      toast.success(`Payroll processed for ${employee.profile?.full_name}`);
+    mutationFn: async (staffId: string) => {
+      const staff = payrollStaff.find((s: PayrollStaffItem) => s.id === staffId);
+      if (!staff) throw new Error('Staff not found');
+      toast.success(`Payroll processed for ${staff.name}`);
     },
   });
 
   const processAllPayroll = useMutation({
     mutationFn: async () => {
-      const activeEmployees = employees.filter((e: any) => e.is_active);
-      toast.success(`Payroll processed for ${activeEmployees.length} employees`);
+      toast.success(`Payroll processed for ${payrollStaff.length} staff members`);
     },
   });
 
-  // Get attendance summary per employee
-  const getEmployeeAttendanceSummary = (userId: string) => {
+  // Get attendance summary per staff member
+  const getStaffAttendanceSummary = (userId: string) => {
     const records = staffAttendance.filter((a: any) => a.user_id === userId);
     const totalDays = records.length;
     const totalHours = records.reduce((sum: number, a: any) => {
@@ -170,12 +182,13 @@ export default function HRMPage() {
   const totalPayrollSummary = Object.values(payrollData as Record<string, any>).reduce(
     (acc: any, p: any) => ({
       totalBase: acc.totalBase + (p.proRatedPay || 0),
+      totalBaseSalary: acc.totalBaseSalary + (p.baseSalary || 0),
       totalCommission: acc.totalCommission + (p.ptCommission || 0),
       totalGross: acc.totalGross + (p.grossPay || 0),
       totalDeductions: acc.totalDeductions + (p.pfDeduction || 0),
       totalNet: acc.totalNet + (p.netPay || 0),
     }),
-    { totalBase: 0, totalCommission: 0, totalGross: 0, totalDeductions: 0, totalNet: 0 }
+    { totalBase: 0, totalBaseSalary: 0, totalCommission: 0, totalGross: 0, totalDeductions: 0, totalNet: 0 }
   );
 
   return (
@@ -199,8 +212,9 @@ export default function HRMPage() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm opacity-80">Total Employees</p>
+                  <p className="text-sm opacity-80">Total Staff</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.total}</h3>
+                  <p className="text-xs opacity-70 mt-1">{stats.employees} Staff · {stats.trainers} Trainers</p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
                   <Users className="h-6 w-6" />
@@ -261,16 +275,16 @@ export default function HRMPage() {
             <TabsTrigger value="payroll">Payroll</TabsTrigger>
           </TabsList>
 
-          {/* Employees Tab */}
+          {/* Employees Tab - NOW UNIFIED */}
           <TabsContent value="employees" className="mt-4">
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <CardTitle>All Employees</CardTitle>
+                  <CardTitle>All Staff ({filteredStaff.length})</CardTitle>
                   <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search employees..."
+                      placeholder="Search staff..."
                       className="pl-10"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -279,7 +293,7 @@ export default function HRMPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
+                {isLoadingStaff ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
                   </div>
@@ -287,76 +301,76 @@ export default function HRMPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Employee</TableHead>
+                        <TableHead>Staff Member</TableHead>
                         <TableHead>Code</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Department</TableHead>
                         <TableHead>Position</TableHead>
                         <TableHead>Salary</TableHead>
-                        <TableHead>Status</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredEmployees.map((employee: any) => (
-                        <TableRow key={employee.id} className="group">
+                      {filteredStaff.map((staff: PayrollStaffItem) => (
+                        <TableRow key={staff.id} className="group">
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10">
                                 <AvatarFallback className="bg-accent/10 text-accent font-semibold">
-                                  {getInitials(employee.profile?.full_name)}
+                                  {getInitials(staff.name)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="font-medium">{employee.profile?.full_name || 'N/A'}</p>
-                                <p className="text-sm text-muted-foreground">{employee.profile?.email}</p>
+                                <p className="font-medium">{staff.name || 'N/A'}</p>
+                                <p className="text-sm text-muted-foreground">{staff.email}</p>
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="font-mono text-sm">{employee.employee_code}</span>
+                            <span className="font-mono text-sm">{staff.code}</span>
                           </TableCell>
-                          <TableCell>{employee.department || '-'}</TableCell>
-                          <TableCell>{employee.position || '-'}</TableCell>
+                          <TableCell>{getStaffTypeBadge(staff)}</TableCell>
+                          <TableCell>{staff.department || '-'}</TableCell>
+                          <TableCell>{staff.position || '-'}</TableCell>
                           <TableCell className="font-semibold">
-                            ₹{(employee.salary || 0).toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={`border ${employee.is_active ? 'bg-success/10 text-success border-success/20' : 'bg-muted text-muted-foreground border-border'}`}>
-                              {employee.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+                            ₹{(staff.salary || 0).toLocaleString()}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEmployee(employee);
-                                  setContractDrawerOpen(true);
-                                }}
-                              >
-                                <FileText className="mr-1 h-3 w-3" />
-                                Contract
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                onClick={() => {
-                                  setEditingEmployee(employee);
-                                  setEditEmployeeOpen(true);
-                                }}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
+                              {staff.staff_type === 'employee' && staff.employeeRecord && (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSelectedEmployee(staff.employeeRecord);
+                                      setContractDrawerOpen(true);
+                                    }}
+                                  >
+                                    <FileText className="mr-1 h-3 w-3" />
+                                    Contract
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingEmployee(staff.employeeRecord);
+                                      setEditEmployeeOpen(true);
+                                    }}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
                       ))}
-                      {filteredEmployees.length === 0 && (
+                      {filteredStaff.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                             <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No employees found</p>
+                            <p>No staff found</p>
                           </TableCell>
                         </TableRow>
                       )}
@@ -438,7 +452,7 @@ export default function HRMPage() {
             </Card>
           </TabsContent>
 
-          {/* Attendance Tab (NEW) */}
+          {/* Attendance Tab - NOW UNIFIED */}
           <TabsContent value="attendance" className="mt-4">
             <Card>
               <CardHeader>
@@ -456,22 +470,25 @@ export default function HRMPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Summary per employee */}
+                {/* Summary per unified staff */}
                 <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
-                  {employees.filter((e: any) => e.is_active).map((emp: any) => {
-                    const summary = getEmployeeAttendanceSummary(emp.user_id);
+                  {payrollStaff.map((staff: PayrollStaffItem) => {
+                    const summary = getStaffAttendanceSummary(staff.user_id);
                     return (
-                      <Card key={emp.id} className="border">
+                      <Card key={staff.id} className="border">
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-10 w-10">
                               <AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">
-                                {getInitials(emp.profile?.full_name)}
+                                {getInitials(staff.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{emp.profile?.full_name}</p>
-                              <p className="text-xs text-muted-foreground">{emp.employee_code}</p>
+                              <p className="font-medium truncate">{staff.name}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">{staff.code}</span>
+                                {getStaffTypeBadge(staff)}
+                              </div>
                             </div>
                           </div>
                           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -494,7 +511,8 @@ export default function HRMPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Employee</TableHead>
+                      <TableHead>Staff Member</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Check In</TableHead>
                       <TableHead>Check Out</TableHead>
@@ -503,7 +521,7 @@ export default function HRMPage() {
                   </TableHeader>
                   <TableBody>
                     {staffAttendance.slice(0, 50).map((record: any) => {
-                      const emp = employees.find((e: any) => e.user_id === record.user_id);
+                      const staff = payrollStaff.find((s: PayrollStaffItem) => s.user_id === record.user_id);
                       const duration = record.check_in && record.check_out
                         ? ((new Date(record.check_out).getTime() - new Date(record.check_in).getTime()) / 3600000).toFixed(1)
                         : '-';
@@ -513,11 +531,14 @@ export default function HRMPage() {
                             <div className="flex items-center gap-2">
                               <Avatar className="h-7 w-7">
                                 <AvatarFallback className="bg-accent/10 text-accent text-xs">
-                                  {getInitials(emp?.profile?.full_name)}
+                                  {getInitials(staff?.name || null)}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="text-sm font-medium">{emp?.profile?.full_name || 'Unknown'}</span>
+                              <span className="text-sm font-medium">{staff?.name || 'Unknown'}</span>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {staff ? getStaffTypeBadge(staff) : <span className="text-muted-foreground">-</span>}
                           </TableCell>
                           <TableCell>{format(new Date(record.check_in), 'dd MMM yyyy')}</TableCell>
                           <TableCell>{format(new Date(record.check_in), 'hh:mm a')}</TableCell>
@@ -530,7 +551,7 @@ export default function HRMPage() {
                     })}
                     {staffAttendance.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                           <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No attendance records for this month</p>
                         </TableCell>
@@ -573,7 +594,8 @@ export default function HRMPage() {
                       <TableHead>Staff Member</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Days</TableHead>
-                      <TableHead>Base Pay</TableHead>
+                      <TableHead>Base Salary</TableHead>
+                      <TableHead>Pro-rated</TableHead>
                       <TableHead>PT Commission</TableHead>
                       <TableHead>Gross</TableHead>
                       <TableHead>PF (12%)</TableHead>
@@ -600,18 +622,11 @@ export default function HRMPage() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge className={`border ${staff.staff_type === 'trainer' ? 'bg-info/10 text-info border-info/20' : 'bg-accent/10 text-accent border-accent/20'}`}>
-                              {staff.staff_type === 'trainer' ? (
-                                <><Dumbbell className="mr-1 h-3 w-3 inline" />Trainer</>
-                              ) : (
-                                staff.department === 'Management' ? 'Manager' : 'Staff'
-                              )}
-                            </Badge>
-                          </TableCell>
+                          <TableCell>{getStaffTypeBadge(staff)}</TableCell>
                           <TableCell>
                             <span className="font-mono text-sm">{p.daysPresent || 0}/{p.workingDays || 26}</span>
                           </TableCell>
+                          <TableCell className="text-muted-foreground">₹{(staff.salary || 0).toLocaleString()}</TableCell>
                           <TableCell>₹{(p.proRatedPay || 0).toLocaleString()}</TableCell>
                           <TableCell>
                             {(p.ptCommission || 0) > 0 
@@ -673,7 +688,7 @@ export default function HRMPage() {
                     })}
                     {payrollStaff.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                           <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No active staff for payroll</p>
                         </TableCell>
