@@ -125,11 +125,26 @@ export const communicationService = {
   },
 
   // SMS (opens SMS app with pre-filled message)
-  sendSMS(phone: string, message: string) {
+  async sendSMS(phone: string, message: string, options?: { branchId?: string; memberId?: string }) {
     const formattedPhone = phone.replace(/\D/g, '');
     const encodedMessage = encodeURIComponent(message);
     const url = `sms:${formattedPhone}?body=${encodedMessage}`;
     window.open(url, '_blank');
+    // Log to communication_logs
+    if (options?.branchId) {
+      try {
+        await this.logCommunication({
+          branch_id: options.branchId,
+          type: 'sms',
+          recipient: phone,
+          content: message.slice(0, 500),
+          status: 'sent',
+          member_id: options.memberId,
+        });
+      } catch (e) {
+        console.error('Failed to log SMS communication:', e);
+      }
+    }
     return url;
   },
 

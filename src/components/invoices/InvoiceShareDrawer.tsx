@@ -77,9 +77,11 @@ Team Incline Fitness`;
     toast.success('Opening email client...');
   };
 
-  const handleSMSShare = () => {
-    const smsLink = `sms:${phone}?body=${encodeURIComponent(smsMessage)}`;
-    window.location.href = smsLink;
+  const handleSMSShare = async () => {
+    await communicationService.sendSMS(phone, smsMessage, {
+      branchId: invoice.branch_id,
+      memberId: invoice.member_id,
+    });
     toast.success('Opening SMS...');
   };
 

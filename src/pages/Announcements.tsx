@@ -35,7 +35,12 @@ export default function AnnouncementsPage() {
   const { data: commLogs = [], isLoading: logsLoading } = useQuery({
     queryKey: ['communication-logs'],
     queryFn: () => communicationService.fetchCommunicationLogs(),
-    refetchInterval: 10000, // Auto-refresh every 10s for near-realtime
+    refetchInterval: 10000,
+  });
+
+  const { data: dbTemplates = [] } = useQuery({
+    queryKey: ['db-templates'],
+    queryFn: () => communicationService.fetchTemplates(),
   });
 
   // Realtime subscription for communication logs

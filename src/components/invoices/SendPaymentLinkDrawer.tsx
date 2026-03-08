@@ -58,14 +58,14 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     if (!invoice.member_phone) {
       toast.error('No phone number available for this member');
       return;
     }
     const phone = invoice.member_phone.replace(/[^0-9]/g, '');
     const formattedPhone = phone.startsWith('91') ? phone : `91${phone}`;
-    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(getMessage())}`, '_blank');
+    await communicationService.sendWhatsApp(formattedPhone, getMessage());
   };
 
   const handleSendEmail = () => {
