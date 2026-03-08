@@ -219,6 +219,155 @@ export async function fetchEmployeeAttendance(employeeId: string, startDate?: st
   return data;
 }
 
+export interface PayrollStaffItem {
+  id: string;
+  user_id: string;
+  code: string;
+  name: string;
+  email: string | null;
+  department: string | null;
+  position: string | null;
+  salary: number;
+  staff_type: 'employee' | 'trainer';
+  source_id: string; // original employee or trainer id
+  is_active: boolean;
+  avatar_url: string | null;
+}
+
+export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollStaffItem[]> {
+  // Fetch employees
+  let empQuery = supabase.from('employees').select('*').eq('is_active', true);
+  if (branchId) empQuery = empQuery.eq('branch_id', branchId);
+  const { data: emps } = await empQuery;
+
+  // Fetch trainers
+  let trainerQuery = supabase.from('trainers').select('*').eq('is_active', true);
+  if (branchId) trainerQuery = trainerQuery.eq('branch_id', branchId);
+  const { data: trainers } = await trainerQuery;
+
+  // Collect all user_ids for profile lookup
+  const allUserIds = [
+    ...(emps?.map(e => e.user_id) || []),
+    ...(trainers?.map(t => t.user_id) || []),
+  ].filter(Boolean);
+
+  let profiles: any[] = [];
+  if (allUserIds.length > 0) {
+    const { data: pData } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, avatar_url')
+      .in('id', allUserIds);
+    profiles = pData || [];
+  }
+
+  const getProfile = (uid: string) => profiles.find(p => p.id === uid);
+
+  // Track employee user_ids to avoid duplicating trainers who also have employee records
+  const empUserIds = new Set(emps?.map(e => e.user_id) || []);
+
+  const staffList: PayrollStaffItem[] = [
+    ...(emps || []).map(emp => {
+      const p = getProfile(emp.user_id);
+      return {
+        id: `emp-${emp.id}`,
+        user_id: emp.user_id,
+        code: emp.employee_code,
+        name: p?.full_name || 'N/A',
+        email: p?.email || null,
+        department: emp.department,
+        position: emp.position,
+        salary: emp.salary || 0,
+        staff_type: 'employee' as const,
+        source_id: emp.id,
+        is_active: emp.is_active ?? true,
+        avatar_url: p?.avatar_url || null,
+      };
+    }),
+    ...(trainers || []).filter(t => !empUserIds.has(t.user_id)).map(t => {
+      const p = getProfile(t.user_id);
+      return {
+        id: `trainer-${t.id}`,
+        user_id: t.user_id,
+        code: `TR-${(t as any).trainer_code || t.id.slice(0, 6).toUpperCase()}`,
+        name: p?.full_name || 'N/A',
+        email: p?.email || null,
+        department: 'Training',
+        position: (t as any).specialization || 'Trainer',
+        salary: (t as any).salary || 0,
+        staff_type: 'trainer' as const,
+        source_id: t.id,
+        is_active: t.is_active ?? true,
+        avatar_url: p?.avatar_url || null,
+      };
+    }),
+  ];
+
+  return staffList;
+}
+
+export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: string) {
+  const startDate = `${month}-01`;
+  const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().split('T')[0];
+
+  // Fetch attendance by user_id
+  const { data: attendance } = await supabase
+    .from('staff_attendance')
+    .select('*')
+    .eq('user_id', staff.user_id)
+    .gte('check_in', `${startDate}T00:00:00`)
+    .lte('check_in', `${endDate}T23:59:59`);
+
+  const workingDays = 26;
+  const daysPresent = attendance?.length || 0;
+  const baseSalary = staff.salary || 0;
+  const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
+
+  // Fetch PT commissions
+  let ptCommission = 0;
+  if (staff.staff_type === 'trainer') {
+    const { data: commissions } = await supabase
+      .from('trainer_commissions')
+      .select('amount')
+      .eq('trainer_id', staff.source_id)
+      .gte('release_date', startDate)
+      .lte('release_date', endDate);
+    ptCommission = commissions?.reduce((s, c) => s + (c.amount || 0), 0) || 0;
+  } else {
+    // Check if employee has a linked trainer record
+    const { data: trainerLink } = await supabase
+      .from('trainers')
+      .select('id')
+      .eq('user_id', staff.user_id)
+      .maybeSingle();
+    if (trainerLink) {
+      const { data: commissions } = await supabase
+        .from('trainer_commissions')
+        .select('amount')
+        .eq('trainer_id', trainerLink.id)
+        .gte('release_date', startDate)
+        .lte('release_date', endDate);
+      ptCommission = commissions?.reduce((s, c) => s + (c.amount || 0), 0) || 0;
+    }
+  }
+
+  const grossPay = proRatedPay + ptCommission;
+  const pfDeduction = Math.round(proRatedPay * 0.12);
+  const netPay = grossPay - pfDeduction;
+
+  return {
+    staffId: staff.id,
+    month,
+    baseSalary,
+    daysPresent,
+    workingDays,
+    proRatedPay,
+    ptCommission,
+    grossPay,
+    pfDeduction,
+    netPay,
+  };
+}
+
 export async function calculatePayroll(employeeId: string, month: string) {
   const employee = await getEmployee(employeeId);
   if (!employee) throw new Error('Employee not found');
@@ -228,12 +377,11 @@ export async function calculatePayroll(employeeId: string, month: string) {
 
   const attendance = await fetchEmployeeAttendance(employeeId, startDate, endDate);
   
-  const workingDays = 26; // Standard Indian working days
+  const workingDays = 26;
   const daysPresent = attendance.length;
   const baseSalary = employee.salary || 0;
   const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
 
-  // Fetch PT commissions if employee has a linked trainer record
   let ptCommission = 0;
   const { data: trainerLink } = await supabase
     .from('trainers')

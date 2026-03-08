@@ -26,7 +26,7 @@ import {
   Mail
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchEmployees, fetchEmployeeContracts, calculatePayroll } from '@/services/hrmService';
+import { fetchEmployees, fetchEmployeeContracts, calculatePayroll, fetchAllPayrollStaff, calculatePayrollForStaff, type PayrollStaffItem } from '@/services/hrmService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
