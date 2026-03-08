@@ -312,6 +312,7 @@ export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollSt
         source_id: t.id,
         is_active: t.is_active ?? true,
         avatar_url: p?.avatar_url || null,
+        trainerRecord: { ...t, profile: p, profile_name: p?.full_name, profile_avatar: p?.avatar_url },
       };
     }),
   ];
