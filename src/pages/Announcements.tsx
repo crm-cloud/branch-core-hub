@@ -133,10 +133,7 @@ export default function AnnouncementsPage() {
                               <CardHeader className="pb-2">
                                 <div className="flex items-center justify-between">
                                   <CardTitle className="text-sm font-medium">{template.name}</CardTitle>
-                                  <div className="flex gap-1">
-                                    {!template.isDb && <Badge variant="secondary" className="text-[10px] rounded-full">Default</Badge>}
-                                    <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
-                                  </div>
+                                  <Badge variant="outline" className="text-xs capitalize rounded-full">{template.category}</Badge>
                                 </div>
                               </CardHeader>
                               <CardContent>
