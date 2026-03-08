@@ -282,6 +282,7 @@ export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollSt
         source_id: emp.id,
         is_active: emp.is_active ?? true,
         avatar_url: p?.avatar_url || null,
+        employeeRecord: { ...emp, profile: p },
       };
     }),
     ...(trainers || []).filter(t => !empUserIds.has(t.user_id)).map(t => {
