@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { IndianRupee, MessageSquare, Mail, Link2, Copy, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { communicationService } from '@/services/communicationService';
 
 interface SendPaymentLinkDrawerProps {
   open: boolean;
