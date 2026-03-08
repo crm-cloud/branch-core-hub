@@ -70,10 +70,25 @@ export default function PTSessionsPage() {
     { name: "Cancelled", value: sessions?.filter((s) => s.status === "cancelled").length || 0 },
   ].filter((d) => d.value > 0);
 
-  const trainerSessionsData = trainers?.slice(0, 5).map((t: any) => ({
-    name: t.profiles?.full_name?.split(" ")[0] || "Trainer",
-    sessions: activePackages?.filter((p) => p.trainer_id === t.id).reduce((acc, p) => acc + (p.sessions_total - p.sessions_remaining), 0) || 0,
-  })) || [];
+  // Revenue & performance analytics
+  const trainerRevenue = useMemo(() => {
+    const map = new Map<string, { name: string; revenue: number; clients: number }>();
+    activePackages?.forEach((pkg: any) => {
+      const id = pkg.trainer_id || 'unknown';
+      const existing = map.get(id) || { name: pkg.trainer_name || 'Unassigned', revenue: 0, clients: 0 };
+      existing.revenue += pkg.price_paid || 0;
+      existing.clients += 1;
+      map.set(id, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+  }, [activePackages]);
+
+  const topPerformer = trainerRevenue[0];
+
+  const packageTypeSplit = useMemo(() => [
+    { name: 'Session-Based', value: activePackages?.filter((p: any) => p.sessions_total > 0).length || 0 },
+    { name: 'Duration-Based', value: activePackages?.filter((p: any) => p.sessions_total === 0).length || 0 },
+  ].filter(d => d.value > 0), [activePackages]);
 
   const openEditDrawer = (pkg: any) => {
     setEditingPackage(pkg);
