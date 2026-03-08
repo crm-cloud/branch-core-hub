@@ -287,7 +287,7 @@ export default function DashboardPage() {
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
-                <p className="text-white/70 text-xs mt-1">Revenue This Month</p>
+                <p className="text-primary-foreground/70 text-xs mt-1">Revenue This Month</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold">{stats?.expiringMemberships || 0}</p>
