@@ -190,7 +190,7 @@ export function HourlyAttendanceChart({ data }: HourlyAttendanceChartProps) {
   const hasData = data.some(d => d.checkins > 0);
 
   return (
-    <Card className="shadow-lg shadow-indigo-500/20 rounded-2xl border-0">
+    <Card className="shadow-lg shadow-primary/10 rounded-2xl border-0">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <Clock className="h-5 w-5 text-accent" />
