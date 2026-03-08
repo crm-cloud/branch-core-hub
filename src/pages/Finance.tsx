@@ -317,8 +317,8 @@ export default function FinancePage() {
                       formatter={(value: number, name: string) => [formatCurrency(Math.abs(value)), name === 'earning' ? 'Earning' : 'Expense']}
                       contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     />
-                    <Bar dataKey="earning" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} name="earning" />
-                    <Bar dataKey="expense" fill="hsl(25, 95%, 53%)" radius={[0, 0, 6, 6]} name="expense" />
+                    <Bar dataKey="earning" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} name="earning" />
+                    <Bar dataKey="expense" fill="hsl(var(--warning))" radius={[0, 0, 6, 6]} name="expense" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
