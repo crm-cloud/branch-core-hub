@@ -29,6 +29,90 @@ import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 import { HardwareBiometricsTab } from './HardwareBiometricsTab';
+import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
+
+// ─── Pending Invoices Section ───
+function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
+  const [paymentDrawerOpen, setPaymentDrawerOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const queryClient = useQueryClient();
+
+  const { data: pendingInvoices = [] } = useQuery({
+    queryKey: ['member-pending-invoices', memberId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type')
+        .eq('member_id', memberId)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!memberId,
+  });
+
+  if (pendingInvoices.length === 0) return null;
+
+  return (
+    <>
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            Pending Dues ({pendingInvoices.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {pendingInvoices.map((inv: any) => {
+            const due = (inv.total_amount || 0) - (inv.amount_paid || 0);
+            return (
+              <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-background border">
+                <div>
+                  <p className="text-sm font-medium">{inv.invoice_number}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Total: ₹{inv.total_amount?.toLocaleString('en-IN')} · Paid: ₹{(inv.amount_paid || 0).toLocaleString('en-IN')}
+                  </p>
+                  {inv.due_date && (
+                    <p className="text-xs text-muted-foreground">Due: {format(new Date(inv.due_date), 'dd MMM yyyy')}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive" className="text-xs">₹{due.toLocaleString('en-IN')}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedInvoice(inv);
+                      setPaymentDrawerOpen(true);
+                    }}
+                  >
+                    <IndianRupee className="h-3 w-3 mr-1" />Pay
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {selectedInvoice && (
+        <RecordPaymentDrawer
+          open={paymentDrawerOpen}
+          onOpenChange={(open) => {
+            setPaymentDrawerOpen(open);
+            if (!open) {
+              queryClient.invalidateQueries({ queryKey: ['member-pending-invoices', memberId] });
+              queryClient.invalidateQueries({ queryKey: ['member-payments', memberId] });
+            }
+          }}
+          invoice={selectedInvoice}
+          branchId={branchId}
+        />
+      )}
+    </>
+  );
+}
 
 // ─── Benefits & Usage Tab ───
 function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
@@ -985,20 +1069,30 @@ export function MemberProfileDrawer({
             />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
-              {payments.length > 0 ? (
-                <div className="space-y-2">
-                  {payments.map((payment: any) => (
-                    <Card key={payment.id}>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between">
+              {/* Pending / Partial Invoices */}
+              <PendingInvoicesSection memberId={member.id} branchId={member.branch_id} />
+
+              {/* Payment History */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    Payment History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {payments.length > 0 ? (
+                    <div className="space-y-2">
+                      {payments.map((payment: any) => (
+                        <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                           <div>
-                            <p className="font-medium">₹{payment.amount}</p>
+                            <p className="font-medium text-sm">₹{payment.amount}</p>
                             <p className="text-xs text-muted-foreground">
                               {payment.invoices?.invoice_number || 'No invoice'}
                             </p>
                           </div>
                           <div className="text-right">
-                            <Badge variant="outline" className="capitalize">
+                            <Badge variant="outline" className="capitalize text-xs">
                               {payment.payment_method?.replace('_', ' ')}
                             </Badge>
                             <p className="text-xs text-muted-foreground mt-1">
@@ -1011,17 +1105,13 @@ export function MemberProfileDrawer({
                             )}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="pt-4 text-center text-muted-foreground">
-                    No payment history
-                  </CardContent>
-                </Card>
-              )}
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No payment history</p>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="measurements" className="space-y-4 mt-4">

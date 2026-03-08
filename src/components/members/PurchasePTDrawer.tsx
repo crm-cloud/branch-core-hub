@@ -9,6 +9,7 @@ import { useTrainers } from '@/hooks/useTrainers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Dumbbell, Calendar, IndianRupee, FileText, CheckCircle, Percent } from 'lucide-react';
+import { createNotification } from '@/services/notificationService';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -74,6 +75,50 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
       queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
+
+      // Send notifications for PT purchase
+      try {
+        // Notify member
+        const { data: memberData } = await supabase
+          .from('members')
+          .select('user_id')
+          .eq('id', memberId)
+          .single();
+
+        if (memberData?.user_id) {
+          await createNotification({
+            user_id: memberData.user_id,
+            branch_id: branchId,
+            title: 'PT Package Purchased',
+            message: `Your personal training package "${selectedPkg.name}" has been activated.`,
+            type: 'success',
+            category: 'pt',
+            action_url: null,
+            metadata: null,
+          });
+        }
+
+        // Notify admins/owners
+        const { data: adminUsers } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .in('role', ['owner', 'admin']);
+
+        for (const admin of adminUsers || []) {
+          await createNotification({
+            user_id: admin.user_id,
+            branch_id: branchId,
+            title: 'New PT Package Sale',
+            message: `${memberName} purchased "${selectedPkg.name}" for ₹${selectedPkg.price.toLocaleString('en-IN')}`,
+            type: 'info',
+            category: 'pt',
+            action_url: null,
+            metadata: null,
+          });
+        }
+      } catch (notifError) {
+        console.warn('Failed to send PT purchase notifications:', notifError);
+      }
 
       setPurchaseResult({ success: true });
       toast.success('PT Package purchased successfully! Invoice created.');

@@ -21,15 +21,19 @@ export interface PTSessionWithDetails extends PTSession {
   trainer_name?: string;
 }
 
-// Fetch PT packages for a branch
-export async function fetchPTPackages(branchId: string): Promise<PTPackage[]> {
-  const { data, error } = await supabase
+// Fetch PT packages for a branch (optional branchId = all branches)
+export async function fetchPTPackages(branchId?: string): Promise<PTPackage[]> {
+  let query = supabase
     .from("pt_packages")
     .select("*")
-    .eq("branch_id", branchId)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
 
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -124,11 +128,11 @@ export async function fetchMemberPTPackages(
   }));
 }
 
-// Fetch active PT packages for a branch
+// Fetch active PT packages for a branch (optional branchId = all branches)
 export async function fetchActiveMemberPackages(
-  branchId: string
+  branchId?: string
 ): Promise<MemberPTPackageWithDetails[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("member_pt_packages")
     .select(`
       *,
@@ -136,9 +140,14 @@ export async function fetchActiveMemberPackages(
       trainer:trainers(user_id),
       member:members(member_code, user_id)
     `)
-    .eq("branch_id", branchId)
     .eq("status", "active")
     .order("created_at", { ascending: false });
+
+  if (branchId) {
+    query = query.eq("branch_id", branchId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
