@@ -339,7 +339,7 @@ export default function FinancePage() {
               <div className="h-[80px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={sparklineData}>
-                    <Line type="monotone" dataKey="value" stroke="hsl(262, 83%, 58%)" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
