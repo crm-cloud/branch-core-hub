@@ -422,6 +422,7 @@ export default function FinancePage() {
                         <TableRow>
                           <TableHead>Date</TableHead>
                           <TableHead>Type</TableHead>
+                          <TableHead>Category</TableHead>
                           <TableHead>Member</TableHead>
                           <TableHead>Invoice</TableHead>
                           <TableHead>Method</TableHead>
