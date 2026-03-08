@@ -195,7 +195,7 @@ export default function AnnouncementsPage() {
               <p className="text-xs text-muted-foreground">SMS</p>
             </CardContent>
           </Card>
-          <Card className="bg-card border border-border/50 shadow-lg shadow-slate-200/50 rounded-2xl">
+          <Card className="bg-card border border-border/50 shadow-lg shadow-primary/5 rounded-2xl">
             <CardContent className="pt-5 pb-4">
               <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 w-fit mb-1.5"><Mail className="h-4 w-4 text-amber-500" /></div>
               <div className="text-2xl font-bold text-foreground">{emailCount}</div>

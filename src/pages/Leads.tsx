@@ -177,7 +177,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Filters */}
-        <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
+        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
           <CardContent className="pt-5 pb-4">
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">

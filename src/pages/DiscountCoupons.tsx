@@ -154,7 +154,7 @@ export default function DiscountCouponsPage() {
         </Card>
 
         {/* Table */}
-        <Card className="rounded-xl border-none shadow-lg shadow-indigo-100/50">
+        <Card className="rounded-xl border-none shadow-lg shadow-primary/5">
           <CardContent className="p-0">
             <Table>
               <TableHeader>

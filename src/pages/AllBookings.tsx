@@ -326,7 +326,7 @@ export default function AllBookingsPage() {
         {viewMode === 'list' && (
           <>
             {/* Filters */}
-            <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
+            <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
               <CardContent className="pt-5">
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="relative flex-1">
