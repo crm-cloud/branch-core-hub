@@ -166,7 +166,7 @@ export default function LeadsPage() {
             { label: 'Converted', value: stats?.converted || 0, icon: TrendingUp },
             { label: 'Lost', value: stats?.lost || 0, icon: X },
           ].map((stat) => (
-            <Card key={stat.label} className={stat.gradient ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-500/20 rounded-2xl' : 'rounded-2xl border-border/50 shadow-lg shadow-slate-200/50'}>
+            <Card key={stat.label} className={stat.gradient ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-lg shadow-primary/20 rounded-2xl' : 'rounded-2xl border-border/50 shadow-lg shadow-primary/5'}>
               <CardContent className="pt-5 pb-4">
                 <stat.icon className={`h-4 w-4 mb-2 ${stat.gradient ? 'opacity-80' : 'text-muted-foreground'}`} />
                 <div className={`text-2xl font-bold ${stat.gradient ? '' : 'text-foreground'}`}>{stat.value}</div>
