@@ -330,7 +330,10 @@ export function useTrainerData() {
         .from('pt_sessions')
         .select(`
           *,
-          member:members(id, member_code, user_id, profiles:user_id(full_name))
+          member_pt_packages!inner(
+            member_id,
+            members!inner(id, member_code, user_id, profiles:user_id(full_name))
+          )
         `)
         .eq('trainer_id', trainer!.id)
         .gte('scheduled_at', today)

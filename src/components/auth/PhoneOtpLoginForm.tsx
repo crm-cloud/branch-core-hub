@@ -51,6 +51,7 @@ export function PhoneOtpLoginForm() {
       });
       if (error) throw error;
       toast({ title: 'Welcome!', description: 'Successfully signed in.' });
+      navigate('/home');
     } catch (error: any) {
       toast({
         title: 'Verification Failed',
