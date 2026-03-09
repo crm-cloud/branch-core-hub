@@ -14,6 +14,7 @@ export function PhoneOtpLoginForm() {
   const [step, setStep] = useState<'phone' | 'verify'>('phone');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const fullPhone = phone.startsWith('+') ? phone : `+91${phone}`;
 
