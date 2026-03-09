@@ -5,11 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, Eye, EyeOff, Mail, Phone } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Eye, EyeOff, Mail, Phone, ArrowLeft, Loader2 } from 'lucide-react';
 import { OtpLoginForm } from './OtpLoginForm';
 import { PhoneOtpLoginForm } from './PhoneOtpLoginForm';
 
@@ -19,6 +17,7 @@ const passwordLoginSchema = z.object({
 });
 
 type PasswordLoginData = z.infer<typeof passwordLoginSchema>;
+type LoginMode = 'password' | 'email_otp' | 'phone_otp';
 
 interface LoginFormProps {
   onSuccess?: () => void;
@@ -27,14 +26,12 @@ interface LoginFormProps {
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loginMode, setLoginMode] = useState<LoginMode>('password');
   const { toast } = useToast();
 
   const form = useForm<PasswordLoginData>({
     resolver: zodResolver(passwordLoginSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
+    defaultValues: { email: '', password: '' },
   });
 
   const onSubmit = async (data: PasswordLoginData) => {
@@ -44,14 +41,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         email: data.email,
         password: data.password,
       });
-
       if (error) throw error;
-
-      toast({
-        title: 'Welcome back!',
-        description: 'Successfully logged in.',
-      });
-
+      toast({ title: 'Welcome back!', description: 'Successfully logged in.' });
       onSuccess?.();
     } catch (error) {
       toast({
@@ -64,93 +55,133 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     }
   };
 
+  if (loginMode === 'email_otp') {
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => setLoginMode('password')}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to password login
+        </button>
+        <OtpLoginForm />
+      </div>
+    );
+  }
+
+  if (loginMode === 'phone_otp') {
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => setLoginMode('password')}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to password login
+        </button>
+        <PhoneOtpLoginForm />
+      </div>
+    );
+  }
+
   return (
-    <Card className="glass-card border-accent/20">
-      <CardHeader className="text-center">
-        <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center">
-          <LogIn className="w-6 h-6 text-accent" />
+    <div className="space-y-6">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-foreground font-medium">Email</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    className="h-11 bg-secondary/50 border-border focus:border-accent"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-foreground font-medium">Password</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      className="h-11 bg-secondary/50 border-border focus:border-accent pr-10"
+                      {...field}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button
+            type="submit"
+            className="w-full h-11 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+        </form>
+      </Form>
+
+      {/* Divider */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border" />
         </div>
-        <CardTitle className="text-foreground">Welcome Back</CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Sign in to your account
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="password" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="password">Password</TabsTrigger>
-            <TabsTrigger value="otp">Email OTP</TabsTrigger>
-            <TabsTrigger value="phone">Phone OTP</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="password">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-foreground">Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="you@example.com"
-                          className="bg-input border-border focus:border-accent"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-foreground">Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="••••••••"
-                            className="bg-input border-border focus:border-accent pr-10"
-                            {...field}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </Button>
-              </form>
-            </Form>
-          </TabsContent>
-          
-          <TabsContent value="otp">
-            <OtpLoginForm />
-          </TabsContent>
-          
-          <TabsContent value="phone">
-            <PhoneOtpLoginForm />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-card px-3 text-muted-foreground">or continue with</span>
+        </div>
+      </div>
+
+      {/* Alternate login methods */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setLoginMode('email_otp')}
+          className="h-11 border-border hover:border-accent/50 hover:bg-accent/5 transition-all"
+        >
+          <Mail className="mr-2 h-4 w-4 text-accent" />
+          Email OTP
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setLoginMode('phone_otp')}
+          className="h-11 border-border hover:border-accent/50 hover:bg-accent/5 transition-all"
+        >
+          <Phone className="mr-2 h-4 w-4 text-accent" />
+          Phone OTP
+        </Button>
+      </div>
+    </div>
   );
 }
