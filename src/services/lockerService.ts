@@ -66,7 +66,10 @@ export const lockerService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Create locker error:', error);
+      throw error;
+    }
     return data;
   },
 
