@@ -62,11 +62,15 @@ export function BulkCreateLockersDrawer({ open, onOpenChange, branchId }: BulkCr
         status: 'available' as const,
       }));
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('lockers')
-        .insert(lockersData);
+        .insert(lockersData)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Bulk locker create error:', error);
+        throw error;
+      }
 
       toast.success(`Successfully created ${lockerCount} lockers`);
       queryClient.invalidateQueries({ queryKey: ['lockers'] });

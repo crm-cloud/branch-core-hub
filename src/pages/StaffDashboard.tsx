@@ -47,7 +47,7 @@ export default function StaffDashboard() {
     queryFn: async () => {
       const { count: todayCheckins } = await supabase.from('member_attendance').select('id', { count: 'exact' }).eq('branch_id', branchId!).gte('check_in', todayStart).lte('check_in', todayEnd);
       const { count: currentlyIn } = await supabase.from('member_attendance').select('id', { count: 'exact' }).eq('branch_id', branchId!).gte('check_in', todayStart).is('check_out', null);
-      const { count: pendingInvoices } = await supabase.from('invoices').select('id', { count: 'exact' }).eq('branch_id', branchId!).eq('status', 'pending');
+      const { count: pendingInvoices } = await supabase.from('invoices').select('id', { count: 'exact' }).eq('branch_id', branchId!).in('status', ['pending', 'partial', 'overdue']);
       const { count: pendingLeads } = await supabase.from('leads').select('id', { count: 'exact' }).eq('branch_id', branchId!).in('status', ['new', 'contacted']);
       const { count: expiringToday } = await supabase.from('memberships').select('id', { count: 'exact' }).eq('branch_id', branchId!).eq('status', 'active').eq('end_date', today.toISOString().split('T')[0]);
       const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -139,7 +139,7 @@ export default function StaffDashboard() {
         {/* Stats Row */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
           <StatCard title="Today's Check-ins" value={stats?.todayCheckins || 0} icon={UserCheck} description={`${stats?.currentlyIn || 0} currently in`} variant="success" />
-          <StatCard title="Pending Invoices" value={stats?.pendingInvoices || 0} icon={FileText} variant="warning" />
+          <StatCard title="Unpaid Invoices" value={stats?.pendingInvoices || 0} icon={FileText} variant="warning" />
           <StatCard title="Active Leads" value={stats?.pendingLeads || 0} icon={UserPlus} variant="accent" />
           <StatCard title="Expiring This Week" value={stats?.expiringWeek || 0} icon={AlertTriangle} description={`${stats?.expiringToday || 0} today`} variant="destructive" />
         </div>
