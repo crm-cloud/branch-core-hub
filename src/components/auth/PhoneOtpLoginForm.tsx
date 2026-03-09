@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ export function PhoneOtpLoginForm() {
   const [step, setStep] = useState<'phone' | 'verify'>('phone');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const fullPhone = phone.startsWith('+') ? phone : `+91${phone}`;
 
@@ -49,6 +51,7 @@ export function PhoneOtpLoginForm() {
       });
       if (error) throw error;
       toast({ title: 'Welcome!', description: 'Successfully signed in.' });
+      navigate('/home');
     } catch (error: any) {
       toast({
         title: 'Verification Failed',

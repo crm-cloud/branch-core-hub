@@ -1,91 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Audit: Staff & Trainer Workflows + Auth Page Redesign
+## 1. Critical Query Bug Fixes
 
-## Part 1: Staff & Trainer Workflow Audit
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-### Issues Found
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-| # | Issue | Location | Severity |
-|---|-------|----------|----------|
-| 1 | `pt_sessions` query uses `member:members(...)` but `pt_sessions` has no `member_id` FK — only `member_pt_package_id`. This breaks the Trainer Dashboard's "Today's Sessions" widget. | `src/hooks/useMemberData.ts` line 333 | High |
-| 2 | `ScheduleSession.tsx` uses `clients` (alias for `ptClients`) — trainers can only schedule sessions for PT clients, not general clients. Missing ability to schedule for general training clients. | `src/pages/ScheduleSession.tsx` | Low (by design) |
-| 3 | `OtpLoginForm` navigates to `/dashboard` on success instead of going through the role-based redirect (`/home`). Staff/Trainer logging in via Email OTP will always land on admin dashboard. | `src/components/auth/OtpLoginForm.tsx` line 63 | High |
-| 4 | `PhoneOtpLoginForm` has no redirect at all after successful OTP — relies on `onAuthStateChange` to trigger re-render, but the Auth page redirect logic checks `roles` which may not be populated yet. | `src/components/auth/PhoneOtpLoginForm.tsx` | Medium |
-| 5 | Trainer quick-action cards missing `rounded-2xl` class (Vuexy design standard). | `src/pages/TrainerDashboard.tsx` lines 105-127 | Low |
-| 6 | Staff menu includes "Follow-Up Center" but there's no "Benefit Tracking" link for facilities usage — staff can view it but have to navigate manually. Already present in menu config. | Menu config | None (already there) |
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-### Fixes
+## 2. Database Migration
 
-**Fix 1 — pt_sessions query**: Change the today's sessions query to join through `member_pt_packages` instead of direct `member:members`:
-```
-pt_sessions → member_pt_packages → members → profiles
-```
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-**Fix 3 — OTP redirect**: Change `navigate('/dashboard')` to `navigate('/home')` to use the DashboardRedirect/Gatekeeper flow for proper role-based routing.
-
-**Fix 4 — Phone OTP redirect**: Add `navigate('/home')` after successful phone OTP verification.
-
-**Fix 5 — Card rounding**: Add `rounded-2xl` to trainer quick-action cards.
-
-## Part 2: Auth Page Redesign
-
-### Current Problems
-- Three tabs (Password, Email OTP, Phone OTP) create a cramped, confusing layout
-- Each tab is a separate component with its own card/header styling creating visual noise
-- OTP forms navigate to wrong dashboards
-- The page uses `glass-card` styling that feels dated
-
-### New Design: Single-Page Login
-
-Replace the tabbed login card with a clean, single-page layout:
-
-```text
-┌──────────────────────────────────────────────────┐
-│                                                  │
-│     ┌──────────────────────────────────────┐     │
-│     │                                      │     │
-│     │          [Incline Logo]               │     │
-│     │     "Welcome back to Incline"         │     │
-│     │     "Sign in to manage your gym"      │     │
-│     │                                      │     │
-│     │  ┌──────────────────────────────────┐ │     │
-│     │  │  📧 Email                        │ │     │
-│     │  └──────────────────────────────────┘ │     │
-│     │  ┌──────────────────────────────────┐ │     │
-│     │  │  🔒 Password                  👁  │ │     │
-│     │  └──────────────────────────────────┘ │     │
-│     │                                      │     │
-│     │  [ ━━━━━ Sign In ━━━━━━━━━━━━━━━━ ] │     │
-│     │                                      │     │
-│     │  ─────── or continue with ────────  │     │
-│     │                                      │     │
-│     │  [ 📧 Email OTP ]  [ 📱 Phone OTP ] │     │
-│     │                                      │     │
-│     │       Forgot password? Reset here     │     │
-│     └──────────────────────────────────────┘     │
-│                                                  │
-│              Powered by Incline                  │
-└──────────────────────────────────────────────────┘
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-Key design decisions:
-- Password login is the primary (default) form — always visible
-- Email OTP and Phone OTP are secondary methods shown as outlined buttons below a divider
-- Clicking "Email OTP" or "Phone OTP" transitions the card to that flow (replaces password form)
-- A back arrow returns to the default password form
-- Premium Vuexy styling: `rounded-2xl`, soft shadow, gradient background, vibrant accent button
-- Single Card component, no nested tabs
-- Forgot password link stays at bottom
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-## Files to Change
+## 3. AI Fitness Page Redesign
+
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
+
+Redesign with 3 clear tabs and modern Vuexy styling:
+
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
+
+## 4. Public Website CMS/DB Sync
+
+**File:** `src/pages/PublicWebsite.tsx`
+
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/Auth.tsx` | Redesign layout with premium styling, better spacing |
-| `src/components/auth/LoginForm.tsx` | Complete rewrite — single-page with mode switcher instead of tabs |
-| `src/components/auth/OtpLoginForm.tsx` | Fix redirect: `/dashboard` → `/home`. Remove outer Card wrapper (now inline). |
-| `src/components/auth/PhoneOtpLoginForm.tsx` | Add `navigate('/home')` on successful verify |
-| `src/hooks/useMemberData.ts` | Fix pt_sessions query to join via `member_pt_packages` |
-| `src/pages/TrainerDashboard.tsx` | Add `rounded-2xl` to quick-action cards |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
+## Execution Order
+
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

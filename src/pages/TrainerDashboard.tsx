@@ -102,7 +102,7 @@ export default function TrainerDashboard() {
         {/* Quick Actions */}
         <div className="grid gap-4 md:grid-cols-3">
           <Link to="/my-clients">
-            <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
+            <Card className="rounded-2xl hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Users className="h-8 w-8 text-accent" />
                 <span className="font-medium">View My Clients</span>
@@ -110,7 +110,7 @@ export default function TrainerDashboard() {
             </Card>
           </Link>
           <Link to="/pt-sessions">
-            <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
+            <Card className="rounded-2xl hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Calendar className="h-8 w-8 text-success" />
                 <span className="font-medium">Manage Sessions</span>
@@ -118,7 +118,7 @@ export default function TrainerDashboard() {
             </Card>
           </Link>
           <Link to="/trainer-plan-builder">
-            <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
+            <Card className="rounded-2xl hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Dumbbell className="h-8 w-8 text-warning" />
                 <span className="font-medium">Create Fitness Plan</span>
