@@ -32,6 +32,10 @@ export default function PaymentsPage() {
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [voidingPayment, setVoidingPayment] = useState<any>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false);
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
+  const [selectedMember, setSelectedMember] = useState<any>(null);
 
   const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
 
