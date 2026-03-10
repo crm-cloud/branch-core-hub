@@ -138,10 +138,10 @@ export default function StaffDashboard() {
 
         {/* Stats Row */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard title="Today's Check-ins" value={stats?.todayCheckins || 0} icon={UserCheck} description={`${stats?.currentlyIn || 0} currently in`} variant="success" />
-          <StatCard title="Unpaid Invoices" value={stats?.pendingInvoices || 0} icon={FileText} variant="warning" />
-          <StatCard title="Active Leads" value={stats?.pendingLeads || 0} icon={UserPlus} variant="accent" />
-          <StatCard title="Expiring This Week" value={stats?.expiringWeek || 0} icon={AlertTriangle} description={`${stats?.expiringToday || 0} today`} variant="destructive" />
+          <Link to="/attendance"><StatCard title="Today's Check-ins" value={stats?.todayCheckins || 0} icon={UserCheck} description={`${stats?.currentlyIn || 0} currently in`} variant="success" /></Link>
+          <Link to="/invoices"><StatCard title="Unpaid Invoices" value={stats?.pendingInvoices || 0} icon={FileText} variant="warning" /></Link>
+          <Link to="/leads"><StatCard title="Active Leads" value={stats?.pendingLeads || 0} icon={UserPlus} variant="accent" /></Link>
+          <Link to="/members"><StatCard title="Expiring This Week" value={stats?.expiringWeek || 0} icon={AlertTriangle} description={`${stats?.expiringToday || 0} today`} variant="destructive" /></Link>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
