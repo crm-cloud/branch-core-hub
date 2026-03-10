@@ -276,6 +276,70 @@ export default function PaymentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Record Payment Drawer */}
+      <Sheet open={recordPaymentOpen} onOpenChange={setRecordPaymentOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Record Payment</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Search Member</Label>
+              <Input
+                placeholder="Name, phone, or code..."
+                value={selectedMember ? selectedMember.full_name : paymentForm.member_search}
+                onChange={(e) => {
+                  setSelectedMember(null);
+                  setPaymentForm(f => ({ ...f, member_search: e.target.value }));
+                }}
+              />
+              {!selectedMember && memberSearchResults.length > 0 && paymentForm.member_search.length >= 2 && (
+                <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">
+                  {memberSearchResults.map((m: any) => (
+                    <div key={m.id} className="p-2 hover:bg-muted cursor-pointer text-sm" onClick={() => { setSelectedMember(m); setPaymentForm(f => ({ ...f, member_search: '' })); }}>
+                      <span className="font-medium">{m.full_name}</span> <span className="text-muted-foreground">({m.member_code})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Payment Method</Label>
+              <Select value={paymentForm.payment_method} onValueChange={(v) => setPaymentForm(f => ({ ...f, payment_method: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea placeholder="Optional notes..." value={paymentForm.notes} onChange={(e) => setPaymentForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button
+              className="w-full"
+              disabled={!selectedMember || !paymentForm.amount || recordPaymentMutation.isPending}
+              onClick={() => recordPaymentMutation.mutate({ memberId: selectedMember.id, amount: parseFloat(paymentForm.amount), method: paymentForm.payment_method, notes: paymentForm.notes })}
+            >
+              <CreditCard className="h-4 w-4 mr-2" /> Record Payment
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Add Expense Drawer */}
+      {branchFilter && <AddExpenseDrawer open={addExpenseOpen} onOpenChange={setAddExpenseOpen} branchId={branchFilter} />}
     </AppLayout>
   );
 }
