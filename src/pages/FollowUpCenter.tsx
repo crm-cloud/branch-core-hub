@@ -82,13 +82,18 @@ export default function FollowUpCenter() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads')
-        .select('id, name, phone, email, source, status, follow_up_date, notes, created_at')
+        .select('id, full_name, phone, email, source, status, notes, created_at, lead_followups(next_followup_date)')
         .eq('branch_id', branchId!)
         .in('status', ['new', 'contacted', 'qualified'])
-        .order('follow_up_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data || [];
+      return (data || []).map((lead: any) => {
+        const latestFollowup = lead.lead_followups
+          ?.filter((f: any) => f.next_followup_date)
+          ?.sort((a: any, b: any) => b.next_followup_date.localeCompare(a.next_followup_date))?.[0];
+        return { ...lead, follow_up_date: latestFollowup?.next_followup_date || null };
+      });
     },
   });
 
@@ -285,7 +290,7 @@ export default function FollowUpCenter() {
                       return (
                         <div key={lead.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-xl border">
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium">{lead.name}</p>
+                            <p className="font-medium">{lead.full_name}</p>
                             <p className="text-sm text-muted-foreground">{lead.phone || lead.email || 'No contact'} • Source: {lead.source || 'Direct'}</p>
                             {lead.follow_up_date && (
                               <p className={`text-xs mt-0.5 ${isOverdue ? 'text-destructive font-medium' : 'text-amber-500'}`}>
@@ -302,7 +307,7 @@ export default function FollowUpCenter() {
                                   <PhoneCall className="h-4 w-4 text-sky-500" />
                                 </Button>
                                 <Button size="icon" variant="ghost" className="h-8 w-8"
-                                  onClick={() => communicationService.sendWhatsApp(lead.phone, `Hi ${lead.name}, we'd love to welcome you to our gym! Would you like to schedule a tour?`)}>
+                                  onClick={() => communicationService.sendWhatsApp(lead.phone, `Hi ${lead.full_name}, we'd love to welcome you to our gym! Would you like to schedule a tour?`)}>
                                   <MessageSquare className="h-4 w-4 text-emerald-500" />
                                 </Button>
                               </>

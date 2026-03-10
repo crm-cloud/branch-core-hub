@@ -11,7 +11,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { CreditCard, Wallet, TrendingUp, Receipt, Search, Download, Filter, X, Ban, RotateCcw } from 'lucide-react';
+import { CreditCard, Wallet, TrendingUp, Receipt, Search, Download, Filter, X, Ban, RotateCcw, Plus } from 'lucide-react';
+import { AddExpenseDrawer } from '@/components/finance/AddExpenseDrawer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -31,8 +32,47 @@ export default function PaymentsPage() {
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [voidingPayment, setVoidingPayment] = useState<any>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false);
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
+  const [selectedMember, setSelectedMember] = useState<any>(null);
 
   const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
+
+  const { data: memberSearchResults = [] } = useQuery({
+    queryKey: ['member-search-payment', paymentForm.member_search, branchFilter],
+    enabled: paymentForm.member_search.length >= 2,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('search_members', {
+        search_term: paymentForm.member_search,
+        p_branch_id: branchFilter || undefined,
+        p_limit: 5,
+      });
+      return data || [];
+    },
+  });
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string }) => {
+      const { error } = await (supabase.from('payments') as any).insert({
+        member_id: form.memberId,
+        branch_id: branchFilter!,
+        amount: form.amount,
+        payment_method: form.method,
+        status: 'completed',
+        payment_date: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      toast.success('Payment recorded successfully');
+      setRecordPaymentOpen(false);
+      setPaymentForm({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
+      setSelectedMember(null);
+    },
+    onError: () => toast.error('Failed to record payment'),
+  });
 
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['payments', branchFilter],
@@ -135,7 +175,11 @@ export default function PaymentsPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Track and manage all payment transactions</p>
           </div>
-          <Button variant="outline" size="sm" onClick={exportToCSV} className="rounded-xl"><Download className="h-4 w-4 mr-2" />Export</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAddExpenseOpen(true)} className="rounded-xl"><Receipt className="h-4 w-4 mr-2" />Add Expense</Button>
+            <Button size="sm" onClick={() => setRecordPaymentOpen(true)} className="rounded-xl shadow-lg shadow-primary/20"><CreditCard className="h-4 w-4 mr-2" />Record Payment</Button>
+            <Button variant="outline" size="sm" onClick={exportToCSV} className="rounded-xl"><Download className="h-4 w-4 mr-2" />Export</Button>
+          </div>
         </div>
 
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
@@ -232,6 +276,70 @@ export default function PaymentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Record Payment Drawer */}
+      <Sheet open={recordPaymentOpen} onOpenChange={setRecordPaymentOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Record Payment</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Search Member</Label>
+              <Input
+                placeholder="Name, phone, or code..."
+                value={selectedMember ? selectedMember.full_name : paymentForm.member_search}
+                onChange={(e) => {
+                  setSelectedMember(null);
+                  setPaymentForm(f => ({ ...f, member_search: e.target.value }));
+                }}
+              />
+              {!selectedMember && memberSearchResults.length > 0 && paymentForm.member_search.length >= 2 && (
+                <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">
+                  {memberSearchResults.map((m: any) => (
+                    <div key={m.id} className="p-2 hover:bg-muted cursor-pointer text-sm" onClick={() => { setSelectedMember(m); setPaymentForm(f => ({ ...f, member_search: '' })); }}>
+                      <span className="font-medium">{m.full_name}</span> <span className="text-muted-foreground">({m.member_code})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Payment Method</Label>
+              <Select value={paymentForm.payment_method} onValueChange={(v) => setPaymentForm(f => ({ ...f, payment_method: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="online">Online</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea placeholder="Optional notes..." value={paymentForm.notes} onChange={(e) => setPaymentForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button
+              className="w-full"
+              disabled={!selectedMember || !paymentForm.amount || recordPaymentMutation.isPending}
+              onClick={() => recordPaymentMutation.mutate({ memberId: selectedMember.id, amount: parseFloat(paymentForm.amount), method: paymentForm.payment_method, notes: paymentForm.notes })}
+            >
+              <CreditCard className="h-4 w-4 mr-2" /> Record Payment
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Add Expense Drawer */}
+      {branchFilter && <AddExpenseDrawer open={addExpenseOpen} onOpenChange={setAddExpenseOpen} branchId={branchFilter} />}
     </AppLayout>
   );
 }
