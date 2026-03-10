@@ -202,16 +202,18 @@ export default function LockersPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Manage locker assignments, rentals, and availability</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)} className="gap-2 rounded-xl">
-              <Package className="w-4 h-4" />
-              Bulk Create
-            </Button>
-            <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
-              <Plus className="w-4 h-4" />
-              Add Locker
-            </Button>
-          </div>
+          {!roles?.some((r: any) => ['staff'].includes(typeof r === 'string' ? r : r?.role)) && (
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)} className="gap-2 rounded-xl">
+                <Package className="w-4 h-4" />
+                Bulk Create
+              </Button>
+              <Button onClick={() => setIsCreateOpen(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
+                <Plus className="w-4 h-4" />
+                Add Locker
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Stats Row */}
