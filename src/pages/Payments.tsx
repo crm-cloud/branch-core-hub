@@ -135,7 +135,11 @@ export default function PaymentsPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Track and manage all payment transactions</p>
           </div>
-          <Button variant="outline" size="sm" onClick={exportToCSV} className="rounded-xl"><Download className="h-4 w-4 mr-2" />Export</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAddExpenseOpen(true)} className="rounded-xl"><Receipt className="h-4 w-4 mr-2" />Add Expense</Button>
+            <Button size="sm" onClick={() => setRecordPaymentOpen(true)} className="rounded-xl shadow-lg shadow-primary/20"><CreditCard className="h-4 w-4 mr-2" />Record Payment</Button>
+            <Button variant="outline" size="sm" onClick={exportToCSV} className="rounded-xl"><Download className="h-4 w-4 mr-2" />Export</Button>
+          </div>
         </div>
 
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">

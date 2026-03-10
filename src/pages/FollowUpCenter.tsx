@@ -307,7 +307,7 @@ export default function FollowUpCenter() {
                                   <PhoneCall className="h-4 w-4 text-sky-500" />
                                 </Button>
                                 <Button size="icon" variant="ghost" className="h-8 w-8"
-                                  onClick={() => communicationService.sendWhatsApp(lead.phone, `Hi ${lead.name}, we'd love to welcome you to our gym! Would you like to schedule a tour?`)}>
+                                  onClick={() => communicationService.sendWhatsApp(lead.phone, `Hi ${lead.full_name}, we'd love to welcome you to our gym! Would you like to schedule a tour?`)}>
                                   <MessageSquare className="h-4 w-4 text-emerald-500" />
                                 </Button>
                               </>
