@@ -54,7 +54,7 @@ export default function PaymentsPage() {
 
   const recordPaymentMutation = useMutation({
     mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string }) => {
-      const { error } = await supabase.from('payments').insert({
+      const { error } = await (supabase.from('payments') as any).insert({
         member_id: form.memberId,
         branch_id: branchFilter!,
         amount: form.amount,
