@@ -39,6 +39,41 @@ export default function PaymentsPage() {
 
   const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
 
+  const { data: memberSearchResults = [] } = useQuery({
+    queryKey: ['member-search-payment', paymentForm.member_search, branchFilter],
+    enabled: paymentForm.member_search.length >= 2,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('search_members', {
+        search_term: paymentForm.member_search,
+        p_branch_id: branchFilter || undefined,
+        p_limit: 5,
+      });
+      return data || [];
+    },
+  });
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string }) => {
+      const { error } = await supabase.from('payments').insert({
+        member_id: form.memberId,
+        branch_id: branchFilter!,
+        amount: form.amount,
+        payment_method: form.method,
+        status: 'completed',
+        payment_date: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      toast.success('Payment recorded successfully');
+      setRecordPaymentOpen(false);
+      setPaymentForm({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
+      setSelectedMember(null);
+    },
+    onError: () => toast.error('Failed to record payment'),
+  });
+
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['payments', branchFilter],
     queryFn: async () => {
