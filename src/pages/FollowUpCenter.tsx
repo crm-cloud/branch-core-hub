@@ -82,13 +82,18 @@ export default function FollowUpCenter() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads')
-        .select('id, name, phone, email, source, status, follow_up_date, notes, created_at')
+        .select('id, full_name, phone, email, source, status, notes, created_at, lead_followups(next_followup_date)')
         .eq('branch_id', branchId!)
         .in('status', ['new', 'contacted', 'qualified'])
-        .order('follow_up_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return data || [];
+      return (data || []).map((lead: any) => {
+        const latestFollowup = lead.lead_followups
+          ?.filter((f: any) => f.next_followup_date)
+          ?.sort((a: any, b: any) => b.next_followup_date.localeCompare(a.next_followup_date))?.[0];
+        return { ...lead, follow_up_date: latestFollowup?.next_followup_date || null };
+      });
     },
   });
 
