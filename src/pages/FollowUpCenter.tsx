@@ -290,7 +290,7 @@ export default function FollowUpCenter() {
                       return (
                         <div key={lead.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-xl border">
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium">{lead.name}</p>
+                            <p className="font-medium">{lead.full_name}</p>
                             <p className="text-sm text-muted-foreground">{lead.phone || lead.email || 'No contact'} • Source: {lead.source || 'Direct'}</p>
                             {lead.follow_up_date && (
                               <p className={`text-xs mt-0.5 ${isOverdue ? 'text-destructive font-medium' : 'text-amber-500'}`}>
