@@ -87,7 +87,7 @@ export default function StaffDashboard() {
     queryKey: ['staff-followup-leads', branchId],
     enabled: !!branchId,
     queryFn: async () => {
-      const { data, error } = await supabase.from('leads').select('id, full_name, phone, source, status, follow_up_date, notes').eq('branch_id', branchId!).in('status', ['new', 'contacted']).order('follow_up_date', { ascending: true, nullsFirst: false }).limit(5);
+      const { data, error } = await supabase.from('leads').select('id, full_name, phone, source, status, notes, created_at').eq('branch_id', branchId!).in('status', ['new', 'contacted']).order('created_at', { ascending: false }).limit(5);
       if (error) throw error;
       return data || [];
     },
