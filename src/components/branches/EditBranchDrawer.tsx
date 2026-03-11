@@ -320,6 +320,18 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="capacity">Branch Capacity</Label>
+            <Input
+              id="capacity"
+              type="number"
+              min={1}
+              value={formData.capacity}
+              onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 50 })}
+            />
+            <p className="text-xs text-muted-foreground">Maximum occupancy for the Live Occupancy gauge on Dashboard</p>
+          </div>
+
           <div className="flex items-center justify-between py-2">
             <div>
               <Label htmlFor="is_active">Branch Active</Label>
