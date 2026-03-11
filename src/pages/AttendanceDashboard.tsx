@@ -515,6 +515,86 @@ export default function AttendanceDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Force Entry Drawer */}
+      <Sheet open={forceEntryOpen} onOpenChange={setForceEntryOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-warning" />
+              Force Entry Override
+            </SheetTitle>
+            <SheetDescription>
+              Allow a member with expired/frozen membership to enter. This will be logged for audit.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Search Member</Label>
+              <Input
+                placeholder="Search by name, phone, or member code..."
+                value={forceEntrySearch}
+                onChange={(e) => { setForceEntrySearch(e.target.value); setSelectedForceEntryMember(null); }}
+              />
+            </div>
+
+            {forceEntrySearch.length >= 2 && forceEntryResults.length > 0 && !selectedForceEntryMember && (
+              <div className="border rounded-lg max-h-48 overflow-y-auto">
+                {forceEntryResults.map((m: any) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                    onClick={() => setSelectedForceEntryMember(m)}
+                  >
+                    <div>
+                      <p className="font-medium">{m.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{m.member_code} • {m.phone || 'No phone'}</p>
+                    </div>
+                    <Badge variant={m.member_status === 'active' ? 'default' : 'secondary'}>
+                      {m.member_status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedForceEntryMember && (
+              <Card className="border-warning/30 bg-warning/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">{selectedForceEntryMember.full_name}</p>
+                      <p className="text-sm text-muted-foreground">{selectedForceEntryMember.member_code}</p>
+                      <Badge variant="outline" className="mt-1">{selectedForceEntryMember.member_status}</Badge>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedForceEntryMember(null)}>Change</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="space-y-2">
+              <Label>Reason for Force Entry *</Label>
+              <Textarea
+                placeholder="e.g., Member will pay dues within 1-2 days, approved by manager..."
+                value={forceEntryReason}
+                onChange={(e) => setForceEntryReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setForceEntryOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleForceEntry}
+              disabled={!selectedForceEntryMember || !forceEntryReason.trim() || forceEntrySubmitting}
+              className="bg-warning text-warning-foreground hover:bg-warning/90"
+            >
+              {forceEntrySubmitting ? 'Recording...' : 'Confirm Force Entry'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
