@@ -208,7 +208,8 @@ export default function MembersPage() {
 
   const getActiveMembership = (memberships: any[]) => {
     if (!memberships || memberships.length === 0) return null;
-    return memberships.find((m: any) => m.status === 'active');
+    return memberships.find((m: any) => m.status === 'active')
+      || memberships.find((m: any) => m.status === 'frozen');
   };
 
   const getDaysRemaining = (membership: any) => {
