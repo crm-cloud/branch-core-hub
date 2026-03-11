@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: AccessEventRequest = await req.json();
-    const { device_id, person_uuid, confidence, photo_base64, timestamp } = body;
+    const { device_id, person_uuid, confidence, photo_base64, timestamp, force_entry, force_entry_reason, force_entry_by } = body;
 
     if (!device_id || !person_uuid) {
       return new Response(
