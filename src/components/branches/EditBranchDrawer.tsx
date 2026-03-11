@@ -116,6 +116,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           email: formData.email,
           opening_time: formData.opening_time,
           closing_time: formData.closing_time,
+          capacity: formData.capacity,
           is_active: formData.is_active,
         })
         .eq('id', branch.id);
