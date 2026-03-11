@@ -215,6 +215,12 @@ export default function AttendanceDashboard() {
             <p className="text-muted-foreground mt-1">Unified view of member and staff attendance</p>
           </div>
           <div className="flex items-center gap-3">
+            {canForceEntry && (
+              <Button variant="outline" className="gap-2 border-warning text-warning hover:bg-warning/10" onClick={() => setForceEntryOpen(true)}>
+                <ShieldAlert className="h-4 w-4" />
+                Force Entry
+              </Button>
+            )}
             <Input
               type="date"
               value={dateFilter}
