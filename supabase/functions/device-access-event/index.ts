@@ -130,6 +130,29 @@ Deno.serve(async (req) => {
         eventData.denial_reason = 'wrong_branch';
         eventData.response_sent = 'DENIED';
         eventData.device_message = 'Wrong Branch';
+      } else if (force_entry) {
+          // Force entry override - bypass membership validation
+          await supabase.from('member_attendance').insert({
+            member_id: member.id,
+            branch_id: device.branch_id,
+            check_in: new Date().toISOString(),
+            check_in_method: 'force_entry',
+            force_entry: true,
+            force_entry_reason: force_entry_reason || 'Override by reception',
+            force_entry_by: force_entry_by || null,
+          });
+
+          response = {
+            action: 'OPEN',
+            message: `Force Entry: ${memberName}`,
+            led_color: 'WHITE',
+            relay_delay: device.relay_delay || 5,
+            person_name: memberName,
+            member_code: member.member_code,
+          };
+          eventData.access_granted = true;
+          eventData.response_sent = 'OPEN';
+          eventData.device_message = `Force Entry: ${memberName}`;
       } else {
         // Check membership status using RPC
         const { data: validationResult } = await supabase

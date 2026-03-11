@@ -21,10 +21,17 @@ import { toast } from 'sonner';
 
 export default function AttendanceDashboard() {
   const { branchFilter } = useBranchContext();
-  const { hasAnyRole } = useAuth();
+  const { hasAnyRole, user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
   const isAdmin = hasAnyRole(['owner', 'admin']);
+  const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
+  const [forceEntryOpen, setForceEntryOpen] = useState(false);
+  const [forceEntrySearch, setForceEntrySearch] = useState('');
+  const [forceEntryReason, setForceEntryReason] = useState('');
+  const [forceEntrySubmitting, setForceEntrySubmitting] = useState(false);
+  const [selectedForceEntryMember, setSelectedForceEntryMember] = useState<any>(null);
 
   // Fetch member attendance
   const { data: memberAttendance = [] } = useQuery({
