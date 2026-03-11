@@ -11,6 +11,9 @@ interface AccessEventRequest {
   confidence: number;
   photo_base64?: string;
   timestamp?: string;
+  force_entry?: boolean;
+  force_entry_reason?: string;
+  force_entry_by?: string;
 }
 
 interface AccessEventResponse {
