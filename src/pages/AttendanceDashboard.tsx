@@ -127,6 +127,47 @@ export default function AttendanceDashboard() {
     },
   });
 
+  // Force entry member search
+  const { data: forceEntryResults = [] } = useQuery({
+    queryKey: ['force-entry-search', forceEntrySearch, branchFilter],
+    enabled: forceEntrySearch.length >= 2,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('search_members', {
+        search_term: forceEntrySearch,
+        p_branch_id: branchFilter || null,
+        p_limit: 10,
+      });
+      return data || [];
+    },
+  });
+
+  const handleForceEntry = async () => {
+    if (!selectedForceEntryMember || !branchFilter) return;
+    setForceEntrySubmitting(true);
+    try {
+      const { error } = await supabase.from('member_attendance').insert({
+        member_id: selectedForceEntryMember.id,
+        branch_id: branchFilter,
+        check_in: new Date().toISOString(),
+        check_in_method: 'force_entry',
+        force_entry: true,
+        force_entry_reason: forceEntryReason || 'Override by reception',
+        force_entry_by: user?.id || null,
+      } as any);
+      if (error) throw error;
+      toast.success(`Force entry recorded for ${selectedForceEntryMember.full_name}`);
+      queryClient.invalidateQueries({ queryKey: ['member-attendance-dashboard'] });
+      setForceEntryOpen(false);
+      setForceEntrySearch('');
+      setForceEntryReason('');
+      setSelectedForceEntryMember(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to record force entry');
+    } finally {
+      setForceEntrySubmitting(false);
+    }
+  };
+
   // Filter attendance based on search
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {
     const name = a.members?.profiles?.full_name || '';
