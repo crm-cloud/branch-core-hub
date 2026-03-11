@@ -31,6 +31,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     email: '',
     opening_time: '06:00',
     closing_time: '22:00',
+    capacity: 50,
     is_active: true,
     managerId: '',
   });
@@ -66,6 +67,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
         email: branch.email || '',
         opening_time: branch.opening_time || '06:00',
         closing_time: branch.closing_time || '22:00',
+        capacity: branch.capacity || 50,
         is_active: branch.is_active ?? true,
         managerId: currentManager?.user_id || '',
       });
@@ -114,6 +116,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           email: formData.email,
           opening_time: formData.opening_time,
           closing_time: formData.closing_time,
+          capacity: formData.capacity,
           is_active: formData.is_active,
         })
         .eq('id', branch.id);
@@ -315,6 +318,18 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
             <p className="text-xs text-muted-foreground">
               Only users with Manager, Admin, or Owner roles appear here. Assign roles via Admin Roles page.
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="capacity">Branch Capacity</Label>
+            <Input
+              id="capacity"
+              type="number"
+              min={1}
+              value={formData.capacity}
+              onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 50 })}
+            />
+            <p className="text-xs text-muted-foreground">Maximum occupancy for the Live Occupancy gauge on Dashboard</p>
           </div>
 
           <div className="flex items-center justify-between py-2">

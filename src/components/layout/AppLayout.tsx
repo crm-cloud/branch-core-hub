@@ -36,7 +36,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen flex bg-background">
       <AppSidebar />
       
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Desktop header */}
         <AppHeader />
         
@@ -62,7 +62,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto overflow-x-hidden p-6">
           {children}
         </main>
       </div>

@@ -208,7 +208,8 @@ export default function MembersPage() {
 
   const getActiveMembership = (memberships: any[]) => {
     if (!memberships || memberships.length === 0) return null;
-    return memberships.find((m: any) => m.status === 'active');
+    return memberships.find((m: any) => m.status === 'active')
+      || memberships.find((m: any) => m.status === 'frozen');
   };
 
   const getDaysRemaining = (membership: any) => {
@@ -422,9 +423,16 @@ export default function MembersPage() {
                           </TableCell>
                           <TableCell>
                             {activeMembership ? (
-                              <Badge className={getMembershipStatusColor(activeMembership.status)}>
-                                {activeMembership.membership_plans?.name || 'Active'}
-                              </Badge>
+                              <div className="flex items-center gap-1.5">
+                                <Badge className={getMembershipStatusColor(activeMembership.status)}>
+                                  {activeMembership.membership_plans?.name || 'Plan'}
+                                </Badge>
+                                {activeMembership.status === 'frozen' && (
+                                  <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
+                                    <Snowflake className="h-3 w-3 mr-0.5" />Frozen
+                                  </Badge>
+                                )}
+                              </div>
                             ) : (
                               <Badge variant="outline" className="text-muted-foreground border-dashed">
                                 No Plan

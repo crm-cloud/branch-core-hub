@@ -5,23 +5,33 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, Clock, Search, Calendar, TrendingUp, Activity } from 'lucide-react';
+import { Users, UserCheck, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { toast } from 'sonner';
 
 export default function AttendanceDashboard() {
   const { branchFilter } = useBranchContext();
-  const { hasAnyRole } = useAuth();
+  const { hasAnyRole, user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
   const isAdmin = hasAnyRole(['owner', 'admin']);
+  const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
+  const [forceEntryOpen, setForceEntryOpen] = useState(false);
+  const [forceEntrySearch, setForceEntrySearch] = useState('');
+  const [forceEntryReason, setForceEntryReason] = useState('');
+  const [forceEntrySubmitting, setForceEntrySubmitting] = useState(false);
+  const [selectedForceEntryMember, setSelectedForceEntryMember] = useState<any>(null);
 
   // Fetch member attendance
   const { data: memberAttendance = [] } = useQuery({
@@ -117,6 +127,47 @@ export default function AttendanceDashboard() {
     },
   });
 
+  // Force entry member search
+  const { data: forceEntryResults = [] } = useQuery({
+    queryKey: ['force-entry-search', forceEntrySearch, branchFilter],
+    enabled: forceEntrySearch.length >= 2,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('search_members', {
+        search_term: forceEntrySearch,
+        p_branch_id: branchFilter || null,
+        p_limit: 10,
+      });
+      return data || [];
+    },
+  });
+
+  const handleForceEntry = async () => {
+    if (!selectedForceEntryMember || !branchFilter) return;
+    setForceEntrySubmitting(true);
+    try {
+      const { error } = await supabase.from('member_attendance').insert({
+        member_id: selectedForceEntryMember.id,
+        branch_id: branchFilter,
+        check_in: new Date().toISOString(),
+        check_in_method: 'force_entry',
+        force_entry: true,
+        force_entry_reason: forceEntryReason || 'Override by reception',
+        force_entry_by: user?.id || null,
+      } as any);
+      if (error) throw error;
+      toast.success(`Force entry recorded for ${selectedForceEntryMember.full_name}`);
+      queryClient.invalidateQueries({ queryKey: ['member-attendance-dashboard'] });
+      setForceEntryOpen(false);
+      setForceEntrySearch('');
+      setForceEntryReason('');
+      setSelectedForceEntryMember(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to record force entry');
+    } finally {
+      setForceEntrySubmitting(false);
+    }
+  };
+
   // Filter attendance based on search
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {
     const name = a.members?.profiles?.full_name || '';
@@ -164,6 +215,12 @@ export default function AttendanceDashboard() {
             <p className="text-muted-foreground mt-1">Unified view of member and staff attendance</p>
           </div>
           <div className="flex items-center gap-3">
+            {canForceEntry && (
+              <Button variant="outline" className="gap-2 border-warning text-warning hover:bg-warning/10" onClick={() => setForceEntryOpen(true)}>
+                <ShieldAlert className="h-4 w-4" />
+                Force Entry
+              </Button>
+            )}
             <Input
               type="date"
               value={dateFilter}
@@ -372,12 +429,19 @@ export default function AttendanceDashboard() {
                         </TableCell>
                         <TableCell>{formatDuration(attendance.check_in, attendance.check_out)}</TableCell>
                         <TableCell>
-                          <Badge className={`border ${attendance.check_out 
-                            ? 'bg-muted text-muted-foreground border-border' 
-                            : 'bg-success/10 text-success border-success/20'
-                          }`}>
-                            {attendance.check_out ? 'Completed' : 'Active'}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge className={`border ${attendance.check_out 
+                              ? 'bg-muted text-muted-foreground border-border' 
+                              : 'bg-success/10 text-success border-success/20'
+                            }`}>
+                              {attendance.check_out ? 'Completed' : 'Active'}
+                            </Badge>
+                            {attendance.force_entry && (
+                              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
+                                <ShieldAlert className="h-3 w-3 mr-0.5" />Force
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -451,6 +515,86 @@ export default function AttendanceDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Force Entry Drawer */}
+      <Sheet open={forceEntryOpen} onOpenChange={setForceEntryOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-warning" />
+              Force Entry Override
+            </SheetTitle>
+            <SheetDescription>
+              Allow a member with expired/frozen membership to enter. This will be logged for audit.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Search Member</Label>
+              <Input
+                placeholder="Search by name, phone, or member code..."
+                value={forceEntrySearch}
+                onChange={(e) => { setForceEntrySearch(e.target.value); setSelectedForceEntryMember(null); }}
+              />
+            </div>
+
+            {forceEntrySearch.length >= 2 && forceEntryResults.length > 0 && !selectedForceEntryMember && (
+              <div className="border rounded-lg max-h-48 overflow-y-auto">
+                {forceEntryResults.map((m: any) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                    onClick={() => setSelectedForceEntryMember(m)}
+                  >
+                    <div>
+                      <p className="font-medium">{m.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{m.member_code} • {m.phone || 'No phone'}</p>
+                    </div>
+                    <Badge variant={m.member_status === 'active' ? 'default' : 'secondary'}>
+                      {m.member_status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedForceEntryMember && (
+              <Card className="border-warning/30 bg-warning/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">{selectedForceEntryMember.full_name}</p>
+                      <p className="text-sm text-muted-foreground">{selectedForceEntryMember.member_code}</p>
+                      <Badge variant="outline" className="mt-1">{selectedForceEntryMember.member_status}</Badge>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedForceEntryMember(null)}>Change</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="space-y-2">
+              <Label>Reason for Force Entry *</Label>
+              <Textarea
+                placeholder="e.g., Member will pay dues within 1-2 days, approved by manager..."
+                value={forceEntryReason}
+                onChange={(e) => setForceEntryReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setForceEntryOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleForceEntry}
+              disabled={!selectedForceEntryMember || !forceEntryReason.trim() || forceEntrySubmitting}
+              className="bg-warning text-warning-foreground hover:bg-warning/90"
+            >
+              {forceEntrySubmitting ? 'Recording...' : 'Confirm Force Entry'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }

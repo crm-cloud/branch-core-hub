@@ -2782,6 +2782,9 @@ export type Database = {
           check_in_method: string | null
           check_out: string | null
           created_at: string
+          force_entry: boolean | null
+          force_entry_by: string | null
+          force_entry_reason: string | null
           id: string
           member_id: string
           membership_id: string | null
@@ -2793,6 +2796,9 @@ export type Database = {
           check_in_method?: string | null
           check_out?: string | null
           created_at?: string
+          force_entry?: boolean | null
+          force_entry_by?: string | null
+          force_entry_reason?: string | null
           id?: string
           member_id: string
           membership_id?: string | null
@@ -2804,6 +2810,9 @@ export type Database = {
           check_in_method?: string | null
           check_out?: string | null
           created_at?: string
+          force_entry?: boolean | null
+          force_entry_by?: string | null
+          force_entry_reason?: string | null
           id?: string
           member_id?: string
           membership_id?: string | null
@@ -2815,6 +2824,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_attendance_force_entry_by_fkey"
+            columns: ["force_entry_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
