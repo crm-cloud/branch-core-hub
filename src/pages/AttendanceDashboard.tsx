@@ -429,12 +429,19 @@ export default function AttendanceDashboard() {
                         </TableCell>
                         <TableCell>{formatDuration(attendance.check_in, attendance.check_out)}</TableCell>
                         <TableCell>
-                          <Badge className={`border ${attendance.check_out 
-                            ? 'bg-muted text-muted-foreground border-border' 
-                            : 'bg-success/10 text-success border-success/20'
-                          }`}>
-                            {attendance.check_out ? 'Completed' : 'Active'}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge className={`border ${attendance.check_out 
+                              ? 'bg-muted text-muted-foreground border-border' 
+                              : 'bg-success/10 text-success border-success/20'
+                            }`}>
+                              {attendance.check_out ? 'Completed' : 'Active'}
+                            </Badge>
+                            {attendance.force_entry && (
+                              <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
+                                <ShieldAlert className="h-3 w-3 mr-0.5" />Force
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
