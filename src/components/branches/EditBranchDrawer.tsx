@@ -31,6 +31,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     email: '',
     opening_time: '06:00',
     closing_time: '22:00',
+    capacity: 50,
     is_active: true,
     managerId: '',
   });
