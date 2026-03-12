@@ -509,6 +509,43 @@ export function MemberProfileDrawer({
     enabled: !!referrerUserId,
   });
 
+  // Fetch assigned trainer name
+  const assignedTrainerId = memberDetails?.assigned_trainer_id || member?.assigned_trainer_id;
+  const { data: assignedTrainerProfile } = useQuery({
+    queryKey: ['assigned-trainer-profile', assignedTrainerId],
+    queryFn: async () => {
+      if (!assignedTrainerId) return null;
+      const { data: trainer } = await supabase
+        .from('trainers')
+        .select('user_id')
+        .eq('id', assignedTrainerId)
+        .single();
+      if (!trainer?.user_id) return null;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', trainer.user_id)
+        .single();
+      return profile;
+    },
+    enabled: !!assignedTrainerId,
+  });
+
+  // Fetch wallet balance
+  const { data: memberWallet } = useQuery({
+    queryKey: ['member-wallet-balance', member?.id],
+    queryFn: async () => {
+      if (!member?.id) return null;
+      const { data } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('member_id', member.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!member?.id && open,
+  });
+
   const { data: payments = [] } = useQuery({
     queryKey: ['member-payments', member?.id],
     queryFn: async () => {
@@ -785,69 +822,43 @@ export function MemberProfileDrawer({
           </div>
 
           {/* Quick Actions - Row 2 */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {activeMembership?.status === 'active' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)}>
-                    <Snowflake className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Freeze Membership</TooltipContent>
-              </Tooltip>
+              <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)} className="justify-start">
+                <Snowflake className="h-4 w-4 mr-2" />
+                Freeze Plan
+              </Button>
             )}
             {activeMembership?.status === 'frozen' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)}>
-                    <Play className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Unfreeze Membership</TooltipContent>
-              </Tooltip>
+              <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)} className="justify-start">
+                <Play className="h-4 w-4 mr-2" />
+                Unfreeze Plan
+              </Button>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)}>
-                  <UserCog className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Assign Trainer</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)}>
-                  <Ruler className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Record Measurement</TooltipContent>
-            </Tooltip>
+            <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)} className="justify-start">
+              <UserCog className="h-4 w-4 mr-2" />
+              {member.assigned_trainer_id ? 'Change Trainer' : 'Assign Trainer'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)} className="justify-start">
+              <Ruler className="h-4 w-4 mr-2" />
+              Record Body
+            </Button>
             {activeMembership && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" className="text-destructive" onClick={() => setCancelOpen(true)}>
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Cancel Membership</TooltipContent>
-              </Tooltip>
+              <Button variant="outline" size="sm" className="text-destructive justify-start" onClick={() => setCancelOpen(true)}>
+                <XCircle className="h-4 w-4 mr-2" />
+                Cancel Plan
+              </Button>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className={member.status === 'active' ? 'text-destructive' : 'text-success'}
-                  onClick={toggleMemberStatus}
-                  disabled={isTogglingStatus}
-                >
-                  {member.status === 'active' ? <UserMinus className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {member.status === 'active' ? 'Deactivate Member' : 'Activate Member'}
-              </TooltipContent>
-            </Tooltip>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className={`justify-start ${member.status === 'active' ? 'text-destructive' : 'text-success'}`}
+              onClick={toggleMemberStatus}
+              disabled={isTogglingStatus}
+            >
+              {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
+              {member.status === 'active' ? 'Deactivate' : 'Activate'}
+            </Button>
           </div>
 
           <Separator />
@@ -925,6 +936,37 @@ export function MemberProfileDrawer({
                       <Gift className="h-4 w-4" />
                       <span className="font-medium">Referred by:</span>
                       <span>{referrerProfile?.full_name || (memberDetails?.referrer as any)?.member_code || 'Unknown'}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Assigned Trainer */}
+              <Card className={assignedTrainerId ? 'border-primary/30 bg-primary/5' : ''}>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Dumbbell className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">General Trainer:</span>
+                      <span className="text-sm">
+                        {assignedTrainerProfile?.full_name || (assignedTrainerId ? 'Loading...' : 'Not Assigned')}
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setAssignTrainerOpen(true)} className="h-7 text-xs">
+                      {assignedTrainerId ? 'Change' : 'Assign'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Wallet Balance */}
+              {(memberWallet?.balance ?? 0) > 0 && (
+                <Card className="border-success/30 bg-success/5">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <IndianRupee className="h-4 w-4 text-success" />
+                      <span className="font-medium text-sm">Wallet Balance:</span>
+                      <span className="text-sm font-bold text-success">₹{memberWallet?.balance?.toLocaleString('en-IN')}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -1321,6 +1363,7 @@ export function MemberProfileDrawer({
           memberId={member.id}
           memberName={profile?.full_name}
           branchId={member.branch_id}
+          currentTrainerId={member.assigned_trainer_id}
         />
         <RecordMeasurementDrawer
           open={measurementOpen}

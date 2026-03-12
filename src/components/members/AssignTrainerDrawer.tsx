@@ -86,9 +86,10 @@ export function AssignTrainerDrawer({
 
   const assignMutation = useMutation({
     mutationFn: async () => {
+      const trainerId = selectedTrainerId === 'none' || !selectedTrainerId ? null : selectedTrainerId;
       const { error } = await supabase
         .from('members')
-        .update({ assigned_trainer_id: selectedTrainerId || null })
+        .update({ assigned_trainer_id: trainerId })
         .eq('id', memberId);
       if (error) throw error;
     },
