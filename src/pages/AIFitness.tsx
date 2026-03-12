@@ -169,12 +169,66 @@ export default function AIFitnessPage() {
     name: "", age: "", gender: "", height: "", weight: "",
     fitnessGoals: "", healthConditions: "", experience: "beginner", preferences: "",
   });
+  const [planMode, setPlanMode] = useState<'global' | 'personalized'>('global');
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [caloriesTarget, setCaloriesTarget] = useState("");
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [assignDrawerOpen, setAssignDrawerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [shuffledWorkout, setShuffledWorkout] = useState<any>(null);
+  const [personalizedMember, setPersonalizedMember] = useState<any>(null);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+
+  // Search members for personalized mode
+  const { data: memberResults = [] } = useQuery({
+    queryKey: ['ai-member-search', memberSearchTerm],
+    enabled: planMode === 'personalized' && memberSearchTerm.length >= 2,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('search_members', {
+        search_term: memberSearchTerm,
+        p_branch_id: null,
+        p_limit: 8,
+      });
+      if (error) throw error;
+      return (data || []).filter((m: any) => m.member_status === 'active');
+    },
+  });
+
+  // Auto-fill biometrics when a member is selected in personalized mode
+  const handleSelectPersonalizedMember = async (member: any) => {
+    setPersonalizedMember(member);
+    setMemberSearchTerm('');
+
+    // Fetch gender from profile
+    const { data: memberRow } = await supabase.from('members').select('user_id').eq('id', member.id).single();
+    if (memberRow?.user_id) {
+      const { data: profile } = await supabase.from('profiles').select('gender').eq('id', memberRow.user_id).single();
+      if (profile?.gender) {
+        setMemberInfo(prev => ({ ...prev, gender: profile.gender!.toLowerCase() }));
+      }
+    }
+
+    // Fetch latest measurements
+    const { data: measurements } = await supabase
+      .from('member_measurements')
+      .select('weight_kg, height_cm, body_fat_percentage')
+      .eq('member_id', member.id)
+      .order('recorded_at', { ascending: false })
+      .limit(1);
+
+    if (measurements && measurements.length > 0) {
+      const m = measurements[0];
+      setMemberInfo(prev => ({
+        ...prev,
+        name: member.full_name + ' Plan',
+        weight: m.weight_kg ? String(m.weight_kg) : prev.weight,
+        height: m.height_cm ? String(m.height_cm) : prev.height,
+      }));
+      toast.success('Auto-filled biometrics from member profile');
+    } else {
+      setMemberInfo(prev => ({ ...prev, name: member.full_name + ' Plan' }));
+    }
+  };
 
   const generatePlan = useGenerateFitnessPlan();
 
@@ -373,63 +427,160 @@ export default function AIFitnessPage() {
           <TabsContent value="generate" className="space-y-6 mt-4">
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Input Form */}
-              <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+              <Card className="rounded-2xl shadow-lg shadow-primary/5">
                 <CardHeader>
                   <CardTitle>Plan Details</CardTitle>
-                  <CardDescription>Enter plan details. Member-specific info is optional — leave blank to create a global template.</CardDescription>
+                  <CardDescription>
+                    {planMode === 'global'
+                      ? 'Create a master template that can be assigned to any member later.'
+                      : 'Generate a personalized plan tailored to a specific member\'s body metrics.'}
+                  </CardDescription>
+                  {/* Mode Toggle */}
+                  <div className="flex items-center rounded-xl bg-muted/50 p-1 gap-1 mt-2">
+                    <Button
+                      size="sm"
+                      variant={planMode === 'global' ? 'default' : 'ghost'}
+                      onClick={() => { setPlanMode('global'); setPersonalizedMember(null); }}
+                      className="flex-1 gap-1.5"
+                    >
+                      <Library className="h-4 w-4" /> Global Template
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={planMode === 'personalized' ? 'default' : 'ghost'}
+                      onClick={() => setPlanMode('personalized')}
+                      className="flex-1 gap-1.5"
+                    >
+                      <UserPlus className="h-4 w-4" /> Personalized Plan
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4">
+                    {/* Personalized mode: member search */}
+                    {planMode === 'personalized' && (
+                      <div className="space-y-2">
+                        <Label>Select Member *</Label>
+                        {personalizedMember ? (
+                          <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                            <div>
+                              <p className="font-medium text-sm">{personalizedMember.full_name}</p>
+                              <p className="text-xs text-muted-foreground">{personalizedMember.member_code}</p>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => { setPersonalizedMember(null); setMemberInfo(prev => ({ ...prev, name: '', age: '', gender: '', height: '', weight: '' })); }}>Change</Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Input
+                              placeholder="Search member by name, code, phone..."
+                              value={memberSearchTerm}
+                              onChange={(e) => setMemberSearchTerm(e.target.value)}
+                            />
+                            {memberResults.length > 0 && (
+                              <div className="space-y-1 max-h-40 overflow-y-auto border rounded-lg p-1">
+                                {memberResults.map((m: any) => (
+                                  <button key={m.id} onClick={() => handleSelectPersonalizedMember(m)} className="w-full text-left p-2 rounded hover:bg-accent text-sm">
+                                    <span className="font-medium">{m.full_name}</span>
+                                    <span className="text-muted-foreground ml-2">{m.member_code}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="grid gap-2">
                       <Label>Plan Name *</Label>
                       <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="e.g. Push Pull Legs, Weight Loss Circuit" />
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="grid gap-2">
-                        <Label>Age</Label>
-                        <Input type="number" value={memberInfo.age} onChange={(e) => setMemberInfo({ ...memberInfo, age: e.target.value })} placeholder="25" />
+
+                    {/* Biometric fields: only in personalized mode */}
+                    {planMode === 'personalized' && (
+                      <>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="grid gap-2">
+                            <Label>Age</Label>
+                            <Input type="number" value={memberInfo.age} onChange={(e) => setMemberInfo({ ...memberInfo, age: e.target.value })} placeholder="25" />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Gender</Label>
+                            <Select value={memberInfo.gender} onValueChange={(v) => setMemberInfo({ ...memberInfo, gender: v })}>
+                              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="male">Male</SelectItem>
+                                <SelectItem value="female">Female</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Experience</Label>
+                            <Select value={memberInfo.experience} onValueChange={(v) => setMemberInfo({ ...memberInfo, experience: v })}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="beginner">Beginner</SelectItem>
+                                <SelectItem value="intermediate">Intermediate</SelectItem>
+                                <SelectItem value="advanced">Advanced</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid gap-2">
+                            <Label>Height (cm)</Label>
+                            <Input type="number" value={memberInfo.height} onChange={(e) => setMemberInfo({ ...memberInfo, height: e.target.value })} placeholder="175" />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Weight (kg)</Label>
+                            <Input type="number" value={memberInfo.weight} onChange={(e) => setMemberInfo({ ...memberInfo, weight: e.target.value })} placeholder="70" />
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Health Conditions</Label>
+                          <Input value={memberInfo.healthConditions} onChange={(e) => setMemberInfo({ ...memberInfo, healthConditions: e.target.value })} placeholder="Any injuries or limitations..." />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Global mode: Goal + Experience only */}
+                    {planMode === 'global' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-2">
+                          <Label>Goal</Label>
+                          <Select value={memberInfo.fitnessGoals} onValueChange={(v) => setMemberInfo({ ...memberInfo, fitnessGoals: v })}>
+                            <SelectTrigger><SelectValue placeholder="Select goal" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Weight Loss">Weight Loss</SelectItem>
+                              <SelectItem value="Muscle Gain">Muscle Gain</SelectItem>
+                              <SelectItem value="General Fitness">General Fitness</SelectItem>
+                              <SelectItem value="Endurance">Endurance</SelectItem>
+                              <SelectItem value="Flexibility">Flexibility</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Experience</Label>
+                          <Select value={memberInfo.experience} onValueChange={(v) => setMemberInfo({ ...memberInfo, experience: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="beginner">Beginner</SelectItem>
+                              <SelectItem value="intermediate">Intermediate</SelectItem>
+                              <SelectItem value="advanced">Advanced</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
+                    )}
+
+                    {planMode === 'personalized' && (
                       <div className="grid gap-2">
-                        <Label>Gender</Label>
-                        <Select value={memberInfo.gender} onValueChange={(v) => setMemberInfo({ ...memberInfo, gender: v })}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label>Fitness Goals</Label>
+                        <Textarea value={memberInfo.fitnessGoals} onChange={(e) => setMemberInfo({ ...memberInfo, fitnessGoals: e.target.value })} placeholder="Lose weight, build muscle, improve endurance..." rows={2} />
                       </div>
-                      <div className="grid gap-2">
-                        <Label>Experience</Label>
-                        <Select value={memberInfo.experience} onValueChange={(v) => setMemberInfo({ ...memberInfo, experience: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="beginner">Beginner</SelectItem>
-                            <SelectItem value="intermediate">Intermediate</SelectItem>
-                            <SelectItem value="advanced">Advanced</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="grid gap-2">
-                        <Label>Height (cm)</Label>
-                        <Input type="number" value={memberInfo.height} onChange={(e) => setMemberInfo({ ...memberInfo, height: e.target.value })} placeholder="175" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Weight (kg)</Label>
-                        <Input type="number" value={memberInfo.weight} onChange={(e) => setMemberInfo({ ...memberInfo, weight: e.target.value })} placeholder="70" />
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Fitness Goals</Label>
-                      <Textarea value={memberInfo.fitnessGoals} onChange={(e) => setMemberInfo({ ...memberInfo, fitnessGoals: e.target.value })} placeholder="Lose weight, build muscle, improve endurance..." rows={2} />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Health Conditions</Label>
-                      <Input value={memberInfo.healthConditions} onChange={(e) => setMemberInfo({ ...memberInfo, healthConditions: e.target.value })} placeholder="Any injuries or limitations..." />
-                    </div>
+                    )}
+
                     <div className="grid gap-2">
                       <Label>Preferences</Label>
                       <Input value={memberInfo.preferences} onChange={(e) => setMemberInfo({ ...memberInfo, preferences: e.target.value })} placeholder={planType === "workout" ? "Home workouts, no equipment..." : "Vegetarian, no dairy..."} />
@@ -445,8 +596,8 @@ export default function AIFitnessPage() {
                         <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending} className="w-full">
-                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate & Save as Template</>)}
+                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending || (planMode === 'personalized' && !personalizedMember)} className="w-full">
+                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />{planMode === 'global' ? 'Generate Global Template' : 'Generate Personalized Plan'}</>)}
                     </Button>
                   </div>
                 </CardContent>

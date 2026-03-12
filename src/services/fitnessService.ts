@@ -144,7 +144,7 @@ export async function searchMembersForAssignment(searchTerm: string, branchId?: 
     return [];
   }
 
-  return (data || []).filter((m: any) => m.is_active).map((m: any) => ({
+  return (data || []).filter((m: any) => m.member_status === 'active').map((m: any) => ({
     id: m.id,
     member_code: m.member_code,
     full_name: m.full_name,
