@@ -11,13 +11,39 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate webhook secret
-    const webhookSecret = Deno.env.get('WEBHOOK_LEAD_SECRET');
-    const providedSecret = req.headers.get('x-webhook-secret');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!webhookSecret || providedSecret !== webhookSecret) {
+    // Auth: Support slug-based (query param) OR header-based secret
+    const url = new URL(req.url);
+    const slug = url.searchParams.get('slug');
+    const providedSecret = req.headers.get('x-webhook-secret');
+    const webhookSecret = Deno.env.get('WEBHOOK_LEAD_SECRET');
+
+    let authenticated = false;
+
+    // Method 1: Slug-based auth (preferred for external integrations)
+    if (slug) {
+      const { data: orgSettings } = await supabase
+        .from('organization_settings')
+        .select('id')
+        .eq('webhook_slug', slug)
+        .maybeSingle();
+
+      if (orgSettings) {
+        authenticated = true;
+      }
+    }
+
+    // Method 2: Header-based secret (legacy fallback)
+    if (!authenticated && webhookSecret && providedSecret === webhookSecret) {
+      authenticated = true;
+    }
+
+    if (!authenticated) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized. Provide a valid slug parameter or x-webhook-secret header.' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -30,10 +56,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     const body = await req.json();
 
     // Support multiple field name formats (Zapier, Make, etc.)
@@ -41,9 +63,6 @@ Deno.serve(async (req) => {
     const phone = (body.phone || body.phone_number || body.mobile || '').replace(/[\s\-\(\)]/g, '').slice(0, 20);
     const email = (body.email || '').trim().slice(0, 255) || null;
     const source = (body.source || body.utm_source || body.platform || 'api').toLowerCase().slice(0, 50);
-    const utmSource = (body.utm_source || source).slice(0, 100);
-    const utmMedium = (body.utm_medium || '').slice(0, 100);
-    const utmCampaign = (body.utm_campaign || '').slice(0, 100);
     const notes = (body.notes || body.message || '').slice(0, 500);
 
     if (!fullName || fullName.length < 2) {
