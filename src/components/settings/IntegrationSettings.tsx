@@ -138,12 +138,13 @@ export function IntegrationSettings() {
       </div>
 
       <Tabs defaultValue="payment" className="space-y-4">
-        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
+        <TabsList className="grid grid-cols-6 w-full max-w-4xl">
           <TabsTrigger value="payment">Payment</TabsTrigger>
           <TabsTrigger value="sms">SMS</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="google">Google</TabsTrigger>
+          <TabsTrigger value="leads">Lead Capture</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payment" className="space-y-4">
