@@ -375,14 +375,14 @@ export default function AIFitnessPage() {
               {/* Input Form */}
               <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
                 <CardHeader>
-                  <CardTitle>Member Information</CardTitle>
-                  <CardDescription>Enter member details to generate a personalized {planType} plan</CardDescription>
+                  <CardTitle>Plan Details</CardTitle>
+                  <CardDescription>Enter plan details. Member-specific info is optional — leave blank to create a global template.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4">
                     <div className="grid gap-2">
-                      <Label>Member Name *</Label>
-                      <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="John Doe" />
+                      <Label>Plan Name *</Label>
+                      <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="e.g. Push Pull Legs, Weight Loss Circuit" />
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       <div className="grid gap-2">
