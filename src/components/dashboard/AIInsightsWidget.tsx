@@ -29,24 +29,21 @@ const SEVERITY_ICONS: Record<string, typeof Info> = {
 };
 
 export function AIInsightsWidget({ branchId }: { branchId?: string }) {
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastGenerated, setLastGenerated] = useState<string | null>(null);
-
-  // Check cached insights on mount
-  useState(() => {
+  const [insights, setInsights] = useState<Insight[]>(() => {
     const cached = localStorage.getItem('ai-insights-cache');
     if (cached) {
       try {
         const { insights: cachedInsights, timestamp, branch } = JSON.parse(cached);
         const hoursSinceCache = (Date.now() - timestamp) / (1000 * 60 * 60);
         if (hoursSinceCache < 24 && branch === (branchId || 'all')) {
-          setInsights(cachedInsights);
-          setLastGenerated(new Date(timestamp).toLocaleTimeString());
+          return cachedInsights;
         }
       } catch { /* ignore */ }
     }
+    return [];
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastGenerated, setLastGenerated] = useState<string | null>(null);
 
   const generateInsights = async () => {
     setIsLoading(true);

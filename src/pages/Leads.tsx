@@ -314,7 +314,17 @@ export default function LeadsPage() {
                               </SelectContent>
                             </Select>
                           </TableCell>
-                          <TableCell><Badge variant="outline">{lead.source || 'Direct'}</Badge></TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={
+                              lead.source === 'instagram' ? 'bg-pink-500/10 text-pink-600 border-pink-200' :
+                              lead.source === 'facebook' ? 'bg-blue-500/10 text-blue-600 border-blue-200' :
+                              lead.source === 'google' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200' :
+                              lead.source === 'website' ? 'bg-violet-500/10 text-violet-600 border-violet-200' :
+                              ''
+                            }>
+                              {lead.source || 'Direct'}
+                            </Badge>
+                          </TableCell>
                           <TableCell>{format(new Date(lead.created_at), 'MMM dd, yyyy')}</TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center gap-1">
