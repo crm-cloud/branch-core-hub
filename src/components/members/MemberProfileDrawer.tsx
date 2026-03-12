@@ -1321,6 +1321,7 @@ export function MemberProfileDrawer({
           memberId={member.id}
           memberName={profile?.full_name}
           branchId={member.branch_id}
+          currentTrainerId={member.assigned_trainer_id}
         />
         <RecordMeasurementDrawer
           open={measurementOpen}
