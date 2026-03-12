@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/ui/stat-card';
+import { StatCardSkeleton } from '@/components/ui/table-skeleton';
 
 import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, AccountsReceivableWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
 import { OccupancyGauge } from '@/components/dashboard/OccupancyGauge';
@@ -302,33 +303,42 @@ export default function DashboardPage() {
         </div>
 
         {/* Secondary Stats Row */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard
-            title="New Leads"
-            value={stats?.newLeads || 0}
-            icon={UserPlus}
-            description="This month"
-            variant="info"
-          />
-          <StatCard
-            title="Active Trainers"
-            value={stats?.activeTrainers || 0}
-            icon={Dumbbell}
-            variant="default"
-          />
-          <StatCard
-            title="Today's Classes"
-            value={stats?.todayClasses || 0}
-            icon={Calendar}
-            variant="accent"
-          />
-          <StatCard
-            title="Pending Approvals"
-            value={stats?.pendingApprovals || 0}
-            icon={ClipboardList}
-            variant="warning"
-          />
-        </div>
+        {statsLoading ? (
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </div>
+        ) : (
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard
+              title="New Leads"
+              value={stats?.newLeads || 0}
+              icon={UserPlus}
+              description="This month"
+              variant="info"
+            />
+            <StatCard
+              title="Active Trainers"
+              value={stats?.activeTrainers || 0}
+              icon={Dumbbell}
+              variant="default"
+            />
+            <StatCard
+              title="Today's Classes"
+              value={stats?.todayClasses || 0}
+              icon={Calendar}
+              variant="accent"
+            />
+            <StatCard
+              title="Pending Approvals"
+              value={stats?.pendingApprovals || 0}
+              icon={ClipboardList}
+              variant="warning"
+            />
+          </div>
+        )}
 
         {/* Charts Row */}
         <div className="grid gap-6 md:grid-cols-2">

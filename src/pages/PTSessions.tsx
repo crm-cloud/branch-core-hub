@@ -322,7 +322,14 @@ export default function PTSessionsPage() {
             <EditPTPackageDrawer open={isEditPackageOpen} onOpenChange={setIsEditPackageOpen} package={editingPackage} />
 
             {packagesLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading packages...</div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardHeader><div className="h-4 bg-muted rounded w-24" /><div className="h-6 bg-muted rounded w-40 mt-2" /></CardHeader>
+                    <CardContent><div className="space-y-2"><div className="h-4 bg-muted rounded w-full" /><div className="h-4 bg-muted rounded w-3/4" /></div></CardContent>
+                  </Card>
+                ))}
+              </div>
             ) : filteredPackages.length === 0 ? (
               <Card><CardContent className="py-8 text-center text-muted-foreground">
                 {showInactive ? "No PT packages found." : "No active PT packages. Create your first package or enable 'Show Inactive'."}

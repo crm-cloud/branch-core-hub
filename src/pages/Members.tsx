@@ -13,9 +13,11 @@ import { QuickFreezeDrawer } from '@/components/members/QuickFreezeDrawer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   Search, Plus, Users, UserCheck, UserX, CreditCard, Dumbbell, 
-  Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake
+  Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +25,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useState, useMemo } from 'react';
 import { differenceInDays, format } from 'date-fns';
+
+const PAGE_SIZE = 20;
 
 export default function MembersPage() {
   const queryClient = useQueryClient();
@@ -35,65 +39,66 @@ export default function MembersPage() {
   const [selectedMembershipForFreeze, setSelectedMembershipForFreeze] = useState<any>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(0);
   const { selectedBranch, setSelectedBranch, effectiveBranchId, branchFilter, branches } = useBranchContext();
 
-  // Fetch members using the search_members function when searching, otherwise regular query
-  const { data: members = [], isLoading } = useQuery({
-    queryKey: ['members', search, branchFilter],
+  // Reset page on search/filter changes
+  const handleSearchChange = (val: string) => { setSearch(val); setPage(0); };
+  const handleStatusFilter = (val: string) => { setStatusFilter(val); setPage(0); };
+
+  // Fetch members with server-side pagination
+  const { data: membersResult, isLoading } = useQuery({
+    queryKey: ['members', search, branchFilter, page],
     queryFn: async () => {
       if (search && search.trim().length > 0) {
-        // Use the search_members function for searching
         const { data, error } = await supabase
           .rpc('search_members', {
             search_term: search.trim(),
             p_branch_id: branchFilter || null,
-            p_limit: 100
+            p_limit: PAGE_SIZE
           });
 
         if (error) throw error;
 
-        // Transform the RPC result to match the expected format
-        return (data || []).map((row: any) => ({
-          id: row.id,
-          member_code: row.member_code,
-          user_id: row.user_id,
-          branch_id: row.branch_id,
-          joined_at: row.created_at,
-          joined_date: row.joined_date,
-          status: row.member_status || 'inactive', // Use calculated status from RPC
-          profiles: {
-            full_name: row.full_name,
-            email: row.email,
-            phone: row.phone,
-            avatar_url: row.avatar_url
-          },
-          branch: {
-            name: row.branch_name
-          },
-          memberships: [] // Need separate query for memberships
-        }));
+        return {
+          data: (data || []).map((row: any) => ({
+            id: row.id,
+            member_code: row.member_code,
+            user_id: row.user_id,
+            branch_id: row.branch_id,
+            joined_at: row.created_at,
+            status: row.member_status || 'inactive',
+            profiles: {
+              full_name: row.full_name,
+              email: row.email,
+              phone: row.phone,
+              avatar_url: row.avatar_url
+            },
+            branch: { name: row.branch_name },
+            memberships: []
+          })),
+          count: null // RPC doesn't return total count
+        };
       } else {
-        // Regular query when not searching
         let query = supabase
           .from('members')
           .select(`
-            *,
+            id, member_code, user_id, branch_id, status, created_at, assigned_trainer_id,
             profiles:user_id(full_name, email, phone, avatar_url),
             branch:branch_id(name, code),
             memberships(id, status, start_date, end_date, plan_id, membership_plans(name))
-          `)
+          `, { count: 'exact' })
           .order('created_at', { ascending: false })
-          .limit(100);
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
         if (branchFilter) {
           query = query.eq('branch_id', branchFilter);
         }
 
-        const { data, error } = await query;
+        const { data, error, count } = await query;
         if (error) throw error;
         
-        return (data || []).map((m: any) => {
-          // Calculate status dynamically based on active membership
+        const mapped = (data || []).map((m: any) => {
           const activeMembership = m.memberships?.find((ms: any) => {
             const now = new Date();
             const start = new Date(ms.start_date);
@@ -104,15 +109,17 @@ export default function MembersPage() {
           let memberStatus = 'inactive';
           if (activeMembership) memberStatus = 'active';
           else if (frozenMembership) memberStatus = 'frozen';
-          return {
-            ...m,
-            status: memberStatus,
-            joined_at: m.created_at
-          };
+          return { ...m, status: memberStatus, joined_at: m.created_at };
         });
+
+        return { data: mapped, count };
       }
     },
   });
+
+  const members = membersResult?.data || [];
+  const totalCount = membersResult?.count;
+  const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : null;
 
   // Fetch memberships for searched members
   const memberIds = useMemo(() => members.map((m: any) => m.id), [members]);
@@ -160,7 +167,7 @@ export default function MembersPage() {
   }).length;
 
   const stats = {
-    total: membersWithMemberships.length,
+    total: totalCount ?? membersWithMemberships.length,
     active: membersWithMemberships.filter((m: any) => m.status === 'active').length,
     inactive: membersWithMemberships.filter((m: any) => m.status === 'inactive').length,
     frozen: frozenCount,
@@ -258,9 +265,9 @@ export default function MembersPage() {
           </div>
         </div>
 
-        {/* Stats Row - Enhanced Design */}
+        {/* Stats Row */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-          <Card className="relative overflow-hidden border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('all')}>
+          <Card className="relative overflow-hidden border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleStatusFilter('all')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -275,7 +282,7 @@ export default function MembersPage() {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-l-4 border-l-success hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('active')}>
+          <Card className="relative overflow-hidden border-l-4 border-l-success hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleStatusFilter('active')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -290,7 +297,7 @@ export default function MembersPage() {
             </CardContent>
           </Card>
 
-          <Card className="relative overflow-hidden border-l-4 border-l-muted-foreground hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('inactive')}>
+          <Card className="relative overflow-hidden border-l-4 border-l-muted-foreground hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleStatusFilter('inactive')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -305,7 +312,7 @@ export default function MembersPage() {
             </CardContent>
           </Card>
 
-  <Card className="relative overflow-hidden border-l-4 border-l-info hover:shadow-md transition-shadow cursor-pointer" onClick={() => setStatusFilter('frozen')}>
+          <Card className="relative overflow-hidden border-l-4 border-l-info hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleStatusFilter('frozen')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -344,12 +351,12 @@ export default function MembersPage() {
                 <Input
                   placeholder="Search by name, email, phone, or member code..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-10 h-11 bg-muted/30 border-border/50 focus:bg-background transition-colors"
                 />
               </div>
               {statusFilter !== 'all' && (
-                <Button variant="ghost" size="sm" onClick={() => setStatusFilter('all')}>
+                <Button variant="ghost" size="sm" onClick={() => handleStatusFilter('all')}>
                   Clear filter
                 </Button>
               )}
@@ -357,172 +364,203 @@ export default function MembersPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent"></div>
-              </div>
+              <TableSkeleton rows={8} columns={8} />
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-border/50">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableHead className="font-semibold">Member</TableHead>
-                      <TableHead className="font-semibold">Code</TableHead>
-                      <TableHead className="font-semibold">Branch</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Membership</TableHead>
-                      <TableHead className="font-semibold">Days Left</TableHead>
-                      <TableHead className="font-semibold">Joined</TableHead>
-                      <TableHead className="font-semibold text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredMembers.map((member: any) => {
-                      const activeMembership = getActiveMembership(member.memberships);
-                      const daysLeft = getDaysRemaining(activeMembership);
-                      
-                      return (
-                        <TableRow 
-                          key={member.id}
-                          className="cursor-pointer hover:bg-muted/50 transition-colors group"
-                          onClick={() => handleViewProfile(member)}
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="relative">
-                                <Avatar className="h-10 w-10 ring-2 ring-background shadow-sm">
-                                  <AvatarImage src={member.profiles?.avatar_url} />
-                                  <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                                    {member.profiles?.full_name?.charAt(0) || 'M'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                {/* Status indicator dot */}
-                                <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background ${
-                                  member.status === 'active' ? 'bg-success' : member.status === 'frozen' ? 'bg-info' : member.status === 'suspended' ? 'bg-destructive' : 'bg-muted-foreground'
-                                }`} />
+              <>
+                <div className="overflow-x-auto rounded-lg border border-border/50">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableHead className="font-semibold">Member</TableHead>
+                        <TableHead className="font-semibold">Code</TableHead>
+                        <TableHead className="font-semibold">Branch</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Membership</TableHead>
+                        <TableHead className="font-semibold">Days Left</TableHead>
+                        <TableHead className="font-semibold">Joined</TableHead>
+                        <TableHead className="font-semibold text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMembers.map((member: any) => {
+                        const activeMembership = getActiveMembership(member.memberships);
+                        const daysLeft = getDaysRemaining(activeMembership);
+                        
+                        return (
+                          <TableRow 
+                            key={member.id}
+                            className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                            onClick={() => handleViewProfile(member)}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="relative">
+                                  <Avatar className="h-10 w-10 ring-2 ring-background shadow-sm">
+                                    <AvatarImage src={member.profiles?.avatar_url} />
+                                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
+                                      {member.profiles?.full_name?.charAt(0) || 'M'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background ${
+                                    member.status === 'active' ? 'bg-success' : member.status === 'frozen' ? 'bg-info' : member.status === 'suspended' ? 'bg-destructive' : 'bg-muted-foreground'
+                                  }`} />
+                                </div>
+                                <div>
+                                  <div className="font-medium group-hover:text-primary transition-colors">{member.profiles?.full_name || 'N/A'}</div>
+                                  <div className="text-sm text-muted-foreground">{member.profiles?.phone || member.profiles?.email}</div>
+                                </div>
                               </div>
-                              <div>
-                                <div className="font-medium group-hover:text-primary transition-colors">{member.profiles?.full_name || 'N/A'}</div>
-                                <div className="text-sm text-muted-foreground">{member.profiles?.phone || member.profiles?.email}</div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="px-2 py-1 text-xs rounded bg-muted font-mono">{member.member_code}</code>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <Building2 className="h-3.5 w-3.5" />
+                                {member.branch?.name || 'N/A'}
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <code className="px-2 py-1 text-xs rounded bg-muted font-mono">{member.member_code}</code>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <Building2 className="h-3.5 w-3.5" />
-                              {member.branch?.name || 'N/A'}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={getStatusColor(member.status)}>
-                              {member.status === 'frozen' && <Snowflake className="h-3 w-3 mr-1" />}
-                              {member.status === 'frozen' ? 'Frozen' : member.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {activeMembership ? (
-                              <div className="flex items-center gap-1.5">
-                                <Badge className={getMembershipStatusColor(activeMembership.status)}>
-                                  {activeMembership.membership_plans?.name || 'Plan'}
-                                </Badge>
-                                {activeMembership.status === 'frozen' && (
-                                  <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
-                                    <Snowflake className="h-3 w-3 mr-0.5" />Frozen
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <Badge variant="outline" className="text-muted-foreground border-dashed">
-                                No Plan
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={getStatusColor(member.status)}>
+                                {member.status === 'frozen' && <Snowflake className="h-3 w-3 mr-1" />}
+                                {member.status === 'frozen' ? 'Frozen' : member.status}
                               </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {daysLeft !== null ? (
-                              <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
-                                {getDaysLeftIcon(daysLeft)}
-                                <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">--</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {member.joined_at ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
-                          </TableCell>
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleViewProfile(member)}>
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>View Profile</TooltipContent>
-                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              {activeMembership ? (
+                                <div className="flex items-center gap-1.5">
+                                  <Badge className={getMembershipStatusColor(activeMembership.status)}>
+                                    {activeMembership.membership_plans?.name || 'Plan'}
+                                  </Badge>
+                                  {activeMembership.status === 'frozen' && (
+                                    <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
+                                      <Snowflake className="h-3 w-3 mr-0.5" />Frozen
+                                    </Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground border-dashed">
+                                  No Plan
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {daysLeft !== null ? (
+                                <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
+                                  {getDaysLeftIcon(daysLeft)}
+                                  <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">--</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {member.joined_at ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleViewProfile(member)}>
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View Profile</TooltipContent>
+                                </Tooltip>
 
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-8 w-8">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handlePurchaseMembership(member)}>
-                                    <CreditCard className="h-4 w-4 mr-2" />
-                                    {activeMembership ? 'Renew Plan' : 'Add Plan'}
-                                  </DropdownMenuItem>
-                                  {activeMembership && (
-                                    <>
-                                      <DropdownMenuItem onClick={() => handlePurchasePT(member)}>
-                                        <Dumbbell className="h-4 w-4 mr-2" />
-                                        Buy PT Package
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem 
-                                        onClick={() => handleQuickFreeze(member)}
-                                        disabled={activeMembership.status === 'frozen'}
-                                      >
-                                        <Snowflake className="h-4 w-4 mr-2" />
-                                        Quick Freeze
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                  {member.status === 'frozen' && (
-                                    <>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => {
-                                        const frozenMs = member.memberships?.find((ms: any) => ms.status === 'frozen');
-                                        if (frozenMs) {
-                                          setSelectedMember(member);
-                                          setSelectedMembershipForFreeze(frozenMs);
-                                          setQuickFreezeOpen(true);
-                                        }
-                                      }}>
-                                        <Snowflake className="h-4 w-4 mr-2 text-info" />
-                                        Unfreeze Membership
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="icon" variant="ghost" className="h-8 w-8">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handlePurchaseMembership(member)}>
+                                      <CreditCard className="h-4 w-4 mr-2" />
+                                      {activeMembership ? 'Renew Plan' : 'Add Plan'}
+                                    </DropdownMenuItem>
+                                    {activeMembership && (
+                                      <>
+                                        <DropdownMenuItem onClick={() => handlePurchasePT(member)}>
+                                          <Dumbbell className="h-4 w-4 mr-2" />
+                                          Buy PT Package
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem 
+                                          onClick={() => handleQuickFreeze(member)}
+                                          disabled={activeMembership.status === 'frozen'}
+                                        >
+                                          <Snowflake className="h-4 w-4 mr-2" />
+                                          Quick Freeze
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {member.status === 'frozen' && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => {
+                                          const frozenMs = member.memberships?.find((ms: any) => ms.status === 'frozen');
+                                          if (frozenMs) {
+                                            setSelectedMember(member);
+                                            setSelectedMembershipForFreeze(frozenMs);
+                                            setQuickFreezeOpen(true);
+                                          }
+                                        }}>
+                                          <Snowflake className="h-4 w-4 mr-2 text-info" />
+                                          Unfreeze Membership
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {filteredMembers.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                            {search ? 'No members found matching your search' : 'No members found'}
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                    {filteredMembers.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                          {search ? 'No members found matching your search' : 'No members found'}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages !== null && totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount || 0)} of {totalCount} members
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.max(0, p - 1))}
+                        disabled={page === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                      </Button>
+                      <span className="text-sm font-medium px-2">
+                        Page {page + 1} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => p + 1)}
+                        disabled={page >= totalPages - 1}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
