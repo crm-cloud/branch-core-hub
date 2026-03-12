@@ -185,6 +185,7 @@ function ConfigureSheet({ open, onOpenChange, branchId, benefitType, benefitType
 /* ── Main Component ── */
 
 export function BenefitSettingsComponent() {
+  const { effectiveBranchId } = useBranchContext();
   const [configureType, setConfigureType] = useState<{
     id: string;
     code: string;
@@ -194,16 +195,7 @@ export function BenefitSettingsComponent() {
     settings?: any;
   } | null>(null);
 
-  const { data: branches } = useQuery({
-    queryKey: ["branches"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("branches").select("*").limit(1);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const branchId = branches?.[0]?.id || "";
+  const branchId = effectiveBranchId || "";
   const { data: settings, isLoading: loadingSettings } = useBenefitSettings(branchId);
   const { data: bookableBenefitTypes, isLoading: loadingTypes } = useBookableBenefitTypes(branchId);
   const upsertSetting = useUpsertBenefitSetting();
@@ -211,7 +203,7 @@ export function BenefitSettingsComponent() {
   if (!branchId) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        No branch found. Please create a branch first.
+        No branch found. Please select a branch first.
       </div>
     );
   }
