@@ -391,6 +391,9 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="leads" className="space-y-4">
+          <LeadCaptureSettings />
+        </TabsContent>
       </Tabs>
 
       <IntegrationConfigSheet 
