@@ -509,6 +509,43 @@ export function MemberProfileDrawer({
     enabled: !!referrerUserId,
   });
 
+  // Fetch assigned trainer name
+  const assignedTrainerId = memberDetails?.assigned_trainer_id || member?.assigned_trainer_id;
+  const { data: assignedTrainerProfile } = useQuery({
+    queryKey: ['assigned-trainer-profile', assignedTrainerId],
+    queryFn: async () => {
+      if (!assignedTrainerId) return null;
+      const { data: trainer } = await supabase
+        .from('trainers')
+        .select('user_id')
+        .eq('id', assignedTrainerId)
+        .single();
+      if (!trainer?.user_id) return null;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', trainer.user_id)
+        .single();
+      return profile;
+    },
+    enabled: !!assignedTrainerId,
+  });
+
+  // Fetch wallet balance
+  const { data: memberWallet } = useQuery({
+    queryKey: ['member-wallet-balance', member?.id],
+    queryFn: async () => {
+      if (!member?.id) return null;
+      const { data } = await supabase
+        .from('wallets')
+        .select('balance')
+        .eq('member_id', member.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!member?.id && open,
+  });
+
   const { data: payments = [] } = useQuery({
     queryKey: ['member-payments', member?.id],
     queryFn: async () => {
