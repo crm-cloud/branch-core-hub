@@ -53,6 +53,7 @@ export default function WhatsAppChatPage() {
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
+  const [aiSuggesting, setAiSuggesting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
