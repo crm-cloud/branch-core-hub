@@ -569,3 +569,154 @@ function IntegrationConfigSheet({
     </Sheet>
   );
 }
+
+function LeadCaptureTab() {
+  const { data: orgSettings, isLoading } = useQuery({
+    queryKey: ['org-settings-webhook'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organization_settings')
+        .select('id, webhook_slug')
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const queryClient = useQueryClient();
+
+  const regenerateSlug = useMutation({
+    mutationFn: async () => {
+      if (!orgSettings?.id) throw new Error('No organization settings found');
+      const newSlug = crypto.randomUUID();
+      const { error } = await supabase
+        .from('organization_settings')
+        .update({ webhook_slug: newSlug })
+        .eq('id', orgSettings.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-settings-webhook'] });
+      toast.success('Webhook slug regenerated');
+    },
+    onError: () => toast.error('Failed to regenerate slug'),
+  });
+
+  const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-lead-capture`;
+  const slugUrl = orgSettings?.webhook_slug ? `${baseUrl}?slug=${orgSettings.webhook_slug}` : baseUrl;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Webhook className="h-5 w-5" />
+          External Lead Capture Webhook
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Receive leads from Instagram, Facebook, Zapier, Make, or any external source — no manual secret headers needed.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Simplified Slug-Based URL */}
+        <div className="space-y-2">
+          <Label className="font-semibold flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            Plug & Play Webhook URL
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input readOnly value={slugUrl} className="font-mono text-xs" />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(slugUrl);
+                toast.success('Webhook URL copied!');
+              }}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This URL includes your unique authentication slug — no extra headers required. Just paste it into Zapier, Make, or Meta Lead Ads.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => regenerateSlug.mutate()} disabled={regenerateSlug.isPending || isLoading}>
+            {regenerateSlug.isPending ? 'Regenerating...' : 'Regenerate Slug'}
+          </Button>
+        </div>
+
+        {/* Payload Format */}
+        <div className="space-y-2">
+          <Label className="font-semibold">JSON Payload Format</Label>
+          <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs whitespace-pre overflow-x-auto">
+{`{
+  "full_name": "John Doe",
+  "phone": "+919876543210",
+  "email": "john@example.com",
+  "source": "instagram",
+  "notes": "Interested in premium plan"
+}`}
+          </div>
+        </div>
+
+        {/* Supported Sources */}
+        <div className="space-y-2">
+          <Label className="font-semibold">Supported Source Values</Label>
+          <div className="flex flex-wrap gap-2">
+            {['walk_in', 'phone', 'website', 'referral', 'instagram', 'facebook', 'google', 'api', 'zapier'].map(src => (
+              <Badge key={src} variant="outline" className="rounded-full capitalize">{src}</Badge>
+            ))}
+          </div>
+        </div>
+
+        {/* Integration Guides */}
+        <div className="space-y-3">
+          <Label className="font-semibold">Quick Setup Guides</Label>
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card className="border-border/50">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">📘</span>
+                  <h4 className="font-semibold text-sm">Facebook Lead Ads</h4>
+                </div>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Go to Facebook Business Suite → Leads Center</li>
+                  <li>Create a new CRM integration</li>
+                  <li>Select "Custom Webhook" and paste the URL above</li>
+                  <li>Map fields: name → full_name, phone → phone</li>
+                </ol>
+              </CardContent>
+            </Card>
+            <Card className="border-border/50">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">📸</span>
+                  <h4 className="font-semibold text-sm">Instagram Lead Ads</h4>
+                </div>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Instagram Lead Ads use the same Meta platform</li>
+                  <li>Set source to "instagram" in your Zapier/Make flow</li>
+                  <li>Same webhook URL and format applies</li>
+                </ol>
+              </CardContent>
+            </Card>
+            <Card className="border-border/50">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">⚡</span>
+                  <h4 className="font-semibold text-sm">Zapier / Make</h4>
+                </div>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Create a Zap/Scenario with your trigger</li>
+                  <li>Add "Webhooks by Zapier" → POST action</li>
+                  <li>Paste the webhook URL above (includes auth)</li>
+                  <li>Map fields to the JSON format above</li>
+                </ol>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
