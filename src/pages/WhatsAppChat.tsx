@@ -128,6 +128,40 @@ export default function WhatsAppChatPage() {
 
   const handleSend = () => { if (newMessage.trim()) sendMessage.mutate(newMessage.trim()); };
 
+  const handleAiSuggest = async () => {
+    if (!selectedContact || messages.length === 0) {
+      toast.error('No conversation selected or no messages to analyze');
+      return;
+    }
+    setAiSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-auto-reply', {
+        body: {
+          contact_name: selectedContact.contact_name,
+          phone_number: selectedContact.phone_number,
+          recent_messages: messages.slice(-10).map(m => ({
+            content: m.content,
+            direction: m.direction,
+          })),
+          context_type: 'general',
+        },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+      if (data?.suggested_reply) {
+        setNewMessage(data.suggested_reply);
+        toast.success('AI suggestion ready — review and send!');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to get AI suggestion');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'read': return <CheckCheck className="h-3.5 w-3.5 text-sky-400" />;
