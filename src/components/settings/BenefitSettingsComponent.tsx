@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -18,6 +16,7 @@ import { toast } from "sonner";
 import { Database } from "@/integrations/supabase/types";
 import * as LucideIcons from "lucide-react";
 import { safeBenefitEnum } from "@/lib/benefitEnums";
+import { useBranchContext } from "@/contexts/BranchContext";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
