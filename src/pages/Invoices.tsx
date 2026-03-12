@@ -53,7 +53,7 @@ export default function InvoicesPage() {
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
       if (branchFilter) query = query.eq('branch_id', branchFilter);
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
 
       const { data, error, count } = await query;
       if (error) throw error;
