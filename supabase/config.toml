@@ -27,12 +27,16 @@ verify_jwt = true
 [functions.payment-webhook]
 verify_jwt = false
 
+[functions.device-access-event]
 verify_jwt = false
 
 [functions.device-heartbeat]
 verify_jwt = false
 
 [functions.device-sync-data]
+verify_jwt = false
+
+[functions.device-sync-callback]
 verify_jwt = false
 
 [functions.device-trigger-relay]
@@ -42,5 +46,14 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.send-reminders]
+verify_jwt = false
+
+[functions.webhook-lead-capture]
+verify_jwt = false
+
+[functions.ai-dashboard-insights]
+verify_jwt = false
+
+[functions.ai-auto-reply]
 verify_jwt = false
 
