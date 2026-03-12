@@ -29,7 +29,7 @@ export const queueMemberSync = async (
     const { data: devices } = await supabase
       .from('access_devices')
       .select('id')
-      .eq('device_type', 'face_terminal');
+      .in('device_type', ['face_terminal', 'face terminal']);
     
     targetDevices = devices?.map(d => d.id) || [];
   }
