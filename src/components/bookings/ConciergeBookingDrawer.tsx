@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Search, Calendar, Heart, Users, AlertTriangle } from 'lucide-react';
+import { Search, Calendar, Heart, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface ConciergeBookingDrawerProps {
   open: boolean;
@@ -34,10 +34,34 @@ interface MemberResult {
 export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess }: ConciergeBookingDrawerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<MemberResult | null>(null);
+  const [memberGender, setMemberGender] = useState<string | null>(null);
   const [serviceType, setServiceType] = useState<'class' | 'recovery'>('class');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [forceAdd, setForceAdd] = useState(false);
   const [booking, setBooking] = useState(false);
+
+  // Fetch member gender after selection
+  useEffect(() => {
+    if (!selectedMember) {
+      setMemberGender(null);
+      return;
+    }
+    (async () => {
+      const { data: member } = await supabase
+        .from('members')
+        .select('user_id')
+        .eq('id', selectedMember.id)
+        .single();
+      if (member?.user_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('gender')
+          .eq('id', member.user_id)
+          .single();
+        setMemberGender(profile?.gender?.toLowerCase() || null);
+      }
+    })();
+  }, [selectedMember]);
 
   // Search members
   const { data: members = [], isLoading: searchLoading } = useQuery({
@@ -75,7 +99,6 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
 
       if (error) throw error;
 
-      // Get booking counts
       const classIds = (data || []).map(c => c.id);
       if (classIds.length === 0) return [];
 
@@ -98,14 +121,14 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
     },
   });
 
-  // Fetch facilities & slots for recovery
-  const { data: facilities = [] } = useQuery({
+  // Fetch facilities & filter by gender
+  const { data: allFacilities = [] } = useQuery({
     queryKey: ['concierge-facilities', branchId],
     enabled: !!selectedMember && serviceType === 'recovery',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('facilities')
-        .select('id, name, benefit_type_id, capacity')
+        .select('id, name, benefit_type_id, capacity, gender_access')
         .eq('branch_id', branchId)
         .eq('is_active', true);
       if (error) throw error;
@@ -113,13 +136,26 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
     },
   });
 
+  // Gender-filtered facilities
+  const facilities = allFacilities.filter((f: any) => {
+    if (!memberGender) return true; // if gender unknown, show all
+    const access = (f.gender_access || 'unisex').toLowerCase();
+    return access === 'unisex' || access === memberGender;
+  });
+
   const [selectedFacility, setSelectedFacility] = useState<string>('');
+
+  // Reset facility selection when facilities change (gender filter may remove current selection)
+  useEffect(() => {
+    if (selectedFacility && !facilities.find((f: any) => f.id === selectedFacility)) {
+      setSelectedFacility('');
+    }
+  }, [facilities, selectedFacility]);
 
   const { data: slots = [] } = useQuery({
     queryKey: ['concierge-slots', branchId, selectedDate, selectedFacility],
     enabled: !!selectedMember && serviceType === 'recovery' && !!selectedFacility,
     queryFn: async () => {
-      // Ensure slots exist first
       await supabase.rpc('ensure_facility_slots', {
         p_branch_id: branchId,
         p_start_date: selectedDate,
@@ -157,7 +193,6 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
         resetState();
       } else {
         if (forceAdd) {
-          // Force add: direct insert bypassing validation
           const { error: insertError } = await supabase
             .from('class_bookings')
             .insert({
@@ -183,9 +218,21 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
 
   const handleBookSlot = async (slotId: string) => {
     if (!selectedMember) return;
+
+    // Gender validation guard
+    if (memberGender && selectedFacility) {
+      const facility = allFacilities.find((f: any) => f.id === selectedFacility);
+      if (facility) {
+        const access = ((facility as any).gender_access || 'unisex').toLowerCase();
+        if (access !== 'unisex' && access !== memberGender) {
+          toast.error(`Access Denied: This facility is restricted to "${access}" members. ${selectedMember.full_name} is "${memberGender}".`);
+          return;
+        }
+      }
+    }
+
     setBooking(true);
     try {
-      // Get member's active membership
       const { data: membership } = await supabase
         .from('memberships')
         .select('id')
@@ -202,7 +249,6 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
       }
 
       if (forceAdd) {
-        // Force-add: bypass limits with raw insert
         const { error } = await supabase
           .from('benefit_bookings')
           .insert({
@@ -213,7 +259,6 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
           });
         if (error) throw error;
       } else {
-        // Normal path: use RPC for enforcement
         const { data, error } = await supabase.rpc('book_facility_slot', {
           p_slot_id: slotId,
           p_member_id: selectedMember.id,
@@ -240,9 +285,17 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
 
   const resetState = () => {
     setSelectedMember(null);
+    setMemberGender(null);
     setSearchTerm('');
     setForceAdd(false);
     setSelectedFacility('');
+  };
+
+  const getGenderBadge = (access: string) => {
+    const a = (access || 'unisex').toLowerCase();
+    if (a === 'male') return <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">♂ Male</Badge>;
+    if (a === 'female') return <Badge variant="outline" className="text-xs bg-pink-50 text-pink-700 border-pink-200">♀ Female</Badge>;
+    return <Badge variant="outline" className="text-xs bg-muted text-muted-foreground">Unisex</Badge>;
   };
 
   return (
@@ -292,7 +345,14 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
                 <div>
                   <div className="font-medium">{selectedMember.full_name}</div>
-                  <div className="text-sm text-muted-foreground">{selectedMember.member_code}</div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    {selectedMember.member_code}
+                    {memberGender && (
+                      <Badge variant="outline" className="text-xs">
+                        {memberGender === 'female' ? '♀ Female' : memberGender === 'male' ? '♂ Male' : memberGender}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedMember(null)}>Change</Button>
               </div>
@@ -342,13 +402,24 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
 
                   {/* Recovery */}
                   <TabsContent value="recovery" className="space-y-3 mt-3">
+                    {memberGender && allFacilities.length > facilities.length && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                        <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+                        <span>{allFacilities.length - facilities.length} facility(ies) hidden — gender restricted for {memberGender} members</span>
+                      </div>
+                    )}
+
                     <Select value={selectedFacility} onValueChange={setSelectedFacility}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select facility" />
                       </SelectTrigger>
                       <SelectContent>
                         {facilities.map((f: any) => (
-                          <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                          <SelectItem key={f.id} value={f.id}>
+                            <span className="flex items-center gap-2">
+                              {f.name} {getGenderBadge(f.gender_access)}
+                            </span>
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

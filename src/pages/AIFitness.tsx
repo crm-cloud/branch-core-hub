@@ -169,12 +169,66 @@ export default function AIFitnessPage() {
     name: "", age: "", gender: "", height: "", weight: "",
     fitnessGoals: "", healthConditions: "", experience: "beginner", preferences: "",
   });
+  const [planMode, setPlanMode] = useState<'global' | 'personalized'>('global');
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [caloriesTarget, setCaloriesTarget] = useState("");
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [assignDrawerOpen, setAssignDrawerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [shuffledWorkout, setShuffledWorkout] = useState<any>(null);
+  const [personalizedMember, setPersonalizedMember] = useState<any>(null);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+
+  // Search members for personalized mode
+  const { data: memberResults = [] } = useQuery({
+    queryKey: ['ai-member-search', memberSearchTerm],
+    enabled: planMode === 'personalized' && memberSearchTerm.length >= 2,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('search_members', {
+        search_term: memberSearchTerm,
+        p_branch_id: null,
+        p_limit: 8,
+      });
+      if (error) throw error;
+      return (data || []).filter((m: any) => m.member_status === 'active');
+    },
+  });
+
+  // Auto-fill biometrics when a member is selected in personalized mode
+  const handleSelectPersonalizedMember = async (member: any) => {
+    setPersonalizedMember(member);
+    setMemberSearchTerm('');
+
+    // Fetch gender from profile
+    const { data: memberRow } = await supabase.from('members').select('user_id').eq('id', member.id).single();
+    if (memberRow?.user_id) {
+      const { data: profile } = await supabase.from('profiles').select('gender').eq('id', memberRow.user_id).single();
+      if (profile?.gender) {
+        setMemberInfo(prev => ({ ...prev, gender: profile.gender!.toLowerCase() }));
+      }
+    }
+
+    // Fetch latest measurements
+    const { data: measurements } = await supabase
+      .from('member_measurements')
+      .select('weight, height, body_fat_percentage')
+      .eq('member_id', member.id)
+      .order('measured_at', { ascending: false })
+      .limit(1);
+
+    if (measurements && measurements.length > 0) {
+      const m = measurements[0];
+      setMemberInfo(prev => ({
+        ...prev,
+        name: member.full_name + ' Plan',
+        weight: m.weight ? String(m.weight) : prev.weight,
+        height: m.height ? String(m.height) : prev.height,
+      }));
+      toast.success('Auto-filled biometrics from member profile');
+    } else {
+      setMemberInfo(prev => ({ ...prev, name: member.full_name + ' Plan' }));
+    }
+  };
 
   const generatePlan = useGenerateFitnessPlan();
 
