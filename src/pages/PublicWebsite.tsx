@@ -440,8 +440,8 @@ export default function PublicWebsite() {
             <p className="text-lg text-white/50 max-w-2xl mx-auto">Certified experts dedicated to your transformation.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {trainers.slice(0, 4).map((trainer: any) => (
-              <div key={trainer.name} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] hover:border-orange-500/30 transition-all duration-300 cursor-pointer">
+            {trainers.slice(0, 4).map((trainer: any, idx: number) => (
+              <div key={`trainer-${idx}-${trainer.name}`} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] hover:border-orange-500/30 transition-all duration-300 cursor-pointer">
                 <div className="aspect-[3/4] overflow-hidden">
                   <img src={trainer.img} alt={trainer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 </div>

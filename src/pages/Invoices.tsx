@@ -11,8 +11,10 @@ import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
 import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDrawer';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
-  FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send
+  FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,6 +23,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+const PAGE_SIZE = 20;
+
 export default function InvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<any>(null);
@@ -28,22 +32,38 @@ export default function InvoicesPage() {
   const [paymentLinkInvoice, setPaymentLinkInvoice] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
   const { branchFilter, effectiveBranchId } = useBranchContext();
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ['invoices', branchFilter],
+  // Reset page on filter changes
+  const handleStatusChange = (val: string) => { setStatusFilter(val); setPage(0); };
+  const handleSearchChange = (val: string) => { setSearchTerm(val); setPage(0); };
+
+  const { data: invoicesResult, isLoading } = useQuery({
+    queryKey: ['invoices', branchFilter, statusFilter, page],
     queryFn: async () => {
       let query = supabase
         .from('invoices')
-        .select(`*, members(member_code, profiles:user_id(full_name, email)), invoice_items(description, reference_type)`)
+        .select(`
+          id, invoice_number, status, total_amount, amount_paid, due_date, created_at, member_id, pos_sale_id, branch_id,
+          members(member_code, profiles:user_id(full_name, email, phone)),
+          invoice_items(description, reference_type)
+        `, { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(100);
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
       if (branchFilter) query = query.eq('branch_id', branchFilter);
-      const { data, error } = await query;
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter as any);
+
+      const { data, error, count } = await query;
       if (error) throw error;
-      return data;
+      return { data: data || [], count };
     },
   });
+
+  const invoices = invoicesResult?.data || [];
+  const totalCount = invoicesResult?.count;
+  const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : null;
 
   const getInvoiceType = (invoice: any): { label: string; emoji: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
     if (invoice.pos_sale_id) return { label: 'POS', emoji: '🛒', variant: 'secondary' };
@@ -59,19 +79,18 @@ export default function InvoicesPage() {
     return { label: 'Manual', emoji: '📝', variant: 'outline' };
   };
 
-  // Filter invoices
+  // Client-side search filter (search is lightweight on paginated data)
   const filteredInvoices = invoices.filter((invoice: any) => {
-    const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
+    if (!searchTerm) return true;
     const memberName = invoice.members?.profiles?.full_name || '';
-    const matchesSearch = memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    return memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
   });
 
-  // Calculate stats
+  // Stats from current page (approximate for paginated view)
   const stats = {
     totalClients: new Set(invoices.map((i: any) => i.member_id).filter(Boolean)).size,
-    totalInvoices: invoices.length,
+    totalInvoices: totalCount || invoices.length,
     paidAmount: invoices.filter((i: any) => i.status === 'paid').reduce((sum: number, i: any) => sum + i.total_amount, 0),
     unpaidAmount: invoices.filter((i: any) => i.status !== 'paid' && i.status !== 'cancelled').reduce((sum: number, i: any) => sum + (i.total_amount - (i.amount_paid || 0)), 0),
   };
@@ -107,7 +126,7 @@ export default function InvoicesPage() {
           </Button>
         </div>
 
-        {/* Stats Cards - Vuexy Style */}
+        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
             <CardContent className="p-6">
@@ -116,7 +135,7 @@ export default function InvoicesPage() {
                   <p className="text-sm opacity-80">Clients</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.totalClients}</h3>
                 </div>
-                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-primary-foreground/20 flex items-center justify-center">
                   <Users className="h-6 w-6" />
                 </div>
               </div>
@@ -130,7 +149,7 @@ export default function InvoicesPage() {
                   <p className="text-sm opacity-80">Invoices</p>
                   <h3 className="text-3xl font-bold mt-1">{stats.totalInvoices}</h3>
                 </div>
-                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-info-foreground/20 flex items-center justify-center">
                   <FileText className="h-6 w-6" />
                 </div>
               </div>
@@ -144,7 +163,7 @@ export default function InvoicesPage() {
                   <p className="text-sm opacity-80">Paid</p>
                   <h3 className="text-3xl font-bold mt-1">₹{stats.paidAmount.toLocaleString()}</h3>
                 </div>
-                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-success-foreground/20 flex items-center justify-center">
                   <TrendingUp className="h-6 w-6" />
                 </div>
               </div>
@@ -158,7 +177,7 @@ export default function InvoicesPage() {
                   <p className="text-sm opacity-80">Unpaid</p>
                   <h3 className="text-3xl font-bold mt-1">₹{stats.unpaidAmount.toLocaleString()}</h3>
                 </div>
-                <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-warning-foreground/20 flex items-center justify-center">
                   <Clock className="h-6 w-6" />
                 </div>
               </div>
@@ -176,10 +195,10 @@ export default function InvoicesPage() {
                   placeholder="Search by invoice # or member name..."
                   className="pl-10"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={handleStatusChange}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -202,125 +221,157 @@ export default function InvoicesPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-              </div>
+              <TableSkeleton rows={8} columns={9} />
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[250px]">Client</TableHead>
-                      <TableHead>Invoice #</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Paid</TableHead>
-                      <TableHead>Balance</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInvoices.map((invoice: any) => {
-                      const memberName = invoice.members?.profiles?.full_name || 'Walk-in Customer';
-                      const balance = invoice.total_amount - (invoice.amount_paid || 0);
-                      
-                      return (
-                        <TableRow key={invoice.id} className="group">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-10 w-10">
-                                <AvatarFallback className="bg-accent/10 text-accent font-semibold">
-                                  {getInitials(memberName)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium">{memberName}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {invoice.members?.member_code || 'Guest'}
-                                </p>
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[250px]">Client</TableHead>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Paid</TableHead>
+                        <TableHead>Balance</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInvoices.map((invoice: any) => {
+                        const memberName = invoice.members?.profiles?.full_name || 'Walk-in Customer';
+                        const balance = invoice.total_amount - (invoice.amount_paid || 0);
+                        
+                        return (
+                          <TableRow key={invoice.id} className="group">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarFallback className="bg-accent/10 text-accent font-semibold">
+                                    {getInitials(memberName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-medium">{memberName}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {invoice.members?.member_code || 'Guest'}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm">{invoice.invoice_number}</span>
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const t = getInvoiceType(invoice);
-                              return (
-                                <Badge variant={t.variant}>
-                                  {t.emoji} {t.label}
-                                </Badge>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            ₹{invoice.total_amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-success">
-                            ₹{(invoice.amount_paid || 0).toLocaleString()}
-                          </TableCell>
-                          <TableCell className={balance > 0 ? 'text-destructive' : ''}>
-                            ₹{balance.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(invoice.created_at).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={`${getStatusColor(invoice.status)} border`}>
-                              {invoice.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setViewInvoice(invoice)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View
-                                </DropdownMenuItem>
-                                <DropdownMenuItem>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Download
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                  const memberProfile = (invoice.members as any)?.profiles;
-                                  setPaymentLinkInvoice({
-                                    id: invoice.id,
-                                    invoice_number: invoice.invoice_number,
-                                    total_amount: invoice.total_amount,
-                                    amount_paid: invoice.amount_paid || 0,
-                                    member_name: memberProfile?.full_name,
-                                    member_phone: memberProfile?.phone,
-                                    member_email: memberProfile?.email,
-                                  });
-                                }}>
-                                  <Send className="mr-2 h-4 w-4" />
-                                  Send Payment Link
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-sm">{invoice.invoice_number}</span>
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                const t = getInvoiceType(invoice);
+                                return (
+                                  <Badge variant={t.variant}>
+                                    {t.emoji} {t.label}
+                                  </Badge>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              ₹{invoice.total_amount.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-success">
+                              ₹{(invoice.amount_paid || 0).toLocaleString()}
+                            </TableCell>
+                            <TableCell className={balance > 0 ? 'text-destructive' : ''}>
+                              ₹{balance.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {new Date(invoice.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={`${getStatusColor(invoice.status)} border`}>
+                                {invoice.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setViewInvoice(invoice)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    const memberProfile = (invoice.members as any)?.profiles;
+                                    setPaymentLinkInvoice({
+                                      id: invoice.id,
+                                      invoice_number: invoice.invoice_number,
+                                      total_amount: invoice.total_amount,
+                                      amount_paid: invoice.amount_paid || 0,
+                                      member_name: memberProfile?.full_name,
+                                      member_phone: memberProfile?.phone,
+                                      member_email: memberProfile?.email,
+                                    });
+                                  }}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    Send Payment Link
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {filteredInvoices.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No invoices found</p>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                    {filteredInvoices.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                          <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>No invoices found</p>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages !== null && totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount || 0)} of {totalCount} invoices
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.max(0, p - 1))}
+                        disabled={page === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Previous
+                      </Button>
+                      <span className="text-sm font-medium px-2">
+                        Page {page + 1} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => p + 1)}
+                        disabled={page >= totalPages - 1}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -93,6 +93,36 @@ export function AssignTrainerDrawer({
         .eq('id', memberId);
       if (error) throw error;
     },
+    onMutate: async () => {
+      // Optimistic update: update members cache immediately
+      await queryClient.cancelQueries({ queryKey: ['members'] });
+      const previousMembers = queryClient.getQueryData(['members']);
+
+      queryClient.setQueriesData({ queryKey: ['members'] }, (old: any) => {
+        if (!old) return old;
+        // Handle paginated result shape
+        if (old?.data && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((m: any) =>
+              m.id === memberId
+                ? { ...m, assigned_trainer_id: selectedTrainerId === 'none' ? null : selectedTrainerId }
+                : m
+            ),
+          };
+        }
+        if (Array.isArray(old)) {
+          return old.map((m: any) =>
+            m.id === memberId
+              ? { ...m, assigned_trainer_id: selectedTrainerId === 'none' ? null : selectedTrainerId }
+              : m
+          );
+        }
+        return old;
+      });
+
+      return { previousMembers };
+    },
     onSuccess: () => {
       toast.success(selectedTrainerId ? 'Trainer assigned successfully' : 'Trainer removed');
       queryClient.invalidateQueries({ queryKey: ['members'] });
@@ -100,7 +130,11 @@ export function AssignTrainerDrawer({
       queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
       onOpenChange(false);
     },
-    onError: (error: any) => {
+    onError: (error: any, _, context: any) => {
+      // Rollback on error
+      if (context?.previousMembers) {
+        queryClient.setQueryData(['members'], context.previousMembers);
+      }
       toast.error(error.message || 'Failed to assign trainer');
     },
   });
