@@ -941,6 +941,37 @@ export function MemberProfileDrawer({
                 </Card>
               )}
 
+              {/* Assigned Trainer */}
+              <Card className={assignedTrainerId ? 'border-primary/30 bg-primary/5' : ''}>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Dumbbell className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">General Trainer:</span>
+                      <span className="text-sm">
+                        {assignedTrainerProfile?.full_name || (assignedTrainerId ? 'Loading...' : 'Not Assigned')}
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setAssignTrainerOpen(true)} className="h-7 text-xs">
+                      {assignedTrainerId ? 'Change' : 'Assign'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Wallet Balance */}
+              {(memberWallet?.balance ?? 0) > 0 && (
+                <Card className="border-success/30 bg-success/5">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <IndianRupee className="h-4 w-4 text-success" />
+                      <span className="font-medium text-sm">Wallet Balance:</span>
+                      <span className="text-sm font-bold text-success">₹{memberWallet?.balance?.toLocaleString('en-IN')}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Emergency Contact */}
               {(profile?.emergency_contact_name || profile?.emergency_contact_phone) && (
                 <Card>
