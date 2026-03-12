@@ -1,0 +1,1 @@
+ALTER TABLE public.trainers ADD COLUMN IF NOT EXISTS biometric_photo_url text, ADD COLUMN IF NOT EXISTS biometric_enrolled boolean DEFAULT false;

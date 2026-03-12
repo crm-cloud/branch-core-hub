@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
 import { 
   MessageSquare, Send, Search, Phone, User, 
-  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical
+  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2
 } from 'lucide-react';
 
 interface ChatContact {
@@ -53,6 +53,7 @@ export default function WhatsAppChatPage() {
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
+  const [aiSuggesting, setAiSuggesting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -126,6 +127,40 @@ export default function WhatsAppChatPage() {
   );
 
   const handleSend = () => { if (newMessage.trim()) sendMessage.mutate(newMessage.trim()); };
+
+  const handleAiSuggest = async () => {
+    if (!selectedContact || messages.length === 0) {
+      toast.error('No conversation selected or no messages to analyze');
+      return;
+    }
+    setAiSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-auto-reply', {
+        body: {
+          contact_name: selectedContact.contact_name,
+          phone_number: selectedContact.phone_number,
+          recent_messages: messages.slice(-10).map(m => ({
+            content: m.content,
+            direction: m.direction,
+          })),
+          context_type: 'general',
+        },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+      if (data?.suggested_reply) {
+        setNewMessage(data.suggested_reply);
+        toast.success('AI suggestion ready — review and send!');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to get AI suggestion');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -306,6 +341,16 @@ export default function WhatsAppChatPage() {
                     </Button>
                     <Button variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0">
                       <Paperclip className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl text-violet-500 hover:text-violet-600 hover:bg-violet-500/10 flex-shrink-0"
+                      onClick={handleAiSuggest}
+                      disabled={aiSuggesting || messages.length === 0}
+                      title="AI Suggest Reply"
+                    >
+                      {aiSuggesting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
                     </Button>
                     <Input
                       placeholder="Type a message..."

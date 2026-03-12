@@ -29,7 +29,7 @@ export const queueMemberSync = async (
     const { data: devices } = await supabase
       .from('access_devices')
       .select('id')
-      .eq('device_type', 'face_terminal');
+      .in('device_type', ['face_terminal', 'face terminal']);
     
     targetDevices = devices?.map(d => d.id) || [];
   }
@@ -80,7 +80,7 @@ export const queueStaffSync = async (
     const { data: devices } = await supabase
       .from('access_devices')
       .select('id')
-      .eq('device_type', 'face_terminal');
+      .in('device_type', ['face_terminal', 'face terminal']);
     
     targetDevices = devices?.map(d => d.id) || [];
   }
@@ -115,6 +115,57 @@ export const queueStaffSync = async (
       biometric_enrolled: false
     })
     .eq('id', staffId);
+
+  return (data || []) as BiometricSyncItem[];
+};
+
+export const queueTrainerSync = async (
+  trainerId: string,
+  photoUrl: string,
+  personName: string,
+  deviceIds?: string[]
+): Promise<BiometricSyncItem[]> => {
+  let targetDevices: string[] = deviceIds || [];
+  
+  if (!deviceIds || deviceIds.length === 0) {
+    const { data: devices } = await supabase
+      .from('access_devices')
+      .select('id')
+      .in('device_type', ['face_terminal', 'face terminal']);
+    
+    targetDevices = devices?.map(d => d.id) || [];
+  }
+
+  if (targetDevices.length === 0) {
+    throw new Error('No face recognition devices found');
+  }
+
+  const syncItems = targetDevices.map(deviceId => ({
+    staff_id: trainerId,
+    device_id: deviceId,
+    sync_type: 'add' as const,
+    photo_url: photoUrl,
+    person_uuid: trainerId,
+    person_name: personName,
+    status: 'pending' as const,
+    retry_count: 0,
+  }));
+
+  const { data, error } = await supabase
+    .from('biometric_sync_queue')
+    .upsert(syncItems, { onConflict: 'staff_id,device_id' })
+    .select();
+
+  if (error) throw error;
+  
+  // Update trainer's biometric status
+  await supabase
+    .from('trainers')
+    .update({ 
+      biometric_photo_url: photoUrl,
+      biometric_enrolled: false
+    } as any)
+    .eq('id', trainerId);
 
   return (data || []) as BiometricSyncItem[];
 };

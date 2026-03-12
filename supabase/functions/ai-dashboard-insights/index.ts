@@ -1,0 +1,193 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY is not configured');
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { branch_id } = await req.json();
+
+    // Gather metrics
+    const today = new Date().toISOString().split('T')[0];
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+    const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+    const lastMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString();
+
+    const buildQuery = (table: string, select: string, filters?: Record<string, unknown>) => {
+      let q = supabase.from(table).select(select, { count: 'exact' });
+      if (branch_id) q = q.eq('branch_id', branch_id);
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (typeof v === 'string' && v.startsWith('gte:')) q = q.gte(k, v.slice(4));
+          else if (typeof v === 'string' && v.startsWith('lte:')) q = q.lte(k, v.slice(4));
+          else q = q.eq(k, v as string);
+        });
+      }
+      return q;
+    };
+
+    // Active members
+    const { count: activeMembers } = await buildQuery('members', 'id', { status: 'active' });
+    const { count: totalMembers } = await buildQuery('members', 'id');
+
+    // This month revenue
+    let revenueQ = supabase.from('payments').select('amount').gte('payment_date', monthStart);
+    if (branch_id) revenueQ = revenueQ.eq('branch_id', branch_id);
+    const { data: thisMonthPayments } = await revenueQ;
+    const thisMonthRevenue = thisMonthPayments?.reduce((s, p) => s + p.amount, 0) || 0;
+
+    // Last month revenue
+    let lastRevenueQ = supabase.from('payments').select('amount').gte('payment_date', lastMonthStart).lte('payment_date', lastMonthEnd);
+    if (branch_id) lastRevenueQ = lastRevenueQ.eq('branch_id', branch_id);
+    const { data: lastMonthPayments } = await lastRevenueQ;
+    const lastMonthRevenue = lastMonthPayments?.reduce((s, p) => s + p.amount, 0) || 0;
+
+    // Today's attendance
+    let attQ = supabase.from('member_attendance').select('id', { count: 'exact' }).gte('check_in', today);
+    if (branch_id) attQ = attQ.eq('branch_id', branch_id);
+    const { count: todayAttendance } = await attQ;
+
+    // Expiring memberships (7 days)
+    const next7 = new Date(Date.now() + 7 * 86400000).toISOString();
+    let expQ = supabase.from('memberships').select('id', { count: 'exact' }).eq('status', 'active').gte('end_date', today).lte('end_date', next7);
+    if (branch_id) expQ = expQ.eq('branch_id', branch_id);
+    const { count: expiringCount } = await expQ;
+
+    // Overdue invoices
+    let overdueQ = supabase.from('invoices').select('id, total_amount, amount_paid', { count: 'exact' }).eq('status', 'overdue');
+    if (branch_id) overdueQ = overdueQ.eq('branch_id', branch_id);
+    const { data: overdueInvoices, count: overdueCount } = await overdueQ;
+    const overdueAmount = overdueInvoices?.reduce((s, i) => s + ((i.total_amount || 0) - (i.amount_paid || 0)), 0) || 0;
+
+    // New leads this month
+    let leadsQ = supabase.from('leads').select('id', { count: 'exact' }).gte('created_at', monthStart);
+    if (branch_id) leadsQ = leadsQ.eq('branch_id', branch_id);
+    const { count: newLeads } = await leadsQ;
+
+    // Frozen memberships
+    let frozenQ = supabase.from('memberships').select('id', { count: 'exact' }).eq('status', 'frozen');
+    if (branch_id) frozenQ = frozenQ.eq('branch_id', branch_id);
+    const { count: frozenCount } = await frozenQ;
+
+    const revenueChange = lastMonthRevenue > 0 
+      ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1) 
+      : 'N/A';
+
+    const metricsContext = `
+Gym Dashboard Metrics (as of ${today}):
+- Total Members: ${totalMembers || 0}
+- Active Members: ${activeMembers || 0}
+- Frozen Memberships: ${frozenCount || 0}
+- Today's Check-ins: ${todayAttendance || 0}
+- This Month Revenue: ₹${thisMonthRevenue.toLocaleString()}
+- Last Month Revenue: ₹${lastMonthRevenue.toLocaleString()}
+- Revenue Change: ${revenueChange}%
+- Memberships Expiring in 7 Days: ${expiringCount || 0}
+- Overdue Invoices: ${overdueCount || 0} (₹${overdueAmount.toLocaleString()})
+- New Leads This Month: ${newLeads || 0}
+`;
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-flash-preview',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a gym business analytics AI assistant. Given gym metrics, provide exactly 4-5 brief, actionable insights. Each insight should be 1-2 sentences max. Use emoji icons at the start. Focus on: revenue trends, member retention risks, operational efficiency, and growth opportunities. Be specific with numbers. Format as a JSON array of objects with "icon", "title", and "description" fields.`
+          },
+          { role: 'user', content: metricsContext }
+        ],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'provide_insights',
+              description: 'Return actionable business insights based on gym metrics',
+              parameters: {
+                type: 'object',
+                properties: {
+                  insights: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        icon: { type: 'string', description: 'Single emoji icon' },
+                        title: { type: 'string', description: 'Short insight title (3-6 words)' },
+                        description: { type: 'string', description: 'Actionable insight in 1-2 sentences' },
+                        severity: { type: 'string', enum: ['info', 'warning', 'success', 'critical'] }
+                      },
+                      required: ['icon', 'title', 'description', 'severity'],
+                      additionalProperties: false
+                    }
+                  }
+                },
+                required: ['insights'],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: 'function', function: { name: 'provide_insights' } }
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: 'AI credits exhausted. Please top up in workspace settings.' }), {
+          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      const errText = await response.text();
+      console.error('AI gateway error:', response.status, errText);
+      throw new Error('AI gateway error');
+    }
+
+    const aiResult = await response.json();
+    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+    let insights = [];
+    
+    if (toolCall?.function?.arguments) {
+      try {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        insights = parsed.insights || [];
+      } catch {
+        insights = [{ icon: '📊', title: 'Analysis Complete', description: 'Unable to parse detailed insights.', severity: 'info' }];
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ insights, metrics: { totalMembers, activeMembers, thisMonthRevenue, lastMonthRevenue, revenueChange, todayAttendance, expiringCount, overdueCount, overdueAmount, newLeads, frozenCount } }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('AI insights error:', error);
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(
+      JSON.stringify({ error: errMsg }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});

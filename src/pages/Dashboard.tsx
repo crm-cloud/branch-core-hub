@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import LiveAccessLog from '@/components/devices/LiveAccessLog';
 import { MemberVoiceWidget } from '@/components/dashboard/MemberVoiceWidget';
+import { AIInsightsWidget } from '@/components/dashboard/AIInsightsWidget';
 import { 
   UserPlus, 
   Dumbbell, 
@@ -363,8 +364,9 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Member Voice Widget */}
+        {/* AI Insights + Member Voice */}
         <div className="grid gap-6 md:grid-cols-2">
+          <AIInsightsWidget branchId={branchFilter} />
           <MemberVoiceWidget />
         </div>
       </div>

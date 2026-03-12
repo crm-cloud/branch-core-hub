@@ -1,126 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# P2/P3 Implementation + Biometric Sync Audit
+## 1. Critical Query Bug Fixes
 
-## Summary
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-This plan covers: AI Dashboard Insights widget, Social Media Lead Capture configuration, and a full biometric sync pipeline audit with fixes.
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
----
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-## 1. Biometric Sync Pipeline Audit
+## 2. Database Migration
 
-### Issues Found
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-| # | Issue | Severity |
-|---|-------|----------|
-| 1 | **`device-access-event` missing from config.toml** — function exists but has no `[functions.device-access-event]` entry. May cause deployment issues. | High |
-| 2 | **`webhook-lead-capture` missing from config.toml** — same problem. | High |
-| 3 | **Trainers have no biometric fields** — `trainers` table lacks `biometric_photo_url` and `biometric_enrolled`. The `device-access-event` function only checks `members` and `employees`, never trainers. Trainers are a separate role from employees. | High |
-| 4 | **`biometricService.ts` uses `device_type = 'face_terminal'`** but the DB likely stores `face terminal` (with space). If mismatch, no devices are found and sync silently fails. | Medium |
-| 5 | **No trainer lookup in device-access-event** — trainers entering via face recognition get "Not Registered" denial because the function only checks `members` then `employees` tables. | High |
-| 6 | **No sync completion callback endpoint** — devices can fetch pending syncs but there's no endpoint to report back "sync item X completed/failed". The `markSyncComplete` function exists client-side but devices need an API. | Medium |
-
-### Fixes
-
-**Config.toml**: Add missing function entries:
-```toml
-[functions.device-access-event]
-verify_jwt = false
-
-[functions.webhook-lead-capture]
-verify_jwt = false
-```
-
-**DB Migration**: Add biometric fields to `trainers` table:
 ```sql
-ALTER TABLE public.trainers
-ADD COLUMN IF NOT EXISTS biometric_photo_url text,
-ADD COLUMN IF NOT EXISTS biometric_enrolled boolean DEFAULT false;
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-**device-access-event**: After the employee lookup fails, add a trainer lookup:
-- Query `trainers` table by `id = person_uuid`
-- If found and active + correct branch, log `staff_attendance` and return OPEN
-- This mirrors the existing employee logic
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-**biometricService.ts**: Fix `device_type` filter — query without the filter (fetch all devices) or use the actual stored value. Also add `queueTrainerSync` function for trainers.
+## 3. AI Fitness Page Redesign
 
-**New edge function `device-sync-callback`**: Simple endpoint for devices to report sync completion status. Calls the same logic as `markSyncComplete`.
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
 
----
+Redesign with 3 clear tabs and modern Vuexy styling:
 
-## 2. AI Dashboard Insights Widget (P2)
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
 
-### Approach
-- Create an edge function `ai-dashboard-insights` that:
-  - Fetches key metrics (member count, revenue, attendance trends, expiring memberships)
-  - Sends structured data to Lovable AI Gateway (google/gemini-3-flash-preview)
-  - Returns 3-5 actionable insights
-- Add an "AI Insights" card to Dashboard.tsx with:
-  - A "Generate Insights" button
-  - Streaming display of AI-generated insights
-  - Cached results (stored in localStorage, refresh daily)
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
 
-### Files
+## 4. Public Website CMS/DB Sync
+
+**File:** `src/pages/PublicWebsite.tsx`
+
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
+
 | File | Change |
 |------|--------|
-| `supabase/functions/ai-dashboard-insights/index.ts` | New edge function |
-| `supabase/config.toml` | Add function entry |
-| `src/components/dashboard/AIInsightsWidget.tsx` | New widget component |
-| `src/pages/Dashboard.tsx` | Add widget to layout |
-
----
-
-## 3. Social Media Lead Capture (P2)
-
-### Approach
-The `webhook-lead-capture` edge function already handles external leads. What's missing:
-- A settings UI showing the webhook URL and how to connect it
-- Support for Instagram/Facebook source tracking (already works via `source` field)
-- Documentation in the Integration Settings page
-
-### Implementation
-- Add a "Lead Capture" tab to Integration Settings with:
-  - Display the webhook endpoint URL
-  - Copy-to-clipboard button
-  - Instructions for connecting Zapier/Make with Meta Lead Ads
-  - Source filter display (instagram, facebook, website, api)
-  - Webhook secret configuration (uses existing `WEBHOOK_LEAD_SECRET`)
-- Add `instagram` and `facebook` as recognized source values in the Leads page source badges
-
-### Files
-| File | Change |
-|------|--------|
-| `src/components/settings/IntegrationSettings.tsx` | Add "Lead Capture" tab with webhook URL display |
-| `src/pages/Leads.tsx` | Add instagram/facebook source badges |
-
----
-
-## 4. AI WhatsApp Auto-Reply (P3 — Foundation Only)
-
-This requires a WhatsApp Business API provider. We'll build the AI reply logic foundation:
-- Create `ai-auto-reply` edge function that accepts a message + lead context, calls Lovable AI, returns a suggested reply
-- Wire it into WhatsAppChat.tsx as a "Suggest Reply" button (AI generates a draft, staff approves before sending)
-- This avoids needing full automation while providing immediate value
-
-### Files
-| File | Change |
-|------|--------|
-| `supabase/functions/ai-auto-reply/index.ts` | New edge function |
-| `supabase/config.toml` | Add function entry |
-| `src/pages/WhatsAppChat.tsx` | Add "AI Suggest Reply" button |
-
----
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
 ## Execution Order
 
-1. DB migration (add biometric fields to trainers)
-2. Fix config.toml (add all missing function entries)
-3. Fix biometric sync service (device_type filter, add trainer sync)
-4. Update device-access-event (add trainer lookup)
-5. Create device-sync-callback edge function
-6. Create AI Dashboard Insights widget
-7. Add Lead Capture settings UI
-8. Add AI Auto-Reply foundation
-
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
         }
       }
     } else {
-      // Try to find as staff
+      // Try to find as staff (employee)
       const { data: employee } = await supabase
         .from('employees')
         .select('id, user_id, branch_id, is_active')
@@ -299,17 +299,67 @@ Deno.serve(async (req) => {
           eventData.device_message = employee.is_active ? 'Wrong Branch' : 'Account Inactive';
         }
       } else {
-        // Person not found
-        response = {
-          action: 'DENIED',
-          message: 'Not Registered',
-          led_color: 'RED',
-          relay_delay: 0,
-        };
-        eventData.access_granted = false;
-        eventData.denial_reason = 'not_found';
-        eventData.response_sent = 'DENIED';
-        eventData.device_message = 'Not Registered';
+        // Try to find as trainer
+        const { data: trainer } = await supabase
+          .from('trainers')
+          .select('id, user_id, branch_id, is_active')
+          .eq('id', person_uuid)
+          .single();
+
+        if (trainer) {
+          const { data: trainerProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', trainer.user_id)
+            .single();
+
+          const trainerName = trainerProfile?.full_name || 'Trainer';
+
+          if (trainer.is_active && trainer.branch_id === device.branch_id) {
+            // Trainer check-in - log staff attendance
+            await supabase.from('staff_attendance').insert({
+              employee_id: trainer.id,
+              branch_id: device.branch_id,
+              check_in: new Date().toISOString(),
+              check_in_method: 'biometric',
+            });
+
+            response = {
+              action: 'OPEN',
+              message: `Welcome, ${trainerName}!`,
+              led_color: 'GREEN',
+              relay_delay: device.relay_delay || 5,
+              person_name: trainerName,
+            };
+            eventData.access_granted = true;
+            eventData.response_sent = 'OPEN';
+            eventData.device_message = `Welcome, ${trainerName}!`;
+          } else {
+            response = {
+              action: 'DENIED',
+              message: trainer.is_active ? 'Wrong Branch' : 'Account Inactive',
+              led_color: 'RED',
+              relay_delay: 0,
+              person_name: trainerName,
+            };
+            eventData.access_granted = false;
+            eventData.denial_reason = trainer.is_active ? 'wrong_branch' : 'inactive';
+            eventData.response_sent = 'DENIED';
+            eventData.device_message = trainer.is_active ? 'Wrong Branch' : 'Account Inactive';
+          }
+        } else {
+          // Person not found in any table
+          response = {
+            action: 'DENIED',
+            message: 'Not Registered',
+            led_color: 'RED',
+            relay_delay: 0,
+          };
+          eventData.access_granted = false;
+          eventData.denial_reason = 'not_found';
+          eventData.response_sent = 'DENIED';
+          eventData.device_message = 'Not Registered';
+        }
       }
     }
 
