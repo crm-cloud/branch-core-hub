@@ -5133,6 +5133,8 @@ export type Database = {
       trainers: {
         Row: {
           bio: string | null
+          biometric_enrolled: boolean | null
+          biometric_photo_url: string | null
           branch_id: string
           certifications: string[] | null
           created_at: string
@@ -5151,6 +5153,8 @@ export type Database = {
         }
         Insert: {
           bio?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id: string
           certifications?: string[] | null
           created_at?: string
@@ -5169,6 +5173,8 @@ export type Database = {
         }
         Update: {
           bio?: string | null
+          biometric_enrolled?: boolean | null
+          biometric_photo_url?: string | null
           branch_id?: string
           certifications?: string[] | null
           created_at?: string
