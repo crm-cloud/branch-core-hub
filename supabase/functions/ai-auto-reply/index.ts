@@ -1,0 +1,111 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY is not configured');
+
+    // Authenticate user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    }
+
+    const { contact_name, phone_number, recent_messages, context_type } = await req.json();
+
+    if (!recent_messages || !Array.isArray(recent_messages)) {
+      return new Response(
+        JSON.stringify({ error: 'recent_messages array is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Build conversation context
+    const conversationHistory = recent_messages
+      .slice(-10) // Last 10 messages for context
+      .map((m: any) => `${m.direction === 'inbound' ? contact_name || 'Customer' : 'Staff'}: ${m.content}`)
+      .join('\n');
+
+    const systemPrompt = `You are a helpful gym reception assistant for "Incline Fitness". Generate a professional, friendly WhatsApp reply suggestion. Keep it short (1-3 sentences max). Be warm but professional. Use the customer's name when available. 
+
+Context type: ${context_type || 'general'}
+${contact_name ? `Customer name: ${contact_name}` : ''}
+${phone_number ? `Phone: ${phone_number}` : ''}
+
+Guidelines:
+- For inquiries: Provide helpful info and invite them to visit
+- For complaints: Be empathetic, acknowledge, and offer resolution
+- For membership queries: Mention benefits and offer to schedule a tour
+- For payment queries: Be professional and offer to help resolve
+- Always end with a clear next step or call-to-action
+- Keep the tone conversational but professional
+- Use English or Hindi-English mix based on the customer's language`;
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-flash-preview',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Here is the recent conversation:\n\n${conversationHistory}\n\nGenerate a suggested reply for the staff to send.` }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again shortly.' }), {
+          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: 'AI credits exhausted.' }), {
+          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      const errText = await response.text();
+      console.error('AI gateway error:', response.status, errText);
+      throw new Error('AI gateway error');
+    }
+
+    const aiResult = await response.json();
+    const suggestedReply = aiResult.choices?.[0]?.message?.content || 'Unable to generate suggestion.';
+
+    return new Response(
+      JSON.stringify({ suggested_reply: suggestedReply }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('AI auto-reply error:', error);
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(
+      JSON.stringify({ error: errMsg }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
