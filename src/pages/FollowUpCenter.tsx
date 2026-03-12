@@ -18,24 +18,24 @@ import { communicationService } from '@/services/communicationService';
 export default function FollowUpCenter() {
   const { user } = useAuth();
 
-  // Get staff's assigned branch
+  // Get staff's assigned branch — uses same query key & shape as StaffDashboard
   const { data: staffBranch } = useQuery({
     queryKey: ['staff-branch', user?.id],
     enabled: !!user,
     queryFn: async () => {
       const { data: employee } = await supabase
         .from('employees')
-        .select('branch_id')
+        .select('branch_id, branch:branches(id, name)')
         .eq('user_id', user!.id)
         .eq('is_active', true)
         .maybeSingle();
-      if (employee?.branch_id) return employee.branch_id;
-      const { data: branches } = await supabase.from('branches').select('id').eq('is_active', true).limit(1);
-      return branches?.[0]?.id || null;
+      if (employee?.branch_id) return employee.branch;
+      const { data: branches } = await supabase.from('branches').select('id, name').eq('is_active', true).limit(1);
+      return branches?.[0] || null;
     },
   });
 
-  const branchId = staffBranch;
+  const branchId = (staffBranch as any)?.id as string | undefined;
 
   // ---- PENDING PAYMENTS / OVERDUE INVOICES ----
   const { data: pendingPayments = [] } = useQuery({

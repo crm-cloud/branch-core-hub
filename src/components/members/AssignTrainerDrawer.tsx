@@ -32,6 +32,13 @@ export function AssignTrainerDrawer({
   const queryClient = useQueryClient();
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>(currentTrainerId || '');
 
+  // Reset selection when drawer opens or currentTrainerId changes
+  useEffect(() => {
+    if (open) {
+      setSelectedTrainerId(currentTrainerId || '');
+    }
+  }, [open, currentTrainerId]);
+
   // Fetch trainers with utilization
   const { data: trainers = [], isLoading } = useQuery({
     queryKey: ['trainers-utilization', branchId],
