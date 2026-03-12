@@ -114,8 +114,8 @@ export default function StaffAttendancePage() {
           </Card>
         )}
 
-        {/* Self Check-in/out Card - for staff and trainers */}
-        {(isStaffOrTrainer || isManager) && (
+        {/* Self Check-in/out Card — only admins/owners can self-check-in; staff/managers must use device or be checked in by someone above them */}
+        {isAdmin && (
           <Card className="border-accent/30 bg-accent/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -149,6 +149,61 @@ export default function StaffAttendancePage() {
                   {isCheckingIn ? 'Checking in...' : 'Check In'}
                 </Button>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Info for staff/trainers — self check-in disabled */}
+        {(isStaffOrTrainer || isManager) && (
+          <Card className="border-warning/30 bg-warning/5">
+            <CardContent className="p-4 flex items-center gap-3">
+              <Shield className="h-5 w-5 text-warning" />
+              <div>
+                <p className="font-medium text-warning">
+                  {isManager ? 'Manager Attendance' : 'Staff Attendance'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {isManager 
+                    ? 'Your attendance is recorded via biometric device or by an admin. You can record attendance for staff below you.' 
+                    : 'Your attendance is recorded via biometric device or by your manager/admin.'}
+                </p>
+                {isUserCheckedIn && (
+                  <Badge className="mt-2 bg-success/10 text-success border-success/20">Currently Checked In</Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Record attendance for others — managers can check in staff, admins can check in everyone */}
+        {(isManager || isAdmin) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Record Staff Attendance
+              </CardTitle>
+              <CardDescription>
+                {isAdmin 
+                  ? 'Check in/out any staff member including managers' 
+                  : 'Check in/out staff members in your branch'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {todayAttendance.data?.filter((emp: any) => {
+                  // Managers cannot check in themselves or other managers
+                  if (isManager && !isAdmin) {
+                    return emp.user_id !== user?.id;
+                  }
+                  // Admins can check in everyone except themselves (they have self check-in above)
+                  return emp.user_id !== user?.id;
+                }).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Use the attendance log below to track staff. Staff are checked in via biometric devices or manual recording.
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,6 +31,13 @@ export function AssignTrainerDrawer({
 }: AssignTrainerDrawerProps) {
   const queryClient = useQueryClient();
   const [selectedTrainerId, setSelectedTrainerId] = useState<string>(currentTrainerId || '');
+
+  // Reset selection when drawer opens or currentTrainerId changes
+  useEffect(() => {
+    if (open) {
+      setSelectedTrainerId(currentTrainerId || '');
+    }
+  }, [open, currentTrainerId]);
 
   // Fetch trainers with utilization
   const { data: trainers = [], isLoading } = useQuery({
