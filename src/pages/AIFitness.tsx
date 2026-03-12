@@ -445,8 +445,8 @@ export default function AIFitnessPage() {
                         <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-                    <Button onClick={handleGenerate} disabled={generatePlan.isPending} className="w-full">
-                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate {planType === "workout" ? "Workout" : "Diet"} Plan</>)}
+                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending} className="w-full">
+                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate & Save as Template</>)}
                     </Button>
                   </div>
                 </CardContent>
