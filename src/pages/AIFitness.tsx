@@ -211,9 +211,9 @@ export default function AIFitnessPage() {
     // Fetch latest measurements
     const { data: measurements } = await supabase
       .from('member_measurements')
-      .select('weight, height, body_fat_percentage')
+      .select('weight_kg, height_cm, body_fat_percentage')
       .eq('member_id', member.id)
-      .order('measured_at', { ascending: false })
+      .order('recorded_at', { ascending: false })
       .limit(1);
 
     if (measurements && measurements.length > 0) {
@@ -221,8 +221,8 @@ export default function AIFitnessPage() {
       setMemberInfo(prev => ({
         ...prev,
         name: member.full_name + ' Plan',
-        weight: m.weight ? String(m.weight) : prev.weight,
-        height: m.height ? String(m.height) : prev.height,
+        weight: m.weight_kg ? String(m.weight_kg) : prev.weight,
+        height: m.height_cm ? String(m.height_cm) : prev.height,
       }));
       toast.success('Auto-filled biometrics from member profile');
     } else {
