@@ -204,7 +204,7 @@ export default function AIFitnessPage() {
   });
 
   const handleGenerate = async () => {
-    if (!memberInfo.name) { toast.error("Please enter member name"); return; }
+    if (!memberInfo.name) { toast.error("Please enter a plan name"); return; }
     try {
       const plan = await generatePlan.mutateAsync({
         type: planType,
@@ -222,7 +222,17 @@ export default function AIFitnessPage() {
         options: { durationWeeks, caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined },
       });
       setGeneratedPlan(plan);
-      toast.success("Plan generated successfully!");
+      // Auto-save as global template
+      saveTemplateMutation.mutate({
+        name: plan.name || memberInfo.name,
+        type: planType,
+        description: plan.description,
+        difficulty: plan.difficulty || 'intermediate',
+        goal: plan.goal,
+        content: plan,
+        is_public: true,
+      });
+      toast.success("Plan generated & saved as template!");
     } catch (error: any) {
       toast.error(error.message || "Failed to generate plan");
     }
@@ -365,14 +375,14 @@ export default function AIFitnessPage() {
               {/* Input Form */}
               <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
                 <CardHeader>
-                  <CardTitle>Member Information</CardTitle>
-                  <CardDescription>Enter member details to generate a personalized {planType} plan</CardDescription>
+                  <CardTitle>Plan Details</CardTitle>
+                  <CardDescription>Enter plan details. Member-specific info is optional — leave blank to create a global template.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4">
                     <div className="grid gap-2">
-                      <Label>Member Name *</Label>
-                      <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="John Doe" />
+                      <Label>Plan Name *</Label>
+                      <Input value={memberInfo.name} onChange={(e) => setMemberInfo({ ...memberInfo, name: e.target.value })} placeholder="e.g. Push Pull Legs, Weight Loss Circuit" />
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       <div className="grid gap-2">
@@ -435,8 +445,8 @@ export default function AIFitnessPage() {
                         <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-                    <Button onClick={handleGenerate} disabled={generatePlan.isPending} className="w-full">
-                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate {planType === "workout" ? "Workout" : "Diet"} Plan</>)}
+                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending} className="w-full">
+                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />Generate & Save as Template</>)}
                     </Button>
                   </div>
                 </CardContent>

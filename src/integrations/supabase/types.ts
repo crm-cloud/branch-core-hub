@@ -3708,8 +3708,10 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string | null
+          session_timeout_hours: number | null
           timezone: string | null
           updated_at: string
+          webhook_slug: string | null
           website_theme: Json | null
         }
         Insert: {
@@ -3720,8 +3722,10 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string | null
+          session_timeout_hours?: number | null
           timezone?: string | null
           updated_at?: string
+          webhook_slug?: string | null
           website_theme?: Json | null
         }
         Update: {
@@ -3732,8 +3736,10 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string | null
+          session_timeout_hours?: number | null
           timezone?: string | null
           updated_at?: string
+          webhook_slug?: string | null
           website_theme?: Json | null
         }
         Relationships: [

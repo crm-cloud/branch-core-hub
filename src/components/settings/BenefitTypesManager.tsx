@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useBranchContext } from "@/contexts/BranchContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,21 +72,12 @@ function getIconComponent(iconName: string) {
 
 export function BenefitTypesManager() {
   const queryClient = useQueryClient();
+  const { effectiveBranchId } = useBranchContext();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<BenefitTypeFormData>(defaultFormData);
 
-  // Get first branch
-  const { data: branches } = useQuery({
-    queryKey: ["branches"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("branches").select("*").limit(1);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const branchId = branches?.[0]?.id || "";
+  const branchId = effectiveBranchId || "";
 
   // Fetch benefit types
   const { data: benefitTypes, isLoading } = useQuery({

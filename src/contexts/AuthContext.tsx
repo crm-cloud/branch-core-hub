@@ -86,6 +86,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Session inactivity timer
+  useEffect(() => {
+    if (!user) return;
+
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const resetTimer = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      // Fetch timeout from org settings (cached in memory)
+      supabase
+        .from('organization_settings')
+        .select('session_timeout_hours')
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          const hours = data?.session_timeout_hours;
+          if (hours && hours > 0) {
+            inactivityTimer = setTimeout(() => {
+              supabase.auth.signOut();
+            }, hours * 60 * 60 * 1000);
+          }
+        });
+    };
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [user]);
+
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
