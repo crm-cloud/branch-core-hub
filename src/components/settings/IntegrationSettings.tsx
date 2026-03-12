@@ -15,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { 
   CreditCard, MessageSquare, Mail, Phone,
-  Settings, CheckCircle, XCircle, Save, Globe
+  Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink
 } from 'lucide-react';
 
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business';

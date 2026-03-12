@@ -364,8 +364,9 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Member Voice Widget */}
+        {/* AI Insights + Member Voice */}
         <div className="grid gap-6 md:grid-cols-2">
+          <AIInsightsWidget branchId={branchFilter} />
           <MemberVoiceWidget />
         </div>
       </div>
