@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import LiveAccessLog from '@/components/devices/LiveAccessLog';
 import { MemberVoiceWidget } from '@/components/dashboard/MemberVoiceWidget';
+import { AIInsightsWidget } from '@/components/dashboard/AIInsightsWidget';
 import { 
   UserPlus, 
   Dumbbell, 
