@@ -204,7 +204,7 @@ export default function AIFitnessPage() {
   });
 
   const handleGenerate = async () => {
-    if (!memberInfo.name) { toast.error("Please enter member name"); return; }
+    if (!memberInfo.name) { toast.error("Please enter a plan name"); return; }
     try {
       const plan = await generatePlan.mutateAsync({
         type: planType,
@@ -222,7 +222,17 @@ export default function AIFitnessPage() {
         options: { durationWeeks, caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined },
       });
       setGeneratedPlan(plan);
-      toast.success("Plan generated successfully!");
+      // Auto-save as global template
+      saveTemplateMutation.mutate({
+        name: plan.name || memberInfo.name,
+        type: planType,
+        description: plan.description,
+        difficulty: plan.difficulty || 'intermediate',
+        goal: plan.goal,
+        content: plan,
+        is_public: true,
+      });
+      toast.success("Plan generated & saved as template!");
     } catch (error: any) {
       toast.error(error.message || "Failed to generate plan");
     }
