@@ -342,6 +342,16 @@ export default function WhatsAppChatPage() {
                     <Button variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0">
                       <Paperclip className="h-5 w-5" />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl text-violet-500 hover:text-violet-600 hover:bg-violet-500/10 flex-shrink-0"
+                      onClick={handleAiSuggest}
+                      disabled={aiSuggesting || messages.length === 0}
+                      title="AI Suggest Reply"
+                    >
+                      {aiSuggesting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+                    </Button>
                     <Input
                       placeholder="Type a message..."
                       value={newMessage}

@@ -392,7 +392,126 @@ export function IntegrationSettings() {
           </Card>
         </TabsContent>
         <TabsContent value="leads" className="space-y-4">
-          <LeadCaptureSettings />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Webhook className="h-5 w-5" />
+                External Lead Capture Webhook
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Receive leads from Instagram, Facebook, Zapier, Make, or any external source
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Webhook URL */}
+              <div className="space-y-2">
+                <Label className="font-semibold">Webhook Endpoint URL</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-lead-capture`}
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-lead-capture`);
+                      toast.success('Webhook URL copied!');
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Use this URL in your Zapier/Make automation or Meta Lead Ads webhook</p>
+              </div>
+
+              {/* Required Headers */}
+              <div className="space-y-2">
+                <Label className="font-semibold">Required Header</Label>
+                <div className="p-3 bg-muted/50 rounded-lg font-mono text-sm space-y-1">
+                  <p><span className="text-primary font-semibold">x-webhook-secret:</span> <span className="text-muted-foreground">&lt;your secret value&gt;</span></p>
+                </div>
+                <p className="text-xs text-muted-foreground">Set <code className="bg-muted px-1 rounded">WEBHOOK_LEAD_SECRET</code> in your backend secrets, then pass it in every webhook request</p>
+              </div>
+
+              {/* Payload Format */}
+              <div className="space-y-2">
+                <Label className="font-semibold">JSON Payload Format</Label>
+                <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs whitespace-pre overflow-x-auto">
+{`{
+  "full_name": "John Doe",
+  "phone": "+919876543210",
+  "email": "john@example.com",
+  "source": "instagram",
+  "utm_source": "meta_lead_ads",
+  "utm_campaign": "jan_offer",
+  "notes": "Interested in premium plan"
+}`}
+                </div>
+              </div>
+
+              {/* Supported Sources */}
+              <div className="space-y-2">
+                <Label className="font-semibold">Supported Source Values</Label>
+                <div className="flex flex-wrap gap-2">
+                  {['walk_in', 'phone', 'website', 'referral', 'instagram', 'facebook', 'google', 'api', 'zapier'].map(src => (
+                    <Badge key={src} variant="outline" className="rounded-full capitalize">{src}</Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Integration Guides */}
+              <div className="space-y-3">
+                <Label className="font-semibold">Quick Setup Guides</Label>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Card className="border-border/50">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">📘</span>
+                        <h4 className="font-semibold text-sm">Facebook Lead Ads</h4>
+                      </div>
+                      <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                        <li>Go to Facebook Business Suite → Leads Center</li>
+                        <li>Create a new CRM integration</li>
+                        <li>Select "Custom Webhook" and paste the URL</li>
+                        <li>Add the x-webhook-secret header</li>
+                        <li>Map fields: name → full_name, phone → phone</li>
+                      </ol>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border/50">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">📸</span>
+                        <h4 className="font-semibold text-sm">Instagram Lead Ads</h4>
+                      </div>
+                      <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                        <li>Instagram Lead Ads use the same Meta platform</li>
+                        <li>Set source to "instagram" in your Zapier/Make flow</li>
+                        <li>Same webhook URL and format applies</li>
+                      </ol>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border/50">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">⚡</span>
+                        <h4 className="font-semibold text-sm">Zapier / Make</h4>
+                      </div>
+                      <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                        <li>Create a Zap/Scenario with your trigger</li>
+                        <li>Add "Webhooks by Zapier" → POST action</li>
+                        <li>Paste the webhook URL</li>
+                        <li>Add x-webhook-secret to headers</li>
+                        <li>Map fields to the JSON format above</li>
+                      </ol>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
