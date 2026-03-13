@@ -177,6 +177,7 @@ export default function AIFitnessPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [shuffledWorkout, setShuffledWorkout] = useState<any>(null);
   const [personalizedMember, setPersonalizedMember] = useState<any>(null);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
