@@ -217,6 +217,9 @@ export default function LeadsPage() {
                         <CardContent className="p-3 space-y-2">
                           <p className="font-semibold text-sm truncate">{lead.full_name}</p>
                           <p className="text-xs text-muted-foreground truncate">{lead.phone || lead.email}</p>
+                          {lead.notes && (
+                            <p className="text-xs text-muted-foreground/80 italic line-clamp-2 bg-muted/30 rounded px-2 py-1">📝 {lead.notes}</p>
+                          )}
                           <div className="flex items-center justify-between">
                             <Badge variant="outline" className="text-xs">{lead.source || 'Direct'}</Badge>
                             <span className="text-xs text-muted-foreground">{format(new Date(lead.created_at), 'dd MMM')}</span>
