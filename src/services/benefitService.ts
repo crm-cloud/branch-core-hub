@@ -72,7 +72,7 @@ export async function fetchMembershipWithBenefits(memberId: string): Promise<Mem
     .gte('end_date', new Date().toISOString().split('T')[0])
     .order('end_date', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
 

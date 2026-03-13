@@ -120,7 +120,7 @@ export default function POSPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      const { data: branch } = await supabase.from('branches').select('id').limit(1).single();
+      const { data: branch } = await supabase.from('branches').select('id').limit(1).maybeSingle();
       if (!branch) throw new Error('No branch found');
 
       // If paying with wallet, check balance
