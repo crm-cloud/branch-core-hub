@@ -105,11 +105,33 @@ export default function WhatsAppChatPage() {
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
       if (!selectedContact || !selectedBranch || selectedBranch === 'all') throw new Error('Select a contact and branch');
+      // 1. Insert message record
       const { data, error } = await supabase.from('whatsapp_messages').insert({
         branch_id: selectedBranch, phone_number: selectedContact.phone_number, contact_name: selectedContact.contact_name,
         member_id: selectedContact.member_id, content, direction: 'outbound', status: 'pending', message_type: 'text',
       }).select().single();
       if (error) throw error;
+
+      // 2. Invoke send-whatsapp edge function to actually deliver via API
+      try {
+        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-whatsapp', {
+          body: {
+            message_id: data.id,
+            phone_number: selectedContact.phone_number,
+            content,
+            branch_id: selectedBranch,
+          },
+        });
+        if (sendError) {
+          console.warn('WhatsApp API send failed (message saved as pending):', sendError);
+        } else if (sendResult?.error) {
+          console.warn('WhatsApp API error:', sendResult.error);
+          toast.info('Message saved. WhatsApp delivery failed — check integration settings.');
+        }
+      } catch (apiErr) {
+        console.warn('send-whatsapp invocation failed:', apiErr);
+      }
+
       return data;
     },
     onSuccess: () => {

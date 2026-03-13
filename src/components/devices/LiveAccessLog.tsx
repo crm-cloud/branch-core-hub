@@ -27,13 +27,12 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
     setLiveEvents(initialEvents);
   }, [initialEvents]);
 
-  // Subscribe to real-time events
+  // Subscribe to real-time access device events
   useEffect(() => {
     if (!branchId) return;
 
     const unsubscribe = subscribeToAccessEvents(branchId, (newEvent) => {
       setLiveEvents((prev) => {
-        // Add new event at the beginning, keep only 'limit' events
         const updated = [newEvent, ...prev].slice(0, limit);
         return updated;
       });
@@ -41,6 +40,42 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
 
     return () => {
       unsubscribe();
+    };
+  }, [branchId, limit]);
+
+  // Subscribe to real-time member attendance check-ins
+  useEffect(() => {
+    if (!branchId) return;
+
+    const channel = supabase
+      .channel('live-attendance-' + branchId)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'member_attendance',
+          filter: `branch_id=eq.${branchId}`,
+        },
+        (payload) => {
+          const record = payload.new as any;
+          const attendanceEvent: DeviceAccessEvent = {
+            id: record.id,
+            branch_id: record.branch_id,
+            access_granted: true,
+            event_type: record.check_in_method || 'manual',
+            device_message: 'Attendance check-in',
+            created_at: record.check_in,
+            member_id: record.member_id,
+            member: { member_code: record.member_id, user_id: '' },
+          };
+          setLiveEvents((prev) => [attendanceEvent, ...prev].slice(0, limit));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [branchId, limit]);
 
