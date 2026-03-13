@@ -56,8 +56,7 @@ export const staffAttendanceService = {
       .maybeSingle();
 
     if (findError) {
-      if (findError.code === 'PGRST116') {
-        return { success: false, message: 'No active check-in found' };
+      return { success: false, message: 'No active check-in found' };
       }
       throw findError;
     }
