@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,13 +65,15 @@ export function IntegrationSettings() {
   const { data: integrations = [] } = useQuery({
     queryKey: ['integrations', selectedBranch],
     queryFn: async () => {
+      // Fetch global integrations (branch_id IS NULL) + branch-specific ones
       let query = supabase
         .from('integration_settings')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (selectedBranch !== 'all') {
-        query = query.eq('branch_id', selectedBranch);
+        // Get global settings (null branch_id) OR branch-specific ones
+        query = query.or(`branch_id.is.null,branch_id.eq.${selectedBranch}`);
       }
 
       const { data, error } = await query;
@@ -503,14 +505,24 @@ function IntegrationConfigSheet({
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
   const queryClient = useQueryClient();
 
+  // Sync state when existing prop changes (e.g., opening sheet for different provider)
+  useEffect(() => {
+    setIsActive(existing?.is_active || false);
+    setConfig(existing?.config || {});
+    setCredentials(existing?.credentials || {});
+  }, [existing, open]);
+
+  // Only google_business is branch-specific; all others are global
+  const isBranchSpecific = type === 'google_business';
+
   const saveConfig = useMutation({
     mutationFn: async () => {
-      if (!branchId) {
-        throw new Error('Please select a specific branch');
+      if (isBranchSpecific && !branchId) {
+        throw new Error('Please select a specific branch for Google Business settings');
       }
 
       const payload = {
-        branch_id: branchId,
+        branch_id: isBranchSpecific ? branchId! : null,
         integration_type: type,
         provider,
         is_active: isActive,
@@ -593,6 +605,14 @@ function IntegrationConfigSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {!isBranchSpecific && (
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <p className="text-xs text-muted-foreground">
+                <strong>Global Setting</strong> — This integration applies across all branches.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <Label>Enable Integration</Label>

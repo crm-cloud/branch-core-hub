@@ -96,7 +96,7 @@ export default function POSPage() {
         .from('wallets')
         .select('balance')
         .eq('member_id', selectedMember.id)
-        .single();
+        .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
       return data?.balance || 0;
     },
@@ -120,7 +120,7 @@ export default function POSPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      const { data: branch } = await supabase.from('branches').select('id').limit(1).single();
+      const { data: branch } = await supabase.from('branches').select('id').limit(1).maybeSingle();
       if (!branch) throw new Error('No branch found');
 
       // If paying with wallet, check balance

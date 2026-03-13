@@ -25,7 +25,7 @@ export const staffAttendanceService = {
       .select('id')
       .eq('user_id', userId)
       .is('check_out', null)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return { success: false, message: 'Already checked in', attendance_id: existing.id };
@@ -53,13 +53,10 @@ export const staffAttendanceService = {
       .is('check_out', null)
       .order('check_in', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (findError) {
-      if (findError.code === 'PGRST116') {
-        return { success: false, message: 'No active check-in found' };
-      }
-      throw findError;
+    if (findError || !attendance) {
+      return { success: false, message: 'No active check-in found' };
     }
 
     const { error: updateError } = await supabase

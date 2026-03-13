@@ -17,15 +17,18 @@ export interface PaymentOrder {
   razorpayKey?: string;
 }
 
-// Fetch active payment gateway for a branch
+// Fetch active payment gateway (global setting, not branch-specific)
 export async function fetchActiveGateway(branchId: string): Promise<PaymentGatewayConfig | null> {
+  // Payment gateways are global — search for integration_type = 'payment_gateway' with null branch_id first, then fallback to branch-specific
   const { data, error } = await supabase
     .from('integration_settings')
     .select('*')
-    .eq('branch_id', branchId)
-    .eq('integration_type', 'payment')
+    .eq('integration_type', 'payment_gateway')
     .eq('is_active', true)
-    .single();
+    .or(`branch_id.is.null,branch_id.eq.${branchId}`)
+    .order('branch_id', { ascending: true, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error || !data) return null;
 
