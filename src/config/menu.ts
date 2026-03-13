@@ -140,7 +140,7 @@ export const staffMenuConfig: MenuSection[] = [
   {
     title: 'Work',
     items: [
-      { label: 'My Attendance', href: '/staff-attendance', icon: Clock, roles: ['staff'] },
+      { label: 'My Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['staff'] },
     ],
   },
 ];
