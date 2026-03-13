@@ -178,6 +178,8 @@ export default function AIFitnessPage() {
   const [shuffledWorkout, setShuffledWorkout] = useState<any>(null);
   const [personalizedMember, setPersonalizedMember] = useState<any>(null);
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Search members for personalized mode
   const { data: memberResults = [] } = useQuery({
@@ -259,6 +261,11 @@ export default function AIFitnessPage() {
 
   const handleGenerate = async () => {
     if (!memberInfo.name) { toast.error("Please enter a plan name"); return; }
+    setIsGenerating(true);
+    setGenerateError(null);
+    const timeoutTimer = setTimeout(() => {
+      setGenerateError('still_loading');
+    }, 15000);
     try {
       const plan = await generatePlan.mutateAsync({
         type: planType,
@@ -275,8 +282,8 @@ export default function AIFitnessPage() {
         },
         options: { durationWeeks, caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined },
       });
+      clearTimeout(timeoutTimer);
       setGeneratedPlan(plan);
-      // Auto-save as global template
       saveTemplateMutation.mutate({
         name: plan.name || memberInfo.name,
         type: planType,
@@ -288,7 +295,12 @@ export default function AIFitnessPage() {
       });
       toast.success("Plan generated & saved as template!");
     } catch (error: any) {
-      toast.error(error.message || "Failed to generate plan");
+      clearTimeout(timeoutTimer);
+      const msg = error.message || "Failed to generate plan";
+      setGenerateError(msg.includes('Unauthorized') || msg.includes('401') ? 'Your session may have expired. Please log out and log back in, then try again.' : msg);
+      toast.error(msg.includes('401') ? 'Session expired — please re-login' : msg);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -596,9 +608,14 @@ export default function AIFitnessPage() {
                         <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending || (planMode === 'personalized' && !personalizedMember)} className="w-full">
-                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />{planMode === 'global' ? 'Generate Global Template' : 'Generate Personalized Plan'}</>)}
+                    <Button onClick={handleGenerate} disabled={isGenerating || saveTemplateMutation.isPending || (planMode === 'personalized' && !personalizedMember)} className="w-full">
+                      {isGenerating ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{generateError === 'still_loading' ? 'Still generating… AI is thinking hard 🤔' : 'Generating plan...'}</>) : (<><Sparkles className="mr-2 h-4 w-4" />{planMode === 'global' ? 'Generate Global Template' : 'Generate Personalized Plan'}</>)}
                     </Button>
+                    {generateError && generateError !== 'still_loading' && (
+                      <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                        ⚠️ {generateError}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

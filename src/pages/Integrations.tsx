@@ -22,10 +22,10 @@ import {
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp';
 
 const PAYMENT_PROVIDERS = [
-  { id: 'razorpay', name: 'Razorpay', logo: '/razorpay-icon.svg', color: 'text-blue-500' },
-  { id: 'phonepe', name: 'PhonePe', logo: '/phonepe-icon.svg', color: 'text-purple-500' },
-  { id: 'ccavenue', name: 'CCAvenue', logo: '/ccavenue-icon.svg', color: 'text-green-500' },
-  { id: 'payu', name: 'PayU', logo: '/payu-icon.svg', color: 'text-yellow-500' },
+  { id: 'razorpay', name: 'Razorpay', abbr: 'Rp', bgColor: 'bg-blue-600', textColor: 'text-white' },
+  { id: 'phonepe', name: 'PhonePe', abbr: 'Pe', bgColor: 'bg-purple-600', textColor: 'text-white' },
+  { id: 'ccavenue', name: 'CCAvenue', abbr: 'CC', bgColor: 'bg-emerald-600', textColor: 'text-white' },
+  { id: 'payu', name: 'PayU', abbr: 'PU', bgColor: 'bg-amber-500', textColor: 'text-white' },
 ];
 
 const SMS_PROVIDERS = [
@@ -158,8 +158,8 @@ export default function IntegrationsPage() {
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center font-bold ${provider.color}`}>
-                                {provider.name.charAt(0)}
+                              <div className={`w-10 h-10 rounded-lg ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-bold text-sm`}>
+                                {provider.abbr}
                               </div>
                               <div>
                                 <h3 className="font-semibold">{provider.name}</h3>

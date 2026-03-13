@@ -481,7 +481,7 @@ export default function PublicWebsite() {
           </div>
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {pricingPlans.map((plan: any, idx: number) => (
-              <div key={plan.name} className={`relative p-7 rounded-3xl border transition-all duration-300 hover:scale-[1.02] ${plan.isPopular ? 'bg-gradient-to-b from-orange-500/20 to-red-600/10 border-orange-500/40 shadow-2xl shadow-orange-500/20' : 'bg-white/[0.03] border-white/[0.08] hover:border-white/20'}`}>
+              <div key={plan.id || `plan-${idx}`} className={`relative p-7 rounded-3xl border transition-all duration-300 hover:scale-[1.02] ${plan.isPopular ? 'bg-gradient-to-b from-orange-500/20 to-red-600/10 border-orange-500/40 shadow-2xl shadow-orange-500/20' : 'bg-white/[0.03] border-white/[0.08] hover:border-white/20'}`}>
                 {plan.isPopular && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-bold shadow-lg shadow-orange-500/30">MOST POPULAR</div>}
                 <div className="mb-6">
                   <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>

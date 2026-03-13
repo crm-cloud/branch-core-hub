@@ -217,6 +217,9 @@ export default function LeadsPage() {
                         <CardContent className="p-3 space-y-2">
                           <p className="font-semibold text-sm truncate">{lead.full_name}</p>
                           <p className="text-xs text-muted-foreground truncate">{lead.phone || lead.email}</p>
+                          {lead.notes && (
+                            <p className="text-xs text-muted-foreground/80 italic line-clamp-2 bg-muted/30 rounded px-2 py-1">📝 {lead.notes}</p>
+                          )}
                           <div className="flex items-center justify-between">
                             <Badge variant="outline" className="text-xs">{lead.source || 'Direct'}</Badge>
                             <span className="text-xs text-muted-foreground">{format(new Date(lead.created_at), 'dd MMM')}</span>
@@ -428,6 +431,12 @@ export default function LeadsPage() {
           <SheetHeader>
             <SheetTitle>Follow-up History: {selectedLead?.full_name}</SheetTitle>
           </SheetHeader>
+          {selectedLead?.notes && (
+            <div className="mt-4 p-3 rounded-xl bg-muted/50 border border-border/50">
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Capture Notes</p>
+              <p className="text-sm">{selectedLead.notes}</p>
+            </div>
+          )}
           <div className="mt-6">
             {followups.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">No follow-ups recorded yet.</p>
