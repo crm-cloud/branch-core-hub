@@ -86,7 +86,7 @@ export const trainerMenuConfig: MenuSection[] = [
   {
     title: 'Work',
     items: [
-      { label: 'My Attendance', href: '/staff-attendance', icon: Clock, roles: ['trainer'] },
+      { label: 'My Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['trainer'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['trainer'] },
     ],
   },
@@ -140,7 +140,7 @@ export const staffMenuConfig: MenuSection[] = [
   {
     title: 'Work',
     items: [
-      { label: 'My Attendance', href: '/staff-attendance', icon: Clock, roles: ['staff'] },
+      { label: 'My Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['staff'] },
     ],
   },
 ];
@@ -208,7 +208,6 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'System Health', href: '/system-health', icon: Activity, roles: ['owner', 'admin'] },
@@ -279,7 +278,6 @@ export const managerMenuConfig: MenuSection[] = [
     title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['manager'] },
-      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
     ],

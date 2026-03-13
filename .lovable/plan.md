@@ -1,76 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Unified Attendance, Payment Collection, Payroll Flexibility, and Error Cleanup
+## 1. Critical Query Bug Fixes
 
-## Issues Found
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-### 1. No UI to Record Manual Staff Attendance + Merge Member & Staff Attendance
-**Problem**: The Staff Attendance page (`StaffAttendance.tsx`) has a "Record Staff Attendance" card but it shows NO actual check-in/out buttons for individual staff — only a text message. The `employees` query is fetched in the hook but never used in the UI. The `todayAttendance` data only shows already-checked-in people, so there's nobody to act on.
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-Additionally, member attendance (`/attendance`) and staff attendance (`/staff-attendance`) are separate pages with separate menus.
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-**Fix**:
-- **Merge** into a single **Unified Attendance Hub** at `/attendance` with tabs: "Members" | "Staff" | "History"
-- **Staff tab**: Show all employees/trainers from the branch with Check In / Check Out buttons (using the existing `useStaffAttendance` hook). Include a date range picker for history view.
-- **History tab**: Show staff attendance for custom period (month picker, date range) with summary stats per person (days present, total hours).
-- Remove the separate `/staff-attendance` route and redirect it to `/attendance`.
-- Update sidebar menu: remove "Staff Attendance" from Admin & HR section; the `/attendance` link already covers both.
+## 2. Database Migration
 
-### 2. System Health Errors — Bulk Resolve Known Issues
-**Problem**: Open errors include:
-- `DialogContent requires DialogTitle` (accessibility warnings on analytics, approvals, leads, attendance) — need to add `DialogTitle` with `VisuallyHidden` wrapper
-- `Cannot coerce to single JSON object` (settings, staff-attendance, all-bookings) — `.single()` calls returning 0 or 2+ rows
-- `Could not find relationship between profiles and trainers` (leads) — bad join syntax
-- `biometric ON CONFLICT` — already fixed in previous migration
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-**Fix**: Address the code-level root causes:
-- Add missing `DialogTitle` to any `DialogContent` missing it (GlobalSearch `CommandDialog` already fixed, but check other dialogs)
-- Fix `.single()` calls that may return 0 rows → use `.maybeSingle()`
-- Fix leads profile-trainer join syntax
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+```
 
-### 3. Record Payment Drawer — Show Overdue Invoices
-**Problem**: The Payments page "Record Payment" drawer only searches members but doesn't show their pending/overdue invoices. The user has to guess the amount.
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-**Fix**: After selecting a member, fetch their pending/partial/overdue invoices and display them as selectable cards. When an invoice is selected, auto-fill the due amount and link the payment to that invoice. This matches how `RecordPaymentDrawer` in the invoices section works, but the Payments page version is disconnected.
+## 3. AI Fitness Page Redesign
 
-### 4. Graceful Payment Collection — Overdue/Partial Payment Workflow
-**Problem**: No centralized "Dues Collection" view exists. Overdue invoices are scattered across member profiles.
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
 
-**Fix**: Add a **"Dues Collection"** section at the top of the Payments page — a collapsible card showing all overdue/partial invoices with member info, amount due, and quick "Collect" / "Send Link" actions. This gives reception staff a single dashboard for outstanding payments.
+Redesign with 3 clear tabs and modern Vuexy styling:
 
-### 5. Email System
-**Problem**: No `email_send_log` table exists. The `communicationService.sendEmail()` only opens a `mailto:` link — there's no actual email sending infrastructure.
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
 
-**Clarification**: The system does not have a built-in email sending service. Currently, emails are handled via:
-- Auth emails (password reset, verification) — handled by the backend automatically
-- `mailto:` links for manual emails
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
 
-To add actual email sending, we'd need to set up email infrastructure (custom domain + SMTP). This is a separate initiative. For now, I'll note this as a known limitation — no code changes needed unless you want to set up the email infrastructure.
+## 4. Public Website CMS/DB Sync
 
-### 6. HRM Payroll — Sunday Working Days
-**Problem**: `getWorkingDaysInMonth()` hardcodes `day !== 0` (excludes all Sundays). Some gyms operate on Sundays.
+**File:** `src/pages/PublicWebsite.tsx`
 
-**Fix**: Add a configurable "working days" setting. For now, add a toggle in the HRM payroll UI: "Include Sundays" checkbox. When checked, use all calendar days (minus any holidays) instead of excluding Sundays. Store this as a branch-level setting in `organization_settings`.
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
 
----
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
 
-## Files to Change
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/pages/AttendanceDashboard.tsx` | Add "Staff" tab with manual check-in/out buttons for all branch employees/trainers, and "History" tab with date range for staff attendance |
-| `src/config/menu.ts` | Remove "Staff Attendance" from admin/manager menus (merged into `/attendance`) |
-| `src/pages/Payments.tsx` | After member selection, fetch overdue invoices and show selectable invoice cards; add "Dues Collection" summary card at top |
-| `src/pages/HRM.tsx` | Add "Include Sundays" toggle to payroll tab |
-| `src/services/hrmService.ts` | Update `getWorkingDaysInMonth()` to accept `includeSundays` parameter |
-| `src/components/search/GlobalSearch.tsx` | Verify DialogTitle exists (accessibility fix) |
-| Various pages | Fix `.single()` → `.maybeSingle()` for settings/bookings queries causing coerce errors |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
 ## Execution Order
 
-1. Merge attendance pages (biggest UX improvement)
-2. Payment collection — overdue invoices in Record Payment drawer + Dues Collection card
-3. Payroll Sunday toggle
-4. System health error fixes
-5. Email system documentation (no code change — inform user of limitation)
-
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

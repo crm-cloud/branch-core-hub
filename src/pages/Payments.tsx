@@ -11,7 +11,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { CreditCard, Wallet, TrendingUp, Receipt, Search, Download, Filter, X, Ban, RotateCcw, Plus } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CreditCard, Wallet, TrendingUp, Receipt, Search, Download, Filter, X, Ban, Plus, AlertTriangle, ChevronDown, Send } from 'lucide-react';
 import { AddExpenseDrawer } from '@/components/finance/AddExpenseDrawer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,8 @@ export default function PaymentsPage() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [duesOpen, setDuesOpen] = useState(true);
 
   const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
 
@@ -52,8 +55,46 @@ export default function PaymentsPage() {
     },
   });
 
+  // Fetch overdue invoices for selected member in Record Payment drawer
+  const { data: memberInvoices = [] } = useQuery({
+    queryKey: ['member-overdue-invoices', selectedMember?.id],
+    enabled: !!selectedMember?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type, created_at')
+        .eq('member_id', selectedMember.id)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch all overdue/partial invoices for Dues Collection card
+  const { data: overdueInvoices = [] } = useQuery({
+    queryKey: ['all-overdue-invoices', branchFilter],
+    queryFn: async () => {
+      let query = supabase
+        .from('invoices')
+        .select(`
+          id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type,
+          members(member_code, profiles:user_id(full_name, phone))
+        `)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true })
+        .limit(50);
+      if (branchFilter) query = query.eq('branch_id', branchFilter);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const totalDues = overdueInvoices.reduce((sum: number, inv: any) => sum + ((inv.total_amount || 0) - (inv.amount_paid || 0)), 0);
+
   const recordPaymentMutation = useMutation({
-    mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string }) => {
+    mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string; invoiceId?: string }) => {
       const { error } = await (supabase.from('payments') as any).insert({
         member_id: form.memberId,
         branch_id: branchFilter!,
@@ -61,15 +102,32 @@ export default function PaymentsPage() {
         payment_method: form.method,
         status: 'completed',
         payment_date: new Date().toISOString(),
+        invoice_id: form.invoiceId || null,
       });
       if (error) throw error;
+
+      // Update invoice amount_paid if linked
+      if (form.invoiceId) {
+        const invoice = memberInvoices.find((i: any) => i.id === form.invoiceId);
+        if (invoice) {
+          const newAmountPaid = (invoice.amount_paid || 0) + form.amount;
+          const newStatus = newAmountPaid >= invoice.total_amount ? 'paid' : 'partial';
+          await supabase.from('invoices').update({
+            amount_paid: newAmountPaid,
+            status: newStatus,
+          }).eq('id', form.invoiceId);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-overdue-invoices'] });
       toast.success('Payment recorded successfully');
       setRecordPaymentOpen(false);
       setPaymentForm({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
       setSelectedMember(null);
+      setSelectedInvoice(null);
     },
     onError: () => toast.error('Failed to record payment'),
   });
@@ -162,6 +220,22 @@ export default function PaymentsPage() {
     setVoidDialogOpen(true);
   };
 
+  const handleCollectFromDues = (invoice: any) => {
+    setSelectedMember({
+      id: invoice.members?.member_code ? undefined : null, // will set below
+      full_name: invoice.members?.profiles?.full_name || 'Unknown',
+      member_code: invoice.members?.member_code || '',
+    });
+    // We need the member_id from the invoice
+    setSelectedInvoice(invoice);
+    setPaymentForm(f => ({
+      ...f,
+      amount: String((invoice.total_amount || 0) - (invoice.amount_paid || 0)),
+      member_search: '',
+    }));
+    setRecordPaymentOpen(true);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -181,6 +255,87 @@ export default function PaymentsPage() {
             <Button variant="outline" size="sm" onClick={exportToCSV} className="rounded-xl"><Download className="h-4 w-4 mr-2" />Export</Button>
           </div>
         </div>
+
+        {/* Dues Collection Card */}
+        {overdueInvoices.length > 0 && (
+          <Collapsible open={duesOpen} onOpenChange={setDuesOpen}>
+            <Card className="rounded-2xl border-warning/30 bg-warning/5">
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer hover:bg-warning/10 transition-colors rounded-t-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-warning/20">
+                        <AlertTriangle className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Dues Collection</CardTitle>
+                        <p className="text-sm text-muted-foreground">{overdueInvoices.length} pending invoices • Total: ₹{totalDues.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${duesOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0">
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Member</TableHead>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Due Amount</TableHead>
+                          <TableHead>Due Date</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {overdueInvoices.map((inv: any) => {
+                          const dueAmount = (inv.total_amount || 0) - (inv.amount_paid || 0);
+                          const isOverdue = inv.due_date && new Date(inv.due_date) < new Date();
+                          return (
+                            <TableRow key={inv.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{inv.members?.profiles?.full_name || 'Unknown'}</p>
+                                  <p className="text-xs text-muted-foreground">{inv.members?.member_code}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
+                              <TableCell className="font-semibold text-destructive">₹{dueAmount.toLocaleString()}</TableCell>
+                              <TableCell>
+                                {inv.due_date ? (
+                                  <span className={isOverdue ? 'text-destructive font-medium' : ''}>
+                                    {format(new Date(inv.due_date), 'dd MMM')}
+                                  </span>
+                                ) : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`border ${
+                                  inv.status === 'overdue' ? 'bg-destructive/10 text-destructive border-destructive/20' :
+                                  inv.status === 'partial' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                                  'bg-warning/10 text-warning border-warning/20'
+                                }`}>
+                                  {inv.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => handleCollectFromDues(inv)}>
+                                  <CreditCard className="h-3 w-3" />Collect
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+        )}
 
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
           <CardHeader className="pb-3">
@@ -278,8 +433,11 @@ export default function PaymentsPage() {
       </AlertDialog>
 
       {/* Record Payment Drawer */}
-      <Sheet open={recordPaymentOpen} onOpenChange={setRecordPaymentOpen}>
-        <SheetContent className="sm:max-w-md">
+      <Sheet open={recordPaymentOpen} onOpenChange={(open) => {
+        setRecordPaymentOpen(open);
+        if (!open) { setSelectedMember(null); setSelectedInvoice(null); }
+      }}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Record Payment</SheetTitle>
           </SheetHeader>
@@ -291,19 +449,73 @@ export default function PaymentsPage() {
                 value={selectedMember ? selectedMember.full_name : paymentForm.member_search}
                 onChange={(e) => {
                   setSelectedMember(null);
-                  setPaymentForm(f => ({ ...f, member_search: e.target.value }));
+                  setSelectedInvoice(null);
+                  setPaymentForm(f => ({ ...f, member_search: e.target.value, amount: '' }));
                 }}
               />
               {!selectedMember && memberSearchResults.length > 0 && paymentForm.member_search.length >= 2 && (
                 <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">
                   {memberSearchResults.map((m: any) => (
-                    <div key={m.id} className="p-2 hover:bg-muted cursor-pointer text-sm" onClick={() => { setSelectedMember(m); setPaymentForm(f => ({ ...f, member_search: '' })); }}>
+                    <div key={m.id} className="p-2 hover:bg-muted cursor-pointer text-sm" onClick={() => { setSelectedMember(m); setPaymentForm(f => ({ ...f, member_search: '' })); setSelectedInvoice(null); }}>
                       <span className="font-medium">{m.full_name}</span> <span className="text-muted-foreground">({m.member_code})</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Show member's overdue invoices */}
+            {selectedMember && memberInvoices.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  Pending Invoices
+                </Label>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {memberInvoices.map((inv: any) => {
+                    const dueAmount = (inv.total_amount || 0) - (inv.amount_paid || 0);
+                    const isSelected = selectedInvoice?.id === inv.id;
+                    return (
+                      <div
+                        key={inv.id}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                          isSelected ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => {
+                          setSelectedInvoice(inv);
+                          setPaymentForm(f => ({ ...f, amount: String(dueAmount) }));
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-mono text-sm font-medium">{inv.invoice_number}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{(inv.invoice_type || 'manual').replace('_', ' ')}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-destructive">₹{dueAmount.toLocaleString()}</p>
+                            <Badge className={`text-[10px] ${
+                              inv.status === 'overdue' ? 'bg-destructive/10 text-destructive' :
+                              inv.status === 'partial' ? 'bg-amber-500/10 text-amber-600' :
+                              'bg-warning/10 text-warning'
+                            }`}>
+                              {inv.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {selectedMember && memberInvoices.length === 0 && (
+              <p className="text-sm text-success flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-success inline-block" />
+                No pending dues for this member
+              </p>
+            )}
+
             <div>
               <Label>Amount (₹)</Label>
               <Input type="number" placeholder="0" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} />
@@ -330,9 +542,16 @@ export default function PaymentsPage() {
             <Button
               className="w-full"
               disabled={!selectedMember || !paymentForm.amount || recordPaymentMutation.isPending}
-              onClick={() => recordPaymentMutation.mutate({ memberId: selectedMember.id, amount: parseFloat(paymentForm.amount), method: paymentForm.payment_method, notes: paymentForm.notes })}
+              onClick={() => recordPaymentMutation.mutate({
+                memberId: selectedMember.id,
+                amount: parseFloat(paymentForm.amount),
+                method: paymentForm.payment_method,
+                notes: paymentForm.notes,
+                invoiceId: selectedInvoice?.id,
+              })}
             >
               <CreditCard className="h-4 w-4 mr-2" /> Record Payment
+              {selectedInvoice && <span className="ml-1 text-xs opacity-75">→ {selectedInvoice.invoice_number}</span>}
             </Button>
           </SheetFooter>
         </SheetContent>
