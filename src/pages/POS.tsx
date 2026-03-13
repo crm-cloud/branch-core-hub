@@ -96,7 +96,7 @@ export default function POSPage() {
         .from('wallets')
         .select('balance')
         .eq('member_id', selectedMember.id)
-        .single();
+        .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
       return data?.balance || 0;
     },
