@@ -12,26 +12,41 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History } from 'lucide-react';
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { toast } from 'sonner';
 
 export default function AttendanceDashboard() {
-  const { branchFilter } = useBranchContext();
+  const { branchFilter, effectiveBranchId } = useBranchContext();
   const { hasAnyRole, user } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
   const isAdmin = hasAnyRole(['owner', 'admin']);
+  const isManager = hasAnyRole(['manager']);
   const canForceEntry = hasAnyRole(['owner', 'admin', 'manager', 'staff']);
+  const canRecordStaff = hasAnyRole(['owner', 'admin', 'manager']);
   const [forceEntryOpen, setForceEntryOpen] = useState(false);
   const [forceEntrySearch, setForceEntrySearch] = useState('');
   const [forceEntryReason, setForceEntryReason] = useState('');
   const [forceEntrySubmitting, setForceEntrySubmitting] = useState(false);
   const [selectedForceEntryMember, setSelectedForceEntryMember] = useState<any>(null);
+  const [historyMonth, setHistoryMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+  // Staff attendance hook
+  const {
+    todayAttendance: staffTodayAttendance,
+    checkedInStaff,
+    employees,
+    checkIn: staffCheckIn,
+    checkOut: staffCheckOut,
+    isCheckingIn: isStaffCheckingIn,
+    isCheckingOut: isStaffCheckingOut,
+  } = useStaffAttendance(effectiveBranchId);
 
   // Fetch member attendance
   const { data: memberAttendance = [] } = useQuery({
@@ -60,7 +75,7 @@ export default function AttendanceDashboard() {
     },
   });
 
-  // Fetch staff attendance
+  // Fetch staff attendance for dashboard date
   const { data: staffAttendance = [] } = useQuery({
     queryKey: ['staff-attendance-dashboard', branchFilter, dateFilter],
     queryFn: async () => {
@@ -87,7 +102,96 @@ export default function AttendanceDashboard() {
     },
   });
 
-  // Fetch weekly trends
+  // Fetch all staff profiles for manual check-in
+  const { data: allStaffProfiles = [] } = useQuery({
+    queryKey: ['all-staff-profiles', effectiveBranchId],
+    enabled: canRecordStaff && !!effectiveBranchId,
+    queryFn: async () => {
+      // Get employees
+      const { data: emps } = await supabase
+        .from('employees')
+        .select('id, user_id, employee_code, position, department')
+        .eq('branch_id', effectiveBranchId!)
+        .eq('is_active', true);
+
+      // Get trainers
+      const { data: trainers } = await supabase
+        .from('trainers')
+        .select('id, user_id')
+        .eq('branch_id', effectiveBranchId!)
+        .eq('is_active', true);
+
+      const allUserIds = [
+        ...(emps?.map(e => e.user_id) || []),
+        ...(trainers?.map(t => t.user_id) || []),
+      ].filter(Boolean);
+
+      let profiles: any[] = [];
+      if (allUserIds.length > 0) {
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', allUserIds);
+        profiles = pData || [];
+      }
+
+      const empUserIds = new Set(emps?.map(e => e.user_id) || []);
+      const staffList: any[] = [];
+
+      (emps || []).forEach(emp => {
+        const p = profiles.find(pr => pr.id === emp.user_id);
+        staffList.push({
+          user_id: emp.user_id,
+          name: p?.full_name || 'Unknown',
+          code: emp.employee_code,
+          type: emp.department === 'Management' ? 'Manager' : 'Staff',
+          position: emp.position,
+          avatar_url: p?.avatar_url,
+        });
+      });
+
+      (trainers || []).filter(t => !empUserIds.has(t.user_id)).forEach(t => {
+        const p = profiles.find(pr => pr.id === t.user_id);
+        staffList.push({
+          user_id: t.user_id,
+          name: p?.full_name || 'Unknown',
+          code: 'Trainer',
+          type: 'Trainer',
+          position: 'Trainer',
+          avatar_url: p?.avatar_url,
+        });
+      });
+
+      return staffList;
+    },
+  });
+
+  // History: staff attendance for selected month
+  const { data: historyData = [] } = useQuery({
+    queryKey: ['staff-attendance-history', branchFilter, historyMonth],
+    queryFn: async () => {
+      const start = `${historyMonth}-01T00:00:00`;
+      const [year, month] = historyMonth.split('-').map(Number);
+      const end = new Date(year, month, 0).toISOString();
+
+      let query = supabase
+        .from('staff_attendance')
+        .select(`*, profiles:user_id(full_name, email)`)
+        .gte('check_in', start)
+        .lte('check_in', end)
+        .order('check_in', { ascending: false });
+
+      if (branchFilter) {
+        query = query.eq('branch_id', branchFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Weekly trends
   const { data: weeklyTrends = [] } = useQuery({
     queryKey: ['attendance-trends', branchFilter],
     queryFn: async () => {
@@ -168,6 +272,27 @@ export default function AttendanceDashboard() {
     }
   };
 
+  // Determine which staff are checked in
+  const checkedInUserIds = new Set(
+    (checkedInStaff.data || []).map((a: any) => a.user_id)
+  );
+
+  // Handle staff check-in/out
+  const handleStaffCheckIn = (userId: string) => {
+    if (!canRecordStaff) return;
+    // Managers cannot check in themselves
+    if (isManager && !isAdmin && userId === user?.id) {
+      toast.error('Your attendance must be recorded by an admin');
+      return;
+    }
+    staffCheckIn({ userId });
+  };
+
+  const handleStaffCheckOut = (userId: string) => {
+    if (!canRecordStaff) return;
+    staffCheckOut(userId);
+  };
+
   // Filter attendance based on search
   const filteredMemberAttendance = memberAttendance.filter((a: any) => {
     const name = a.members?.profiles?.full_name || '';
@@ -202,6 +327,21 @@ export default function AttendanceDashboard() {
     return `${hours}h ${mins}m`;
   };
 
+  // History: compute per-staff summary
+  const historyStaffSummary = (() => {
+    const map = new Map<string, { name: string; email: string; days: number; totalHours: number }>();
+    historyData.forEach((r: any) => {
+      const key = r.user_id;
+      const existing = map.get(key) || { name: r.profiles?.full_name || 'Unknown', email: r.profiles?.email || '', days: 0, totalHours: 0 };
+      existing.days += 1;
+      if (r.check_in && r.check_out) {
+        existing.totalHours += (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
+      }
+      map.set(key, existing);
+    });
+    return Array.from(map.entries()).map(([userId, data]) => ({ userId, ...data }));
+  })();
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -210,7 +350,7 @@ export default function AttendanceDashboard() {
           <div>
             <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
               <Activity className="w-8 h-8 text-accent" />
-              Attendance Dashboard
+              Attendance Hub
             </h1>
             <p className="text-muted-foreground mt-1">Unified view of member and staff attendance</p>
           </div>
@@ -364,11 +504,11 @@ export default function AttendanceDashboard() {
           </Card>
         </div>
 
-        {/* Attendance Tables */}
+        {/* Main Tabbed Content */}
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <CardTitle>Attendance Log - {format(new Date(dateFilter), 'dd MMM yyyy')}</CardTitle>
+              <CardTitle>Attendance Management</CardTitle>
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -387,12 +527,21 @@ export default function AttendanceDashboard() {
                   <Users className="h-4 w-4" />
                   Members ({filteredMemberAttendance.length})
                 </TabsTrigger>
-                <TabsTrigger value="staff" className="gap-2">
+                <TabsTrigger value="staff-record" className="gap-2">
                   <UserCheck className="h-4 w-4" />
-                  Staff ({filteredStaffAttendance.length})
+                  Staff Check-in
+                </TabsTrigger>
+                <TabsTrigger value="staff-log" className="gap-2">
+                  <Clock className="h-4 w-4" />
+                  Staff Log ({filteredStaffAttendance.length})
+                </TabsTrigger>
+                <TabsTrigger value="history" className="gap-2">
+                  <History className="h-4 w-4" />
+                  History
                 </TabsTrigger>
               </TabsList>
 
+              {/* Members Tab */}
               <TabsContent value="members">
                 <Table>
                   <TableHeader>
@@ -456,7 +605,114 @@ export default function AttendanceDashboard() {
                 </Table>
               </TabsContent>
 
-              <TabsContent value="staff">
+              {/* Staff Check-in Tab — manual recording */}
+              <TabsContent value="staff-record">
+                {!canRecordStaff ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <ShieldAlert className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Only admins and managers can record staff attendance</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Record check-in/out for staff, trainers, and managers. 
+                      {isManager && !isAdmin && ' Note: As a manager, you cannot check yourself in.'}
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Staff Member</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allStaffProfiles.filter((s: any) => {
+                          if (!searchTerm) return true;
+                          return s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            s.code.toLowerCase().includes(searchTerm.toLowerCase());
+                        }).map((staff: any) => {
+                          const isCheckedIn = checkedInUserIds.has(staff.user_id);
+                          const isSelf = staff.user_id === user?.id;
+                          const cannotRecordSelf = isSelf && isManager && !isAdmin;
+
+                          return (
+                            <TableRow key={staff.user_id}>
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="h-9 w-9">
+                                    <AvatarFallback className="bg-accent/10 text-accent text-xs font-semibold">
+                                      {getInitials(staff.name)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="font-medium">{staff.name} {isSelf && <span className="text-xs text-muted-foreground">(You)</span>}</p>
+                                    <p className="text-xs text-muted-foreground">{staff.code}</p>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`border ${
+                                  staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' :
+                                  staff.type === 'Manager' ? 'bg-accent/10 text-accent border-accent/20' :
+                                  'bg-muted text-muted-foreground border-border'
+                                }`}>
+                                  {staff.type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`border ${isCheckedIn 
+                                  ? 'bg-success/10 text-success border-success/20' 
+                                  : 'bg-muted text-muted-foreground border-border'
+                                }`}>
+                                  {isCheckedIn ? 'Checked In' : 'Not Checked In'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {cannotRecordSelf ? (
+                                  <span className="text-xs text-muted-foreground italic">Admin records your attendance</span>
+                                ) : isCheckedIn ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    disabled={isStaffCheckingOut}
+                                    onClick={() => handleStaffCheckOut(staff.user_id)}
+                                  >
+                                    <LogOut className="h-3.5 w-3.5" />
+                                    Check Out
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    className="gap-1.5 bg-success hover:bg-success/90 text-success-foreground"
+                                    disabled={isStaffCheckingIn}
+                                    onClick={() => handleStaffCheckIn(staff.user_id)}
+                                  >
+                                    <LogIn className="h-3.5 w-3.5" />
+                                    Check In
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {allStaffProfiles.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                              No staff found for this branch
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Staff Log Tab */}
+              <TabsContent value="staff-log">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -510,6 +766,89 @@ export default function AttendanceDashboard() {
                     )}
                   </TableBody>
                 </Table>
+              </TabsContent>
+
+              {/* History Tab */}
+              <TabsContent value="history">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Label>Month</Label>
+                    <Input
+                      type="month"
+                      value={historyMonth}
+                      onChange={(e) => setHistoryMonth(e.target.value)}
+                      className="w-[200px]"
+                    />
+                  </div>
+
+                  {/* Summary Cards */}
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {historyStaffSummary.map((s) => (
+                      <Card key={s.userId} className="border">
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">
+                                {getInitials(s.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{s.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{s.email}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{s.days}</p>
+                              <p className="text-xs text-muted-foreground">Days Present</p>
+                            </div>
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{Math.round(s.totalHours * 10) / 10}h</p>
+                              <p className="text-xs text-muted-foreground">Total Hours</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {historyStaffSummary.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No attendance records for this month</p>
+                    </div>
+                  )}
+
+                  {/* Detailed log */}
+                  {historyData.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Staff</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Check In</TableHead>
+                          <TableHead>Check Out</TableHead>
+                          <TableHead>Duration</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {historyData.slice(0, 100).map((r: any) => (
+                          <TableRow key={r.id}>
+                            <TableCell>
+                              <span className="font-medium">{r.profiles?.full_name || 'Unknown'}</span>
+                            </TableCell>
+                            <TableCell>{format(new Date(r.check_in), 'dd MMM yyyy')}</TableCell>
+                            <TableCell>{format(new Date(r.check_in), 'hh:mm a')}</TableCell>
+                            <TableCell>
+                              {r.check_out ? format(new Date(r.check_out), 'hh:mm a') : <Badge variant="outline" className="text-warning">Active</Badge>}
+                            </TableCell>
+                            <TableCell>{formatDuration(r.check_in, r.check_out)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

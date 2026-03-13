@@ -278,7 +278,6 @@ export const managerMenuConfig: MenuSection[] = [
     title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['manager'] },
-      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
     ],
