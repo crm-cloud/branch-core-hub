@@ -55,10 +55,8 @@ export const staffAttendanceService = {
       .limit(1)
       .maybeSingle();
 
-    if (findError) {
+    if (findError || !attendance) {
       return { success: false, message: 'No active check-in found' };
-      }
-      throw findError;
     }
 
     const { error: updateError } = await supabase
