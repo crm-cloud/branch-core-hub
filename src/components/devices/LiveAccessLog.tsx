@@ -67,7 +67,7 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
             device_message: 'Attendance check-in',
             created_at: record.check_in,
             member_id: record.member_id,
-            member: { member_code: record.member_id },
+            member: { member_code: record.member_id, user_id: '' },
           };
           setLiveEvents((prev) => [attendanceEvent, ...prev].slice(0, limit));
         }
