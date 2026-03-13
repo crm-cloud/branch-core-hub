@@ -335,6 +335,84 @@ export function IntegrationSettings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* WhatsApp Business API Setup Guide */}
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ExternalLink className="h-5 w-5 text-primary" />
+                WhatsApp Business API — Setup Guide
+              </CardTitle>
+              <CardDescription>
+                Follow these steps to connect your WhatsApp Business API for sending and receiving messages.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Create a Meta Business Account</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Go to <span className="font-mono text-primary">business.facebook.com</span> and create or verify your business account. You'll need a valid business email and phone number.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Set Up WhatsApp in Meta Developer Portal</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Visit <span className="font-mono text-primary">developers.facebook.com</span> → Create App → Select "Business" type → Add "WhatsApp" product. This gives you access to the Cloud API.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Generate a Permanent Access Token</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      In your Meta App Dashboard → WhatsApp → API Setup → Generate a permanent token (System User token from Business Settings). Copy the <strong>Phone Number ID</strong> and <strong>Business Account ID</strong> as well.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Configure the Provider Above</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Click "Configure" on WATI or Custom API above and enter:
+                    </p>
+                    <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside space-y-0.5">
+                      <li><strong>Phone Number ID</strong> — from Meta API Setup page</li>
+                      <li><strong>Business Account ID</strong> — from Meta Business Settings</li>
+                      <li><strong>Access Token</strong> — the permanent token you generated</li>
+                      <li><strong>Webhook Verify Token</strong> — any secret string you choose</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">5</div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Send a Test Message</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Go to <strong>WhatsApp Chat</strong> from the sidebar, select a contact, type a message and hit send. If configured correctly, the message status will update from "pending" to "sent".
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <strong>Note:</strong> Meta requires your business to be verified and WhatsApp message templates to be approved before sending to non-opted-in users. Test messages work immediately with the test phone number provided in your Meta App Dashboard.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="google" className="space-y-4">
