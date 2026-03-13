@@ -158,8 +158,8 @@ export default function IntegrationsPage() {
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center font-bold ${provider.color}`}>
-                                {provider.name.charAt(0)}
+                              <div className={`w-10 h-10 rounded-lg ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-bold text-sm`}>
+                                {provider.abbr}
                               </div>
                               <div>
                                 <h3 className="font-semibold">{provider.name}</h3>

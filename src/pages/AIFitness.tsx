@@ -259,6 +259,11 @@ export default function AIFitnessPage() {
 
   const handleGenerate = async () => {
     if (!memberInfo.name) { toast.error("Please enter a plan name"); return; }
+    setIsGenerating(true);
+    setGenerateError(null);
+    const timeoutTimer = setTimeout(() => {
+      setGenerateError('still_loading');
+    }, 15000);
     try {
       const plan = await generatePlan.mutateAsync({
         type: planType,
@@ -275,8 +280,8 @@ export default function AIFitnessPage() {
         },
         options: { durationWeeks, caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined },
       });
+      clearTimeout(timeoutTimer);
       setGeneratedPlan(plan);
-      // Auto-save as global template
       saveTemplateMutation.mutate({
         name: plan.name || memberInfo.name,
         type: planType,
@@ -288,7 +293,12 @@ export default function AIFitnessPage() {
       });
       toast.success("Plan generated & saved as template!");
     } catch (error: any) {
-      toast.error(error.message || "Failed to generate plan");
+      clearTimeout(timeoutTimer);
+      const msg = error.message || "Failed to generate plan";
+      setGenerateError(msg.includes('Unauthorized') || msg.includes('401') ? 'Your session may have expired. Please log out and log back in, then try again.' : msg);
+      toast.error(msg.includes('401') ? 'Session expired — please re-login' : msg);
+    } finally {
+      setIsGenerating(false);
     }
   };
 

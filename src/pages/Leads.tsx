@@ -431,6 +431,12 @@ export default function LeadsPage() {
           <SheetHeader>
             <SheetTitle>Follow-up History: {selectedLead?.full_name}</SheetTitle>
           </SheetHeader>
+          {selectedLead?.notes && (
+            <div className="mt-4 p-3 rounded-xl bg-muted/50 border border-border/50">
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Capture Notes</p>
+              <p className="text-sm">{selectedLead.notes}</p>
+            </div>
+          )}
           <div className="mt-6">
             {followups.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">No follow-ups recorded yet.</p>
