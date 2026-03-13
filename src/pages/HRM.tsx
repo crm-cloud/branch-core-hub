@@ -630,13 +630,6 @@ export default function HRMPage() {
                       <DollarSign className="mr-2 h-4 w-4" />
                       Process All
                     </Button>
-                  </div>
-                      className="bg-accent hover:bg-accent/90"
-                    >
-                      <DollarSign className="mr-2 h-4 w-4" />
-                      Process All
-                    </Button>
-                  </div>
                 </div>
               </CardHeader>
               <CardContent>
