@@ -608,9 +608,14 @@ export default function AIFitnessPage() {
                         <Input type="number" value={caloriesTarget} onChange={(e) => setCaloriesTarget(e.target.value)} placeholder="Auto-calculate based on goals" />
                       </div>
                     )}
-                    <Button onClick={handleGenerate} disabled={generatePlan.isPending || saveTemplateMutation.isPending || (planMode === 'personalized' && !personalizedMember)} className="w-full">
-                      {generatePlan.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>) : (<><Sparkles className="mr-2 h-4 w-4" />{planMode === 'global' ? 'Generate Global Template' : 'Generate Personalized Plan'}</>)}
+                    <Button onClick={handleGenerate} disabled={isGenerating || saveTemplateMutation.isPending || (planMode === 'personalized' && !personalizedMember)} className="w-full">
+                      {isGenerating ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{generateError === 'still_loading' ? 'Still generating… AI is thinking hard 🤔' : 'Generating plan...'}</>) : (<><Sparkles className="mr-2 h-4 w-4" />{planMode === 'global' ? 'Generate Global Template' : 'Generate Personalized Plan'}</>)}
                     </Button>
+                    {generateError && generateError !== 'still_loading' && (
+                      <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                        ⚠️ {generateError}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
