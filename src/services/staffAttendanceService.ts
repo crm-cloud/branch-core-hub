@@ -25,7 +25,7 @@ export const staffAttendanceService = {
       .select('id')
       .eq('user_id', userId)
       .is('check_out', null)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return { success: false, message: 'Already checked in', attendance_id: existing.id };
