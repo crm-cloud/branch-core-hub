@@ -65,13 +65,15 @@ export function IntegrationSettings() {
   const { data: integrations = [] } = useQuery({
     queryKey: ['integrations', selectedBranch],
     queryFn: async () => {
+      // Fetch global integrations (branch_id IS NULL) + branch-specific ones
       let query = supabase
         .from('integration_settings')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (selectedBranch !== 'all') {
-        query = query.eq('branch_id', selectedBranch);
+        // Get global settings (null branch_id) OR branch-specific ones
+        query = query.or(`branch_id.is.null,branch_id.eq.${selectedBranch}`);
       }
 
       const { data, error } = await query;
