@@ -53,7 +53,7 @@ export const staffAttendanceService = {
       .is('check_out', null)
       .order('check_in', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (findError) {
       if (findError.code === 'PGRST116') {
