@@ -78,7 +78,7 @@ export default function PaymentsPage() {
       let query = supabase
         .from('invoices')
         .select(`
-          id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type,
+          id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type, member_id,
           members(member_code, profiles:user_id(full_name, phone))
         `)
         .in('status', ['pending', 'partial', 'overdue'])
