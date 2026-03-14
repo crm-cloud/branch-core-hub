@@ -236,14 +236,14 @@ export interface PayrollStaffItem {
   trainerRecord?: any; // raw trainer record for contract/edit actions
 }
 
-export function getWorkingDaysInMonth(month: string, includeSundays: boolean = false): number {
+export function getWorkingDaysInMonth(month: string, includeSundays: boolean = false, weeklyOffDay: number = 0): number {
   const [year, m] = month.split('-').map(Number);
   const daysInMonth = new Date(year, m, 0).getDate();
-  if (includeSundays) return daysInMonth;
+  if (includeSundays && weeklyOffDay === 0) return daysInMonth;
   let workingDays = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const day = new Date(year, m - 1, d).getDay();
-    if (day !== 0) workingDays++; // Exclude Sundays only (Mon-Sat = working)
+    if (day !== weeklyOffDay) workingDays++;
   }
   return workingDays;
 }
