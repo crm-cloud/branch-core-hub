@@ -1676,6 +1676,7 @@ export type Database = {
           tax_id: string | null
           updated_at: string
           user_id: string
+          weekly_off: string | null
         }
         Insert: {
           bank_account?: string | null
@@ -1695,6 +1696,7 @@ export type Database = {
           tax_id?: string | null
           updated_at?: string
           user_id: string
+          weekly_off?: string | null
         }
         Update: {
           bank_account?: string | null
@@ -1714,6 +1716,7 @@ export type Database = {
           tax_id?: string | null
           updated_at?: string
           user_id?: string
+          weekly_off?: string | null
         }
         Relationships: [
           {
@@ -5156,6 +5159,7 @@ export type Database = {
           specializations: string[] | null
           updated_at: string
           user_id: string
+          weekly_off: string | null
         }
         Insert: {
           bio?: string | null
@@ -5176,6 +5180,7 @@ export type Database = {
           specializations?: string[] | null
           updated_at?: string
           user_id: string
+          weekly_off?: string | null
         }
         Update: {
           bio?: string | null
@@ -5196,6 +5201,7 @@ export type Database = {
           specializations?: string[] | null
           updated_at?: string
           user_id?: string
+          weekly_off?: string | null
         }
         Relationships: [
           {

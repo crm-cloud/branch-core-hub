@@ -105,7 +105,7 @@ export const staffMenuConfig: MenuSection[] = [
     title: 'Member Management',
     items: [
       { label: 'Members', href: '/members', icon: Users, roles: ['staff'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['staff'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['staff'] },
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['staff'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['staff'] },
     ],
@@ -159,7 +159,7 @@ export const adminMenuConfig: MenuSection[] = [
     items: [
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager'] },
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
       { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
@@ -231,7 +231,7 @@ export const managerMenuConfig: MenuSection[] = [
     items: [
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['manager'] },
       { label: 'Members', href: '/members', icon: Users, roles: ['manager'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['manager'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['manager'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['manager'] },
       { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['manager'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['manager'] },

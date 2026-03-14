@@ -20,7 +20,7 @@ import LeadsPage from "./pages/Leads";
 import PlansPage from "./pages/Plans";
 import InvoicesPage from "./pages/Invoices";
 import PaymentsPage from "./pages/Payments";
-import AttendancePage from "./pages/Attendance";
+// Attendance.tsx removed — consolidated into AttendanceDashboard
 import ClassesPage from "./pages/Classes";
 import PTSessionsPage from "./pages/PTSessions";
 import AIFitnessPage from "./pages/AIFitness";
@@ -171,7 +171,7 @@ const App = () => (
             <Route path="/members" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><MembersPage /></ProtectedRoute>} />
             <Route path="/leads" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LeadsPage /></ProtectedRoute>} />
             <Route path="/plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><PlansPage /></ProtectedRoute>} />
-            <Route path="/attendance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><AttendancePage /></ProtectedRoute>} />
+            <Route path="/attendance" element={<Navigate to="/attendance-dashboard" replace />} />
             <Route path="/feedback" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><FeedbackPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><InvoicesPage /></ProtectedRoute>} />
             <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><PaymentsPage /></ProtectedRoute>} />
