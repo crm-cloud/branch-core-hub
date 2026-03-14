@@ -159,7 +159,7 @@ export const adminMenuConfig: MenuSection[] = [
     items: [
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['owner', 'admin', 'manager'] },
       { label: 'Members', href: '/members', icon: Users, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['owner', 'admin', 'manager'] },
       { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['owner', 'admin', 'manager'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
