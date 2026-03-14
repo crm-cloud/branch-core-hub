@@ -43,7 +43,6 @@ export default function HRMPage() {
   const [editTrainerOpen, setEditTrainerOpen] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [includeSundays, setIncludeSundays] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const queryClient = useQueryClient();
 
@@ -117,12 +116,12 @@ export default function HRMPage() {
 
   // Payroll calculations per unified staff
   const { data: payrollData = {} } = useQuery({
-    queryKey: ['hrm-payroll', payrollMonth, payrollStaff.length, includeSundays],
+    queryKey: ['hrm-payroll', payrollMonth, payrollStaff.length],
     queryFn: async () => {
       const results: Record<string, any> = {};
       for (const staff of payrollStaff) {
         try {
-          const calc = await calculatePayrollForStaff(staff, payrollMonth, includeSundays);
+          const calc = await calculatePayrollForStaff(staff, payrollMonth);
           results[staff.id] = calc;
         } catch {
           results[staff.id] = { baseSalary: staff.salary || 0, proRatedPay: staff.salary || 0, ptCommission: 0, grossPay: staff.salary || 0, pfDeduction: 0, netPay: staff.salary || 0, daysPresent: 0, workingDays: 26 };
@@ -613,15 +612,6 @@ export default function HRMPage() {
                       onChange={(e) => setPayrollMonth(e.target.value)}
                       className="w-[180px]"
                     />
-                    <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={includeSundays}
-                        onChange={(e) => setIncludeSundays(e.target.checked)}
-                        className="rounded border-border"
-                      />
-                      Include Sundays
-                    </label>
                     <Button 
                       onClick={() => processAllPayroll.mutate()}
                       disabled={processAllPayroll.isPending}

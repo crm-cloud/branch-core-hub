@@ -33,7 +33,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
     bank_account: '',
     tax_id: '',
     is_active: true,
-    weekly_off: 'sunday',
   });
 
   const handleAvatarChange = async (url: string) => {
@@ -62,7 +61,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
         bank_account: employee.bank_account || '',
         tax_id: employee.tax_id || '',
         is_active: employee.is_active ?? true,
-        weekly_off: employee.weekly_off || 'sunday',
       });
     }
   }, [employee]);
@@ -84,7 +82,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
           bank_account: formData.bank_account || null,
           tax_id: formData.tax_id || null,
           is_active: formData.is_active,
-          weekly_off: formData.weekly_off,
           updated_at: new Date().toISOString(),
         })
         .eq('id', employee.id);
@@ -249,19 +246,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
                 />
               </div>
             </div>
-          </div>
-
-          {/* Weekly Off */}
-          <div className="space-y-2">
-            <Label>Weekly Off Day</Label>
-            <Select value={formData.weekly_off} onValueChange={(v) => setFormData({ ...formData, weekly_off: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map(d => (
-                  <SelectItem key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Tax ID */}

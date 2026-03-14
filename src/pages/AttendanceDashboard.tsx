@@ -328,21 +328,21 @@ export default function AttendanceDashboard() {
     return <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">Manual</Badge>;
   };
 
-  // History: per-staff summary with WO
+  // History: per-staff summary (actual attendance days vs calendar days)
   const historyStaffSummary = (() => {
     const [year, month] = historyMonth.split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    const map = new Map<string, { name: string; email: string; days: number; totalHours: number; weeklyOff: string }>();
+    const map = new Map<string, { name: string; email: string; days: number; totalHours: number }>();
     
-    // Seed from allStaffProfiles so we know weekly_off
+    // Seed from allStaffProfiles
     allStaffProfiles.forEach((s: any) => {
-      map.set(s.user_id, { name: s.name, email: '', days: 0, totalHours: 0, weeklyOff: s.weekly_off || 'sunday' });
+      map.set(s.user_id, { name: s.name, email: '', days: 0, totalHours: 0 });
     });
 
     historyData.forEach((r: any) => {
       const key = r.user_id;
-      const existing = map.get(key) || { name: r.profiles?.full_name || 'Unknown', email: r.profiles?.email || '', days: 0, totalHours: 0, weeklyOff: 'sunday' };
+      const existing = map.get(key) || { name: r.profiles?.full_name || 'Unknown', email: r.profiles?.email || '', days: 0, totalHours: 0 };
       existing.name = existing.name || r.profiles?.full_name || 'Unknown';
       existing.email = r.profiles?.email || existing.email;
       existing.days += 1;
@@ -352,17 +352,8 @@ export default function AttendanceDashboard() {
       map.set(key, existing);
     });
 
-    const dayNameToNum: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-
     return Array.from(map.entries()).map(([userId, data]) => {
-      const woNum = dayNameToNum[data.weeklyOff] ?? 0;
-      let woDays = 0;
-      for (let d = 1; d <= daysInMonth; d++) {
-        if (new Date(year, month - 1, d).getDay() === woNum) woDays++;
-      }
-      const workingDays = daysInMonth - woDays;
-      const absent = Math.max(0, workingDays - data.days);
-      return { userId, ...data, woDays, workingDays, absent };
+      return { userId, ...data, totalDays: daysInMonth };
     }).filter(s => s.days > 0 || allStaffProfiles.some((p: any) => p.user_id === s.userId));
   })();
 
@@ -775,18 +766,14 @@ export default function AttendanceDashboard() {
                               <p className="text-xs text-muted-foreground truncate">{s.email}</p>
                             </div>
                           </div>
-                          <div className="mt-3 grid grid-cols-4 gap-2">
+                          <div className="mt-3 grid grid-cols-3 gap-2">
                             <div className="bg-success/10 rounded-lg p-2 text-center">
                               <p className="text-lg font-bold text-success">{s.days}</p>
                               <p className="text-xs text-muted-foreground">Present</p>
                             </div>
-                            <div className="bg-destructive/10 rounded-lg p-2 text-center">
-                              <p className="text-lg font-bold text-destructive">{s.absent}</p>
-                              <p className="text-xs text-muted-foreground">Absent</p>
-                            </div>
-                            <div className="bg-info/10 rounded-lg p-2 text-center">
-                              <p className="text-lg font-bold text-info">{s.woDays}</p>
-                              <p className="text-xs text-muted-foreground">WO</p>
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{s.totalDays}</p>
+                              <p className="text-xs text-muted-foreground">Total Days</p>
                             </div>
                             <div className="bg-muted/50 rounded-lg p-2 text-center">
                               <p className="text-lg font-bold text-foreground">{Math.round(s.totalHours * 10) / 10}h</p>

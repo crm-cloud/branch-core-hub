@@ -236,17 +236,13 @@ export interface PayrollStaffItem {
   trainerRecord?: any; // raw trainer record for contract/edit actions
 }
 
-export function getWorkingDaysInMonth(month: string, includeSundays: boolean = false, weeklyOffDay: number = 0): number {
+export function getDaysInMonth(month: string): number {
   const [year, m] = month.split('-').map(Number);
-  const daysInMonth = new Date(year, m, 0).getDate();
-  if (includeSundays && weeklyOffDay === 0) return daysInMonth;
-  let workingDays = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const day = new Date(year, m - 1, d).getDay();
-    if (day !== weeklyOffDay) workingDays++;
-  }
-  return workingDays;
+  return new Date(year, m, 0).getDate();
 }
+
+// Keep old name as alias for backward compatibility
+export const getWorkingDaysInMonth = (month: string, _includeSundays?: boolean, _weeklyOffDay?: number) => getDaysInMonth(month);
 
 export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollStaffItem[]> {
   // Fetch employees
@@ -321,7 +317,7 @@ export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollSt
   return staffList;
 }
 
-export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: string, includeSundays: boolean = false) {
+export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: string, _includeSundays: boolean = false) {
   const startDate = `${month}-01`;
   const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().split('T')[0];
 
@@ -333,7 +329,7 @@ export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: s
     .gte('check_in', `${startDate}T00:00:00`)
     .lte('check_in', `${endDate}T23:59:59`);
 
-  const workingDays = getWorkingDaysInMonth(month, includeSundays);
+  const workingDays = getDaysInMonth(month);
   const daysPresent = attendance?.length || 0;
   const baseSalary = staff.salary || 0;
   const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
@@ -393,7 +389,7 @@ export async function calculatePayroll(employeeId: string, month: string) {
 
   const attendance = await fetchEmployeeAttendance(employeeId, startDate, endDate);
   
-  const workingDays = getWorkingDaysInMonth(month);
+  const workingDays = getDaysInMonth(month);
   const daysPresent = attendance.length;
   const baseSalary = employee.salary || 0;
   const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
