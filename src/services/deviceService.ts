@@ -113,6 +113,7 @@ export const updateDevice = async (id: string, updates: {
   serial_number?: string;
   relay_mode?: number;
   relay_delay?: number;
+  config?: Record<string, unknown>;
 }): Promise<AccessDevice> => {
   const updateData: Record<string, unknown> = {};
   if (updates.device_name) updateData.device_name = updates.device_name;
@@ -124,6 +125,7 @@ export const updateDevice = async (id: string, updates: {
   if (updates.serial_number !== undefined) updateData.serial_number = updates.serial_number;
   if (updates.relay_mode !== undefined) updateData.relay_mode = updates.relay_mode;
   if (updates.relay_delay !== undefined) updateData.relay_delay = updates.relay_delay;
+  if (updates.config !== undefined) updateData.config = updates.config as Json;
   
   const { data, error } = await supabase
     .from('access_devices')

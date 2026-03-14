@@ -219,15 +219,19 @@ const DeviceManagement = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Device</TableHead>
-                      <TableHead>IP Address</TableHead>
-                      <TableHead>Firmware</TableHead>
+                      <TableHead>Serial Number</TableHead>
+                      <TableHead>Capabilities</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Last Heartbeat</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {devices.map((device) => (
+                    {devices.map((device) => {
+                      const caps = (device.config as any)?.capabilities || {};
+                      const heartbeatAge = device.last_heartbeat ? (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000 : Infinity;
+                      const isLive = heartbeatAge < 60;
+                      return (
                       <TableRow key={device.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -236,30 +240,30 @@ const DeviceManagement = () => {
                             </div>
                             <div>
                               <div className="font-medium">{device.device_name}</div>
-                              <Badge variant="outline" className="text-xs">
-                                {getDeviceTypeBadge(device.device_type)}
-                              </Badge>
+                              <p className="text-xs text-muted-foreground">{device.model || 'No model'}</p>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {String(device.ip_address)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {device.firmware_version || '—'}
+                        <TableCell>
+                          <code className="px-2 py-1 bg-muted rounded text-xs font-mono">
+                            {device.serial_number || '—'}
+                          </code>
                         </TableCell>
                         <TableCell>
-                          {device.is_online ? (
-                            <Badge variant="default" className="bg-green-500">
-                              <Wifi className="h-3 w-3 mr-1" />
-                              Online
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive">
-                              <WifiOff className="h-3 w-3 mr-1" />
-                              Offline
-                            </Badge>
-                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {caps.facial_recognition && <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">Face</Badge>}
+                            {caps.wiegand_card_reader && <Badge variant="outline" className="text-xs bg-accent/10 text-accent border-accent/20">Card</Badge>}
+                            {caps.relay_turnstile && <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/20">Relay</Badge>}
+                            {!caps.facial_recognition && !caps.wiegand_card_reader && !caps.relay_turnstile && (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className={`h-2.5 w-2.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : device.is_online ? 'bg-yellow-500' : 'bg-destructive'}`} />
+                            <span className="text-sm">{isLive ? 'Live' : device.is_online ? 'Online' : 'Offline'}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {device.last_heartbeat 
@@ -273,7 +277,7 @@ const DeviceManagement = () => {
                               size="sm"
                               onClick={() => triggerMutation.mutate(device.id)}
                               disabled={!device.is_online || triggerMutation.isPending}
-                              title="Remote Trigger"
+                              title="Remote Trigger (setRelayIoValue)"
                             >
                               <PlayCircle className="h-4 w-4" />
                             </Button>
@@ -295,7 +299,8 @@ const DeviceManagement = () => {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
