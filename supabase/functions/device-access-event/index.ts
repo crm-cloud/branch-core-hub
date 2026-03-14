@@ -39,21 +39,30 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: AccessEventRequest = await req.json();
-    const { device_id, person_uuid, confidence, photo_base64, timestamp, force_entry, force_entry_reason, force_entry_by } = body;
+    const { device_id, device_sn, person_uuid, confidence, photo_base64, timestamp, force_entry, force_entry_reason, force_entry_by } = body;
 
-    if (!device_id || !person_uuid) {
+    if (!device_id && !device_sn) {
       return new Response(
-        JSON.stringify({ error: 'device_id and person_uuid are required' }),
+        JSON.stringify({ error: 'device_id or device_sn is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get device info
-    const { data: device, error: deviceError } = await supabase
-      .from('access_devices')
-      .select('*')
-      .eq('id', device_id)
-      .single();
+    if (!person_uuid) {
+      return new Response(
+        JSON.stringify({ error: 'person_uuid is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Support both UUID and serial number lookup
+    let deviceQuery = supabase.from('access_devices').select('*');
+    if (device_sn) {
+      deviceQuery = deviceQuery.eq('serial_number', device_sn);
+    } else {
+      deviceQuery = deviceQuery.eq('id', device_id);
+    }
+    const { data: device, error: deviceError } = await deviceQuery.single();
 
     if (deviceError || !device) {
       return new Response(
