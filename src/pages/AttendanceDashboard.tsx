@@ -766,18 +766,14 @@ export default function AttendanceDashboard() {
                               <p className="text-xs text-muted-foreground truncate">{s.email}</p>
                             </div>
                           </div>
-                          <div className="mt-3 grid grid-cols-4 gap-2">
+                          <div className="mt-3 grid grid-cols-3 gap-2">
                             <div className="bg-success/10 rounded-lg p-2 text-center">
                               <p className="text-lg font-bold text-success">{s.days}</p>
                               <p className="text-xs text-muted-foreground">Present</p>
                             </div>
-                            <div className="bg-destructive/10 rounded-lg p-2 text-center">
-                              <p className="text-lg font-bold text-destructive">{s.absent}</p>
-                              <p className="text-xs text-muted-foreground">Absent</p>
-                            </div>
-                            <div className="bg-info/10 rounded-lg p-2 text-center">
-                              <p className="text-lg font-bold text-info">{s.woDays}</p>
-                              <p className="text-xs text-muted-foreground">WO</p>
+                            <div className="bg-muted/50 rounded-lg p-2 text-center">
+                              <p className="text-lg font-bold text-foreground">{s.totalDays}</p>
+                              <p className="text-xs text-muted-foreground">Total Days</p>
                             </div>
                             <div className="bg-muted/50 rounded-lg p-2 text-center">
                               <p className="text-lg font-bold text-foreground">{Math.round(s.totalHours * 10) / 10}h</p>
