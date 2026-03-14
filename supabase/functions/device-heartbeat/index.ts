@@ -22,12 +22,12 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const body: HeartbeatRequest = await req.json();
-    const { device_id, ip_address, firmware_version, status } = body;
+    const body = await req.json();
+    const { device_id, device_sn, ip_address, firmware_version, status } = body;
 
-    if (!device_id) {
+    if (!device_id && !device_sn) {
       return new Response(
-        JSON.stringify({ error: 'device_id is required' }),
+        JSON.stringify({ error: 'device_id or device_sn is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -50,12 +50,14 @@ Deno.serve(async (req) => {
       updateData.config = status;
     }
 
-    const { data, error } = await supabase
-      .from('access_devices')
-      .update(updateData)
-      .eq('id', device_id)
-      .select()
-      .single();
+    // Support both UUID and serial number lookup
+    let query = supabase.from('access_devices').update(updateData);
+    if (device_sn) {
+      query = query.eq('serial_number', device_sn);
+    } else {
+      query = query.eq('id', device_id);
+    }
+    const { data, error } = await query.select().single();
 
     if (error) {
       console.error('Heartbeat update error:', error);
