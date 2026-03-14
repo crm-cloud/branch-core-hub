@@ -105,7 +105,7 @@ export const staffMenuConfig: MenuSection[] = [
     title: 'Member Management',
     items: [
       { label: 'Members', href: '/members', icon: Users, roles: ['staff'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['staff'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['staff'] },
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['staff'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['staff'] },
     ],
