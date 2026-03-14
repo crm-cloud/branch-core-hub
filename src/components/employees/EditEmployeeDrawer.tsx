@@ -33,7 +33,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
     bank_account: '',
     tax_id: '',
     is_active: true,
-    weekly_off: 'sunday',
   });
 
   const handleAvatarChange = async (url: string) => {
