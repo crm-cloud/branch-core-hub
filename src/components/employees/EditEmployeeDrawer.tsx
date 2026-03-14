@@ -248,19 +248,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
             </div>
           </div>
 
-          {/* Weekly Off */}
-          <div className="space-y-2">
-            <Label>Weekly Off Day</Label>
-            <Select value={formData.weekly_off} onValueChange={(v) => setFormData({ ...formData, weekly_off: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map(d => (
-                  <SelectItem key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Tax ID */}
           <div className="space-y-2">
             <Label>PAN / Tax ID</Label>
