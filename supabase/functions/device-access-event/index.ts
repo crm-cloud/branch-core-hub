@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
 
     let response: AccessEventResponse;
     let eventData: Record<string, unknown> = {
-      device_id,
+      device_id: device.id,
       branch_id: device.branch_id,
       event_type: 'face_recognized',
       confidence_score: confidence,

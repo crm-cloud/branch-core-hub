@@ -314,45 +314,133 @@ const DeviceManagement = () => {
         </div>
       </div>
 
-      {/* API Info Card */}
+      {/* Terminal Setup Guide */}
       <Collapsible>
         <Card className="border-dashed">
           <CardHeader className="pb-3">
             <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
               <Info className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm font-medium">Hardware API Endpoints</CardTitle>
+              <CardTitle className="text-sm font-medium">Terminal Setup Guide</CardTitle>
             </CollapsibleTrigger>
-            <CardDescription className="text-xs">Configure your Android device with these URLs</CardDescription>
+            <CardDescription className="text-xs">Step-by-step instructions to configure your Android face terminal</CardDescription>
           </CardHeader>
           <CollapsibleContent>
-            <CardContent className="space-y-3">
-              {[
-                { label: 'Heartbeat', path: 'device-heartbeat' },
-                { label: 'Sync Data', path: 'device-sync-data' },
-                { label: 'Access Event', path: 'device-access-event' },
-                { label: 'Trigger Relay', path: 'device-trigger-relay' },
-              ].map((ep) => {
-                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${ep.path}`;
-                return (
-                  <div key={ep.path} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="text-xs font-medium">{ep.label}</p>
-                      <p className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">{url}</p>
+            <CardContent className="space-y-6">
+              {/* Step-by-step Guide */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-sm">Quick Setup (5 Minutes)</h4>
+                <ol className="space-y-3 text-sm list-decimal list-inside">
+                  <li><span className="font-medium">Register the device</span> — Click "Add Device" above. Enter a name, select the branch, and enter the <strong>Serial Number (SN)</strong> printed on the terminal's label.</li>
+                  <li><span className="font-medium">Install the APK</span> — Copy the Incline APK to a USB drive, plug into the terminal, and install.</li>
+                  <li><span className="font-medium">Configure Server URL</span> — Open Settings in the APK and paste the <strong>Terminal Sync URL</strong> below.</li>
+                  <li><span className="font-medium">Set Device SN</span> — In the APK settings, enter the same Serial Number you registered in Step 1.</li>
+                  <li><span className="font-medium">Test Connection</span> — The device status above should turn <span className="text-green-600 font-medium">● Live</span> within 30 seconds.</li>
+                </ol>
+              </div>
+
+              {/* Primary Endpoint */}
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">🔗 Server URL (use this in APK Settings)</h4>
+                {(() => {
+                  const terminalUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-sync`;
+                  return (
+                    <div className="flex items-center justify-between gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <code className="text-xs font-mono break-all">{terminalUrl}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(terminalUrl);
+                          toast.info("Terminal Sync URL copied!");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => {
-                        navigator.clipboard.writeText(url);
-                        toast.info(`${ep.label} URL copied`);
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                );
-              })}
+                  );
+                })()}
+              </div>
+
+              {/* How it works */}
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">How It Works</h4>
+                <p className="text-xs text-muted-foreground">
+                  The APK sends all requests to a single URL with a <code className="bg-muted px-1 rounded">type</code> field:
+                </p>
+                <div className="grid gap-2">
+                  {[
+                    { type: 'heartbeat', desc: 'Every 30s — keeps device status "Live" and receives pending commands (e.g., remote gate open)' },
+                    { type: 'access_event', desc: 'Face recognized — validates member/staff, returns OPEN/DENIED with relay + LED instructions' },
+                    { type: 'sync_request', desc: 'Downloads member roster (names, photos, IDs) for local face enrollment' },
+                  ].map((item) => (
+                    <div key={item.type} className="flex gap-2 p-2 rounded bg-muted/50 text-xs">
+                      <code className="font-mono text-primary font-medium whitespace-nowrap">{item.type}</code>
+                      <span className="text-muted-foreground">— {item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Test with curl */}
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">🧪 Test with curl</h4>
+                {(() => {
+                  const curlCmd = `curl -X POST ${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-sync \\
+  -H "Content-Type: application/json" \\
+  -d '{"type":"heartbeat","device_sn":"YOUR_SERIAL_NUMBER"}'`;
+                  return (
+                    <div className="relative">
+                      <pre className="text-xs font-mono bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap">{curlCmd}</pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 text-slate-400 hover:text-white"
+                        onClick={() => {
+                          navigator.clipboard.writeText(curlCmd);
+                          toast.info("curl command copied!");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  );
+                })()}
+                <p className="text-xs text-muted-foreground">
+                  Expected response: <code className="bg-muted px-1 rounded">{"{ \"success\": true, \"commands\": [] }"}</code>
+                </p>
+              </div>
+
+              {/* Legacy endpoints */}
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm text-muted-foreground">Legacy Endpoints (still supported)</h4>
+                {[
+                  { label: 'Heartbeat', path: 'device-heartbeat' },
+                  { label: 'Access Event', path: 'device-access-event' },
+                  { label: 'Sync Data', path: 'device-sync-data' },
+                ].map((ep) => {
+                  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${ep.path}`;
+                  return (
+                    <div key={ep.path} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/30">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">{ep.label}</p>
+                        <p className="text-xs text-muted-foreground font-mono truncate max-w-[300px]">{url}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(url);
+                          toast.info(`${ep.label} URL copied`);
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             </CardContent>
           </CollapsibleContent>
         </Card>
