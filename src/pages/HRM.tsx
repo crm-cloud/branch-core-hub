@@ -43,7 +43,6 @@ export default function HRMPage() {
   const [editTrainerOpen, setEditTrainerOpen] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [includeSundays, setIncludeSundays] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const queryClient = useQueryClient();
 
