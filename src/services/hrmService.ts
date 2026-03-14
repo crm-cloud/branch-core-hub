@@ -236,17 +236,13 @@ export interface PayrollStaffItem {
   trainerRecord?: any; // raw trainer record for contract/edit actions
 }
 
-export function getWorkingDaysInMonth(month: string, includeSundays: boolean = false, weeklyOffDay: number = 0): number {
+export function getDaysInMonth(month: string): number {
   const [year, m] = month.split('-').map(Number);
-  const daysInMonth = new Date(year, m, 0).getDate();
-  if (includeSundays && weeklyOffDay === 0) return daysInMonth;
-  let workingDays = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const day = new Date(year, m - 1, d).getDay();
-    if (day !== weeklyOffDay) workingDays++;
-  }
-  return workingDays;
+  return new Date(year, m, 0).getDate();
 }
+
+// Keep old name as alias for backward compatibility
+export const getWorkingDaysInMonth = (month: string, _includeSundays?: boolean, _weeklyOffDay?: number) => getDaysInMonth(month);
 
 export async function fetchAllPayrollStaff(branchId?: string): Promise<PayrollStaffItem[]> {
   // Fetch employees
