@@ -231,7 +231,7 @@ export const managerMenuConfig: MenuSection[] = [
     items: [
       { label: 'Leads', href: '/leads', icon: UserPlus, roles: ['manager'] },
       { label: 'Members', href: '/members', icon: Users, roles: ['manager'] },
-      { label: 'Attendance', href: '/attendance', icon: Clock, roles: ['manager'] },
+      { label: 'Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['manager'] },
       { label: 'Plans', href: '/plans', icon: CreditCard, roles: ['manager'] },
       { label: 'Referrals', href: '/referrals', icon: Gift, roles: ['manager'] },
       { label: 'Feedback', href: '/feedback', icon: MessageSquare, roles: ['manager'] },
