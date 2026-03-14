@@ -64,6 +64,7 @@ export function PurchaseBenefitDrawer({
         memberId,
         membershipId,
         packageId: selectedPackage,
+        branchId,
       });
       toast.success("Benefit credits purchased successfully!");
       setSelectedPackage(null);

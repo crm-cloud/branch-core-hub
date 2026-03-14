@@ -206,15 +206,20 @@ export function usePurchaseBenefitCredits() {
       membershipId,
       packageId,
       invoiceId,
+      branchId,
     }: {
       memberId: string;
       membershipId: string | null;
       packageId: string;
       invoiceId?: string;
-    }) => bookingService.purchaseBenefitCredits(memberId, membershipId, packageId, invoiceId),
+      branchId?: string;
+    }) => bookingService.purchaseBenefitCredits(memberId, membershipId, packageId, invoiceId, branchId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["member-credits"] });
       queryClient.invalidateQueries({ queryKey: ["benefit-balances"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["all-overdue-invoices"] });
     },
   });
 }

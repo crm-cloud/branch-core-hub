@@ -222,11 +222,10 @@ export default function PaymentsPage() {
 
   const handleCollectFromDues = (invoice: any) => {
     setSelectedMember({
-      id: invoice.members?.member_code ? undefined : null, // will set below
+      id: invoice.member_id,
       full_name: invoice.members?.profiles?.full_name || 'Unknown',
       member_code: invoice.members?.member_code || '',
     });
-    // We need the member_id from the invoice
     setSelectedInvoice(invoice);
     setPaymentForm(f => ({
       ...f,

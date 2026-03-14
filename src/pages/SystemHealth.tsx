@@ -10,7 +10,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -42,6 +43,8 @@ export default function SystemHealth() {
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [statusTab, setStatusTab] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [clearResolvedDialog, setClearResolvedDialog] = useState(false);
+  const [resolveAllDialog, setResolveAllDialog] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: errors = [], isLoading } = useQuery({
@@ -77,6 +80,37 @@ export default function SystemHealth() {
     },
   });
 
+  const clearResolvedMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await (supabase.from('error_logs') as any)
+        .delete()
+        .eq('status', 'resolved');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('All resolved errors cleared');
+      setClearResolvedDialog(false);
+    },
+    onError: () => toast.error('Failed to clear resolved errors'),
+  });
+
+  const resolveAllMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await (supabase.from('error_logs') as any)
+        .update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_by: user?.id })
+        .eq('status', 'open');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('All open errors marked as resolved');
+      setResolveAllDialog(false);
+    },
+    onError: () => toast.error('Failed to resolve errors'),
+  });
+
   const openErrors = errors.filter((e) => e.status === 'open');
   const resolvedErrors = errors.filter((e) => e.status === 'resolved');
   const todayErrors = errors.filter((e) => new Date(e.created_at).toDateString() === new Date().toDateString());
@@ -110,14 +144,30 @@ export default function SystemHealth() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 text-white">
-              <Activity className="h-6 w-6" />
-            </div>
-            System Health
-          </h1>
-          <p className="text-muted-foreground mt-1">Monitor errors across frontend, backend functions, and database</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-rose-600 to-pink-600 text-white">
+                <Activity className="h-6 w-6" />
+              </div>
+              System Health
+            </h1>
+            <p className="text-muted-foreground mt-1">Monitor errors across frontend, backend functions, and database</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {openErrors.length > 0 && (
+              <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => setResolveAllDialog(true)}>
+                <CheckCheck className="h-4 w-4" />
+                Resolve All Open
+              </Button>
+            )}
+            {resolvedErrors.length > 0 && (
+              <Button variant="outline" size="sm" className="rounded-xl gap-1.5 text-destructive hover:text-destructive" onClick={() => setClearResolvedDialog(true)}>
+                <Trash2 className="h-4 w-4" />
+                Clear Resolved
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -219,6 +269,42 @@ export default function SystemHealth() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Clear Resolved Confirmation */}
+      <AlertDialog open={clearResolvedDialog} onOpenChange={setClearResolvedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Resolved Errors?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {resolvedErrors.length} resolved error log(s). This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => clearResolvedMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {clearResolvedMutation.isPending ? 'Clearing...' : 'Clear All'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Resolve All Open Confirmation */}
+      <AlertDialog open={resolveAllDialog} onOpenChange={setResolveAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resolve All Open Errors?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark {openErrors.length} open error(s) as resolved. You can clear them afterwards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => resolveAllMutation.mutate()}>
+              {resolveAllMutation.isPending ? 'Resolving...' : 'Resolve All'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
