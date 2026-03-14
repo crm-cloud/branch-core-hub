@@ -6,7 +6,8 @@ const corsHeaders = {
 }
 
 interface AccessEventRequest {
-  device_id: string;
+  device_id?: string;
+  device_sn?: string;
   person_uuid: string;
   confidence: number;
   photo_base64?: string;

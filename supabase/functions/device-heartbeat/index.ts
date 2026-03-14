@@ -68,18 +68,43 @@ Deno.serve(async (req) => {
     }
 
     // Check for pending sync items for this device
-    const { data: pendingSyncs, error: syncError } = await supabase
+    const { data: pendingSyncs } = await supabase
       .from('biometric_sync_queue')
       .select('id')
-      .eq('device_id', device_id)
+      .eq('device_id', data.id)
       .eq('status', 'pending')
       .limit(1);
+
+    // Fetch and return pending commands
+    const { data: pendingCmds } = await supabase
+      .from('device_commands')
+      .select('*')
+      .eq('device_id', data.id)
+      .eq('status', 'pending')
+      .order('issued_at', { ascending: true })
+      .limit(10);
+
+    const commands = (pendingCmds || []).map((cmd: any) => ({
+      id: cmd.id,
+      command: cmd.command_type,
+      payload: cmd.payload,
+    }));
+
+    // Mark returned commands as executed
+    if (commands.length > 0) {
+      const ids = commands.map((c: any) => c.id);
+      await supabase
+        .from('device_commands')
+        .update({ status: 'executed', executed_at: new Date().toISOString() })
+        .in('id', ids);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         device_id: data.id,
         has_pending_syncs: pendingSyncs && pendingSyncs.length > 0,
+        commands,
         server_time: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
