@@ -80,6 +80,7 @@ export const addDevice = async (device: {
   serial_number?: string;
   relay_mode?: number;
   relay_delay?: number;
+  config?: Record<string, unknown>;
 }): Promise<AccessDevice> => {
   const { data, error } = await supabase
     .from('access_devices')
@@ -88,11 +89,12 @@ export const addDevice = async (device: {
       device_name: device.device_name,
       ip_address: device.ip_address as unknown,
       mac_address: device.mac_address,
-      device_type: device.device_type || 'turnstile',
+      device_type: device.device_type || 'face_terminal',
       model: device.model,
       serial_number: device.serial_number,
       relay_mode: device.relay_mode,
       relay_delay: device.relay_delay,
+      config: device.config as Json || null,
     })
     .select()
     .single();
