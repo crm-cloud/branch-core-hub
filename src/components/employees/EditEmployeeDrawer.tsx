@@ -61,7 +61,6 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
         bank_account: employee.bank_account || '',
         tax_id: employee.tax_id || '',
         is_active: employee.is_active ?? true,
-        weekly_off: employee.weekly_off || 'sunday',
       });
     }
   }, [employee]);
