@@ -22,12 +22,12 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const body: HeartbeatRequest = await req.json();
-    const { device_id, ip_address, firmware_version, status } = body;
+    const body = await req.json();
+    const { device_id, device_sn, ip_address, firmware_version, status } = body;
 
-    if (!device_id) {
+    if (!device_id && !device_sn) {
       return new Response(
-        JSON.stringify({ error: 'device_id is required' }),
+        JSON.stringify({ error: 'device_id or device_sn is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -50,12 +50,14 @@ Deno.serve(async (req) => {
       updateData.config = status;
     }
 
-    const { data, error } = await supabase
-      .from('access_devices')
-      .update(updateData)
-      .eq('id', device_id)
-      .select()
-      .single();
+    // Support both UUID and serial number lookup
+    let query = supabase.from('access_devices').update(updateData);
+    if (device_sn) {
+      query = query.eq('serial_number', device_sn);
+    } else {
+      query = query.eq('id', device_id);
+    }
+    const { data, error } = await query.select().single();
 
     if (error) {
       console.error('Heartbeat update error:', error);
@@ -66,18 +68,43 @@ Deno.serve(async (req) => {
     }
 
     // Check for pending sync items for this device
-    const { data: pendingSyncs, error: syncError } = await supabase
+    const { data: pendingSyncs } = await supabase
       .from('biometric_sync_queue')
       .select('id')
-      .eq('device_id', device_id)
+      .eq('device_id', data.id)
       .eq('status', 'pending')
       .limit(1);
+
+    // Fetch and return pending commands
+    const { data: pendingCmds } = await supabase
+      .from('device_commands')
+      .select('*')
+      .eq('device_id', data.id)
+      .eq('status', 'pending')
+      .order('issued_at', { ascending: true })
+      .limit(10);
+
+    const commands = (pendingCmds || []).map((cmd: any) => ({
+      id: cmd.id,
+      command: cmd.command_type,
+      payload: cmd.payload,
+    }));
+
+    // Mark returned commands as executed
+    if (commands.length > 0) {
+      const ids = commands.map((c: any) => c.id);
+      await supabase
+        .from('device_commands')
+        .update({ status: 'executed', executed_at: new Date().toISOString() })
+        .in('id', ids);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         device_id: data.id,
         has_pending_syncs: pendingSyncs && pendingSyncs.length > 0,
+        commands,
         server_time: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

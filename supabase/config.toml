@@ -60,6 +60,10 @@ verify_jwt = false
 [functions.export-data]
 verify_jwt = false
 
+
+[functions.terminal-sync]
+verify_jwt = false
+
 [functions.send-whatsapp]
 verify_jwt = true
 
