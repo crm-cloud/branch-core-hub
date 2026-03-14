@@ -84,6 +84,7 @@ export function EditEmployeeDrawer({ open, onOpenChange, employee }: EditEmploye
           bank_account: formData.bank_account || null,
           tax_id: formData.tax_id || null,
           is_active: formData.is_active,
+          weekly_off: formData.weekly_off,
           updated_at: new Date().toISOString(),
         })
         .eq('id', employee.id);
