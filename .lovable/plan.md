@@ -1,56 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Fix: Pending Dues Bug, System Health Clear, and Benefit Purchase Audit
+## 1. Critical Query Bug Fixes
 
-## 1. Fix "No Pending Dues" Bug (Payments Page)
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-**Root cause found**: The `handleCollectFromDues` function (line 223) sets `selectedMember.id` to `undefined` instead of the actual member UUID from the invoice:
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-```js
-// BROKEN (current)
-id: invoice.members?.member_code ? undefined : null
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+
+## 2. Database Migration
+
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-The invoice object does not carry `member_id` in the destructured join — it only has `members(member_code, profiles)`. Because `id` is `undefined`, the `memberInvoices` query never fires (`enabled: !!selectedMember?.id` evaluates to false), so the drawer always shows "No pending dues."
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-**Fix**:
+## 3. AI Fitness Page Redesign
+
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
+
+Redesign with 3 clear tabs and modern Vuexy styling:
+
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
+
+## 4. Public Website CMS/DB Sync
+
+**File:** `src/pages/PublicWebsite.tsx`
+
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+
+## 5. Files to Change
+
 | File | Change |
 |------|--------|
-| `src/pages/Payments.tsx` | In the Dues Collection query (line 80), add `member_id` to the select fields. In `handleCollectFromDues`, set `selectedMember.id` to `invoice.member_id`. Also pre-select the invoice so the amount auto-fills correctly. |
-
-The member search path should also be verified — when selecting from the dropdown, `search_members` returns `m.id` which is correct. No change needed there.
-
----
-
-## 2. Add "Clear All Resolved" to System Health
-
-**Current state**: No way to clear old errors. The page shows up to 200 logs with no bulk action.
-
-**Fix**:
-| File | Change |
-|------|--------|
-| `src/pages/SystemHealth.tsx` | Add a "Clear Resolved" button next to the source filter. On click, delete all `error_logs` where `status = 'resolved'`. Add confirmation dialog. Also add a "Resolve All Open" bulk action for convenience. |
-
----
-
-## 3. Benefit Add-on Purchase: Invoice/Payment Gap
-
-**Current state**: The `purchaseBenefitCredits` function in `benefitBookingService.ts` (line 463) inserts credits into `member_benefit_credits` but does **NOT** create an invoice or payment record. The `invoiceId` parameter is accepted but only stored as a reference — no invoice is auto-generated.
-
-This means add-on purchases (Ice Bath, Sauna) bypass the financial system entirely — they don't appear in Payments, Finance, or Invoices.
-
-**Fix**:
-| File | Change |
-|------|--------|
-| `src/services/benefitBookingService.ts` | Update `purchaseBenefitCredits` to auto-generate an invoice and payment record when no `invoiceId` is provided. Insert into `invoices` (type: `benefit_addon`, status: `paid`), `invoice_items`, and `payments` tables. Use the package price from the fetched package data. |
-| `src/components/benefits/PurchaseBenefitDrawer.tsx` | Pass `branchId` to the purchase mutation so the invoice can be scoped to a branch. After success, invalidate `['invoices']`, `['payments']`, and `['all-overdue-invoices']` query keys. |
-| `src/hooks/useBenefitBookings.ts` | Update `usePurchaseBenefitCredits` mutation to accept `branchId` and invalidate financial query keys on success. |
-
----
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
 ## Execution Order
 
-1. Fix the Payments "No pending dues" bug (immediate data flow fix)
-2. Add "Clear Resolved" to System Health
-3. Wire benefit purchase to invoices/payments
-
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

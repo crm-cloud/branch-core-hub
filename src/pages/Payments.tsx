@@ -78,7 +78,7 @@ export default function PaymentsPage() {
       let query = supabase
         .from('invoices')
         .select(`
-          id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type,
+          id, invoice_number, total_amount, amount_paid, status, due_date, invoice_type, member_id,
           members(member_code, profiles:user_id(full_name, phone))
         `)
         .in('status', ['pending', 'partial', 'overdue'])
@@ -222,11 +222,10 @@ export default function PaymentsPage() {
 
   const handleCollectFromDues = (invoice: any) => {
     setSelectedMember({
-      id: invoice.members?.member_code ? undefined : null, // will set below
+      id: invoice.member_id,
       full_name: invoice.members?.profiles?.full_name || 'Unknown',
       member_code: invoice.members?.member_code || '',
     });
-    // We need the member_id from the invoice
     setSelectedInvoice(invoice);
     setPaymentForm(f => ({
       ...f,
