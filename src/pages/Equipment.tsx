@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Dumbbell } from 'lucide-react';
+import { Plus, Dumbbell, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function EquipmentPage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
