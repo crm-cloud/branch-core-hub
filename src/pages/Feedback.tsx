@@ -152,7 +152,19 @@ export default function FeedbackPage() {
             <h1 className="text-2xl font-bold">Member Feedback</h1>
             <p className="text-muted-foreground">Review and manage feedback submitted by members</p>
           </div>
-          {/* Branch selector moved to global header */}
+          <Button variant="outline" size="sm" className="gap-1.5 self-start" onClick={() => {
+            const rows = feedbackList.map((f: any) => ({
+              Member: f.member_name || 'Unknown',
+              Rating: f.rating,
+              Feedback: f.feedback_text || '',
+              Category: f.category || '',
+              Status: f.status || '',
+              Date: f.created_at ? format(new Date(f.created_at), 'yyyy-MM-dd') : '',
+            }));
+            exportToCSV(rows, 'feedback');
+          }}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
         </div>
 
         {/* Stats */}

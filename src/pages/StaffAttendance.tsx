@@ -92,8 +92,17 @@ export default function StaffAttendancePage() {
                'Track your working hours'}
             </p>
           </div>
-
-          {/* Branch selector moved to global header */}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+            const rows = (filteredTodayAttendance || []).map((a: any) => ({
+              Name: a.profiles?.full_name || 'Unknown',
+              'Check In': a.check_in ? format(new Date(a.check_in), 'yyyy-MM-dd HH:mm') : '',
+              'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+              Duration: formatDuration(a.check_in, a.check_out),
+            }));
+            exportToCSV(rows, 'staff_attendance');
+          }}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
         </div>
 
         {/* Role indicator */}

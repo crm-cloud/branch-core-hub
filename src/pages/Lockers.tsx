@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Lock, Plus, User, Key, Package, MapPin, Grid3x3, List, Wrench, AlertTriangle, Search } from 'lucide-react';
+import { Lock, Plus, User, Key, Package, MapPin, Grid3x3, List, Wrench, AlertTriangle, Search, Download } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import { BulkCreateLockersDrawer } from '@/components/lockers/BulkCreateLockersD
 import { AssignLockerDrawer } from '@/components/lockers/AssignLockerDrawer';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { exportToCSV } from '@/lib/csvExport';
 
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),

@@ -132,10 +132,24 @@ export default function ReferralsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Referrals & Rewards</h1>
-          <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Referral
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              const rows = referrals.map((r: any) => ({
+                Code: r.referral_code || '',
+                Referrer: r.referrer?.profiles?.full_name || '',
+                'Referred Name': r.referred_name || '',
+                'Referred Phone': r.referred_phone || '',
+                Status: r.status || '',
+              }));
+              exportToCSV(rows, 'referrals');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Referral
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">

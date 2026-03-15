@@ -46,8 +46,23 @@ export default function EquipmentPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Equipment</h1>
-          <div className="flex items-center gap-4">
-            {/* Branch selector moved to global header */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              const rows = equipment.map((e: any) => ({
+                Name: e.name,
+                Brand: e.brand || '',
+                Model: e.model || '',
+                'Serial Number': e.serial_number || '',
+                Category: e.category || '',
+                Status: e.status,
+                Location: e.location || '',
+                'Purchase Date': e.purchase_date || '',
+                'Purchase Price': e.purchase_price || '',
+              }));
+              exportToCSV(rows, 'equipment');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
             <Button onClick={() => setAddDrawerOpen(true)} disabled={!currentBranchId}>
               <Plus className="mr-2 h-4 w-4" />
               Add Equipment

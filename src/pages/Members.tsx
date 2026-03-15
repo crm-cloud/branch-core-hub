@@ -361,6 +361,24 @@ export default function MembersPage() {
                   Clear filter
                 </Button>
               )}
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                const rows = filteredMembers.map((m: any) => {
+                  const ms = getActiveMembership(m.memberships);
+                  return {
+                    Name: m.profiles?.full_name || '',
+                    Code: m.member_code,
+                    Email: m.profiles?.email || '',
+                    Phone: m.profiles?.phone || '',
+                    Status: m.status,
+                    Plan: ms?.membership_plans?.name || '',
+                    'End Date': ms?.end_date || '',
+                    Joined: m.created_at ? format(new Date(m.created_at), 'yyyy-MM-dd') : '',
+                  };
+                });
+                exportToCSV(rows, 'members');
+              }}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
             </div>
           </CardHeader>
           <CardContent>

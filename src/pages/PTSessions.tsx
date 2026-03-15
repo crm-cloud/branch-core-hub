@@ -159,7 +159,23 @@ export default function PTSessionsPage() {
             <h1 className="text-3xl font-bold tracking-tight">PT Sessions</h1>
             <p className="text-muted-foreground">Manage personal training packages and sessions</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              const rows = (activePackages || []).map((p: any) => ({
+                Member: p.member_name || '',
+                Trainer: p.trainer_name || '',
+                Package: p.package_name || '',
+                'Sessions Used': p.sessions_used || 0,
+                'Sessions Total': p.sessions_total || 0,
+                'Price Paid': p.price_paid || 0,
+                Status: p.status || '',
+                'Start Date': p.start_date || '',
+                'Expiry Date': p.expiry_date || '',
+              }));
+              exportToCSV(rows, 'pt_sessions');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
           </div>
         </div>
 

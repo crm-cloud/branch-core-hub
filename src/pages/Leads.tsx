@@ -154,6 +154,20 @@ export default function LeadsPage() {
               <Plus className="h-4 w-4" />
               Add Lead
             </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => {
+              const rows = filteredLeads.map((l: any) => ({
+                Name: l.full_name || '',
+                Phone: l.phone || '',
+                Email: l.email || '',
+                Source: l.source || 'Direct',
+                Status: l.status || '',
+                'Created At': l.created_at ? format(new Date(l.created_at), 'yyyy-MM-dd') : '',
+                Notes: l.notes || '',
+              }));
+              exportToCSV(rows, 'leads');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
           </div>
         </div>
 
