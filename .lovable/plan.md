@@ -1,80 +1,105 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Retention Campaign Manager & Smart Follow-Up Drawer
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## Overview
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+Build a 3-stage automated retention system with admin configuration UI and a staff-facing "Smart Assist" drawer for manual follow-ups with at-risk members.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+## 1. Database Migration
 
-## 2. Database Migration
+**New table: `retention_templates`**
 
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `branch_id` | uuid FK→branches | nullable (global default) |
+| `stage_level` | integer | 1, 2, 3 |
+| `stage_name` | text | e.g. "Value Add", "FOMO", "Incentive" |
+| `days_trigger` | integer | Days absent before sending |
+| `message_body` | text | Template with `{member_name}` placeholders |
+| `is_active` | boolean | default true |
+| `created_at` / `updated_at` | timestamptz | |
 
-```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
-  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
-```
+**New table: `retention_nudge_logs`** (tracks what was sent)
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `member_id` | uuid FK→members | |
+| `branch_id` | uuid FK→branches | |
+| `template_id` | uuid FK→retention_templates | |
+| `stage_level` | integer | |
+| `sent_at` | timestamptz | |
+| `channel` | text | 'whatsapp', 'sms' |
+| `status` | text | 'sent', 'failed' |
+| `resolved_at` | timestamptz | null until staff resolves |
+| `resolution` | text | e.g. "Returning Tomorrow" |
 
-## 3. AI Fitness Page Redesign
+**Seed 3 default templates** (via insert tool after migration):
+- Stage 1: Day 5 — "Hi {member_name}, we noticed you haven't visited in a few days..."
+- Stage 2: Day 10 — "Hi {member_name}, your gym buddies are crushing it!..."
+- Stage 3: Day 15 — "Hi {member_name}, we have a special offer for you..."
 
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
+**RLS**: Authenticated users with staff/admin/owner roles can read/write.
 
-Redesign with 3 clear tabs and modern Vuexy styling:
+## 2. Admin UI: Retention Campaign Manager
 
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+**New file: `src/components/settings/RetentionCampaignManager.tsx`**
 
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
+- Displays 3 stage cards in a vertical list
+- Each card shows: stage name, days trigger (editable number input), message body (editable textarea with `{member_name}` variable), active toggle
+- "Save Changes" button per stage (mutation updates `retention_templates`)
+- "Test Send" button — opens WhatsApp with the admin's own phone using the template text
+- Add to Settings page as new tab: `{ value: 'retention', label: 'Marketing & Retention', icon: Megaphone }`
 
-## 4. Public Website CMS/DB Sync
+## 3. Staff UI: Smart Assist Drawer
 
-**File:** `src/pages/PublicWebsite.tsx`
+**New file: `src/components/retention/SmartAssistDrawer.tsx`**
 
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+Right-side Sheet triggered from Staff Dashboard's inactive members list:
 
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+- **Context Header**: Member name, avatar (from profiles), fitness goal (from member profile), total days absent
+- **Nudge History**: Query `retention_nudge_logs` for this member — show mini timeline (stage badges with dates)
+- **Smart Messaging**: 3 radio-button templates:
+  1. "Offer a Freeze" — pre-populated freeze offer message
+  2. "Free PT Session" — complimentary PT invite
+  3. "Personal Check-in" — warm personal message
+- **Send WhatsApp**: Primary button calls `communicationService.sendWhatsApp()` with selected template
+- **Resolution Dropdown**: Select from ["Left Message", "Frozen Account", "Returning Tomorrow", "Not Interested", "Cancelled"]. On submit, updates `retention_nudge_logs.resolved_at` and `resolution`
 
-## 5. Files to Change
+## 4. Staff Dashboard Integration
 
-| File | Change |
+**Edit: `src/pages/StaffDashboard.tsx`**
+
+- Import and wire `SmartAssistDrawer`
+- Add state for selected at-risk member
+- On clicking an inactive member row, open the drawer instead of just showing call/WhatsApp buttons
+- Keep the quick call/WhatsApp buttons but add a "View Details" button that opens the drawer
+
+## 5. Settings Page Wiring
+
+**Edit: `src/pages/Settings.tsx`**
+
+- Add `retention` tab entry with `Megaphone` icon labeled "Marketing & Retention"
+- Map to `<RetentionCampaignManager />`
+
+## Files Summary
+
+| File | Action |
 |------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+| DB Migration | Create `retention_templates` + `retention_nudge_logs` tables with RLS |
+| DB Insert (seed) | Insert 3 default stage templates |
+| `src/components/settings/RetentionCampaignManager.tsx` | **New** — Admin settings UI for 3-stage campaign |
+| `src/components/retention/SmartAssistDrawer.tsx` | **New** — Staff drawer with context, nudge history, smart messaging, resolution |
+| `src/pages/Settings.tsx` | Add retention tab |
+| `src/pages/StaffDashboard.tsx` | Wire SmartAssistDrawer to inactive members list |
 
 ## Execution Order
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
+1. Database migration (tables + RLS)
+2. Seed default templates
+3. RetentionCampaignManager settings component
+4. SmartAssistDrawer component
+5. Wire into Settings and StaffDashboard
+
