@@ -87,22 +87,20 @@ export default function AttendanceDashboard() {
   // Staff search results for top bar
   const [staffSearchResults, setStaffSearchResults] = useState<any[]>([]);
 
-  // Auto-search with debounce
+  // Auto-search with debounce (member search only — staff search moved after allStaffProfiles)
   useEffect(() => {
-    if (activeTab === 'staff-record' && searchQuery.length >= 2) {
-      const filtered = allStaffProfiles.filter((s: any) =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.code.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setStaffSearchResults(filtered);
+    if (activeTab === 'staff-record') {
       setSearchResults([]);
-    } else if (searchQuery.length >= 3) {
+      return;
+    }
+    if (searchQuery.length >= 3) {
       const timer = setTimeout(() => handleMemberSearch(), 300);
       return () => clearTimeout(timer);
     } else if (searchQuery.length === 0) {
       setSearchResults([]);
       setStaffSearchResults([]);
     }
-  }, [searchQuery, activeTab, allStaffProfiles]);
+  }, [searchQuery, activeTab]);
 
   const showFlash = useCallback((state: FlashState) => {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
