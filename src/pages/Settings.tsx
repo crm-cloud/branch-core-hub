@@ -25,6 +25,7 @@ const SETTINGS_MENU = [
   { value: 'templates', label: 'Templates', icon: MessageSquare },
   { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
   { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
+  { value: 'retention', label: 'Marketing & Retention', icon: Megaphone },
   { value: 'integrations', label: 'Integrations', icon: Plug },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
