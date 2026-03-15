@@ -281,7 +281,10 @@ export default function StaffDashboard() {
                   {recentCheckins.map((checkin: any) => (
                     <div key={checkin.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        <CheckCircle className="h-5 w-5 text-emerald-500" />
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={checkin.member?.profiles?.avatar_url} />
+                          <AvatarFallback className="text-xs">{checkin.member?.profiles?.full_name?.charAt(0) || '?'}</AvatarFallback>
+                        </Avatar>
                         <div>
                           <p className="font-medium">{checkin.member?.profiles?.full_name || checkin.member?.member_code}</p>
                           <p className="text-sm text-muted-foreground">{checkin.member?.member_code}</p>
