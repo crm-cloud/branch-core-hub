@@ -790,7 +790,10 @@ export default function AttendanceDashboard() {
                       <TableRow key={attendance.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8"><AvatarFallback className="bg-success/10 text-success text-xs">{getInitials(attendance.profiles?.full_name)}</AvatarFallback></Avatar>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={attendance.profiles?.avatar_url} />
+                              <AvatarFallback className="bg-success/10 text-success text-xs">{getInitials(attendance.profiles?.full_name)}</AvatarFallback>
+                            </Avatar>
                             <div>
                               <p className="font-medium">{attendance.profiles?.full_name || 'Unknown'}</p>
                               <p className="text-xs text-muted-foreground">{attendance.profiles?.email}</p>
