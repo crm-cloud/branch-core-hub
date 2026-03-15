@@ -21,6 +21,7 @@ export default function StaffDashboard() {
   const today = new Date();
   const todayStart = startOfDay(today).toISOString();
   const todayEnd = endOfDay(today).toISOString();
+  const [smartAssistMember, setSmartAssistMember] = useState<any>(null);
 
   // Get staff's assigned branch
   const { data: staffBranch } = useQuery({
