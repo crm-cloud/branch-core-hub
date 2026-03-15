@@ -607,9 +607,29 @@ export default function AttendanceDashboard() {
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle>Attendance Management</CardTitle>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Filter..." className="pl-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                  const exportData = activeTab === 'staff-log' ? filteredStaffAttendance.map((a: any) => ({
+                    Name: a.profiles?.full_name || 'Unknown',
+                    'Check In': format(new Date(a.check_in), 'yyyy-MM-dd HH:mm'),
+                    'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+                    Duration: formatDuration(a.check_in, a.check_out),
+                  })) : filteredMemberAttendance.map((a: any) => ({
+                    Name: a.members?.profiles?.full_name || 'Unknown',
+                    Code: a.members?.member_code || '',
+                    'Check In': format(new Date(a.check_in), 'yyyy-MM-dd HH:mm'),
+                    'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+                    Duration: formatDuration(a.check_in, a.check_out),
+                    Source: a.check_in_method || 'manual',
+                  }));
+                  exportToCSV(exportData, `attendance_${activeTab}_${dateFilter}`);
+                }}>
+                  <Download className="h-4 w-4" /> Export
+                </Button>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Filter..." className="pl-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
               </div>
             </div>
           </CardHeader>
