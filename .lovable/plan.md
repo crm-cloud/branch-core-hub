@@ -1,80 +1,103 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Multi-Issue Fix: Staff Search, Avatars, Class Bookings, Webhook URLs & CSV Exports
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## 1. Attendance Command Center — Staff Search for Offline Marking
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+**Problem**: The top search bar (lines 101-110) only calls `searchMember()` which uses the `search_members` RPC — it only searches the `members` table. Staff cannot be found via this search bar.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+**Fix**: The staff check-in functionality already exists in the "Staff Check-in" tab (line 627+) with a working filter on `searchTerm`. The issue is the **top rapid-entry search bar** is member-only by design. We need to:
+- Add a search/filter input inside the "Staff Check-in" tab header that filters `allStaffProfiles` by name — this already works via `searchTerm` (line 650-652)
+- The real gap: `searchTerm` (line 565) is the filter input at the bottom. The **top search bar** (`searchQuery`, line 41) only searches members. We should make the top bar context-aware: when the "staff-record" tab is active, search should filter staff instead.
 
-## 2. Database Migration
+**Changes in `src/pages/AttendanceDashboard.tsx`**:
+- Track active tab state
+- When active tab is "staff-record", route the top search bar input to filter `allStaffProfiles` instead of calling `searchMember`
+- Show matching staff with check-in/out buttons in the search results area
 
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+## 2. Avatar Audit — Show Avatar Image Before Initials
 
-```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
-  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
-```
+**Problem**: Multiple components show initials even when `avatar_url` exists. The `<AvatarImage>` component should handle this automatically (it falls back to `<AvatarFallback>` when src is null/empty/fails to load). The likely issue is that `avatar_url` is not being fetched or passed correctly in certain queries.
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
+**Audit findings**:
+- `MemberProfileDrawer.tsx` (line 708-713): Uses `profile?.avatar_url` — correct pattern
+- `Members.tsx` (line 398-403): Uses `member.profiles?.avatar_url` — correct pattern  
+- `AttendanceDashboard.tsx` staff attendance query (line 166): Only fetches `full_name, email` from profiles — **missing `avatar_url`**
+- `AttendanceDashboard.tsx` staff history query (line 211): Same issue — missing `avatar_url`
+- `Classes.tsx` bookings table (line 500-502): Only shows `booking.member_name` text, **no Avatar component at all**
+- `classService.ts` `fetchClassBookings` (line 213-216): Fetches `full_name, phone` from profiles — **missing `avatar_url`**
 
-## 3. AI Fitness Page Redesign
+**Changes**:
+- `src/pages/AttendanceDashboard.tsx`: Add `avatar_url` to staff attendance and history queries' profile select
+- `src/services/classService.ts`: Add `avatar_url` to profile fetch in `fetchClassBookings`, return it as `member_avatar`
+- `src/pages/Classes.tsx`: Add Avatar component to bookings attendance table rows
+- `src/components/members/MemberProfileDrawer.tsx`: Already correct — no change needed
 
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
+## 3. Class Bookings — Show Member Avatar
 
-Redesign with 3 clear tabs and modern Vuexy styling:
+**Problem**: In the Attendance tab of Classes page (line 500-502), bookings only show `booking.member_name` as plain text with no avatar.
 
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+**Changes**:
+- `src/services/classService.ts`: Add `avatar_url` to the profiles select in `fetchClassBookings`, add `member_avatar` to return type
+- `src/pages/Classes.tsx`: Wrap the member name cell with an Avatar component showing the member's photo
 
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
+## 4. Webhook URL in Payment & Google Review Integrations
 
-## 4. Public Website CMS/DB Sync
+**Problem**: The payment gateway config form (line 557-561) has a `webhook_url` field but it's a manual input. The user needs to know the actual webhook URL to paste. Similarly, Google Business has no setup guide.
 
-**File:** `src/pages/PublicWebsite.tsx`
+**Changes in `src/components/settings/IntegrationSettings.tsx`**:
+- For payment gateways: Add a read-only info box showing the auto-generated webhook URL format: `https://{project_id}.supabase.co/functions/v1/payment-webhook`
+- Add a "Copy" button next to it
+- For Google Business tab: Add a setup guide similar to the WhatsApp one, explaining OAuth flow, API setup, and the review sync webhook URL
+- Add webhook URL display in the config sheet when type is `payment_gateway`
 
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
+## 5. CSV/Excel Download Audit
 
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
+**Pages WITH export**: Finance, Payments, AuditLogs, TrainerEarnings (payslip PDF), HRM (payslip PDF), Invoices (per-invoice)
 
-## 5. Files to Change
+**Pages MISSING export** (that have tabular data):
+| Page | Data | Priority |
+|------|------|----------|
+| `Members.tsx` | Member list | High |
+| `Leads.tsx` | Lead list | High |
+| `AttendanceDashboard.tsx` | Member + Staff attendance | High |
+| `Referrals.tsx` | Referral list | Medium |
+| `Equipment.tsx` | Equipment inventory | Medium |
+| `Lockers.tsx` | Locker assignments | Medium |
+| `Feedback.tsx` | Feedback entries | Medium |
+| `PTSessions.tsx` | PT session log | Medium |
+| `StaffAttendance.tsx` | Staff attendance | Medium |
+| `Products.tsx` | Product inventory | Low |
+| `Classes.tsx` | Class schedule + bookings | Low |
 
-| File | Change |
-|------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+**Changes**: Add `exportToCSV` functions and Download buttons to: `Members.tsx`, `Leads.tsx`, `AttendanceDashboard.tsx`, `Referrals.tsx`, `Equipment.tsx`, `Lockers.tsx`, `Feedback.tsx`, `PTSessions.tsx`, `StaffAttendance.tsx`
+
+Each export will follow the existing pattern (Finance/Payments): build CSV string → create Blob → trigger download.
+
+---
+
+## Files Summary
+
+| File | Changes |
+|------|---------|
+| `src/pages/AttendanceDashboard.tsx` | Staff search in top bar; add `avatar_url` to staff queries; add CSV export |
+| `src/services/classService.ts` | Add `avatar_url` to `fetchClassBookings` profile query |
+| `src/pages/Classes.tsx` | Add Avatar to bookings attendance table |
+| `src/components/settings/IntegrationSettings.tsx` | Add webhook URL display + copy for payments; Google review setup guide |
+| `src/pages/Members.tsx` | Add CSV export button |
+| `src/pages/Leads.tsx` | Add CSV export button |
+| `src/pages/Referrals.tsx` | Add CSV export button |
+| `src/pages/Equipment.tsx` | Add CSV export button |
+| `src/pages/Lockers.tsx` | Add CSV export button |
+| `src/pages/Feedback.tsx` | Add CSV export button |
+| `src/pages/PTSessions.tsx` | Add CSV export button |
+| `src/pages/StaffAttendance.tsx` | Add CSV export button |
 
 ## Execution Order
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
+1. Fix staff search in Attendance Command Center
+2. Avatar audit fixes (queries + UI)
+3. Class bookings avatar
+4. Webhook URL displays in integration settings
+5. CSV export buttons across all missing pages
+
