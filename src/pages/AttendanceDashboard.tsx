@@ -634,7 +634,7 @@ export default function AttendanceDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="members">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4">
                 <TabsTrigger value="members" className="gap-2"><Users className="h-4 w-4" />Members ({filteredMemberAttendance.length})</TabsTrigger>
                 <TabsTrigger value="staff-record" className="gap-2"><UserCheck className="h-4 w-4" />Staff Check-in</TabsTrigger>
