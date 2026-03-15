@@ -175,7 +175,7 @@ export default function AttendanceDashboard() {
       const end = endOfDay(new Date(dateFilter)).toISOString();
       let query = supabase
         .from('staff_attendance')
-        .select(`*, profiles:user_id(full_name, email)`)
+        .select(`*, profiles:user_id(full_name, email, avatar_url)`)
         .gte('check_in', start)
         .lte('check_in', end)
         .order('check_in', { ascending: false });
