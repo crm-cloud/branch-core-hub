@@ -5,16 +5,18 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   UserCheck, ShoppingCart, FileText, UserPlus, Clock, AlertTriangle,
-  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye
+  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { communicationService } from '@/services/communicationService';
 import { SmartAssistDrawer } from '@/components/retention/SmartAssistDrawer';
+import { ConvertMemberDrawer } from '@/components/leads/ConvertMemberDrawer';
 
 export default function StaffDashboard() {
   const { profile, user } = useAuth();
