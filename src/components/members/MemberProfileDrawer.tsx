@@ -863,18 +863,41 @@ export function MemberProfileDrawer({
               {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
               {member.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+              <Gift className="h-4 w-4 mr-2" /> Comp/Gift
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+              const p = profile;
+              const ms = activeMembership;
+              printRegistrationForm({
+                memberName: p?.full_name || 'N/A',
+                memberCode: member.member_code,
+                email: p?.email, phone: p?.phone,
+                gender: p?.gender, dateOfBirth: p?.date_of_birth,
+                address: p?.address,
+                emergencyContactName: p?.emergency_contact_name,
+                emergencyContactPhone: p?.emergency_contact_phone,
+                planName: ms?.membership_plans?.name,
+                startDate: ms?.start_date, endDate: ms?.end_date,
+                pricePaid: ms?.price_paid,
+                branchName: memberDetails?.branch?.name,
+              });
+            }}>
+              <Printer className="h-4 w-4 mr-2" /> Print Form
+            </Button>
           </div>
 
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
+            <TabsList className="grid w-full grid-cols-9">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="membership">Plan</TabsTrigger>
               <TabsTrigger value="benefits">Benefits</TabsTrigger>
               <TabsTrigger value="measurements">Body</TabsTrigger>
               <TabsTrigger value="payments">Pay</TabsTrigger>
               <TabsTrigger value="rewards">Rewards</TabsTrigger>
+              <TabsTrigger value="documents">Docs</TabsTrigger>
               <TabsTrigger value="hardware">Access</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
