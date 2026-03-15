@@ -9,17 +9,19 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   UserCheck, ShoppingCart, FileText, UserPlus, Clock, AlertTriangle,
-  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX
+  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { communicationService } from '@/services/communicationService';
+import { SmartAssistDrawer } from '@/components/retention/SmartAssistDrawer';
 
 export default function StaffDashboard() {
   const { profile, user } = useAuth();
   const today = new Date();
   const todayStart = startOfDay(today).toISOString();
   const todayEnd = endOfDay(today).toISOString();
+  const [smartAssistMember, setSmartAssistMember] = useState<any>(null);
 
   // Get staff's assigned branch
   const { data: staffBranch } = useQuery({
@@ -179,6 +181,9 @@ export default function StaffDashboard() {
                             </Button>
                           </>
                         )}
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSmartAssistMember(member)}>
+                          <Eye className="h-4 w-4 text-primary" />
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -287,6 +292,13 @@ export default function StaffDashboard() {
           </Card>
         </div>
       </div>
+
+      <SmartAssistDrawer
+        open={!!smartAssistMember}
+        onOpenChange={(open) => !open && setSmartAssistMember(null)}
+        member={smartAssistMember}
+        branchId={branchId}
+      />
     </AppLayout>
   );
 }

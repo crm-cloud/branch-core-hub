@@ -4632,6 +4632,114 @@ export type Database = {
           },
         ]
       }
+      retention_nudge_logs: {
+        Row: {
+          branch_id: string
+          channel: string
+          created_at: string
+          id: string
+          member_id: string
+          resolution: string | null
+          resolved_at: string | null
+          sent_at: string
+          stage_level: number
+          status: string
+          template_id: string | null
+        }
+        Insert: {
+          branch_id: string
+          channel?: string
+          created_at?: string
+          id?: string
+          member_id: string
+          resolution?: string | null
+          resolved_at?: string | null
+          sent_at?: string
+          stage_level: number
+          status?: string
+          template_id?: string | null
+        }
+        Update: {
+          branch_id?: string
+          channel?: string
+          created_at?: string
+          id?: string
+          member_id?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          sent_at?: string
+          stage_level?: number
+          status?: string
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retention_nudge_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retention_nudge_logs_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retention_nudge_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "retention_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      retention_templates: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          days_trigger: number
+          id: string
+          is_active: boolean
+          message_body: string
+          stage_level: number
+          stage_name: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          days_trigger: number
+          id?: string
+          is_active?: boolean
+          message_body: string
+          stage_level: number
+          stage_name: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          days_trigger?: number
+          id?: string
+          is_active?: boolean
+          message_body?: string
+          stage_level?: number
+          stage_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retention_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_permissions: {
         Row: {
           created_at: string

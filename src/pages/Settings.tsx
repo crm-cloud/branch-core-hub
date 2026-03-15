@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -14,6 +14,7 @@ import { TemplateManager } from '@/components/settings/TemplateManager';
 import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
+import { RetentionCampaignManager } from '@/components/settings/RetentionCampaignManager';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
@@ -24,6 +25,7 @@ const SETTINGS_MENU = [
   { value: 'templates', label: 'Templates', icon: MessageSquare },
   { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
   { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
+  { value: 'retention', label: 'Marketing & Retention', icon: Megaphone },
   { value: 'integrations', label: 'Integrations', icon: Plug },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
@@ -39,6 +41,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   templates: <TemplateManager />,
   'plan-templates': <PlanBenefitTemplates />,
   'finance-categories': <FinanceCategoryManager />,
+  retention: <RetentionCampaignManager />,
   integrations: <IntegrationSettings />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
