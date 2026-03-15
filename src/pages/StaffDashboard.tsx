@@ -397,7 +397,6 @@ export default function StaffDashboard() {
           open={!!convertLead}
           onOpenChange={(open) => !open && setConvertLead(null)}
           lead={convertLead}
-          branchId={branchId}
         />
       )}
     </AppLayout>
