@@ -14,6 +14,7 @@ import { TemplateManager } from '@/components/settings/TemplateManager';
 import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
+import { RetentionCampaignManager } from '@/components/settings/RetentionCampaignManager';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
