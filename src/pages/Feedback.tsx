@@ -6,12 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { Switch } from '@/components/ui/switch';
-import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe } from 'lucide-react';
+import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function FeedbackPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
