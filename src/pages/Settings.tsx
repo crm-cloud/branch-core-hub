@@ -41,6 +41,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   templates: <TemplateManager />,
   'plan-templates': <PlanBenefitTemplates />,
   'finance-categories': <FinanceCategoryManager />,
+  retention: <RetentionCampaignManager />,
   integrations: <IntegrationSettings />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
