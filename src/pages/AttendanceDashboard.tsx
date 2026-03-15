@@ -424,18 +424,53 @@ export default function AttendanceDashboard() {
             <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               ref={searchInputRef}
-              placeholder="Scan barcode or type member code / name / phone..."
+              placeholder={activeTab === 'staff-record' ? "Search staff by name or code..." : "Scan barcode or type member code / name / phone..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
             />
           </div>
-          <Button onClick={handleMemberSearch} disabled={isSearching} className="h-14 px-6" size="lg">
+          <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
             <Search className="w-5 h-5 mr-2" />
             {isSearching ? 'Searching...' : 'Search'}
           </Button>
         </div>
+
+        {/* Staff Search Results from top bar */}
+        {activeTab === 'staff-record' && staffSearchResults.length > 0 && searchQuery.length >= 2 && (
+          <div className="space-y-2">
+            {staffSearchResults.map((staff: any) => {
+              const isCheckedIn = checkedInUserIds.has(staff.user_id);
+              return (
+                <div key={staff.user_id} className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${isCheckedIn ? 'bg-success/5 border-success/30' : 'bg-card border-border hover:border-primary/50 hover:shadow-md'}`}>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-12 w-12 ring-2 ring-background shadow">
+                      <AvatarImage src={staff.avatar_url} />
+                      <AvatarFallback className="bg-accent/10 text-accent font-semibold">{getInitials(staff.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-lg">{staff.name}</p>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <code className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{staff.code}</code>
+                        <Badge className={`border text-xs ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : 'bg-muted text-muted-foreground border-border'}`}>{staff.type}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                  {isCheckedIn ? (
+                    <Button size="lg" variant="outline" className="gap-2" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff.user_id)}>
+                      <LogOut className="w-5 h-5" /> Check Out
+                    </Button>
+                  ) : (
+                    <Button size="lg" className="gap-2 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff.user_id)}>
+                      <LogIn className="w-5 h-5" /> Check In
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Search Results */}
         {searchResults.length > 0 && (
