@@ -114,18 +114,38 @@ export default function FollowUpCenter() {
     },
   });
 
-  // ---- INACTIVE MEMBERS ----
+  // ---- INACTIVE MEMBERS (21+ days — post-automation escalation) ----
   const { data: inactiveMembers = [] } = useQuery({
     queryKey: ['followup-inactive', branchId],
     enabled: !!branchId,
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_inactive_members', {
         p_branch_id: branchId!,
-        p_days: 7,
+        p_days: 21,
         p_limit: 50,
       });
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Fetch nudge counts for inactive members
+  const { data: inactiveNudgeCounts = {} } = useQuery({
+    queryKey: ['followup-nudge-counts', branchId],
+    enabled: !!branchId && inactiveMembers.length > 0,
+    queryFn: async () => {
+      const memberIds = inactiveMembers.map((m: any) => m.member_id);
+      const { data, error } = await supabase
+        .from('retention_nudge_logs')
+        .select('member_id, stage_level')
+        .in('member_id', memberIds)
+        .gt('stage_level', 0);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const log of data || []) {
+        counts[log.member_id] = Math.max(counts[log.member_id] || 0, log.stage_level);
+      }
+      return counts;
     },
   });
 
