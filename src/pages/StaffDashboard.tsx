@@ -58,20 +58,43 @@ export default function StaffDashboard() {
     },
   });
 
-  // Inactive members (no visit in 7+ days)
+  // Inactive members (no visit in 5+ days to capture full sequence)
   const { data: inactiveMembers = [] } = useQuery({
     queryKey: ['inactive-members', branchId],
     enabled: !!branchId,
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_inactive_members', {
         p_branch_id: branchId!,
-        p_days: 7,
-        p_limit: 10,
+        p_days: 5,
+        p_limit: 50,
       });
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Fetch nudge counts per member
+  const { data: nudgeCounts = {} } = useQuery({
+    queryKey: ['nudge-counts', branchId],
+    enabled: !!branchId && inactiveMembers.length > 0,
+    queryFn: async () => {
+      const memberIds = inactiveMembers.map((m: any) => m.member_id);
+      const { data, error } = await supabase
+        .from('retention_nudge_logs')
+        .select('member_id, stage_level')
+        .in('member_id', memberIds)
+        .gt('stage_level', 0);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const log of data || []) {
+        counts[log.member_id] = Math.max(counts[log.member_id] || 0, log.stage_level);
+      }
+      return counts;
+    },
+  });
+
+  const inSequenceMembers = inactiveMembers.filter((m: any) => (m.days_absent || 0) < 21);
+  const escalationMembers = inactiveMembers.filter((m: any) => (m.days_absent || 0) >= 21);
 
   // Fetch pending tasks assigned to staff
   const { data: pendingTasks = [] } = useQuery({
