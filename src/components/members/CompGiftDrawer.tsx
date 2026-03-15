@@ -67,12 +67,14 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
 
       // Log to membership_free_days if table exists
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('membership_free_days' as any).insert({
-        membership_id: membershipId,
-        days_added: daysNum,
-        reason: reason || 'Comp extension',
-        added_by: user?.id,
-      }).then(() => {}).catch(() => {});
+      try {
+        await (supabase.from('membership_free_days') as any).insert({
+          membership_id: membershipId,
+          days_added: daysNum,
+          reason: reason || 'Comp extension',
+          added_by: user?.id,
+        });
+      } catch { /* ignore if table doesn't exist */ }
     },
     onSuccess: () => {
       toast.success(`Extended membership by ${days} days`);
