@@ -306,20 +306,7 @@ export async function resumeFromFreeze(membershipId: string) {
 }
 
 export async function addFreeDays(membershipId: string, days: number, reason: string, addedBy: string) {
-  // Check if membership has any discount
-  const { data: membership, error: membershipError } = await supabase
-    .from('memberships')
-    .select('discount_amount')
-    .eq('id', membershipId)
-    .single();
-
-  if (membershipError) throw membershipError;
-
-  if (membership.discount_amount && membership.discount_amount > 0) {
-    throw new Error('Cannot add free days to a membership that already has a discount applied');
-  }
-
-  // Add free days record
+  // Add free days record (no longer blocked by discounts — hospitality comp engine)
   const { data: freeDay, error: freeDayError } = await supabase
     .from('membership_free_days')
     .insert({

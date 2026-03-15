@@ -12,7 +12,7 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -30,6 +30,9 @@ import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
+import { CompGiftDrawer } from './CompGiftDrawer';
+import { DocumentVaultTab } from './DocumentVaultTab';
+import { printRegistrationForm } from './MemberRegistrationForm';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
@@ -435,6 +438,7 @@ export function MemberProfileDrawer({
   const [cancelOpen, setCancelOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [compGiftOpen, setCompGiftOpen] = useState(false);
 
   const toggleMemberStatus = async () => {
     if (!member?.id) return;
@@ -859,18 +863,41 @@ export function MemberProfileDrawer({
               {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
               {member.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+              <Gift className="h-4 w-4 mr-2" /> Comp/Gift
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+              const p = profile;
+              const ms = activeMembership;
+              printRegistrationForm({
+                memberName: p?.full_name || 'N/A',
+                memberCode: member.member_code,
+                email: p?.email, phone: p?.phone,
+                gender: p?.gender, dateOfBirth: p?.date_of_birth,
+                address: p?.address,
+                emergencyContactName: p?.emergency_contact_name,
+                emergencyContactPhone: p?.emergency_contact_phone,
+                planName: ms?.membership_plans?.name,
+                startDate: ms?.start_date, endDate: ms?.end_date,
+                pricePaid: ms?.price_paid,
+                branchName: memberDetails?.branch?.name,
+              });
+            }}>
+              <Printer className="h-4 w-4 mr-2" /> Print Form
+            </Button>
           </div>
 
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
+            <TabsList className="grid w-full grid-cols-9">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="membership">Plan</TabsTrigger>
               <TabsTrigger value="benefits">Benefits</TabsTrigger>
               <TabsTrigger value="measurements">Body</TabsTrigger>
               <TabsTrigger value="payments">Pay</TabsTrigger>
               <TabsTrigger value="rewards">Rewards</TabsTrigger>
+              <TabsTrigger value="documents">Docs</TabsTrigger>
               <TabsTrigger value="hardware">Access</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
             </TabsList>
@@ -1331,6 +1358,8 @@ export function MemberProfileDrawer({
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <DocumentVaultTab memberId={member.id} />
           </Tabs>
         </div>
 
@@ -1376,6 +1405,14 @@ export function MemberProfileDrawer({
           onOpenChange={setEditProfileOpen}
           member={member}
           profile={profile}
+        />
+        <CompGiftDrawer
+          open={compGiftOpen}
+          onOpenChange={setCompGiftOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+          membershipId={activeMembership?.id}
+          branchId={member.branch_id}
         />
       </SheetContent>
     </Sheet>

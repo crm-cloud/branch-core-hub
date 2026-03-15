@@ -5,16 +5,18 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   UserCheck, ShoppingCart, FileText, UserPlus, Clock, AlertTriangle,
-  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye
+  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { communicationService } from '@/services/communicationService';
 import { SmartAssistDrawer } from '@/components/retention/SmartAssistDrawer';
+import { ConvertMemberDrawer } from '@/components/leads/ConvertMemberDrawer';
 
 export default function StaffDashboard() {
   const { profile, user } = useAuth();
@@ -22,6 +24,7 @@ export default function StaffDashboard() {
   const todayStart = startOfDay(today).toISOString();
   const todayEnd = endOfDay(today).toISOString();
   const [smartAssistMember, setSmartAssistMember] = useState<any>(null);
+  const [convertLead, setConvertLead] = useState<any>(null);
 
   // Get staff's assigned branch
   const { data: staffBranch } = useQuery({
@@ -123,7 +126,7 @@ export default function StaffDashboard() {
     queryKey: ['recent-checkins', branchId],
     enabled: !!branchId,
     queryFn: async () => {
-      const { data, error } = await supabase.from('member_attendance').select(`id, check_in, member:members(member_code, user_id, profiles:user_id(full_name))`).eq('branch_id', branchId!).gte('check_in', todayStart).order('check_in', { ascending: false }).limit(5);
+      const { data, error } = await supabase.from('member_attendance').select(`id, check_in, member:members(member_code, user_id, profiles:user_id(full_name, avatar_url))`).eq('branch_id', branchId!).gte('check_in', todayStart).order('check_in', { ascending: false }).limit(5);
       if (error) throw error;
       return data || [];
     },
@@ -135,7 +138,7 @@ export default function StaffDashboard() {
     enabled: !!branchId,
     queryFn: async () => {
       const next3Days = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const { data, error } = await supabase.from('memberships').select(`id, end_date, member:members(member_code, user_id, profiles:user_id(full_name, phone))`).eq('branch_id', branchId!).eq('status', 'active').lte('end_date', next3Days).gte('end_date', today.toISOString().split('T')[0]).order('end_date', { ascending: true }).limit(5);
+      const { data, error } = await supabase.from('memberships').select(`id, end_date, member:members(member_code, user_id, profiles:user_id(full_name, phone, avatar_url))`).eq('branch_id', branchId!).eq('status', 'active').lte('end_date', next3Days).gte('end_date', today.toISOString().split('T')[0]).order('end_date', { ascending: true }).limit(5);
       if (error) throw error;
       return data || [];
     },
@@ -278,7 +281,10 @@ export default function StaffDashboard() {
                   {recentCheckins.map((checkin: any) => (
                     <div key={checkin.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        <CheckCircle className="h-5 w-5 text-emerald-500" />
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={checkin.member?.profiles?.avatar_url} />
+                          <AvatarFallback className="text-xs">{checkin.member?.profiles?.full_name?.charAt(0) || '?'}</AvatarFallback>
+                        </Avatar>
                         <div>
                           <p className="font-medium">{checkin.member?.profiles?.full_name || checkin.member?.member_code}</p>
                           <p className="text-sm text-muted-foreground">{checkin.member?.member_code}</p>
@@ -307,7 +313,16 @@ export default function StaffDashboard() {
                     const daysLeft = Math.ceil((new Date(membership.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                     return (
                       <div key={membership.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                        <div><p className="font-medium">{membership.member?.profiles?.full_name || membership.member?.member_code}</p><p className="text-sm text-muted-foreground">{membership.member?.profiles?.phone || 'No phone'}</p></div>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={membership.member?.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">{membership.member?.profiles?.full_name?.charAt(0) || '?'}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{membership.member?.profiles?.full_name || membership.member?.member_code}</p>
+                            <p className="text-sm text-muted-foreground">{membership.member?.profiles?.phone || 'No phone'}</p>
+                          </div>
+                        </div>
                         <Badge variant={daysLeft <= 1 ? 'destructive' : 'secondary'}>{daysLeft <= 0 ? 'Today' : `${daysLeft}d`}</Badge>
                       </div>
                     );
@@ -330,10 +345,15 @@ export default function StaffDashboard() {
                 <div className="space-y-3">
                   {followUpLeads.map((lead: any) => (
                     <div key={lead.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                      <div><p className="font-medium">{lead.full_name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
+                      <div className="flex-1 min-w-0"><p className="font-medium">{lead.full_name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Added: {format(new Date(lead.created_at), 'dd MMM')}</p>
                       </div>
-                      <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>{lead.status}</Badge>
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>{lead.status}</Badge>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setConvertLead(lead)}>
+                          <ArrowRightLeft className="h-3 w-3" /> Convert
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -371,6 +391,14 @@ export default function StaffDashboard() {
         member={smartAssistMember}
         branchId={branchId}
       />
+
+      {convertLead && (
+        <ConvertMemberDrawer
+          open={!!convertLead}
+          onOpenChange={(open) => !open && setConvertLead(null)}
+          lead={convertLead}
+        />
+      )}
     </AppLayout>
   );
 }

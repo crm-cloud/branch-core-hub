@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight } from "lucide-react";
+import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download } from "lucide-react";
+import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useGenerateFitnessPlan } from "@/hooks/usePTPackages";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchPlanTemplates, createPlanTemplate, FitnessPlanTemplate } from "@/services/fitnessService";
@@ -635,6 +636,7 @@ export default function AIFitnessPage() {
                           {saveTemplateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         </Button>
                         <Button size="sm" onClick={handleAssignGeneratedPlan} title="Assign"><UserPlus className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="sm" onClick={() => generatePlanPDF({ name: generatedPlan.name || 'Plan', type: planType, data: generatedPlan, description: generatedPlan.description, caloriesTarget: generatedPlan.caloriesTarget })} title="Download PDF"><Download className="h-4 w-4" /></Button>
                       </div>
                     )}
                   </div>

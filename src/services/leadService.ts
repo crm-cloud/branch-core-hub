@@ -127,8 +127,8 @@ export const leadService = {
       },
     });
 
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    if (error) throw new Error(`Lead conversion failed: ${error.message || JSON.stringify(error)}`);
+    if (data?.error) throw new Error(`Lead conversion failed: ${data.error}${data.details ? ' — ' + data.details : ''}`);
 
     // Update lead status to converted
     await supabase

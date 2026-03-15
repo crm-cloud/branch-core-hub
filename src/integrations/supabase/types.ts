@@ -5730,6 +5730,7 @@ export type Database = {
       get_inactive_members: {
         Args: { p_branch_id: string; p_days?: number; p_limit?: number }
         Returns: {
+          avatar_url: string
           days_absent: number
           email: string
           full_name: string
