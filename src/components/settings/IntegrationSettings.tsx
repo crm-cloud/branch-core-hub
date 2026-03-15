@@ -160,7 +160,26 @@ export function IntegrationSettings() {
                 Configure payment gateways with webhook support
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Webhook URL Info Box */}
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  <h4 className="font-semibold text-sm">Payment Webhook URL</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">Paste this URL in your payment gateway's webhook settings to receive real-time payment confirmations.</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/payment-webhook`}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/payment-webhook`);
+                    toast.success('Webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {PAYMENT_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('payment_gateway').find(
