@@ -126,7 +126,7 @@ export default function StaffDashboard() {
     queryKey: ['recent-checkins', branchId],
     enabled: !!branchId,
     queryFn: async () => {
-      const { data, error } = await supabase.from('member_attendance').select(`id, check_in, member:members(member_code, user_id, profiles:user_id(full_name))`).eq('branch_id', branchId!).gte('check_in', todayStart).order('check_in', { ascending: false }).limit(5);
+      const { data, error } = await supabase.from('member_attendance').select(`id, check_in, member:members(member_code, user_id, profiles:user_id(full_name, avatar_url))`).eq('branch_id', branchId!).gte('check_in', todayStart).order('check_in', { ascending: false }).limit(5);
       if (error) throw error;
       return data || [];
     },
