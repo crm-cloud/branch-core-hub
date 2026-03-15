@@ -84,15 +84,25 @@ export default function AttendanceDashboard() {
     searchInputRef.current?.focus();
   }, []);
 
+  // Staff search results for top bar
+  const [staffSearchResults, setStaffSearchResults] = useState<any[]>([]);
+
   // Auto-search with debounce
   useEffect(() => {
-    if (searchQuery.length >= 3) {
+    if (activeTab === 'staff-record' && searchQuery.length >= 2) {
+      const filtered = allStaffProfiles.filter((s: any) =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.code.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setStaffSearchResults(filtered);
+      setSearchResults([]);
+    } else if (searchQuery.length >= 3) {
       const timer = setTimeout(() => handleMemberSearch(), 300);
       return () => clearTimeout(timer);
     } else if (searchQuery.length === 0) {
       setSearchResults([]);
+      setStaffSearchResults([]);
     }
-  }, [searchQuery]);
+  }, [searchQuery, activeTab, allStaffProfiles]);
 
   const showFlash = useCallback((state: FlashState) => {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
