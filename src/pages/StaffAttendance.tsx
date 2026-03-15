@@ -3,14 +3,15 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Clock, UserCheck, UserMinus, Users, LogIn, LogOut, Shield } from 'lucide-react';
+import { Clock, UserCheck, UserMinus, Users, LogIn, LogOut, Shield, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function StaffAttendancePage() {
   const { effectiveBranchId: branchId } = useBranchContext();
