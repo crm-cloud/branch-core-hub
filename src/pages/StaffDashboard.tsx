@@ -181,6 +181,9 @@ export default function StaffDashboard() {
                             </Button>
                           </>
                         )}
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSmartAssistMember(member)}>
+                          <Eye className="h-4 w-4 text-primary" />
+                        </Button>
                       </div>
                     </div>
                   ))}
