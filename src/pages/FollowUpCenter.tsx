@@ -114,18 +114,38 @@ export default function FollowUpCenter() {
     },
   });
 
-  // ---- INACTIVE MEMBERS ----
+  // ---- INACTIVE MEMBERS (21+ days — post-automation escalation) ----
   const { data: inactiveMembers = [] } = useQuery({
     queryKey: ['followup-inactive', branchId],
     enabled: !!branchId,
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_inactive_members', {
         p_branch_id: branchId!,
-        p_days: 7,
+        p_days: 21,
         p_limit: 50,
       });
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Fetch nudge counts for inactive members
+  const { data: inactiveNudgeCounts = {} } = useQuery({
+    queryKey: ['followup-nudge-counts', branchId],
+    enabled: !!branchId && inactiveMembers.length > 0,
+    queryFn: async () => {
+      const memberIds = inactiveMembers.map((m: any) => m.member_id);
+      const { data, error } = await supabase
+        .from('retention_nudge_logs')
+        .select('member_id, stage_level')
+        .in('member_id', memberIds)
+        .gt('stage_level', 0);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const log of data || []) {
+        counts[log.member_id] = Math.max(counts[log.member_id] || 0, log.stage_level);
+      }
+      return counts;
     },
   });
 
@@ -359,42 +379,50 @@ export default function FollowUpCenter() {
             </Card>
           </TabsContent>
 
-          {/* INACTIVE TAB */}
+          {/* INACTIVE TAB — Day 21+ Escalation */}
           <TabsContent value="inactive">
             <Card className="rounded-2xl">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-orange-500" />Inactive Members (7+ Days)</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-orange-500" />Requires Follow-Up (21+ Days Absent)</CardTitle>
               </CardHeader>
               <CardContent>
                 {inactiveMembers.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">All members are active! 🎉</p>
+                  <p className="text-muted-foreground text-center py-8">No members past the automated sequence! 🎉</p>
                 ) : (
                   <div className="space-y-3">
-                    {inactiveMembers.map((member: any) => (
-                      <div key={member.member_id} className="flex items-center justify-between p-4 bg-muted/50 rounded-xl border">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium">{member.full_name}</p>
-                          <p className="text-sm text-muted-foreground">{member.phone || 'No phone'} • {member.member_code}</p>
-                          <p className="text-xs text-destructive mt-0.5">
-                            {member.last_visit ? `Last visit: ${format(new Date(member.last_visit), 'dd MMM')} (${member.days_absent}d ago)` : 'Never visited'}
-                          </p>
+                    {inactiveMembers.map((member: any) => {
+                      const nudgeMax = (inactiveNudgeCounts as any)[member.member_id] || 0;
+                      return (
+                        <div key={member.member_id} className="flex items-center justify-between p-4 bg-destructive/5 rounded-xl border border-destructive/10">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium">{member.full_name}</p>
+                            <p className="text-sm text-muted-foreground">{member.phone || 'No phone'} • {member.member_code}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-xs text-destructive font-medium">
+                                {member.last_visit ? `Last visit: ${format(new Date(member.last_visit), 'dd MMM')} (${member.days_absent}d ago)` : 'Never visited'}
+                              </span>
+                              <Badge variant="secondary" className="text-xs">
+                                Nudges: {Math.min(nudgeMax, 3)}/3
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="destructive">{member.days_absent || '∞'}d</Badge>
+                            {member.phone && (
+                              <>
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => window.open(`tel:${member.phone}`)}>
+                                  <PhoneCall className="h-4 w-4 text-sky-500" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-8 w-8"
+                                  onClick={() => communicationService.sendWhatsApp(member.phone, `Hi ${member.full_name}, we miss you at the gym! Come visit us today.`)}>
+                                  <MessageSquare className="h-4 w-4 text-emerald-500" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="destructive">{member.days_absent || '∞'}d</Badge>
-                          {member.phone && (
-                            <>
-                              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => window.open(`tel:${member.phone}`)}>
-                                <PhoneCall className="h-4 w-4 text-sky-500" />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-8 w-8"
-                                onClick={() => communicationService.sendWhatsApp(member.phone, `Hi ${member.full_name}, we miss you at the gym! Come visit us today.`)}>
-                                <MessageSquare className="h-4 w-4 text-emerald-500" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>

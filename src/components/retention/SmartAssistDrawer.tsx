@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
 import { communicationService } from '@/services/communicationService';
-import { MessageSquare, Clock, CheckCircle2, UserX, Send, Target } from 'lucide-react';
+import { MessageSquare, Clock, CheckCircle2, UserX, Send, Target, Mail, Phone, Dumbbell, CalendarX } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface SmartAssistDrawerProps {
@@ -47,16 +47,22 @@ const MANUAL_TEMPLATES = [
 ];
 
 const RESOLUTIONS = [
+  'Left Voicemail',
   'Left Message',
+  'Offered Freeze',
   'Frozen Account',
+  'Coming Back Tomorrow',
   'Returning Tomorrow',
   'Not Interested',
   'Cancelled',
 ];
 
+type ChannelType = 'whatsapp' | 'sms' | 'email';
+
 export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: SmartAssistDrawerProps) {
   const queryClient = useQueryClient();
   const [selectedTemplate, setSelectedTemplate] = useState('personal');
+  const [selectedChannel, setSelectedChannel] = useState<ChannelType>('whatsapp');
   const [resolution, setResolution] = useState<string>('');
   const [sending, setSending] = useState(false);
 
@@ -76,33 +82,70 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
     },
   });
 
-  const handleSendWhatsApp = async () => {
-    if (!member?.phone) {
-      toast({ title: 'No phone number', description: 'This member has no phone on file.', variant: 'destructive' });
-      return;
-    }
+  // Fetch member fitness goals
+  const { data: memberDetails } = useQuery({
+    queryKey: ['member-details', member?.member_id],
+    enabled: !!member?.member_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('fitness_goals')
+        .eq('id', member!.member_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const handleSendMessage = async () => {
     const tmpl = MANUAL_TEMPLATES.find(t => t.id === selectedTemplate);
     if (!tmpl) return;
 
-    const message = tmpl.message.replace(/{member_name}/g, member.full_name || 'there');
+    const message = tmpl.message.replace(/{member_name}/g, member?.full_name || 'there');
     setSending(true);
+
     try {
-      await communicationService.sendWhatsApp(member.phone, message, {
-        branchId,
-        memberId: member.member_id,
-      });
+      if (selectedChannel === 'whatsapp') {
+        if (!member?.phone) {
+          toast({ title: 'No phone number', description: 'This member has no phone on file.', variant: 'destructive' });
+          setSending(false);
+          return;
+        }
+        await communicationService.sendWhatsApp(member.phone, message, {
+          branchId,
+          memberId: member.member_id,
+        });
+      } else if (selectedChannel === 'sms') {
+        if (!member?.phone) {
+          toast({ title: 'No phone number', variant: 'destructive' });
+          setSending(false);
+          return;
+        }
+        window.open(`sms:${member.phone}?body=${encodeURIComponent(message)}`, '_blank');
+      } else if (selectedChannel === 'email') {
+        if (!member?.email) {
+          toast({ title: 'No email address', variant: 'destructive' });
+          setSending(false);
+          return;
+        }
+        const subject = encodeURIComponent('We miss you at the gym!');
+        window.open(`mailto:${member.email}?subject=${subject}&body=${encodeURIComponent(message)}`, '_blank');
+      }
 
       // Log nudge
       if (branchId) {
         await supabase.from('retention_nudge_logs').insert({
-          member_id: member.member_id,
+          member_id: member!.member_id,
           branch_id: branchId,
           stage_level: 0, // manual
-          channel: 'whatsapp',
+          channel: selectedChannel,
           status: 'sent',
+          message_content: message,
         });
       }
-      toast({ title: 'Message sent', description: 'WhatsApp opened with the message.' });
+
+      const channelLabel = selectedChannel.charAt(0).toUpperCase() + selectedChannel.slice(1);
+      toast({ title: 'Message sent', description: `${channelLabel} message initiated.` });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -113,7 +156,6 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
   const handleResolve = async () => {
     if (!resolution || !member?.member_id) return;
     try {
-      // Find unresolved nudge logs and resolve them
       const { data: unresolvedLogs } = await supabase
         .from('retention_nudge_logs')
         .select('id')
@@ -127,7 +169,6 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
           .eq('member_id', member.member_id)
           .is('resolved_at', null);
       } else {
-        // Create a resolution-only log
         if (branchId) {
           await supabase.from('retention_nudge_logs').insert({
             member_id: member.member_id,
@@ -158,6 +199,7 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
     .toUpperCase() || '??';
 
   const automatedNudgesSent = nudgeHistory.filter((n: any) => n.stage_level > 0).length;
+  const fitnessGoal = memberDetails?.fitness_goals;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -181,16 +223,38 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-lg truncate">{member.full_name}</p>
                 <p className="text-sm text-muted-foreground">{member.phone || 'No phone'}</p>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge variant="destructive" className="text-xs">
                     <UserX className="h-3 w-3 mr-1" />
                     {member.days_absent}d absent
                   </Badge>
                   {automatedNudgesSent > 0 && (
                     <Badge variant="secondary" className="text-xs">
-                      Nudges: {automatedNudgesSent}/3
+                      Nudges: {Math.min(automatedNudgesSent, 3)}/3
                     </Badge>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Fitness Goal & Last Visit */}
+            <div className="grid grid-cols-2 gap-3">
+              {fitnessGoal && (
+                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl">
+                  <Dumbbell className="h-4 w-4 text-primary shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Fitness Goal</p>
+                    <p className="text-sm font-medium truncate">{fitnessGoal}</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl">
+                <CalendarX className="h-4 w-4 text-destructive shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Last Visit</p>
+                  <p className="text-sm font-medium">
+                    {member.last_visit ? format(new Date(member.last_visit), 'dd MMM yyyy') : 'Never'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -236,11 +300,35 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
               <Label className="text-sm font-semibold flex items-center gap-1.5 mb-3">
                 <MessageSquare className="h-4 w-4" /> Send Manual Motivation
               </Label>
+
+              {/* Channel Selector */}
+              <div className="flex gap-2 mb-3">
+                {[
+                  { id: 'whatsapp' as ChannelType, label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
+                  { id: 'sms' as ChannelType, label: 'SMS', icon: Phone, color: 'text-sky-500' },
+                  { id: 'email' as ChannelType, label: 'Email', icon: Mail, color: 'text-primary' },
+                ].map(ch => {
+                  const ChIcon = ch.icon;
+                  return (
+                    <Button
+                      key={ch.id}
+                      variant={selectedChannel === ch.id ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedChannel(ch.id)}
+                      className="flex-1"
+                    >
+                      <ChIcon className={`h-3.5 w-3.5 mr-1.5 ${selectedChannel === ch.id ? '' : ch.color}`} />
+                      {ch.label}
+                    </Button>
+                  );
+                })}
+              </div>
+
               <RadioGroup value={selectedTemplate} onValueChange={setSelectedTemplate} className="space-y-2">
                 {MANUAL_TEMPLATES.map(tmpl => (
                   <div key={tmpl.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${selectedTemplate === tmpl.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'}`}>
-                    <RadioGroupItem value={tmpl.id} id={tmpl.id} className="mt-0.5" />
-                    <label htmlFor={tmpl.id} className="cursor-pointer flex-1">
+                    <RadioGroupItem value={tmpl.id} id={`tmpl-${tmpl.id}`} className="mt-0.5" />
+                    <label htmlFor={`tmpl-${tmpl.id}`} className="cursor-pointer flex-1">
                       <p className="font-medium text-sm">{tmpl.label}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                         {tmpl.message.replace(/{member_name}/g, member.full_name || 'Member')}
@@ -252,11 +340,11 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
 
               <Button
                 className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white"
-                disabled={sending || !member.phone}
-                onClick={handleSendWhatsApp}
+                disabled={sending}
+                onClick={handleSendMessage}
               >
                 <Send className="h-4 w-4 mr-2" />
-                Send WhatsApp Message
+                Send {selectedChannel === 'whatsapp' ? 'WhatsApp' : selectedChannel === 'sms' ? 'SMS' : 'Email'} Message
               </Button>
             </div>
 

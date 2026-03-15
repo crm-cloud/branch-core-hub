@@ -58,20 +58,43 @@ export default function StaffDashboard() {
     },
   });
 
-  // Inactive members (no visit in 7+ days)
+  // Inactive members (no visit in 5+ days to capture full sequence)
   const { data: inactiveMembers = [] } = useQuery({
     queryKey: ['inactive-members', branchId],
     enabled: !!branchId,
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_inactive_members', {
         p_branch_id: branchId!,
-        p_days: 7,
-        p_limit: 10,
+        p_days: 5,
+        p_limit: 50,
       });
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Fetch nudge counts per member
+  const { data: nudgeCounts = {} } = useQuery({
+    queryKey: ['nudge-counts', branchId],
+    enabled: !!branchId && inactiveMembers.length > 0,
+    queryFn: async () => {
+      const memberIds = inactiveMembers.map((m: any) => m.member_id);
+      const { data, error } = await supabase
+        .from('retention_nudge_logs')
+        .select('member_id, stage_level')
+        .in('member_id', memberIds)
+        .gt('stage_level', 0);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const log of data || []) {
+        counts[log.member_id] = Math.max(counts[log.member_id] || 0, log.stage_level);
+      }
+      return counts;
+    },
+  });
+
+  const inSequenceMembers = inactiveMembers.filter((m: any) => (m.days_absent || 0) < 21);
+  const escalationMembers = inactiveMembers.filter((m: any) => (m.days_absent || 0) >= 21);
 
   // Fetch pending tasks assigned to staff
   const { data: pendingTasks = [] } = useQuery({
@@ -152,42 +175,91 @@ export default function StaffDashboard() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <UserX className="h-5 w-5 text-destructive" />
-                Inactive Members (7+ days)
+                At-Risk Members
               </CardTitle>
               <Badge variant="destructive" className="rounded-full">{inactiveMembers.length}</Badge>
             </CardHeader>
-            <CardContent>
-              {inactiveMembers.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">All members are active! 🎉</p>
-              ) : (
-                <div className="space-y-3">
-                  {inactiveMembers.map((member: any) => (
-                    <div key={member.member_id} className="flex items-center justify-between p-3 bg-destructive/5 rounded-xl border border-destructive/10">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{member.full_name}</p>
-                        <p className="text-sm text-muted-foreground">{member.phone || 'No phone'}</p>
-                        <p className="text-xs text-destructive mt-0.5">
-                          {member.last_visit ? `Last visit: ${format(new Date(member.last_visit), 'dd MMM')} (${member.days_absent}d ago)` : 'Never visited'}
-                        </p>
-                      </div>
-                      <div className="flex gap-1 ml-2">
-                        {member.phone && (
-                          <>
-                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => window.open(`tel:${member.phone}`)}>
-                              <PhoneCall className="h-4 w-4 text-sky-500" />
+            <CardContent className="space-y-4">
+              {/* Day 21+ Escalation — Requires Follow-Up */}
+              {escalationMembers.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="destructive" className="text-xs">🔥 Requires Follow-Up</Badge>
+                    <span className="text-xs text-muted-foreground">({escalationMembers.length})</span>
+                  </div>
+                  <div className="space-y-3">
+                    {escalationMembers.map((member: any) => {
+                      const nudgeMax = (nudgeCounts as any)[member.member_id] || 0;
+                      return (
+                        <div key={member.member_id} className="flex items-center justify-between p-3 bg-destructive/10 rounded-xl border border-destructive/20">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{member.full_name}</p>
+                            <p className="text-sm text-muted-foreground">{member.phone || 'No phone'}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-xs text-destructive font-medium">
+                                {member.last_visit ? `Last: ${format(new Date(member.last_visit), 'dd MMM')} (${member.days_absent}d)` : 'Never visited'}
+                              </span>
+                              <Badge variant="secondary" className="text-xs">
+                                Nudges: {Math.min(nudgeMax, 3)}/3
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 ml-2">
+                            {member.phone && (
+                              <>
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => window.open(`tel:${member.phone}`)}>
+                                  <PhoneCall className="h-4 w-4 text-sky-500" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => communicationService.sendWhatsApp(member.phone, `Hi ${member.full_name}, we miss you at the gym! Come visit us today.`)}>
+                                  <MessageSquare className="h-4 w-4 text-emerald-500" />
+                                </Button>
+                              </>
+                            )}
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSmartAssistMember(member)}>
+                              <Eye className="h-4 w-4 text-primary" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => communicationService.sendWhatsApp(member.phone, `Hi ${member.full_name}, we miss you at the gym! Come visit us today.`)}>
-                              <MessageSquare className="h-4 w-4 text-emerald-500" />
-                            </Button>
-                          </>
-                        )}
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSmartAssistMember(member)}>
-                          <Eye className="h-4 w-4 text-primary" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
+
+              {/* In Sequence (5-20 days) */}
+              {inSequenceMembers.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-xs">In Sequence</Badge>
+                    <span className="text-xs text-muted-foreground">({inSequenceMembers.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {inSequenceMembers.slice(0, 5).map((member: any) => {
+                      const nudgeMax = (nudgeCounts as any)[member.member_id] || 0;
+                      return (
+                        <div key={member.member_id} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-xl border">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{member.full_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {member.days_absent}d absent
+                              {nudgeMax > 0 && <span className="ml-1.5">• {nudgeMax}/3 nudges</span>}
+                            </p>
+                          </div>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSmartAssistMember(member)}>
+                            <Eye className="h-3.5 w-3.5 text-primary" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    {inSequenceMembers.length > 5 && (
+                      <p className="text-xs text-center text-muted-foreground pt-1">+{inSequenceMembers.length - 5} more in sequence</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {inactiveMembers.length === 0 && (
+                <p className="text-muted-foreground text-center py-8">All members are active! 🎉</p>
               )}
             </CardContent>
           </Card>

@@ -4639,6 +4639,7 @@ export type Database = {
           created_at: string
           id: string
           member_id: string
+          message_content: string | null
           resolution: string | null
           resolved_at: string | null
           sent_at: string
@@ -4652,6 +4653,7 @@ export type Database = {
           created_at?: string
           id?: string
           member_id: string
+          message_content?: string | null
           resolution?: string | null
           resolved_at?: string | null
           sent_at?: string
@@ -4665,6 +4667,7 @@ export type Database = {
           created_at?: string
           id?: string
           member_id?: string
+          message_content?: string | null
           resolution?: string | null
           resolved_at?: string | null
           sent_at?: string
@@ -4699,6 +4702,7 @@ export type Database = {
       retention_templates: {
         Row: {
           branch_id: string | null
+          channels: string[] | null
           created_at: string
           days_trigger: number
           id: string
@@ -4710,6 +4714,7 @@ export type Database = {
         }
         Insert: {
           branch_id?: string | null
+          channels?: string[] | null
           created_at?: string
           days_trigger: number
           id?: string
@@ -4721,6 +4726,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string | null
+          channels?: string[] | null
           created_at?: string
           days_trigger?: number
           id?: string

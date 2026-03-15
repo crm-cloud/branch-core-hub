@@ -159,13 +159,13 @@ Deno.serve(async (req) => {
       results.benefit_reminders++;
     }
 
-    // 7. Inactive member alerts (no visit in 7+ days)
+    // 7. Inactive member alerts — only notify STAFF for Day 21+ members (automated nudges handle earlier stages)
     try {
       const { data: branches } = await adminClient.from("branches").select("id").eq("is_active", true);
       for (const branch of branches || []) {
         const { data: inactiveMembers } = await adminClient.rpc("get_inactive_members", {
           p_branch_id: branch.id,
-          p_days: 7,
+          p_days: 21,
           p_limit: 20,
         });
 
@@ -175,25 +175,20 @@ Deno.serve(async (req) => {
             .eq("category", "retention").ilike("message", `%${member.member_code}%`).gte("created_at", today + "T00:00:00");
           if ((count || 0) > 0) continue;
 
-          // Notify admin/staff about inactive member
+          // Check if member has received 3 automated nudges
+          const { count: nudgeCount } = await adminClient.from("retention_nudge_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("member_id", member.member_id)
+            .gt("stage_level", 0);
+
+          // Only notify staff — no more generic "We miss you" to members
           const { data: staffUsers } = await adminClient.from("user_roles").select("user_id").in("role", ["owner", "admin", "staff"]);
           for (const staff of staffUsers || []) {
             notifications.push({
               user_id: staff.user_id, branch_id: branch.id,
-              title: "Inactive Member Alert",
-              message: `${member.full_name} (${member.member_code}) hasn't visited in ${member.days_absent || '7+'} days. Consider reaching out for retention.`,
+              title: "⚠️ Warm Follow-Up Needed",
+              message: `${member.full_name} (${member.member_code}) has been absent ${member.days_absent || '21+'}d. Automated nudges: ${Math.min(nudgeCount || 0, 3)}/3. Please call.`,
               type: "warning", category: "retention",
-            });
-          }
-
-          // Notify the member themselves
-          const { data: memberRow } = await adminClient.from("members").select("user_id").eq("id", member.member_id).single();
-          if (memberRow?.user_id) {
-            notifications.push({
-              user_id: memberRow.user_id, branch_id: branch.id,
-              title: "We Miss You! 💪",
-              message: `Hi ${member.full_name}, we haven't seen you in a while! Come visit the gym today and keep your fitness goals on track.`,
-              type: "info", category: "retention", action_url: "/member/dashboard",
             });
           }
 
