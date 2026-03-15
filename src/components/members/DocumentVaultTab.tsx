@@ -33,8 +33,8 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
     queryKey: ['member-documents', memberId],
     enabled: !!memberId,
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from('member_documents') as any)
+      const { data, error } = await (supabase as any)
+        .from('member_documents')
         .select('*')
         .eq('member_id', memberId)
         .order('created_at', { ascending: false });
