@@ -392,7 +392,7 @@ export default function StaffDashboard() {
         branchId={branchId}
       />
 
-      {convertLead && branchId && (
+      {convertLead && (
         <ConvertMemberDrawer
           open={!!convertLead}
           onOpenChange={(open) => !open && setConvertLead(null)}
