@@ -94,7 +94,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
       if (!sessions || sessions <= 0) throw new Error('Enter valid sessions');
 
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('member_comps').insert({
+      const { error } = await (supabase.from('member_comps') as any).insert({
         member_id: memberId,
         membership_id: membershipId || null,
         benefit_type_id: compBenefitTypeId,
