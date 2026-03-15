@@ -138,7 +138,7 @@ export default function StaffDashboard() {
     enabled: !!branchId,
     queryFn: async () => {
       const next3Days = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const { data, error } = await supabase.from('memberships').select(`id, end_date, member:members(member_code, user_id, profiles:user_id(full_name, phone))`).eq('branch_id', branchId!).eq('status', 'active').lte('end_date', next3Days).gte('end_date', today.toISOString().split('T')[0]).order('end_date', { ascending: true }).limit(5);
+      const { data, error } = await supabase.from('memberships').select(`id, end_date, member:members(member_code, user_id, profiles:user_id(full_name, phone, avatar_url))`).eq('branch_id', branchId!).eq('status', 'active').lte('end_date', next3Days).gte('end_date', today.toISOString().split('T')[0]).order('end_date', { ascending: true }).limit(5);
       if (error) throw error;
       return data || [];
     },
