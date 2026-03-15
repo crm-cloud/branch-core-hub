@@ -89,7 +89,7 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
     queryFn: async () => {
       const { data, error } = await supabase
         .from('members')
-        .select('fitness_goals, joined_date')
+        .select('fitness_goals')
         .eq('id', member!.member_id)
         .maybeSingle();
       if (error) throw error;
