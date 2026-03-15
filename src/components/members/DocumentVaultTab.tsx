@@ -60,7 +60,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
       const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error: insertError } = await supabase.from('member_documents').insert({
+      const { error: insertError } = await (supabase.from('member_documents') as any).insert({
         member_id: memberId,
         document_type: docType,
         file_url: urlData.publicUrl,
