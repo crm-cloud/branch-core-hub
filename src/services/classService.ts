@@ -207,18 +207,18 @@ export async function fetchClassBookings(
     .map((b) => (b.member as any)?.user_id)
     .filter((id): id is string => !!id);
 
-  let profilesMap: Record<string, { full_name: string | null; phone: string | null }> = {};
+  let profilesMap: Record<string, { full_name: string | null; phone: string | null; avatar_url: string | null }> = {};
 
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, phone")
+      .select("id, full_name, phone, avatar_url")
       .in("id", userIds);
 
     profilesMap = (profiles || []).reduce((acc, p) => {
-      acc[p.id] = { full_name: p.full_name, phone: p.phone };
+      acc[p.id] = { full_name: p.full_name, phone: p.phone, avatar_url: p.avatar_url };
       return acc;
-    }, {} as Record<string, { full_name: string | null; phone: string | null }>);
+    }, {} as Record<string, { full_name: string | null; phone: string | null; avatar_url: string | null }>);
   }
 
   return bookings.map((b) => {
@@ -229,6 +229,7 @@ export async function fetchClassBookings(
       member,
       member_name: profile?.full_name || member?.member_code || "Unknown",
       member_phone: profile?.phone || null,
+      member_avatar: profile?.avatar_url || null,
     };
   });
 }

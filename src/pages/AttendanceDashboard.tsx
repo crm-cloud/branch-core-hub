@@ -830,7 +830,10 @@ export default function AttendanceDashboard() {
                       <Card key={s.userId} className="border">
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10"><AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">{getInitials(s.name)}</AvatarFallback></Avatar>
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={allStaffProfiles.find((sp: any) => sp.user_id === s.userId)?.avatar_url} />
+                              <AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">{getInitials(s.name)}</AvatarFallback>
+                            </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="font-medium truncate">{s.name}</p>
                               <p className="text-xs text-muted-foreground truncate">{s.email}</p>
