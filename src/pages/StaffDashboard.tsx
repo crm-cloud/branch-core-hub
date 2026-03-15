@@ -292,6 +292,13 @@ export default function StaffDashboard() {
           </Card>
         </div>
       </div>
+
+      <SmartAssistDrawer
+        open={!!smartAssistMember}
+        onOpenChange={(open) => !open && setSmartAssistMember(null)}
+        member={smartAssistMember}
+        branchId={branchId}
+      />
     </AppLayout>
   );
 }
