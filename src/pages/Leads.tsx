@@ -11,9 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Plus, UserPlus, Phone, Mail, MessageSquare, Calendar, ArrowRight, History, 
-  Search, LayoutGrid, List, ChevronLeft, ChevronRight, Filter, X, Users, TrendingUp, Target
+  Search, LayoutGrid, List, ChevronLeft, ChevronRight, Filter, X, Users, TrendingUp, Target, Download
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { exportToCSV } from '@/lib/csvExport';
 import { leadService } from '@/services/leadService';
 import { communicationService } from '@/services/communicationService';
 import { toast } from 'sonner';
