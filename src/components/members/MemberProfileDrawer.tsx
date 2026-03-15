@@ -12,7 +12,7 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
