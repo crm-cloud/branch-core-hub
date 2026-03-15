@@ -345,10 +345,15 @@ export default function StaffDashboard() {
                 <div className="space-y-3">
                   {followUpLeads.map((lead: any) => (
                     <div key={lead.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                      <div><p className="font-medium">{lead.full_name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
+                      <div className="flex-1 min-w-0"><p className="font-medium">{lead.full_name}</p><p className="text-sm text-muted-foreground">{lead.phone || 'No phone'} • {lead.source || 'Unknown'}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">Added: {format(new Date(lead.created_at), 'dd MMM')}</p>
                       </div>
-                      <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>{lead.status}</Badge>
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <Badge variant={lead.status === 'new' ? 'default' : 'secondary'}>{lead.status}</Badge>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setConvertLead(lead)}>
+                          <ArrowRightLeft className="h-3 w-3" /> Convert
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
