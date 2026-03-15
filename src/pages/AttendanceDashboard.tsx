@@ -211,6 +211,18 @@ export default function AttendanceDashboard() {
     },
   });
 
+  // Staff search from top bar (after allStaffProfiles is available)
+  useEffect(() => {
+    if (activeTab === 'staff-record' && searchQuery.length >= 2) {
+      const filtered = allStaffProfiles.filter((s: any) =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.code.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setStaffSearchResults(filtered);
+    } else if (activeTab === 'staff-record' && searchQuery.length === 0) {
+      setStaffSearchResults([]);
+    }
+  }, [searchQuery, activeTab, allStaffProfiles]);
+
   // History data
   const { data: historyData = [] } = useQuery({
     queryKey: ['staff-attendance-history', branchFilter, historyMonth],
