@@ -313,7 +313,16 @@ export default function StaffDashboard() {
                     const daysLeft = Math.ceil((new Date(membership.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                     return (
                       <div key={membership.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-xl">
-                        <div><p className="font-medium">{membership.member?.profiles?.full_name || membership.member?.member_code}</p><p className="text-sm text-muted-foreground">{membership.member?.profiles?.phone || 'No phone'}</p></div>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={membership.member?.profiles?.avatar_url} />
+                            <AvatarFallback className="text-xs">{membership.member?.profiles?.full_name?.charAt(0) || '?'}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{membership.member?.profiles?.full_name || membership.member?.member_code}</p>
+                            <p className="text-sm text-muted-foreground">{membership.member?.profiles?.phone || 'No phone'}</p>
+                          </div>
+                        </div>
                         <Badge variant={daysLeft <= 1 ? 'destructive' : 'secondary'}>{daysLeft <= 0 ? 'Today' : `${daysLeft}d`}</Badge>
                       </div>
                     );
