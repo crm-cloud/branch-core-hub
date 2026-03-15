@@ -17,10 +17,11 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   Search, Plus, Users, UserCheck, UserX, CreditCard, Dumbbell, 
   Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Download
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { exportToCSV } from '@/lib/csvExport';
 
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useState, useMemo } from 'react';
