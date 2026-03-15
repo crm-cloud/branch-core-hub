@@ -391,6 +391,15 @@ export default function StaffDashboard() {
         member={smartAssistMember}
         branchId={branchId}
       />
+
+      {convertLead && branchId && (
+        <ConvertMemberDrawer
+          open={!!convertLead}
+          onOpenChange={(open) => !open && setConvertLead(null)}
+          lead={convertLead}
+          branchId={branchId}
+        />
+      )}
     </AppLayout>
   );
 }
