@@ -81,7 +81,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
-      const { error } = await (supabase.from('member_documents') as any).delete().eq('id', docId);
+      const { error } = await (supabase as any).from('member_documents').delete().eq('id', docId);
       if (error) throw error;
     },
     onSuccess: () => {
