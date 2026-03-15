@@ -509,7 +509,7 @@ export default function AttendanceDashboard() {
           </div>
         )}
 
-        {searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
+        {activeTab !== 'staff-record' && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
           <div className="text-center py-6 text-muted-foreground">
             <Search className="h-8 w-8 mx-auto opacity-30 mb-1" />
             <p className="text-sm">No members found for "{searchQuery}"</p>
