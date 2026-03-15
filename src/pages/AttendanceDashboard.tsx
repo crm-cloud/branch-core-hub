@@ -48,6 +48,7 @@ export default function AttendanceDashboard() {
 
   // Dashboard state
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('members');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [forceEntryOpen, setForceEntryOpen] = useState(false);
   const [forceEntrySearch, setForceEntrySearch] = useState('');
