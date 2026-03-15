@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLockers } from '@/hooks/useLockers';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Lock, Plus, User, Key, Package, MapPin, Grid3x3, List, Wrench, AlertTriangle, Search } from 'lucide-react';
+import { Lock, Plus, User, Key, Package, MapPin, Grid3x3, List, Wrench, AlertTriangle, Search, Download } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import { BulkCreateLockersDrawer } from '@/components/lockers/BulkCreateLockersD
 import { AssignLockerDrawer } from '@/components/lockers/AssignLockerDrawer';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { exportToCSV } from '@/lib/csvExport';
 
 const createLockerSchema = z.object({
   locker_number: z.string().min(1, 'Locker number required'),
@@ -206,6 +207,22 @@ export default function LockersPage() {
           </div>
           {!roles?.some((r: any) => ['staff'].includes(typeof r === 'string' ? r : r?.role)) && (
             <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                const rows = (lockers.data || []).map((l: any) => {
+                  const assignment = l.locker_assignments?.find((a: any) => a.is_active);
+                  const member = assignment ? memberProfiles[assignment.member_id] : null;
+                  return {
+                    'Locker #': l.locker_number,
+                    Size: l.size || '',
+                    Status: l.status,
+                    'Assigned To': member?.full_name || '',
+                    'Member Code': member?.member_code || '',
+                  };
+                });
+                exportToCSV(rows, 'lockers');
+              }}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
               <Button variant="outline" onClick={() => setIsBulkCreateOpen(true)} className="gap-2 rounded-xl">
                 <Package className="w-4 h-4" />
                 Bulk Create

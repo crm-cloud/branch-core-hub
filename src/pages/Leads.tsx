@@ -11,9 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Plus, UserPlus, Phone, Mail, MessageSquare, Calendar, ArrowRight, History, 
-  Search, LayoutGrid, List, ChevronLeft, ChevronRight, Filter, X, Users, TrendingUp, Target
+  Search, LayoutGrid, List, ChevronLeft, ChevronRight, Filter, X, Users, TrendingUp, Target, Download
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { exportToCSV } from '@/lib/csvExport';
 import { leadService } from '@/services/leadService';
 import { communicationService } from '@/services/communicationService';
 import { toast } from 'sonner';
@@ -152,6 +153,20 @@ export default function LeadsPage() {
             <Button onClick={() => setShowAddDrawer(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
               <Plus className="h-4 w-4" />
               Add Lead
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => {
+              const rows = filteredLeads.map((l: any) => ({
+                Name: l.full_name || '',
+                Phone: l.phone || '',
+                Email: l.email || '',
+                Source: l.source || 'Direct',
+                Status: l.status || '',
+                'Created At': l.created_at ? format(new Date(l.created_at), 'yyyy-MM-dd') : '',
+                Notes: l.notes || '',
+              }));
+              exportToCSV(rows, 'leads');
+            }}>
+              <Download className="h-4 w-4" /> Export
             </Button>
           </div>
         </div>

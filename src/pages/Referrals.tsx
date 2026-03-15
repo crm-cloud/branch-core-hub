@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Gift, Users, Wallet, Copy, Check, Plus } from 'lucide-react';
+import { Gift, Users, Wallet, Copy, Check, Plus, Download } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { claimReward } from '@/services/referralService';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function ReferralsPage() {
   const { user } = useAuth();
@@ -131,10 +132,24 @@ export default function ReferralsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Referrals & Rewards</h1>
-          <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Referral
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              const rows = referrals.map((r: any) => ({
+                Code: r.referral_code || '',
+                Referrer: r.referrer?.profiles?.full_name || '',
+                'Referred Name': r.referred_name || '',
+                'Referred Phone': r.referred_phone || '',
+                Status: r.status || '',
+              }));
+              exportToCSV(rows, 'referrals');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Referral
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">

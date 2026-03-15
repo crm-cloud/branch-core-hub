@@ -16,8 +16,9 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { toast } from 'sonner';
 
@@ -47,6 +48,7 @@ export default function AttendanceDashboard() {
 
   // Dashboard state
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('members');
   const [dateFilter, setDateFilter] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [forceEntryOpen, setForceEntryOpen] = useState(false);
   const [forceEntrySearch, setForceEntrySearch] = useState('');
@@ -82,15 +84,23 @@ export default function AttendanceDashboard() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Auto-search with debounce
+  // Staff search results for top bar
+  const [staffSearchResults, setStaffSearchResults] = useState<any[]>([]);
+
+  // Auto-search with debounce (member search only — staff search moved after allStaffProfiles)
   useEffect(() => {
+    if (activeTab === 'staff-record') {
+      setSearchResults([]);
+      return;
+    }
     if (searchQuery.length >= 3) {
       const timer = setTimeout(() => handleMemberSearch(), 300);
       return () => clearTimeout(timer);
     } else if (searchQuery.length === 0) {
       setSearchResults([]);
+      setStaffSearchResults([]);
     }
-  }, [searchQuery]);
+  }, [searchQuery, activeTab]);
 
   const showFlash = useCallback((state: FlashState) => {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
@@ -163,7 +173,7 @@ export default function AttendanceDashboard() {
       const end = endOfDay(new Date(dateFilter)).toISOString();
       let query = supabase
         .from('staff_attendance')
-        .select(`*, profiles:user_id(full_name, email)`)
+        .select(`*, profiles:user_id(full_name, email, avatar_url)`)
         .gte('check_in', start)
         .lte('check_in', end)
         .order('check_in', { ascending: false });
@@ -201,6 +211,18 @@ export default function AttendanceDashboard() {
     },
   });
 
+  // Staff search from top bar (after allStaffProfiles is available)
+  useEffect(() => {
+    if (activeTab === 'staff-record' && searchQuery.length >= 2) {
+      const filtered = allStaffProfiles.filter((s: any) =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.code.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setStaffSearchResults(filtered);
+    } else if (activeTab === 'staff-record' && searchQuery.length === 0) {
+      setStaffSearchResults([]);
+    }
+  }, [searchQuery, activeTab, allStaffProfiles]);
+
   // History data
   const { data: historyData = [] } = useQuery({
     queryKey: ['staff-attendance-history', branchFilter, historyMonth],
@@ -208,7 +230,7 @@ export default function AttendanceDashboard() {
       const start = `${historyMonth}-01T00:00:00`;
       const [year, month] = historyMonth.split('-').map(Number);
       const end = new Date(year, month, 0).toISOString();
-      let query = supabase.from('staff_attendance').select(`*, profiles:user_id(full_name, email)`).gte('check_in', start).lte('check_in', end).order('check_in', { ascending: false });
+      let query = supabase.from('staff_attendance').select(`*, profiles:user_id(full_name, email, avatar_url)`).gte('check_in', start).lte('check_in', end).order('check_in', { ascending: false });
       if (branchFilter) query = query.eq('branch_id', branchFilter);
       const { data, error } = await query;
       if (error) throw error;
@@ -412,18 +434,53 @@ export default function AttendanceDashboard() {
             <Scan className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               ref={searchInputRef}
-              placeholder="Scan barcode or type member code / name / phone..."
+              placeholder={activeTab === 'staff-record' ? "Search staff by name or code..." : "Scan barcode or type member code / name / phone..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               className="pl-12 h-14 text-lg border-2 focus:border-primary transition-colors"
             />
           </div>
-          <Button onClick={handleMemberSearch} disabled={isSearching} className="h-14 px-6" size="lg">
+          <Button onClick={handleMemberSearch} disabled={isSearching || activeTab === 'staff-record'} className="h-14 px-6" size="lg">
             <Search className="w-5 h-5 mr-2" />
             {isSearching ? 'Searching...' : 'Search'}
           </Button>
         </div>
+
+        {/* Staff Search Results from top bar */}
+        {activeTab === 'staff-record' && staffSearchResults.length > 0 && searchQuery.length >= 2 && (
+          <div className="space-y-2">
+            {staffSearchResults.map((staff: any) => {
+              const isCheckedIn = checkedInUserIds.has(staff.user_id);
+              return (
+                <div key={staff.user_id} className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${isCheckedIn ? 'bg-success/5 border-success/30' : 'bg-card border-border hover:border-primary/50 hover:shadow-md'}`}>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-12 w-12 ring-2 ring-background shadow">
+                      <AvatarImage src={staff.avatar_url} />
+                      <AvatarFallback className="bg-accent/10 text-accent font-semibold">{getInitials(staff.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-lg">{staff.name}</p>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <code className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{staff.code}</code>
+                        <Badge className={`border text-xs ${staff.type === 'Trainer' ? 'bg-info/10 text-info border-info/20' : 'bg-muted text-muted-foreground border-border'}`}>{staff.type}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                  {isCheckedIn ? (
+                    <Button size="lg" variant="outline" className="gap-2" disabled={isStaffCheckingOut} onClick={() => handleStaffCheckOut(staff.user_id)}>
+                      <LogOut className="w-5 h-5" /> Check Out
+                    </Button>
+                  ) : (
+                    <Button size="lg" className="gap-2 bg-success hover:bg-success/90 text-success-foreground" disabled={isStaffCheckingIn} onClick={() => handleStaffCheckIn(staff.user_id)}>
+                      <LogIn className="w-5 h-5" /> Check In
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Search Results */}
         {searchResults.length > 0 && (
@@ -462,7 +519,7 @@ export default function AttendanceDashboard() {
           </div>
         )}
 
-        {searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
+        {activeTab !== 'staff-record' && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
           <div className="text-center py-6 text-muted-foreground">
             <Search className="h-8 w-8 mx-auto opacity-30 mb-1" />
             <p className="text-sm">No members found for "{searchQuery}"</p>
@@ -560,14 +617,34 @@ export default function AttendanceDashboard() {
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle>Attendance Management</CardTitle>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Filter..." className="pl-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                  const exportData = activeTab === 'staff-log' ? filteredStaffAttendance.map((a: any) => ({
+                    Name: a.profiles?.full_name || 'Unknown',
+                    'Check In': format(new Date(a.check_in), 'yyyy-MM-dd HH:mm'),
+                    'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+                    Duration: formatDuration(a.check_in, a.check_out),
+                  })) : filteredMemberAttendance.map((a: any) => ({
+                    Name: a.members?.profiles?.full_name || 'Unknown',
+                    Code: a.members?.member_code || '',
+                    'Check In': format(new Date(a.check_in), 'yyyy-MM-dd HH:mm'),
+                    'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+                    Duration: formatDuration(a.check_in, a.check_out),
+                    Source: a.check_in_method || 'manual',
+                  }));
+                  exportToCSV(exportData, `attendance_${activeTab}_${dateFilter}`);
+                }}>
+                  <Download className="h-4 w-4" /> Export
+                </Button>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Filter..." className="pl-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="members">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4">
                 <TabsTrigger value="members" className="gap-2"><Users className="h-4 w-4" />Members ({filteredMemberAttendance.length})</TabsTrigger>
                 <TabsTrigger value="staff-record" className="gap-2"><UserCheck className="h-4 w-4" />Staff Check-in</TabsTrigger>
@@ -723,7 +800,10 @@ export default function AttendanceDashboard() {
                       <TableRow key={attendance.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8"><AvatarFallback className="bg-success/10 text-success text-xs">{getInitials(attendance.profiles?.full_name)}</AvatarFallback></Avatar>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={attendance.profiles?.avatar_url} />
+                              <AvatarFallback className="bg-success/10 text-success text-xs">{getInitials(attendance.profiles?.full_name)}</AvatarFallback>
+                            </Avatar>
                             <div>
                               <p className="font-medium">{attendance.profiles?.full_name || 'Unknown'}</p>
                               <p className="text-xs text-muted-foreground">{attendance.profiles?.email}</p>
@@ -760,7 +840,10 @@ export default function AttendanceDashboard() {
                       <Card key={s.userId} className="border">
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10"><AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">{getInitials(s.name)}</AvatarFallback></Avatar>
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={allStaffProfiles.find((sp: any) => sp.user_id === s.userId)?.avatar_url} />
+                              <AvatarFallback className="bg-accent/10 text-accent text-sm font-semibold">{getInitials(s.name)}</AvatarFallback>
+                            </Avatar>
                             <div className="flex-1 min-w-0">
                               <p className="font-medium truncate">{s.name}</p>
                               <p className="text-xs text-muted-foreground truncate">{s.email}</p>

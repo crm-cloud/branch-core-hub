@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { Switch } from '@/components/ui/switch';
-import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe } from 'lucide-react';
+import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function FeedbackPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -151,7 +153,19 @@ export default function FeedbackPage() {
             <h1 className="text-2xl font-bold">Member Feedback</h1>
             <p className="text-muted-foreground">Review and manage feedback submitted by members</p>
           </div>
-          {/* Branch selector moved to global header */}
+          <Button variant="outline" size="sm" className="gap-1.5 self-start" onClick={() => {
+            const rows = feedbackList.map((f: any) => ({
+              Member: f.member_name || 'Unknown',
+              Rating: f.rating,
+              Feedback: f.feedback_text || '',
+              Category: f.category || '',
+              Status: f.status || '',
+              Date: f.created_at ? format(new Date(f.created_at), 'yyyy-MM-dd') : '',
+            }));
+            exportToCSV(rows, 'feedback');
+          }}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
         </div>
 
         {/* Stats */}

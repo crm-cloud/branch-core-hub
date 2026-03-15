@@ -499,7 +499,17 @@ export default function ClassesPage() {
                       <TableBody>
                         {bookings?.map((booking) => (
                           <TableRow key={booking.id}>
-                            <TableCell className="font-medium">{booking.member_name}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={(booking as any).member_avatar} />
+                                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                                    {booking.member_name?.charAt(0) || 'M'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium">{booking.member_name}</span>
+                              </div>
+                            </TableCell>
                             <TableCell>
                               {booking.member_phone ? (
                                 <a href={`tel:${booking.member_phone}`} className="text-primary hover:underline flex items-center gap-1">

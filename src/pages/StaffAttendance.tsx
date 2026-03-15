@@ -3,14 +3,15 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Clock, UserCheck, UserMinus, Users, LogIn, LogOut, Shield } from 'lucide-react';
+import { Clock, UserCheck, UserMinus, Users, LogIn, LogOut, Shield, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function StaffAttendancePage() {
   const { effectiveBranchId: branchId } = useBranchContext();
@@ -91,8 +92,17 @@ export default function StaffAttendancePage() {
                'Track your working hours'}
             </p>
           </div>
-
-          {/* Branch selector moved to global header */}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+            const rows = (filteredTodayAttendance || []).map((a: any) => ({
+              Name: a.profiles?.full_name || 'Unknown',
+              'Check In': a.check_in ? format(new Date(a.check_in), 'yyyy-MM-dd HH:mm') : '',
+              'Check Out': a.check_out ? format(new Date(a.check_out), 'yyyy-MM-dd HH:mm') : '',
+              Duration: formatDuration(a.check_in, a.check_out),
+            }));
+            exportToCSV(rows, 'staff_attendance');
+          }}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
         </div>
 
         {/* Role indicator */}

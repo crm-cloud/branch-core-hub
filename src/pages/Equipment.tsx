@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Dumbbell } from 'lucide-react';
+import { Plus, Dumbbell, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function EquipmentPage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
@@ -45,8 +46,23 @@ export default function EquipmentPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Equipment</h1>
-          <div className="flex items-center gap-4">
-            {/* Branch selector moved to global header */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              const rows = equipment.map((e: any) => ({
+                Name: e.name,
+                Brand: e.brand || '',
+                Model: e.model || '',
+                'Serial Number': e.serial_number || '',
+                Category: e.category || '',
+                Status: e.status,
+                Location: e.location || '',
+                'Purchase Date': e.purchase_date || '',
+                'Purchase Price': e.purchase_price || '',
+              }));
+              exportToCSV(rows, 'equipment');
+            }}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
             <Button onClick={() => setAddDrawerOpen(true)} disabled={!currentBranchId}>
               <Plus className="mr-2 h-4 w-4" />
               Add Equipment
