@@ -67,3 +67,6 @@ verify_jwt = false
 [functions.send-whatsapp]
 verify_jwt = true
 
+[functions.run-retention-nudges]
+verify_jwt = false
+

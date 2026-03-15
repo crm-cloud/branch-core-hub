@@ -8,15 +8,23 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
-import { Megaphone, Send, Save, Zap, Clock, Gift } from 'lucide-react';
+import { Megaphone, Send, Save, Zap, Clock, Gift, Mail, MessageSquare, Phone, BarChart3, ShieldCheck } from 'lucide-react';
 
 const STAGE_ICONS = [Zap, Clock, Gift];
 const STAGE_COLORS = [
   'bg-sky-50 text-sky-600 border-sky-200',
   'bg-amber-50 text-amber-600 border-amber-200',
   'bg-emerald-50 text-emerald-600 border-emerald-200',
+];
+
+const CHANNEL_OPTIONS = [
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
+  { id: 'sms', label: 'SMS', icon: Phone, color: 'text-sky-500' },
+  { id: 'email', label: 'Email', icon: Mail, color: 'text-primary' },
 ];
 
 export function RetentionCampaignManager() {
@@ -34,7 +42,26 @@ export function RetentionCampaignManager() {
     },
   });
 
-  const [edits, setEdits] = useState<Record<string, { days_trigger?: number; message_body?: string; is_active?: boolean }>>({});
+  // Delivery stats per stage
+  const { data: deliveryStats = {} } = useQuery({
+    queryKey: ['retention-delivery-stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('retention_nudge_logs')
+        .select('stage_level, status');
+      if (error) throw error;
+      const stats: Record<number, { sent: number; total: number }> = {};
+      for (const log of data || []) {
+        if (!stats[log.stage_level]) stats[log.stage_level] = { sent: 0, total: 0 };
+        stats[log.stage_level].total++;
+        if (log.status === 'sent') stats[log.stage_level].sent++;
+      }
+      return stats;
+    },
+  });
+
+  const [edits, setEdits] = useState<Record<string, { days_trigger?: number; message_body?: string; is_active?: boolean; channels?: string[] }>>({});
+  const [previewName, setPreviewName] = useState('John');
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
@@ -61,6 +88,14 @@ export function RetentionCampaignManager() {
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
+  const handleChannelToggle = (templateId: string, channel: string, currentChannels: string[]) => {
+    const channels = currentChannels.includes(channel)
+      ? currentChannels.filter(c => c !== channel)
+      : [...currentChannels, channel];
+    if (channels.length === 0) return; // Must have at least one
+    setEdit(templateId, 'channels', channels);
+  };
+
   const handleSave = (template: any) => {
     const changes = edits[template.id];
     if (!changes) return;
@@ -72,12 +107,20 @@ export function RetentionCampaignManager() {
     });
   };
 
-  const handleTestSend = (template: any) => {
+  const handleTestSend = (template: any, channel: string) => {
     const body = getEditValue(template.id, 'message_body', template.message_body) as string;
     const text = body.replace(/{member_name}/g, 'Test User');
     const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
-    toast({ title: 'Test message opened', description: 'WhatsApp opened with preview text.' });
+
+    if (channel === 'whatsapp') {
+      window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    } else if (channel === 'sms') {
+      window.open(`sms:?body=${encoded}`, '_blank');
+    } else if (channel === 'email') {
+      const subject = encodeURIComponent(`Stage ${template.stage_level}: ${template.stage_name}`);
+      window.open(`mailto:?subject=${subject}&body=${encoded}`, '_blank');
+    }
+    toast({ title: 'Test message opened', description: `${channel.charAt(0).toUpperCase() + channel.slice(1)} opened with preview text.` });
   };
 
   if (isLoading) {
@@ -103,12 +146,26 @@ export function RetentionCampaignManager() {
         </div>
       </div>
 
+      {/* Cooldown Indicator */}
+      <Card className="rounded-2xl border-sky-200 bg-sky-50/50">
+        <CardContent className="flex items-center gap-3 py-4">
+          <ShieldCheck className="h-5 w-5 text-sky-600 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-sky-800">30-Day Cooldown Active</p>
+            <p className="text-xs text-sky-600">Each member can only receive each nudge stage once every 30 days. Sequence resets if the member visits the gym.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="space-y-4">
         {templates.map((template: any, idx: number) => {
           const Icon = STAGE_ICONS[idx] || Zap;
           const colorClass = STAGE_COLORS[idx] || STAGE_COLORS[0];
           const hasChanges = !!edits[template.id];
           const isActive = getEditValue(template.id, 'is_active', template.is_active) as boolean;
+          const channels = getEditValue(template.id, 'channels', template.channels || ['whatsapp']) as string[];
+          const stageStats = (deliveryStats as any)[template.stage_level];
+          const messageBody = getEditValue(template.id, 'message_body', template.message_body) as string;
 
           return (
             <Card key={template.id} className={`rounded-2xl shadow-lg transition-all ${!isActive ? 'opacity-60' : ''}`}>
@@ -123,6 +180,12 @@ export function RetentionCampaignManager() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {stageStats && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      <span>{stageStats.sent} sent</span>
+                    </div>
+                  )}
                   <Badge variant={isActive ? 'default' : 'secondary'}>
                     {isActive ? 'Active' : 'Paused'}
                   </Badge>
@@ -145,23 +208,76 @@ export function RetentionCampaignManager() {
                   />
                   <span className="text-sm text-muted-foreground">days</span>
                 </div>
+
+                {/* Multi-Channel Selector */}
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Delivery Channels</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {CHANNEL_OPTIONS.map(ch => {
+                      const ChIcon = ch.icon;
+                      const isSelected = channels.includes(ch.id);
+                      return (
+                        <label
+                          key={ch.id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                            isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
+                          }`}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleChannelToggle(template.id, ch.id, channels)}
+                          />
+                          <ChIcon className={`h-4 w-4 ${ch.color}`} />
+                          <span className="text-sm font-medium">{ch.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div>
                   <Label className="text-sm font-medium">Message Template</Label>
                   <Textarea
                     className="mt-1.5 min-h-[80px]"
-                    value={getEditValue(template.id, 'message_body', template.message_body)}
+                    value={messageBody}
                     onChange={(e) => setEdit(template.id, 'message_body', e.target.value)}
                   />
                 </div>
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTestSend(template)}
-                  >
-                    <Send className="h-3.5 w-3.5 mr-1.5" />
-                    Test Send
-                  </Button>
+
+                {/* Preview Panel */}
+                <div className="bg-muted/50 rounded-xl p-3 border">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium text-muted-foreground">Preview</Label>
+                    <Input
+                      className="w-32 h-7 text-xs"
+                      placeholder="Preview name"
+                      value={previewName}
+                      onChange={(e) => setPreviewName(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">
+                    {messageBody.replace(/{member_name}/g, previewName || 'Member')}
+                  </p>
+                </div>
+
+                <Separator />
+
+                <div className="flex gap-2 justify-end flex-wrap">
+                  {channels.map(ch => {
+                    const chOption = CHANNEL_OPTIONS.find(o => o.id === ch);
+                    const ChIcon = chOption?.icon || Send;
+                    return (
+                      <Button
+                        key={ch}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTestSend(template, ch)}
+                      >
+                        <ChIcon className={`h-3.5 w-3.5 mr-1.5 ${chOption?.color || ''}`} />
+                        Test {chOption?.label || ch}
+                      </Button>
+                    );
+                  })}
                   <Button
                     size="sm"
                     disabled={!hasChanges || updateMutation.isPending}
