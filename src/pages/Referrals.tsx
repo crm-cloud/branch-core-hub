@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Gift, Users, Wallet, Copy, Check, Plus } from 'lucide-react';
+import { Gift, Users, Wallet, Copy, Check, Plus, Download } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { claimReward } from '@/services/referralService';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function ReferralsPage() {
   const { user } = useAuth();
