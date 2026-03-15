@@ -636,6 +636,7 @@ export default function AIFitnessPage() {
                           {saveTemplateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         </Button>
                         <Button size="sm" onClick={handleAssignGeneratedPlan} title="Assign"><UserPlus className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="sm" onClick={() => generatePlanPDF({ name: generatedPlan.name || 'Plan', type: planType, data: generatedPlan, description: generatedPlan.description, caloriesTarget: generatedPlan.caloriesTarget })} title="Download PDF"><Download className="h-4 w-4" /></Button>
                       </div>
                     )}
                   </div>

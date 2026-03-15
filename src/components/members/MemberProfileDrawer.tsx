@@ -1358,6 +1358,8 @@ export function MemberProfileDrawer({
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <DocumentVaultTab memberId={member.id} />
           </Tabs>
         </div>
 
@@ -1403,6 +1405,14 @@ export function MemberProfileDrawer({
           onOpenChange={setEditProfileOpen}
           member={member}
           profile={profile}
+        />
+        <CompGiftDrawer
+          open={compGiftOpen}
+          onOpenChange={setCompGiftOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+          membershipId={activeMembership?.id}
+          branchId={member.branch_id}
         />
       </SheetContent>
     </Sheet>
