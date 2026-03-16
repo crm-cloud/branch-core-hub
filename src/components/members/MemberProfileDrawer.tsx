@@ -1455,6 +1455,24 @@ export function MemberProfileDrawer({
             memberId: member.id,
           }}
         />
+        <TransferBranchDrawer
+          open={transferBranchOpen}
+          onOpenChange={setTransferBranchOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+          currentBranchId={member.branch_id}
+          currentBranchName={memberDetails?.branch?.name}
+        />
+        {activeMembership && (
+          <TransferMembershipDrawer
+            open={transferMembershipOpen}
+            onOpenChange={setTransferMembershipOpen}
+            memberId={member.id}
+            memberName={profile?.full_name}
+            membershipId={activeMembership.id}
+            branchId={member.branch_id}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );
