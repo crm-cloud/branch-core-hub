@@ -439,6 +439,7 @@ export function MemberProfileDrawer({
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [compGiftOpen, setCompGiftOpen] = useState(false);
+  const [registrationFormOpen, setRegistrationFormOpen] = useState(false);
 
   const toggleMemberStatus = async () => {
     if (!member?.id) return;
