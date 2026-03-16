@@ -2991,6 +2991,116 @@ export type Database = {
           },
         ]
       }
+      member_comps: {
+        Row: {
+          benefit_type_id: string
+          comp_sessions: number
+          created_at: string
+          granted_by: string | null
+          id: string
+          member_id: string
+          membership_id: string | null
+          reason: string | null
+          used_sessions: number
+        }
+        Insert: {
+          benefit_type_id: string
+          comp_sessions?: number
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          member_id: string
+          membership_id?: string | null
+          reason?: string | null
+          used_sessions?: number
+        }
+        Update: {
+          benefit_type_id?: string
+          comp_sessions?: number
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          member_id?: string
+          membership_id?: string | null
+          reason?: string | null
+          used_sessions?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_comps_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_comps_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_comps_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_comps_membership_id_fkey"
+            columns: ["membership_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_name: string
+          file_url: string
+          id: string
+          member_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string
+          file_name: string
+          file_url: string
+          id?: string
+          member_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_url?: string
+          id?: string
+          member_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_documents_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_fitness_plans: {
         Row: {
           branch_id: string | null

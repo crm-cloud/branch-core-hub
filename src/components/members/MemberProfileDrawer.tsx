@@ -32,7 +32,7 @@ import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
 import { DocumentVaultTab } from './DocumentVaultTab';
-import { printRegistrationForm } from './MemberRegistrationForm';
+import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
@@ -439,6 +439,7 @@ export function MemberProfileDrawer({
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [compGiftOpen, setCompGiftOpen] = useState(false);
+  const [registrationFormOpen, setRegistrationFormOpen] = useState(false);
 
   const toggleMemberStatus = async () => {
     if (!member?.id) return;
@@ -867,6 +868,11 @@ export function MemberProfileDrawer({
               <Gift className="h-4 w-4 mr-2" /> Comp/Gift
             </Button>
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+              setRegistrationFormOpen(true);
+            }}>
+              <FileText className="h-4 w-4 mr-2" /> Registration Form
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
               const p = profile;
               const ms = activeMembership;
               printRegistrationForm({
@@ -883,7 +889,7 @@ export function MemberProfileDrawer({
                 branchName: memberDetails?.branch?.name,
               });
             }}>
-              <Printer className="h-4 w-4 mr-2" /> Print Form
+              <Printer className="h-4 w-4 mr-2" /> Quick Print
             </Button>
           </div>
 
@@ -1413,6 +1419,29 @@ export function MemberProfileDrawer({
           memberName={profile?.full_name}
           membershipId={activeMembership?.id}
           branchId={member.branch_id}
+        />
+        <MemberRegistrationFormDrawer
+          open={registrationFormOpen}
+          onOpenChange={setRegistrationFormOpen}
+          data={{
+            memberName: profile?.full_name || 'N/A',
+            memberCode: member.member_code,
+            email: profile?.email,
+            phone: profile?.phone,
+            gender: profile?.gender,
+            dateOfBirth: profile?.date_of_birth,
+            address: profile?.address,
+            city: profile?.city,
+            state: profile?.state,
+            emergencyContactName: profile?.emergency_contact_name,
+            emergencyContactPhone: profile?.emergency_contact_phone,
+            planName: activeMembership?.membership_plans?.name,
+            startDate: activeMembership?.start_date,
+            endDate: activeMembership?.end_date,
+            pricePaid: activeMembership?.price_paid,
+            branchName: memberDetails?.branch?.name,
+            memberId: member.id,
+          }}
         />
       </SheetContent>
     </Sheet>

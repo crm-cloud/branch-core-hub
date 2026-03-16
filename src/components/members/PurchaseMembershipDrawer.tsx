@@ -337,6 +337,11 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['all-rewards'] });
       queryClient.invalidateQueries({ queryKey: ['lockers'] });
       queryClient.invalidateQueries({ queryKey: ['available-lockers'] });
+      queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
+      queryClient.invalidateQueries({ queryKey: ['active-membership'] });
+      queryClient.invalidateQueries({ queryKey: ['member-pending-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-pt-packages'] });
       onOpenChange(false);
       resetForm();
     },

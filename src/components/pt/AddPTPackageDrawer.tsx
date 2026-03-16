@@ -81,7 +81,6 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
 
       if (isSubscription) {
         payload.sessions_per_month = formData.sessions_per_month;
-        payload.auto_renew = formData.auto_renew;
       }
 
       await createPackage.mutateAsync(payload);
@@ -201,14 +200,6 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
                   <Label>Monthly Price (₹) *</Label>
                   <Input type="number" value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })} />
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch checked={formData.auto_renew}
-                  onCheckedChange={(v) => setFormData({ ...formData, auto_renew: v })} />
-                <div>
-                  <Label>Auto Renew</Label>
-                  <p className="text-xs text-muted-foreground">Automatically renew subscription each billing cycle</p>
                 </div>
               </div>
             </div>
