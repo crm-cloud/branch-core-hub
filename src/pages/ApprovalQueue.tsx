@@ -47,6 +47,7 @@ const APPROVAL_TYPE_CONFIG: Record<string, { icon: any; label: string; color: st
   refund: { icon: DollarSign, label: 'Refund', color: 'bg-destructive/10 text-destructive' },
   discount: { icon: Percent, label: 'Discount', color: 'bg-warning/10 text-warning' },
   complimentary: { icon: Gift, label: 'Complimentary', color: 'bg-success/10 text-success' },
+  comp_gift: { icon: Gift, label: 'Comp/Gift', color: 'bg-amber-500/10 text-amber-600' },
   expense: { icon: CreditCard, label: 'Expense', color: 'bg-muted text-muted-foreground' },
   contract: { icon: FileText, label: 'Contract', color: 'bg-accent/10 text-accent' },
   trainer_change: { icon: User, label: 'Trainer Change', color: 'bg-primary/10 text-primary' },
