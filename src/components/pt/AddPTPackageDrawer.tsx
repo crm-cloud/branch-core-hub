@@ -81,7 +81,6 @@ export function AddPTPackageDrawer({ open, onOpenChange, branchId }: AddPTPackag
 
       if (isSubscription) {
         payload.sessions_per_month = formData.sessions_per_month;
-        payload.auto_renew = formData.auto_renew;
       }
 
       await createPackage.mutateAsync(payload);
