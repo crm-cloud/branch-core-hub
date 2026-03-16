@@ -868,6 +868,11 @@ export function MemberProfileDrawer({
               <Gift className="h-4 w-4 mr-2" /> Comp/Gift
             </Button>
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+              setRegistrationFormOpen(true);
+            }}>
+              <FileText className="h-4 w-4 mr-2" /> Registration Form
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
               const p = profile;
               const ms = activeMembership;
               printRegistrationForm({
@@ -884,7 +889,7 @@ export function MemberProfileDrawer({
                 branchName: memberDetails?.branch?.name,
               });
             }}>
-              <Printer className="h-4 w-4 mr-2" /> Print Form
+              <Printer className="h-4 w-4 mr-2" /> Quick Print
             </Button>
           </div>
 
