@@ -871,6 +871,14 @@ export function MemberProfileDrawer({
             <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
               <Gift className="h-4 w-4 mr-2" /> Comp/Gift
             </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+              <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
+            </Button>
+            {activeMembership && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {
               setRegistrationFormOpen(true);
             }}>
