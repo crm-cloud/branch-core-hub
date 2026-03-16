@@ -799,6 +799,15 @@ export default function AIFitnessPage() {
                               <Button size="sm" className="flex-1" onClick={() => handleAssignTemplate(template)}>
                                 <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
                               </Button>
+                              <Button size="sm" variant="outline" onClick={() => {
+                                generatePlanPDF({
+                                  name: template.name,
+                                  type: template.type,
+                                  data: template.content as any,
+                                });
+                              }}>
+                                <Download className="h-3.5 w-3.5" />
+                              </Button>
                               <Button size="sm" variant="ghost" onClick={() => deleteTemplateMutation.mutate(template.id)}>
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
                               </Button>

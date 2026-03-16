@@ -6,10 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Gift, Calendar, Heart, Clock, ArrowRight, Sparkles } from 'lucide-react';
+import { Gift, Calendar, Heart, Clock, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -53,7 +53,6 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
     enabled: open && !!currentMembership,
     queryFn: async () => {
       const ms = currentMembership as any;
-      // Get plan_id from membership
       const { data: membership } = await supabase
         .from('memberships')
         .select('plan_id')
@@ -66,7 +65,6 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
         .select('*, benefit_types:benefit_type_id(id, name, code)')
         .eq('plan_id', membership.plan_id);
 
-      // Get usage
       const { data: usage } = await supabase
         .from('benefit_usage')
         .select('benefit_type_id, usage_count')
@@ -90,7 +88,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
     queryKey: ['member-comps', memberId],
     enabled: open && !!memberId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('member_comps')
         .select('*, benefit_types:benefit_type_id(name)')
         .eq('member_id', memberId)
@@ -119,43 +117,37 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
     ? format(addDays(parseISO(currentMembership.end_date), parseInt(days) || 0), 'dd MMM yyyy')
     : null;
 
+  // Submit extend days as approval request
   const extendMutation = useMutation({
     mutationFn: async () => {
       if (!membershipId) throw new Error('No active membership');
       const daysNum = parseInt(days);
       if (!daysNum || daysNum <= 0) throw new Error('Enter valid days');
 
-      const { data: ms } = await supabase
-        .from('memberships')
-        .select('end_date')
-        .eq('id', membershipId)
-        .single();
-
-      if (!ms) throw new Error('Membership not found');
-
-      const newEnd = format(addDays(parseISO(ms.end_date), daysNum), 'yyyy-MM-dd');
-      const { error } = await supabase
-        .from('memberships')
-        .update({ end_date: newEnd })
-        .eq('id', membershipId);
-      if (error) throw error;
-
       const { data: { user } } = await supabase.auth.getUser();
-      try {
-        await (supabase.from('membership_free_days') as any).insert({
-          membership_id: membershipId,
-          days_added: daysNum,
+
+      const { error } = await supabase.from('approval_requests').insert({
+        approval_type: 'comp_gift' as any,
+        branch_id: branchId,
+        reference_id: membershipId,
+        reference_type: 'extend_days',
+        requested_by: user?.id,
+        request_data: {
+          memberName: memberName || 'Unknown',
+          memberId,
+          membershipId,
+          days: daysNum,
           reason: reason || 'Comp extension',
-          added_by: user?.id,
-        });
-      } catch { /* ignore if table doesn't exist */ }
+          currentEndDate: currentMembership?.end_date,
+          newEndDate: format(addDays(parseISO(currentMembership!.end_date), daysNum), 'yyyy-MM-dd'),
+        },
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(`Extended membership by ${days} days`);
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
-      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
-      queryClient.invalidateQueries({ queryKey: ['active-membership'] });
-      queryClient.invalidateQueries({ queryKey: ['comp-membership-details'] });
+      toast.success(`Extension request for ${days} days submitted for approval`);
+      queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['approval-stats'] });
       setDays('');
       setReason('');
       onOpenChange(false);
@@ -163,6 +155,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
     onError: (e: any) => toast.error(e.message),
   });
 
+  // Submit comp sessions as approval request
   const compMutation = useMutation({
     mutationFn: async () => {
       if (!compBenefitTypeId) throw new Error('Select a benefit type');
@@ -170,20 +163,30 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
       if (!sessions || sessions <= 0) throw new Error('Enter valid sessions');
 
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await (supabase as any).from('member_comps').insert({
-        member_id: memberId,
-        membership_id: membershipId || null,
-        benefit_type_id: compBenefitTypeId,
-        comp_sessions: sessions,
-        used_sessions: 0,
-        reason: compReason || 'Complimentary sessions',
-        granted_by: user?.id,
+      const selectedBenefit = benefitTypes.find((bt: any) => bt.id === compBenefitTypeId);
+
+      const { error } = await supabase.from('approval_requests').insert({
+        approval_type: 'comp_gift' as any,
+        branch_id: branchId,
+        reference_id: memberId,
+        reference_type: 'comp_sessions',
+        requested_by: user?.id,
+        request_data: {
+          memberName: memberName || 'Unknown',
+          memberId,
+          membershipId: membershipId || null,
+          benefitTypeId: compBenefitTypeId,
+          benefitTypeName: selectedBenefit?.name || 'Benefit',
+          sessions,
+          reason: compReason || 'Complimentary sessions',
+        },
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(`Granted ${compSessions} comp session(s)`);
-      queryClient.invalidateQueries({ queryKey: ['member-comps'] });
+      toast.success(`Comp sessions request submitted for approval`);
+      queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['approval-stats'] });
       setCompSessions('1');
       setCompBenefitTypeId('');
       setCompReason('');
@@ -203,9 +206,17 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
             Comp / Gift — {memberName}
           </SheetTitle>
           <SheetDescription>
-            Grant complimentary days or benefit sessions as a hospitality gesture
+            Requests are routed through the approval queue for audit compliance
           </SheetDescription>
         </SheetHeader>
+
+        {/* Approval Notice */}
+        <div className="mt-3 flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <ShieldCheck className="h-4 w-4 text-primary flex-shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            All comp/gift requests require <span className="font-semibold text-foreground">Owner/Admin approval</span> before being applied.
+          </p>
+        </div>
 
         {/* Current Status Overview */}
         {currentMembership && (
@@ -222,7 +233,6 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
                 </div>
               </div>
 
-              {/* Plan Benefits Summary */}
               {planBenefits.length > 0 && (
                 <>
                   <Separator className="my-3" />
@@ -244,7 +254,6 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
                 </>
               )}
 
-              {/* Existing Comps */}
               {activeComps.length > 0 && (
                 <>
                   <Separator className="my-3" />
@@ -298,12 +307,13 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
             )}
 
             <div className="space-y-2">
-              <Label>Reason</Label>
+              <Label>Reason *</Label>
               <Textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Service recovery, loyalty gesture" />
             </div>
             <SheetFooter>
               <Button onClick={() => extendMutation.mutate()} disabled={extendMutation.isPending || !membershipId}>
-                {extendMutation.isPending ? 'Extending...' : 'Extend Membership'}
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                {extendMutation.isPending ? 'Submitting...' : 'Submit for Approval'}
               </Button>
             </SheetFooter>
           </TabsContent>
@@ -325,12 +335,13 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
               <Input type="number" min="1" value={compSessions} onChange={e => setCompSessions(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Reason</Label>
+              <Label>Reason *</Label>
               <Textarea value={compReason} onChange={e => setCompReason(e.target.value)} placeholder="e.g. Birthday gift, complaint resolution" />
             </div>
             <SheetFooter>
               <Button onClick={() => compMutation.mutate()} disabled={compMutation.isPending}>
-                {compMutation.isPending ? 'Granting...' : 'Grant Comp Sessions'}
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                {compMutation.isPending ? 'Submitting...' : 'Submit for Approval'}
               </Button>
             </SheetFooter>
           </TabsContent>
