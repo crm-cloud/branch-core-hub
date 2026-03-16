@@ -1,3 +1,16 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, User, Calendar, MapPin } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 interface RegistrationFormData {
@@ -8,6 +21,8 @@ interface RegistrationFormData {
   gender?: string;
   dateOfBirth?: string;
   address?: string;
+  city?: string;
+  state?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   planName?: string;
@@ -15,111 +30,477 @@ interface RegistrationFormData {
   endDate?: string;
   pricePaid?: number;
   branchName?: string;
+  memberId?: string;
 }
 
-export function printRegistrationForm(data: RegistrationFormData) {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Please allow popups to print');
-    return;
-  }
+interface MemberRegistrationFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  data: RegistrationFormData;
+}
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Membership Registration - ${data.memberName}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px double #6366f1; }
-        .header h1 { color: #6366f1; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
-        .header p { color: #666; font-size: 12px; margin-top: 5px; }
-        .title { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0; text-decoration: underline; }
-        .section { margin-bottom: 20px; }
-        .section-title { font-size: 14px; font-weight: bold; color: #6366f1; margin-bottom: 10px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .info-item { font-size: 13px; }
-        .info-item label { font-weight: 600; display: block; margin-bottom: 2px; color: #555; }
-        .info-item .value { padding: 6px 0; border-bottom: 1px dotted #ccc; min-height: 28px; }
-        .terms { background: #f9f9f9; padding: 15px; border: 1px solid #ddd; margin: 20px 0; font-size: 12px; }
-        .terms ol { margin-left: 18px; }
-        .terms li { margin-bottom: 6px; }
-        .signature-section { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-        .signature-box { text-align: center; }
-        .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 8px; font-size: 12px; }
-        .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; }
-        @media print { body { padding: 20px; } }
-      </style>
-    </head>
-    <body>
+const DEFAULT_TERMS = [
+  'I hereby acknowledge that I am medically fit to exercise and participate in fitness activities.',
+  'I understand that the membership fee is non-refundable and non-transferable unless stated otherwise.',
+  'I agree to follow all gym rules, regulations, and safety guidelines.',
+  'I will use equipment responsibly and report any damage immediately.',
+  'The management reserves the right to revoke membership for misconduct or violation of rules.',
+  'Membership freezing is subject to applicable charges and prior approval.',
+  'Personal belongings must be secured in designated lockers. The facility is not responsible for lost or stolen items.',
+  'I consent to the collection, storage, and use of my personal data for membership management and communication purposes.',
+  'I have disclosed all relevant medical conditions and accept full responsibility for my health during workouts.',
+  'Any disputes shall be subject to the jurisdiction of the courts in the city where the facility is located.',
+];
+
+export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: MemberRegistrationFormProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSigned, setHasSigned] = useState(false);
+  const [govIdType, setGovIdType] = useState('aadhaar');
+  const [govIdNumber, setGovIdNumber] = useState('');
+  const [fitnessGoals, setFitnessGoals] = useState('');
+  const [medicalConditions, setMedicalConditions] = useState('');
+  const [customTerms, setCustomTerms] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Setup canvas for signature
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      canvas.width = canvas.offsetWidth * 2;
+      canvas.height = canvas.offsetHeight * 2;
+      ctx.scale(2, 2);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  const getPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    if ('touches' in e) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top };
+  }, []);
+
+  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    setIsDrawing(true);
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }, [getPos]);
+
+  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    setHasSigned(true);
+  }, [isDrawing, getPos]);
+
+  const stopDraw = useCallback(() => setIsDrawing(false), []);
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSigned(false);
+  };
+
+  const handleSaveDigital = async () => {
+    if (!hasSigned) {
+      toast.error('Please sign the form first');
+      return;
+    }
+    if (!data.memberId) {
+      toast.error('Member ID missing');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Convert canvas to blob
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error('Canvas not found');
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/png');
+      });
+
+      // Upload signature to storage
+      const fileName = `signatures/${data.memberId}-${Date.now()}.png`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, blob, { contentType: 'image/png' });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(fileName);
+
+      // Save document record
+      const { data: { user } } = await supabase.auth.getUser();
+      await (supabase as any).from('member_documents').insert({
+        member_id: data.memberId,
+        document_type: 'registration_form',
+        file_url: urlData.publicUrl,
+        file_name: `Registration-${data.memberCode}-signed.png`,
+        uploaded_by: user?.id,
+      });
+
+      toast.success('Registration form saved digitally with signature!');
+      onOpenChange(false);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { toast.error('Please allow popups'); return; }
+
+    const signatureDataUrl = hasSigned ? canvasRef.current?.toDataURL('image/png') : null;
+
+    const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${data.memberName}</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; color: #1e293b; max-width: 800px; margin: 0 auto; font-size: 13px; }
+      .header { text-align: center; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px double #6366f1; }
+      .header h1 { color: #6366f1; font-size: 22px; text-transform: uppercase; letter-spacing: 3px; }
+      .header p { color: #64748b; font-size: 11px; margin-top: 4px; }
+      .badge { display: inline-block; background: #6366f1; color: white; padding: 2px 10px; border-radius: 10px; font-size: 10px; margin-top: 4px; }
+      .title { font-size: 16px; font-weight: bold; text-align: center; margin: 16px 0; color: #334155; }
+      .section { margin-bottom: 16px; }
+      .section-title { font-size: 12px; font-weight: bold; color: #6366f1; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+      .field label { font-weight: 600; display: block; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+      .field .val { padding: 4px 0; border-bottom: 1px dotted #cbd5e1; min-height: 22px; font-size: 13px; }
+      .full { grid-column: span 2; }
+      .terms { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; margin: 16px 0; }
+      .terms ol { margin-left: 16px; }
+      .terms li { margin-bottom: 4px; font-size: 11px; line-height: 1.4; }
+      .sig-section { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+      .sig-box { text-align: center; }
+      .sig-img { max-height: 60px; margin: 0 auto; }
+      .sig-line { border-top: 1px solid #334155; margin-top: 40px; padding-top: 6px; font-size: 11px; color: #64748b; }
+      .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+      @media print { body { padding: 15px; } }
+    </style></head><body>
       <div class="header">
         <h1>${data.branchName || 'FITNESS CENTER'}</h1>
-        <p>Membership Registration Form</p>
+        <p>Membership Registration & Agreement Form</p>
+        <div class="badge">REG-${data.memberCode}</div>
       </div>
-
       <div class="title">MEMBERSHIP AGREEMENT</div>
-
       <div class="section">
-        <div class="section-title">Member Details</div>
-        <div class="info-grid">
-          <div class="info-item"><label>Full Name</label><div class="value">${data.memberName}</div></div>
-          <div class="info-item"><label>Member Code</label><div class="value">${data.memberCode}</div></div>
-          <div class="info-item"><label>Email</label><div class="value">${data.email || '___________________'}</div></div>
-          <div class="info-item"><label>Phone</label><div class="value">${data.phone || '___________________'}</div></div>
-          <div class="info-item"><label>Gender</label><div class="value">${data.gender || '___________________'}</div></div>
-          <div class="info-item"><label>Date of Birth</label><div class="value">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '___________________'}</div></div>
-          <div class="info-item" style="grid-column: span 2"><label>Address</label><div class="value">${data.address || '___________________'}</div></div>
+        <div class="section-title">👤 Member Information</div>
+        <div class="grid">
+          <div class="field"><label>Full Name</label><div class="val">${data.memberName}</div></div>
+          <div class="field"><label>Member Code</label><div class="val">${data.memberCode}</div></div>
+          <div class="field"><label>Email</label><div class="val">${data.email || '—'}</div></div>
+          <div class="field"><label>Phone</label><div class="val">${data.phone || '—'}</div></div>
+          <div class="field"><label>Gender</label><div class="val">${data.gender || '—'}</div></div>
+          <div class="field"><label>Date of Birth</label><div class="val">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '—'}</div></div>
+          <div class="field full"><label>Address</label><div class="val">${[data.address, data.city, data.state].filter(Boolean).join(', ') || '—'}</div></div>
         </div>
       </div>
-
       <div class="section">
-        <div class="section-title">Emergency Contact</div>
-        <div class="info-grid">
-          <div class="info-item"><label>Name</label><div class="value">${data.emergencyContactName || '___________________'}</div></div>
-          <div class="info-item"><label>Phone</label><div class="value">${data.emergencyContactPhone || '___________________'}</div></div>
+        <div class="section-title">🪪 Government ID</div>
+        <div class="grid">
+          <div class="field"><label>ID Type</label><div class="val">${govIdType.toUpperCase()}</div></div>
+          <div class="field"><label>ID Number</label><div class="val">${govIdNumber || '—'}</div></div>
         </div>
       </div>
-
       <div class="section">
-        <div class="section-title">Membership Details</div>
-        <div class="info-grid">
-          <div class="info-item"><label>Plan</label><div class="value">${data.planName || '___________________'}</div></div>
-          <div class="info-item"><label>Amount Paid</label><div class="value">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '___________________'}</div></div>
-          <div class="info-item"><label>Start Date</label><div class="value">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '___________________'}</div></div>
-          <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___________________'}</div></div>
+        <div class="section-title">🚨 Emergency Contact</div>
+        <div class="grid">
+          <div class="field"><label>Name</label><div class="val">${data.emergencyContactName || '—'}</div></div>
+          <div class="field"><label>Phone</label><div class="val">${data.emergencyContactPhone || '—'}</div></div>
         </div>
       </div>
-
+      <div class="section">
+        <div class="section-title">💪 Health & Fitness</div>
+        <div class="grid">
+          <div class="field full"><label>Fitness Goals</label><div class="val">${fitnessGoals || '—'}</div></div>
+          <div class="field full"><label>Medical Conditions</label><div class="val">${medicalConditions || 'None declared'}</div></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">📋 Membership Details</div>
+        <div class="grid">
+          <div class="field"><label>Plan</label><div class="val">${data.planName || '—'}</div></div>
+          <div class="field"><label>Amount</label><div class="val">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '—'}</div></div>
+          <div class="field"><label>Start Date</label><div class="val">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '—'}</div></div>
+          <div class="field"><label>End Date</label><div class="val">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '—'}</div></div>
+          <div class="field"><label>Registration Date</label><div class="val">${format(new Date(), 'dd MMM yyyy')}</div></div>
+          <div class="field"><label>Branch</label><div class="val">${data.branchName || '—'}</div></div>
+        </div>
+      </div>
       <div class="terms">
-        <div class="section-title" style="color: #333;">Terms & Conditions</div>
-        <ol>
-          <li>I hereby acknowledge that I am medically fit to exercise and participate in fitness activities.</li>
-          <li>I understand that the membership fee is non-refundable and non-transferable.</li>
-          <li>I agree to follow all gym rules, regulations, and safety guidelines.</li>
-          <li>I will use equipment responsibly and report any damage immediately.</li>
-          <li>The management reserves the right to revoke membership for misconduct.</li>
-          <li>Membership freezing is subject to applicable charges and approval.</li>
-          <li>Personal belongings must be secured in lockers. The gym is not responsible for lost items.</li>
-          <li>I consent to the storage and use of my personal data for membership management purposes.</li>
-        </ol>
+        <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
+        <ol>${DEFAULT_TERMS.map(t => `<li>${t}</li>`).join('')}${customTerms ? `<li>${customTerms}</li>` : ''}</ol>
       </div>
-
-      <div class="signature-section">
-        <div class="signature-box">
-          <div class="signature-line">Member Signature<br/><small>Date: _______________</small></div>
+      <div class="sig-section">
+        <div class="sig-box">
+          ${signatureDataUrl ? `<img src="${signatureDataUrl}" class="sig-img" />` : ''}
+          <div class="sig-line">Member Signature<br/><small>Date: ${format(new Date(), 'dd/MM/yyyy')}</small></div>
         </div>
-        <div class="signature-box">
-          <div class="signature-line">Staff Signature<br/><small>Date: _______________</small></div>
+        <div class="sig-box">
+          <div class="sig-line">Authorized Staff Signature<br/><small>Date: _______________</small></div>
         </div>
       </div>
-
       <div class="footer">
-        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • This is a computer-generated document</p>
+        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • REF: ${data.memberCode} • This is a computer-generated document</p>
       </div>
-    </body>
-    </html>
-  `;
+    </body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.onload = () => printWindow.print();
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <FileSignature className="h-5 w-5 text-primary" />
+            Membership Registration Form
+          </SheetTitle>
+          <SheetDescription>
+            Complete the form below and collect the member's digital signature
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="mt-4 space-y-5">
+          {/* Member Info Summary */}
+          <Card className="bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
+            <CardContent className="pt-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
+                  <div><span className="text-muted-foreground text-xs block">Name</span><span className="font-medium">{data.memberName}</span></div>
+                  <div><span className="text-muted-foreground text-xs block">Code</span><span className="font-medium">{data.memberCode}</span></div>
+                  <div><span className="text-muted-foreground text-xs block">Email</span><span>{data.email || '—'}</span></div>
+                  <div><span className="text-muted-foreground text-xs block">Phone</span><span>{data.phone || '—'}</span></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Membership Details */}
+          {data.planName && (
+            <Card className="border-success/20 bg-success/5">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="h-4 w-4 text-success" />
+                  <span className="font-semibold text-sm">Membership Details</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><span className="text-muted-foreground text-xs block">Plan</span><Badge variant="secondary">{data.planName}</Badge></div>
+                  <div><span className="text-muted-foreground text-xs block">Amount</span><span className="font-bold">₹{data.pricePaid?.toLocaleString('en-IN')}</span></div>
+                  <div><span className="text-muted-foreground text-xs block">Start</span><span>{data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '—'}</span></div>
+                  <div><span className="text-muted-foreground text-xs block">End</span><span>{data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '—'}</span></div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Separator />
+
+          {/* Government ID */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">Government ID</Label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">ID Type</Label>
+                <Select value={govIdType} onValueChange={setGovIdType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aadhaar">Aadhaar Card</SelectItem>
+                    <SelectItem value="pan">PAN Card</SelectItem>
+                    <SelectItem value="passport">Passport</SelectItem>
+                    <SelectItem value="voter_id">Voter ID</SelectItem>
+                    <SelectItem value="driving_license">Driving License</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">ID Number</Label>
+                <Input value={govIdNumber} onChange={e => setGovIdNumber(e.target.value)} placeholder="Enter ID number" />
+              </div>
+            </div>
+          </div>
+
+          {/* Fitness Goals & Medical */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <HeartPulse className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">Health & Fitness</Label>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Fitness Goals</Label>
+                <Textarea value={fitnessGoals} onChange={e => setFitnessGoals(e.target.value)}
+                  placeholder="e.g. Weight loss, muscle gain, general fitness, flexibility improvement"
+                  className="min-h-[60px]" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Medical Conditions / Injuries (if any)</Label>
+                <Textarea value={medicalConditions} onChange={e => setMedicalConditions(e.target.value)}
+                  placeholder="e.g. Back pain, knee injury, diabetes, heart condition — or leave blank"
+                  className="min-h-[60px]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Custom T&C */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Dumbbell className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">Custom Terms (Optional)</Label>
+            </div>
+            <Textarea value={customTerms} onChange={e => setCustomTerms(e.target.value)}
+              placeholder="Add any custom terms or conditions specific to this member..."
+              className="min-h-[50px]" />
+            <p className="text-xs text-muted-foreground mt-1">{DEFAULT_TERMS.length} standard terms will be included automatically</p>
+          </div>
+
+          <Separator />
+
+          {/* Digital Signature */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileSignature className="h-4 w-4 text-primary" />
+                <Label className="font-semibold">Digital Signature</Label>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearSignature} className="text-xs">
+                <Eraser className="h-3 w-3 mr-1" /> Clear
+              </Button>
+            </div>
+            <div className="border-2 border-dashed border-muted-foreground/30 rounded-xl bg-muted/30 relative">
+              <canvas
+                ref={canvasRef}
+                className="w-full h-[140px] cursor-crosshair touch-none"
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={stopDraw}
+                onMouseLeave={stopDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={stopDraw}
+              />
+              {!hasSigned && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <p className="text-muted-foreground/50 text-sm">Sign here ✍️</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Draw your signature above using mouse or touch. This will be saved digitally.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2 pb-4">
+            <Button variant="outline" className="flex-1" onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-2" /> Print
+            </Button>
+            <Button className="flex-1" onClick={handleSaveDigital} disabled={saving || !hasSigned}>
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Saving...' : 'Save Digital Copy'}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// Keep legacy export for backward compat
+export function printRegistrationForm(data: RegistrationFormData) {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Please allow popups to print'); return; }
+
+  const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${data.memberName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px double #6366f1; }
+    .header h1 { color: #6366f1; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+    .header p { color: #666; font-size: 12px; margin-top: 5px; }
+    .title { font-size: 18px; font-weight: bold; text-align: center; margin: 20px 0; text-decoration: underline; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 14px; font-weight: bold; color: #6366f1; margin-bottom: 10px; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item { font-size: 13px; }
+    .info-item label { font-weight: 600; display: block; margin-bottom: 2px; color: #555; }
+    .info-item .value { padding: 6px 0; border-bottom: 1px dotted #ccc; min-height: 28px; }
+    .terms { background: #f9f9f9; padding: 15px; border: 1px solid #ddd; margin: 20px 0; font-size: 12px; }
+    .terms ol { margin-left: 18px; }
+    .terms li { margin-bottom: 6px; }
+    .signature-section { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+    .signature-box { text-align: center; }
+    .signature-line { border-top: 1px solid #333; margin-top: 50px; padding-top: 8px; font-size: 12px; }
+    .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; }
+    @media print { body { padding: 20px; } }
+  </style></head><body>
+    <div class="header"><h1>${data.branchName || 'FITNESS CENTER'}</h1><p>Membership Registration Form</p></div>
+    <div class="title">MEMBERSHIP AGREEMENT</div>
+    <div class="section"><div class="section-title">Member Details</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Full Name</label><div class="value">${data.memberName}</div></div>
+        <div class="info-item"><label>Member Code</label><div class="value">${data.memberCode}</div></div>
+        <div class="info-item"><label>Email</label><div class="value">${data.email || '___'}</div></div>
+        <div class="info-item"><label>Phone</label><div class="value">${data.phone || '___'}</div></div>
+        <div class="info-item"><label>Gender</label><div class="value">${data.gender || '___'}</div></div>
+        <div class="info-item"><label>Date of Birth</label><div class="value">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '___'}</div></div>
+        <div class="info-item" style="grid-column:span 2"><label>Address</label><div class="value">${data.address || '___'}</div></div>
+      </div></div>
+    <div class="section"><div class="section-title">Emergency Contact</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Name</label><div class="value">${data.emergencyContactName || '___'}</div></div>
+        <div class="info-item"><label>Phone</label><div class="value">${data.emergencyContactPhone || '___'}</div></div>
+      </div></div>
+    <div class="section"><div class="section-title">Membership Details</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Plan</label><div class="value">${data.planName || '___'}</div></div>
+        <div class="info-item"><label>Amount</label><div class="value">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '___'}</div></div>
+        <div class="info-item"><label>Start Date</label><div class="value">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '___'}</div></div>
+        <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___'}</div></div>
+      </div></div>
+    <div class="terms"><div class="section-title" style="color:#333">Terms & Conditions</div>
+      <ol>${DEFAULT_TERMS.map(t => `<li>${t}</li>`).join('')}</ol></div>
+    <div class="signature-section">
+      <div class="signature-box"><div class="signature-line">Member Signature<br/><small>Date: ___</small></div></div>
+      <div class="signature-box"><div class="signature-line">Staff Signature<br/><small>Date: ___</small></div></div>
+    </div>
+    <div class="footer"><p>Generated on ${new Date().toLocaleDateString('en-IN')}</p></div>
+  </body></html>`;
 
   printWindow.document.write(html);
   printWindow.document.close();
