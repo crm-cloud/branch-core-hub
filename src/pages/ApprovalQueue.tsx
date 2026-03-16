@@ -316,6 +316,26 @@ export default function ApprovalQueuePage() {
       );
     }
 
+    if (request.approval_type === 'comp_gift') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>
+          {request.reference_type === 'extend_days' ? (
+            <>
+              <p><span className="text-muted-foreground">Type:</span> Extend Days (+{data.days})</p>
+              <p><span className="text-muted-foreground">New Expiry:</span> {safeFormatDate(data.newEndDate, 'dd MMM yyyy', 'N/A')}</p>
+            </>
+          ) : (
+            <>
+              <p><span className="text-muted-foreground">Type:</span> Comp Sessions ({data.sessions}x)</p>
+              <p><span className="text-muted-foreground">Benefit:</span> {data.benefitTypeName}</p>
+            </>
+          )}
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
     return (
       <div className="text-sm">
         {data?.memberName && <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>}
