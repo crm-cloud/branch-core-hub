@@ -1420,6 +1420,29 @@ export function MemberProfileDrawer({
           membershipId={activeMembership?.id}
           branchId={member.branch_id}
         />
+        <MemberRegistrationFormDrawer
+          open={registrationFormOpen}
+          onOpenChange={setRegistrationFormOpen}
+          data={{
+            memberName: profile?.full_name || 'N/A',
+            memberCode: member.member_code,
+            email: profile?.email,
+            phone: profile?.phone,
+            gender: profile?.gender,
+            dateOfBirth: profile?.date_of_birth,
+            address: profile?.address,
+            city: profile?.city,
+            state: profile?.state,
+            emergencyContactName: profile?.emergency_contact_name,
+            emergencyContactPhone: profile?.emergency_contact_phone,
+            planName: activeMembership?.membership_plans?.name,
+            startDate: activeMembership?.start_date,
+            endDate: activeMembership?.end_date,
+            pricePaid: activeMembership?.price_paid,
+            branchName: memberDetails?.branch?.name,
+            memberId: member.id,
+          }}
+        />
       </SheetContent>
     </Sheet>
   );
