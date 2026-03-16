@@ -474,7 +474,7 @@ export default function MembersPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {member.joined_at ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
+                              {member.joined_at && !isNaN(new Date(member.joined_at).getTime()) ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1">
