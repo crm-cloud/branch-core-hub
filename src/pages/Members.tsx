@@ -67,7 +67,7 @@ export default function MembersPage() {
             member_code: row.member_code,
             user_id: row.user_id,
             branch_id: row.branch_id,
-            joined_at: row.created_at,
+            joined_at: null,
             status: row.member_status || 'inactive',
             profiles: {
               full_name: row.full_name,
@@ -474,7 +474,7 @@ export default function MembersPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {member.joined_at ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
+                              {member.joined_at && !isNaN(new Date(member.joined_at).getTime()) ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1">

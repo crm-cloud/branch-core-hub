@@ -155,7 +155,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
 
       // Save document record
       const { data: { user } } = await supabase.auth.getUser();
-      await (supabase as any).from('member_documents').insert({
+      await supabase.from('member_documents').insert({
         member_id: data.memberId,
         document_type: 'registration_form',
         file_url: urlData.publicUrl,

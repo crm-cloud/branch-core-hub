@@ -33,6 +33,8 @@ import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
 import { DocumentVaultTab } from './DocumentVaultTab';
 import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
+import { TransferBranchDrawer } from './TransferBranchDrawer';
+import { TransferMembershipDrawer } from './TransferMembershipDrawer';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
@@ -440,6 +442,8 @@ export function MemberProfileDrawer({
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [compGiftOpen, setCompGiftOpen] = useState(false);
   const [registrationFormOpen, setRegistrationFormOpen] = useState(false);
+  const [transferBranchOpen, setTransferBranchOpen] = useState(false);
+  const [transferMembershipOpen, setTransferMembershipOpen] = useState(false);
 
   const toggleMemberStatus = async () => {
     if (!member?.id) return;
@@ -867,6 +871,14 @@ export function MemberProfileDrawer({
             <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
               <Gift className="h-4 w-4 mr-2" /> Comp/Gift
             </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+              <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
+            </Button>
+            {activeMembership && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {
               setRegistrationFormOpen(true);
             }}>
@@ -1443,6 +1455,24 @@ export function MemberProfileDrawer({
             memberId: member.id,
           }}
         />
+        <TransferBranchDrawer
+          open={transferBranchOpen}
+          onOpenChange={setTransferBranchOpen}
+          memberId={member.id}
+          memberName={profile?.full_name}
+          currentBranchId={member.branch_id}
+          currentBranchName={memberDetails?.branch?.name}
+        />
+        {activeMembership && (
+          <TransferMembershipDrawer
+            open={transferMembershipOpen}
+            onOpenChange={setTransferMembershipOpen}
+            memberId={member.id}
+            memberName={profile?.full_name}
+            membershipId={activeMembership.id}
+            branchId={member.branch_id}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -47,6 +47,7 @@ const APPROVAL_TYPE_CONFIG: Record<string, { icon: any; label: string; color: st
   refund: { icon: DollarSign, label: 'Refund', color: 'bg-destructive/10 text-destructive' },
   discount: { icon: Percent, label: 'Discount', color: 'bg-warning/10 text-warning' },
   complimentary: { icon: Gift, label: 'Complimentary', color: 'bg-success/10 text-success' },
+  comp_gift: { icon: Gift, label: 'Comp/Gift', color: 'bg-amber-500/10 text-amber-600' },
   expense: { icon: CreditCard, label: 'Expense', color: 'bg-muted text-muted-foreground' },
   contract: { icon: FileText, label: 'Contract', color: 'bg-accent/10 text-accent' },
   trainer_change: { icon: User, label: 'Trainer Change', color: 'bg-primary/10 text-primary' },
@@ -218,6 +219,38 @@ export default function ApprovalQueuePage() {
               .update({ assigned_trainer_id: requestData.newTrainerId })
               .eq('id', requestData.memberId);
           }
+        } else if (request.approval_type === 'comp_gift') {
+          // Handle comp/gift approval
+          if (request.reference_type === 'extend_days') {
+            // Extend membership end date
+            const msId = requestData.membershipId;
+            if (msId && requestData.days) {
+              const { data: ms } = await supabase
+                .from('memberships')
+                .select('end_date')
+                .eq('id', msId)
+                .single();
+              if (ms) {
+                const currentEnd = new Date(ms.end_date);
+                currentEnd.setDate(currentEnd.getDate() + requestData.days);
+                await supabase
+                  .from('memberships')
+                  .update({ end_date: currentEnd.toISOString().split('T')[0] })
+                  .eq('id', msId);
+              }
+            }
+          } else if (request.reference_type === 'comp_sessions') {
+            // Insert comp sessions
+            await supabase.from('member_comps').insert({
+              member_id: requestData.memberId,
+              membership_id: requestData.membershipId || null,
+              benefit_type_id: requestData.benefitTypeId,
+              comp_sessions: requestData.sessions,
+              used_sessions: 0,
+              reason: requestData.reason || 'Approved comp',
+              granted_by: user?.id,
+            });
+          }
         }
       } else {
         // Handle rejection
@@ -278,6 +311,26 @@ export default function ApprovalQueuePage() {
           <p><span className="text-muted-foreground">Member:</span> {data.memberName || 'N/A'}</p>
           <p><span className="text-muted-foreground">Current Trainer:</span> {data.currentTrainerName || 'None'}</p>
           <p><span className="text-muted-foreground">New Trainer:</span> {data.newTrainerName || 'N/A'}</p>
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
+    if (request.approval_type === 'comp_gift') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>
+          {request.reference_type === 'extend_days' ? (
+            <>
+              <p><span className="text-muted-foreground">Type:</span> Extend Days (+{data.days})</p>
+              <p><span className="text-muted-foreground">New Expiry:</span> {safeFormatDate(data.newEndDate, 'dd MMM yyyy', 'N/A')}</p>
+            </>
+          ) : (
+            <>
+              <p><span className="text-muted-foreground">Type:</span> Comp Sessions ({data.sessions}x)</p>
+              <p><span className="text-muted-foreground">Benefit:</span> {data.benefitTypeName}</p>
+            </>
+          )}
           {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
         </div>
       );

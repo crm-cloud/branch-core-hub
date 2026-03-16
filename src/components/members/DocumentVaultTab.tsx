@@ -33,7 +33,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
     queryKey: ['member-documents', memberId],
     enabled: !!memberId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('member_documents')
         .select('*')
         .eq('member_id', memberId)
@@ -60,7 +60,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
       const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error: insertError } = await (supabase as any).from('member_documents').insert({
+      const { error: insertError } = await supabase.from('member_documents').insert({
         member_id: memberId,
         document_type: docType,
         file_url: urlData.publicUrl,
@@ -81,7 +81,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
-      const { error } = await (supabase as any).from('member_documents').delete().eq('id', docId);
+      const { error } = await supabase.from('member_documents').delete().eq('id', docId);
       if (error) throw error;
     },
     onSuccess: () => {
