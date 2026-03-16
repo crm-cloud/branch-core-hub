@@ -32,7 +32,7 @@ import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
 import { DocumentVaultTab } from './DocumentVaultTab';
-import { printRegistrationForm } from './MemberRegistrationForm';
+import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
