@@ -33,7 +33,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
     queryKey: ['member-documents', memberId],
     enabled: !!memberId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('member_documents')
         .select('*')
         .eq('member_id', memberId)
