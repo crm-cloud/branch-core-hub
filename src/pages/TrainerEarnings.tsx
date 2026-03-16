@@ -34,7 +34,7 @@ export default function TrainerEarnings() {
         .from('pt_sessions')
         .select(`
           *,
-          member_pt_package:member_pt_packages(member:members(member_code, user_id), package:pt_packages(name, price_per_session)),
+          member_pt_package:member_pt_packages(member:members(member_code, user_id), package:pt_packages(name)),
           trainer:trainers(id, user_id)
         `)
         .eq('trainer_id', trainer!.id)

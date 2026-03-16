@@ -75,6 +75,10 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
       queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      queryClient.invalidateQueries({ queryKey: ['member-pt-packages'] });
+      queryClient.invalidateQueries({ queryKey: ['active-membership'] });
+      queryClient.invalidateQueries({ queryKey: ['member-pending-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
 
       // Send notifications for PT purchase
       try {
