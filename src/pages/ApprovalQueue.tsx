@@ -219,6 +219,38 @@ export default function ApprovalQueuePage() {
               .update({ assigned_trainer_id: requestData.newTrainerId })
               .eq('id', requestData.memberId);
           }
+        } else if (request.approval_type === 'comp_gift') {
+          // Handle comp/gift approval
+          if (request.reference_type === 'extend_days') {
+            // Extend membership end date
+            const msId = requestData.membershipId;
+            if (msId && requestData.days) {
+              const { data: ms } = await supabase
+                .from('memberships')
+                .select('end_date')
+                .eq('id', msId)
+                .single();
+              if (ms) {
+                const currentEnd = new Date(ms.end_date);
+                currentEnd.setDate(currentEnd.getDate() + requestData.days);
+                await supabase
+                  .from('memberships')
+                  .update({ end_date: currentEnd.toISOString().split('T')[0] })
+                  .eq('id', msId);
+              }
+            }
+          } else if (request.reference_type === 'comp_sessions') {
+            // Insert comp sessions
+            await supabase.from('member_comps').insert({
+              member_id: requestData.memberId,
+              membership_id: requestData.membershipId || null,
+              benefit_type_id: requestData.benefitTypeId,
+              comp_sessions: requestData.sessions,
+              used_sessions: 0,
+              reason: requestData.reason || 'Approved comp',
+              granted_by: user?.id,
+            });
+          }
         }
       } else {
         // Handle rejection
