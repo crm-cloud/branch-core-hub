@@ -28,9 +28,9 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
         .select('id, name, content, trigger_event, channel, is_active')
         .eq('channel', 'whatsapp')
         .eq('is_active', true)
-        .order('name', { ascending: true });
+        .order('name', { ascending: true }) as any;
       if (error) throw error;
-      return data || [];
+      return (data || []) as Array<{ id: string; name: string; content: string; trigger_event: string | null; channel: string; is_active: boolean }>;
     },
     enabled: open,
   });
