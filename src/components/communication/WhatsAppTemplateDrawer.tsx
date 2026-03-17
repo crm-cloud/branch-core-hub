@@ -115,7 +115,7 @@ export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber
   try {
     const { data: templates } = await supabase
       .from('templates')
-      .select('content')
+      .select('id, content')
       .eq('channel', 'whatsapp')
       .eq('trigger_event', triggerEvent)
       .eq('is_active', true)
