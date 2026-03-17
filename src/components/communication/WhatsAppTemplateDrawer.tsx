@@ -23,12 +23,12 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
   const { data: templates = [] } = useQuery({
     queryKey: ['whatsapp-templates', branchId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('templates')
         .select('id, name, content, trigger_event, channel, is_active')
         .eq('channel', 'whatsapp')
         .eq('is_active', true)
-        .order('name', { ascending: true }) as any;
+        .order('name', { ascending: true });
       if (error) throw error;
       return (data || []) as Array<{ id: string; name: string; content: string; trigger_event: string | null; channel: string; is_active: boolean }>;
     },
