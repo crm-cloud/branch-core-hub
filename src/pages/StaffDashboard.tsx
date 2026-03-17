@@ -25,6 +25,7 @@ export default function StaffDashboard() {
   const todayEnd = endOfDay(today).toISOString();
   const [smartAssistMember, setSmartAssistMember] = useState<any>(null);
   const [convertLead, setConvertLead] = useState<any>(null);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   // Get staff's assigned branch
   const { data: staffBranch } = useQuery({

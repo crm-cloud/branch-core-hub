@@ -215,6 +215,29 @@ export default function LeadsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Status filter chips */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {LEAD_STATUSES.map(status => {
+                const cfg = STATUS_CONFIG[status];
+                const isSelected = statusFilter.includes(status);
+                return (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setStatusFilter(prev => 
+                        isSelected ? prev.filter(s => s !== status) : [...prev, status]
+                      );
+                      setPage(0);
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      isSelected ? cfg.color : 'bg-muted/50 text-muted-foreground border-border opacity-60'
+                    }`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 

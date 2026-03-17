@@ -348,40 +348,50 @@ export default function FinancePage() {
             </CardContent>
           </Card>
 
-          {/* Budget Summary Card */}
+          {/* Revenue by Payment Method - Donut */}
           <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
             <CardHeader>
-              <CardTitle className="text-base font-bold text-foreground">{new Date().getFullYear()} Budget</CardTitle>
-              <CardDescription>Financial summary</CardDescription>
+              <CardTitle className="text-base font-bold text-foreground">Revenue by Method</CardTitle>
+              <CardDescription>Current period breakdown</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-3xl font-bold text-foreground">{formatCurrency(totalIncome)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Total Income</p>
-              </div>
-              <div className="h-[80px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={sparklineData}>
-                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="rounded-xl bg-green-50 p-3 text-center">
-                  <p className="text-sm font-bold text-green-600">{formatCurrency(netProfit)}</p>
-                  <p className="text-xs text-green-600/70">Net Profit</p>
-                </div>
-                <div className="rounded-xl bg-red-50 p-3 text-center">
-                  <p className="text-sm font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
-                  <p className="text-xs text-red-500/70">Expenses</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <div className={`flex items-center gap-1 text-xs font-medium ${Number(profitMargin) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                  {Number(profitMargin) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {profitMargin}% margin
-                </div>
-              </div>
+            <CardContent>
+              {paymentMethodData.length > 0 ? (
+                <>
+                  <div className="h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={paymentMethodData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={80}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {paymentMethodData.map((entry) => (
+                            <Cell key={entry.name} fill={PAYMENT_METHOD_COLORS[entry.name] || PAYMENT_METHOD_COLORS.Other} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 pt-2">
+                    {paymentMethodData.map((entry) => (
+                      <div key={entry.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: PAYMENT_METHOD_COLORS[entry.name] || PAYMENT_METHOD_COLORS.Other }} />
+                          <span className="text-muted-foreground">{entry.name}</span>
+                        </div>
+                        <span className="font-semibold">{formatCurrency(entry.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground py-12">No payment data</p>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -249,6 +249,7 @@ export default function InvoicesPage() {
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-10 w-10">
+                                  <AvatarImage src={invoice.members?.profiles?.avatar_url} />
                                   <AvatarFallback className="bg-accent/10 text-accent font-semibold">
                                     {getInitials(memberName)}
                                   </AvatarFallback>
