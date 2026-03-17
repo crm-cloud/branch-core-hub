@@ -86,6 +86,9 @@ export default function LeadsPage() {
     return ['all', ...Array.from(s)];
   }, [leads]);
 
+  // Status filter — default hides converted/lost
+  const [statusFilter, setStatusFilter] = useState<string[]>(['new', 'contacted', 'qualified', 'negotiation']);
+
   // Filtered leads
   const filteredLeads = useMemo(() => {
     return leads.filter((lead: any) => {
@@ -94,9 +97,10 @@ export default function LeadsPage() {
         lead.phone?.includes(searchQuery) ||
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesSource = sourceFilter === 'all' || (lead.source || 'Direct') === sourceFilter;
-      return matchesSearch && matchesSource;
+      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(lead.status);
+      return matchesSearch && matchesSource && matchesStatus;
     });
-  }, [leads, searchQuery, sourceFilter]);
+  }, [leads, searchQuery, sourceFilter, statusFilter]);
 
   // Paginated leads for list view
   const paginatedLeads = filteredLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
