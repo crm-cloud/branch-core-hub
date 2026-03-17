@@ -15,6 +15,7 @@ import {
   Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
 import { toast } from 'sonner';
