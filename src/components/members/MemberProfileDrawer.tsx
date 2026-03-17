@@ -434,6 +434,8 @@ export function MemberProfileDrawer({
   onPurchasePT
 }: MemberProfileDrawerProps) {
   const queryClient = useQueryClient();
+  const { hasAnyRole } = useAuth();
+  const isManagerOrAbove = hasAnyRole(['owner', 'admin', 'manager']);
   const [freezeOpen, setFreezeOpen] = useState(false);
   const [unfreezeOpen, setUnfreezeOpen] = useState(false);
   const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
