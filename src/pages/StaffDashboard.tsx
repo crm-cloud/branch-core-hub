@@ -162,6 +162,7 @@ export default function StaffDashboard() {
           <Link to="/pos"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><ShoppingCart className="h-8 w-8 text-accent" /><span className="font-medium text-center">Open POS</span></CardContent></Card></Link>
           <Link to="/leads"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><UserPlus className="h-8 w-8 text-amber-500" /><span className="font-medium text-center">Add Lead</span></CardContent></Card></Link>
           <Link to="/invoices"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><FileText className="h-8 w-8 text-primary" /><span className="font-medium text-center">View Invoices</span></CardContent></Card></Link>
+          <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl" onClick={() => setPricingOpen(true)}><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><TrendingUp className="h-8 w-8 text-violet-500" /><span className="font-medium text-center">View Pricing</span></CardContent></Card>
         </div>
 
         {/* Stats Row */}
