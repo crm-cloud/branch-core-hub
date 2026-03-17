@@ -403,6 +403,61 @@ export default function StaffDashboard() {
           lead={convertLead}
         />
       )}
+
+      {/* View Pricing Drawer */}
+      <PricingDrawer open={pricingOpen} onOpenChange={setPricingOpen} branchId={branchId} />
     </AppLayout>
+  );
+}
+
+function PricingDrawer({ open, onOpenChange, branchId }: { open: boolean; onOpenChange: (open: boolean) => void; branchId?: string }) {
+  const { data: plans = [] } = useQuery({
+    queryKey: ['membership-plans-pricing', branchId],
+    queryFn: async () => {
+      let query = supabase.from('membership_plans').select('id, name, duration_days, price, is_active').eq('is_active', true).order('price', { ascending: true });
+      if (branchId) query = query.eq('branch_id', branchId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open,
+  });
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <IndianRupee className="h-5 w-5 text-primary" />
+            Membership Pricing
+          </SheetTitle>
+        </SheetHeader>
+        <div className="mt-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plan</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plans.map((plan: any) => (
+                <TableRow key={plan.id}>
+                  <TableCell className="font-medium">{plan.name}</TableCell>
+                  <TableCell>{plan.duration_days} days</TableCell>
+                  <TableCell className="text-right font-semibold">₹{plan.price?.toLocaleString('en-IN')}</TableCell>
+                </TableRow>
+              ))}
+              {plans.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center text-muted-foreground py-8">No plans configured</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -871,15 +871,34 @@ export function MemberProfileDrawer({
               {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
               {member.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
-              <Gift className="h-4 w-4 mr-2" /> Comp/Gift
-            </Button>
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
-              <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
-            </Button>
-            {activeMembership && (
+            {isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2" /> Comp/Gift
+              </Button>
+            )}
+            {isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
+              </Button>
+            )}
+            {isManagerOrAbove && activeMembership && (
               <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
                 <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
+              </Button>
+            )}
+            {!isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2" /> Request Comp
+              </Button>
+            )}
+            {!isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2" /> Request Transfer
+              </Button>
+            )}
+            {!isManagerOrAbove && activeMembership && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2" /> Request Plan Transfer
               </Button>
             )}
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {
