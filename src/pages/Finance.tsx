@@ -276,6 +276,29 @@ export default function FinancePage() {
   // Budget sparkline data (monthly totals for sparkline)
   const sparklineData = monthlyReportData.map(m => ({ value: m.earning }));
 
+  // Revenue by Payment Method (donut chart data)
+  const paymentMethodData = useMemo(() => {
+    const methodMap: Record<string, number> = {};
+    incomeData.forEach((p: any) => {
+      const method = p.payment_method || 'other';
+      const label = method.includes('upi') ? 'UPI' 
+        : method.includes('card') || method.includes('credit') || method.includes('debit') ? 'Card' 
+        : method.includes('bank') || method.includes('transfer') || method.includes('neft') ? 'Bank Transfer' 
+        : method.includes('cash') ? 'Cash' 
+        : 'Other';
+      methodMap[label] = (methodMap[label] || 0) + (p.amount || 0);
+    });
+    return Object.entries(methodMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [incomeData]);
+
+  const PAYMENT_METHOD_COLORS: Record<string, string> = {
+    Cash: 'hsl(142, 71%, 45%)',
+    Card: 'hsl(217, 91%, 60%)',
+    UPI: 'hsl(270, 76%, 58%)',
+    'Bank Transfer': 'hsl(38, 92%, 50%)',
+    Other: 'hsl(215, 14%, 58%)',
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
