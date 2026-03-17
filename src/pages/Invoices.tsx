@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateInvoiceDrawer } from '@/components/invoices/CreateInvoiceDrawer';
 import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
@@ -46,7 +46,7 @@ export default function InvoicesPage() {
         .from('invoices')
         .select(`
           id, invoice_number, status, total_amount, amount_paid, due_date, created_at, member_id, pos_sale_id, branch_id,
-          members(member_code, profiles:user_id(full_name, email, phone)),
+          members(member_code, profiles:user_id(full_name, email, phone, avatar_url)),
           invoice_items(description, reference_type)
         `, { count: 'exact' })
         .order('created_at', { ascending: false })
@@ -249,6 +249,7 @@ export default function InvoicesPage() {
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-10 w-10">
+                                  <AvatarImage src={invoice.members?.profiles?.avatar_url} />
                                   <AvatarFallback className="bg-accent/10 text-accent font-semibold">
                                     {getInitials(memberName)}
                                   </AvatarFallback>

@@ -35,6 +35,12 @@ export function AddLeadDrawer({ open, onOpenChange, defaultBranchId }: AddLeadDr
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
       onOpenChange(false);
+      // Auto-trigger Lead Welcome WhatsApp template
+      if (newLead.phone && defaultBranchId) {
+        import('@/components/communication/WhatsAppTemplateDrawer').then(({ autoSendWhatsAppTemplate }) => {
+          autoSendWhatsAppTemplate('lead_welcome', newLead.phone, newLead.full_name, defaultBranchId);
+        });
+      }
       setNewLead({ full_name: '', phone: '', email: '', source: 'walk_in', notes: '' });
       toast.success('Lead added successfully');
     },

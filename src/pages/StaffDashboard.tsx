@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   UserCheck, ShoppingCart, FileText, UserPlus, Clock, AlertTriangle,
-  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft
+  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft, IndianRupee
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Link } from 'react-router-dom';
@@ -25,6 +27,7 @@ export default function StaffDashboard() {
   const todayEnd = endOfDay(today).toISOString();
   const [smartAssistMember, setSmartAssistMember] = useState<any>(null);
   const [convertLead, setConvertLead] = useState<any>(null);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   // Get staff's assigned branch
   const { data: staffBranch } = useQuery({
@@ -162,6 +165,7 @@ export default function StaffDashboard() {
           <Link to="/pos"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><ShoppingCart className="h-8 w-8 text-accent" /><span className="font-medium text-center">Open POS</span></CardContent></Card></Link>
           <Link to="/leads"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><UserPlus className="h-8 w-8 text-amber-500" /><span className="font-medium text-center">Add Lead</span></CardContent></Card></Link>
           <Link to="/invoices"><Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl"><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><FileText className="h-8 w-8 text-primary" /><span className="font-medium text-center">View Invoices</span></CardContent></Card></Link>
+          <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full rounded-2xl" onClick={() => setPricingOpen(true)}><CardContent className="flex flex-col items-center justify-center py-6 gap-2"><TrendingUp className="h-8 w-8 text-violet-500" /><span className="font-medium text-center">View Pricing</span></CardContent></Card>
         </div>
 
         {/* Stats Row */}
@@ -399,6 +403,61 @@ export default function StaffDashboard() {
           lead={convertLead}
         />
       )}
+
+      {/* View Pricing Drawer */}
+      <PricingDrawer open={pricingOpen} onOpenChange={setPricingOpen} branchId={branchId} />
     </AppLayout>
+  );
+}
+
+function PricingDrawer({ open, onOpenChange, branchId }: { open: boolean; onOpenChange: (open: boolean) => void; branchId?: string }) {
+  const { data: plans = [] } = useQuery({
+    queryKey: ['membership-plans-pricing', branchId],
+    queryFn: async () => {
+      let query = supabase.from('membership_plans').select('id, name, duration_days, price, is_active').eq('is_active', true).order('price', { ascending: true });
+      if (branchId) query = query.eq('branch_id', branchId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open,
+  });
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <IndianRupee className="h-5 w-5 text-primary" />
+            Membership Pricing
+          </SheetTitle>
+        </SheetHeader>
+        <div className="mt-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plan</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plans.map((plan: any) => (
+                <TableRow key={plan.id}>
+                  <TableCell className="font-medium">{plan.name}</TableCell>
+                  <TableCell>{plan.duration_days} days</TableCell>
+                  <TableCell className="text-right font-semibold">₹{plan.price?.toLocaleString('en-IN')}</TableCell>
+                </TableRow>
+              ))}
+              {plans.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center text-muted-foreground py-8">No plans configured</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -15,6 +15,7 @@ import {
   Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
 import { toast } from 'sonner';
@@ -433,6 +434,8 @@ export function MemberProfileDrawer({
   onPurchasePT
 }: MemberProfileDrawerProps) {
   const queryClient = useQueryClient();
+  const { hasAnyRole } = useAuth();
+  const isManagerOrAbove = hasAnyRole(['owner', 'admin', 'manager']);
   const [freezeOpen, setFreezeOpen] = useState(false);
   const [unfreezeOpen, setUnfreezeOpen] = useState(false);
   const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
@@ -868,15 +871,34 @@ export function MemberProfileDrawer({
               {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
               {member.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
-              <Gift className="h-4 w-4 mr-2" /> Comp/Gift
-            </Button>
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
-              <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
-            </Button>
-            {activeMembership && (
+            {isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2" /> Comp/Gift
+              </Button>
+            )}
+            {isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
+              </Button>
+            )}
+            {isManagerOrAbove && activeMembership && (
               <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
                 <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
+              </Button>
+            )}
+            {!isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2" /> Request Comp
+              </Button>
+            )}
+            {!isManagerOrAbove && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2" /> Request Transfer
+              </Button>
+            )}
+            {!isManagerOrAbove && activeMembership && (
+              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2" /> Request Plan Transfer
               </Button>
             )}
             <Button variant="outline" size="sm" className="justify-start" onClick={() => {

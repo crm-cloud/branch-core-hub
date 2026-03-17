@@ -86,6 +86,9 @@ export default function LeadsPage() {
     return ['all', ...Array.from(s)];
   }, [leads]);
 
+  // Status filter — default hides converted/lost
+  const [statusFilter, setStatusFilter] = useState<string[]>(['new', 'contacted', 'qualified', 'negotiation']);
+
   // Filtered leads
   const filteredLeads = useMemo(() => {
     return leads.filter((lead: any) => {
@@ -94,9 +97,10 @@ export default function LeadsPage() {
         lead.phone?.includes(searchQuery) ||
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesSource = sourceFilter === 'all' || (lead.source || 'Direct') === sourceFilter;
-      return matchesSearch && matchesSource;
+      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(lead.status);
+      return matchesSearch && matchesSource && matchesStatus;
     });
-  }, [leads, searchQuery, sourceFilter]);
+  }, [leads, searchQuery, sourceFilter, statusFilter]);
 
   // Paginated leads for list view
   const paginatedLeads = filteredLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -210,6 +214,29 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* Status filter chips */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {LEAD_STATUSES.map(status => {
+                const cfg = STATUS_CONFIG[status];
+                const isSelected = statusFilter.includes(status);
+                return (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setStatusFilter(prev => 
+                        isSelected ? prev.filter(s => s !== status) : [...prev, status]
+                      );
+                      setPage(0);
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      isSelected ? cfg.color : 'bg-muted/50 text-muted-foreground border-border opacity-60'
+                    }`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
