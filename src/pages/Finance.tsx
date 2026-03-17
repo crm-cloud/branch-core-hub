@@ -16,7 +16,7 @@ import {
   CreditCard, Banknote, Smartphone, Receipt
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { AddExpenseDrawer } from '@/components/finance/AddExpenseDrawer';
 import { toast } from 'sonner';
 
