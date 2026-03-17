@@ -396,6 +396,47 @@ export default function FinancePage() {
           </Card>
         </div>
 
+        {/* Budget Summary Row */}
+        <div className="grid gap-6 md:grid-cols-4">
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
+            <CardContent className="pt-6 text-center">
+              <p className="text-3xl font-bold text-foreground">{formatCurrency(totalIncome)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Income</p>
+              <div className="h-[60px] mt-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={sparklineData}>
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
+            <CardContent className="pt-6 text-center">
+              <p className="text-3xl font-bold text-success">{formatCurrency(netProfit)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Net Profit</p>
+            </CardContent>
+          </Card>
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
+            <CardContent className="pt-6 text-center">
+              <p className="text-3xl font-bold text-destructive">{formatCurrency(totalExpenses)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Expenses</p>
+            </CardContent>
+          </Card>
+          <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
+            <CardContent className="pt-6 text-center">
+              <div className={`text-3xl font-bold ${Number(profitMargin) >= 0 ? 'text-success' : 'text-destructive'}`}>
+                {profitMargin}%
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Profit Margin</p>
+              <div className={`flex items-center justify-center gap-1 text-xs font-medium mt-2 ${Number(profitMargin) >= 0 ? 'text-success' : 'text-destructive'}`}>
+                {Number(profitMargin) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {Number(profitMargin) >= 0 ? 'Healthy' : 'Loss'}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Transactions Timeline + Income/Expense Tables */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Recent Transactions Timeline */}
