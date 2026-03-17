@@ -113,13 +113,13 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
 /** Auto-send a WhatsApp template by trigger event name */
 export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber: string, recipientName: string, branchId: string) {
   try {
-    const { data: templates } = await (supabase
+    const { data: templates } = await (supabase as any)
       .from('templates')
       .select('id, content')
       .eq('channel', 'whatsapp')
       .eq('trigger_event', triggerEvent)
       .eq('is_active', true)
-      .limit(1) as any);
+      .limit(1);
 
     if (!templates?.length) return;
 
