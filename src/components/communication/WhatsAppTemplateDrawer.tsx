@@ -25,7 +25,7 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
     queryFn: async () => {
       const { data, error } = await supabase
         .from('templates')
-        .select('*')
+        .select('id, name, content, trigger_event, channel, is_active')
         .eq('channel', 'whatsapp')
         .eq('is_active', true)
         .order('name', { ascending: true });
