@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   UserCheck, ShoppingCart, FileText, UserPlus, Clock, AlertTriangle,
-  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft
+  CheckCircle, Users, Calendar, TrendingUp, PhoneCall, MessageSquare, UserX, Eye, ArrowRightLeft, IndianRupee
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Link } from 'react-router-dom';

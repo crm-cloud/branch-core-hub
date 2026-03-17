@@ -119,7 +119,7 @@ export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber
       .eq('channel', 'whatsapp')
       .eq('trigger_event', triggerEvent)
       .eq('is_active', true)
-      .limit(1);
+      .limit(1) as any;
 
     if (!templates?.length) return;
 
