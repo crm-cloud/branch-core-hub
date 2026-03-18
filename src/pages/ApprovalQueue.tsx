@@ -518,7 +518,9 @@ export default function ApprovalQueuePage() {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="membership_freeze">Freeze</SelectItem>
-                  <SelectItem value="membership_transfer">Transfer</SelectItem>
+                  <SelectItem value="membership_transfer">Membership Transfer</SelectItem>
+                  <SelectItem value="branch_transfer">Branch Transfer</SelectItem>
+                  <SelectItem value="comp_gift">Comp/Gift</SelectItem>
                   <SelectItem value="refund">Refund</SelectItem>
                   <SelectItem value="discount">Discount</SelectItem>
                   <SelectItem value="complimentary">Complimentary</SelectItem>
