@@ -222,6 +222,85 @@ export default function ApprovalQueuePage() {
               .update({ assigned_trainer_id: requestData.newTrainerId })
               .eq('id', requestData.memberId);
           }
+        } else if (request.approval_type === 'membership_transfer') {
+          // Handle membership transfer approval
+          const toMemberId = requestData.to_member_id;
+          const msId = requestData.membershipId || request.reference_id;
+          if (toMemberId && msId) {
+            await supabase
+              .from('memberships')
+              .update({ member_id: toMemberId })
+              .eq('id', msId);
+
+            // Create transfer fee invoice if chargeable
+            if (requestData.is_chargeable && requestData.transfer_fee > 0) {
+              const fee = requestData.transfer_fee;
+              const { data: invoice } = await supabase
+                .from('invoices')
+                .insert({
+                  branch_id: request.branch_id,
+                  member_id: toMemberId,
+                  subtotal: fee,
+                  total_amount: fee,
+                  amount_paid: 0,
+                  status: 'pending',
+                  due_date: new Date().toISOString().split('T')[0],
+                  invoice_type: 'membership_transfer',
+                })
+                .select('id')
+                .single();
+
+              if (invoice) {
+                await supabase.from('invoice_items').insert({
+                  invoice_id: invoice.id,
+                  description: `Membership Transfer Fee from ${requestData.from_member_name}`,
+                  unit_price: fee,
+                  quantity: 1,
+                  total_amount: fee,
+                  reference_type: 'membership_transfer',
+                  reference_id: msId,
+                });
+              }
+            }
+
+            await supabase.from('audit_logs').insert({
+              action: 'MEMBERSHIP_TRANSFER',
+              table_name: 'memberships',
+              record_id: msId,
+              user_id: user?.id,
+              branch_id: request.branch_id,
+              old_data: { member_id: requestData.from_member_id, member_name: requestData.from_member_name },
+              new_data: { member_id: toMemberId, member_name: requestData.to_member_name },
+              action_description: `Approved membership transfer from ${requestData.from_member_name} to ${requestData.to_member_name}. ${requestData.is_chargeable ? `Fee: ₹${requestData.transfer_fee}` : 'Free transfer'}. Reason: ${requestData.reason}`,
+            });
+          }
+        } else if (request.approval_type === 'branch_transfer') {
+          // Handle branch transfer approval
+          const mId = requestData.member_id || request.reference_id;
+          const toBranchId = requestData.to_branch_id;
+          if (mId && toBranchId) {
+            await supabase
+              .from('members')
+              .update({ branch_id: toBranchId })
+              .eq('id', mId);
+
+            await supabase
+              .from('memberships')
+              .update({ branch_id: toBranchId })
+              .eq('member_id', mId)
+              .in('status', ['active', 'frozen']);
+
+            await supabase.from('audit_logs').insert({
+              action: 'BRANCH_TRANSFER',
+              table_name: 'members',
+              record_id: mId,
+              user_id: user?.id,
+              branch_id: toBranchId,
+              old_data: { branch_id: requestData.from_branch_id, branch_name: requestData.from_branch_name },
+              new_data: { branch_id: toBranchId, branch_name: requestData.to_branch_name },
+              action_description: `Approved branch transfer for ${requestData.memberName} from ${requestData.from_branch_name} to ${requestData.to_branch_name}. Reason: ${requestData.reason}`,
+            });
+          }
         } else if (request.approval_type === 'comp_gift') {
           // Handle comp/gift approval
           if (request.reference_type === 'extend_days') {
