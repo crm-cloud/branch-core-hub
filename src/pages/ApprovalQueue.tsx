@@ -41,9 +41,12 @@ import {
   User,
 } from 'lucide-react';
 
+import { Building2 } from 'lucide-react';
+
 const APPROVAL_TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> = {
   membership_freeze: { icon: Pause, label: 'Freeze', color: 'bg-info/10 text-info' },
-  membership_transfer: { icon: ArrowLeftRight, label: 'Transfer', color: 'bg-primary/10 text-primary' },
+  membership_transfer: { icon: ArrowLeftRight, label: 'Membership Transfer', color: 'bg-primary/10 text-primary' },
+  branch_transfer: { icon: Building2, label: 'Branch Transfer', color: 'bg-violet-500/10 text-violet-600' },
   refund: { icon: DollarSign, label: 'Refund', color: 'bg-destructive/10 text-destructive' },
   discount: { icon: Percent, label: 'Discount', color: 'bg-warning/10 text-warning' },
   complimentary: { icon: Gift, label: 'Complimentary', color: 'bg-success/10 text-success' },
@@ -219,6 +222,85 @@ export default function ApprovalQueuePage() {
               .update({ assigned_trainer_id: requestData.newTrainerId })
               .eq('id', requestData.memberId);
           }
+        } else if (request.approval_type === 'membership_transfer') {
+          // Handle membership transfer approval
+          const toMemberId = requestData.to_member_id;
+          const msId = requestData.membershipId || request.reference_id;
+          if (toMemberId && msId) {
+            await supabase
+              .from('memberships')
+              .update({ member_id: toMemberId })
+              .eq('id', msId);
+
+            // Create transfer fee invoice if chargeable
+            if (requestData.is_chargeable && requestData.transfer_fee > 0) {
+              const fee = requestData.transfer_fee;
+              const { data: invoice } = await supabase
+                .from('invoices')
+                .insert({
+                  branch_id: request.branch_id,
+                  member_id: toMemberId,
+                  subtotal: fee,
+                  total_amount: fee,
+                  amount_paid: 0,
+                  status: 'pending',
+                  due_date: new Date().toISOString().split('T')[0],
+                  invoice_type: 'membership_transfer',
+                })
+                .select('id')
+                .single();
+
+              if (invoice) {
+                await supabase.from('invoice_items').insert({
+                  invoice_id: invoice.id,
+                  description: `Membership Transfer Fee from ${requestData.from_member_name}`,
+                  unit_price: fee,
+                  quantity: 1,
+                  total_amount: fee,
+                  reference_type: 'membership_transfer',
+                  reference_id: msId,
+                });
+              }
+            }
+
+            await supabase.from('audit_logs').insert({
+              action: 'MEMBERSHIP_TRANSFER',
+              table_name: 'memberships',
+              record_id: msId,
+              user_id: user?.id,
+              branch_id: request.branch_id,
+              old_data: { member_id: requestData.from_member_id, member_name: requestData.from_member_name },
+              new_data: { member_id: toMemberId, member_name: requestData.to_member_name },
+              action_description: `Approved membership transfer from ${requestData.from_member_name} to ${requestData.to_member_name}. ${requestData.is_chargeable ? `Fee: ₹${requestData.transfer_fee}` : 'Free transfer'}. Reason: ${requestData.reason}`,
+            });
+          }
+        } else if (request.approval_type === 'branch_transfer') {
+          // Handle branch transfer approval
+          const mId = requestData.member_id || request.reference_id;
+          const toBranchId = requestData.to_branch_id;
+          if (mId && toBranchId) {
+            await supabase
+              .from('members')
+              .update({ branch_id: toBranchId })
+              .eq('id', mId);
+
+            await supabase
+              .from('memberships')
+              .update({ branch_id: toBranchId })
+              .eq('member_id', mId)
+              .in('status', ['active', 'frozen']);
+
+            await supabase.from('audit_logs').insert({
+              action: 'BRANCH_TRANSFER',
+              table_name: 'members',
+              record_id: mId,
+              user_id: user?.id,
+              branch_id: toBranchId,
+              old_data: { branch_id: requestData.from_branch_id, branch_name: requestData.from_branch_name },
+              new_data: { branch_id: toBranchId, branch_name: requestData.to_branch_name },
+              action_description: `Approved branch transfer for ${requestData.memberName} from ${requestData.from_branch_name} to ${requestData.to_branch_name}. Reason: ${requestData.reason}`,
+            });
+          }
         } else if (request.approval_type === 'comp_gift') {
           // Handle comp/gift approval
           if (request.reference_type === 'extend_days') {
@@ -336,6 +418,28 @@ export default function ApprovalQueuePage() {
       );
     }
 
+    if (request.approval_type === 'membership_transfer') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">From:</span> {data.from_member_name}</p>
+          <p><span className="text-muted-foreground">To:</span> {data.to_member_name} {data.to_member_code ? `(${data.to_member_code})` : ''}</p>
+          {data.is_chargeable && <p><span className="text-muted-foreground">Fee:</span> ₹{data.transfer_fee}</p>}
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
+    if (request.approval_type === 'branch_transfer') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>
+          <p><span className="text-muted-foreground">From:</span> {data.from_branch_name}</p>
+          <p><span className="text-muted-foreground">To:</span> {data.to_branch_name}</p>
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
     return (
       <div className="text-sm">
         {data?.memberName && <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>}
@@ -414,7 +518,9 @@ export default function ApprovalQueuePage() {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="membership_freeze">Freeze</SelectItem>
-                  <SelectItem value="membership_transfer">Transfer</SelectItem>
+                  <SelectItem value="membership_transfer">Membership Transfer</SelectItem>
+                  <SelectItem value="branch_transfer">Branch Transfer</SelectItem>
+                  <SelectItem value="comp_gift">Comp/Gift</SelectItem>
                   <SelectItem value="refund">Refund</SelectItem>
                   <SelectItem value="discount">Discount</SelectItem>
                   <SelectItem value="complimentary">Complimentary</SelectItem>

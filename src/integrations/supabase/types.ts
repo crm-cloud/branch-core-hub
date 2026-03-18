@@ -5930,6 +5930,7 @@ export type Database = {
         | "expense"
         | "contract"
         | "comp_gift"
+        | "branch_transfer"
       benefit_booking_status:
         | "booked"
         | "confirmed"
@@ -6169,6 +6170,7 @@ export const Constants = {
         "expense",
         "contract",
         "comp_gift",
+        "branch_transfer",
       ],
       benefit_booking_status: [
         "booked",
