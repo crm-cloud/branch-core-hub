@@ -41,9 +41,12 @@ import {
   User,
 } from 'lucide-react';
 
+import { Building2 } from 'lucide-react';
+
 const APPROVAL_TYPE_CONFIG: Record<string, { icon: any; label: string; color: string }> = {
   membership_freeze: { icon: Pause, label: 'Freeze', color: 'bg-info/10 text-info' },
-  membership_transfer: { icon: ArrowLeftRight, label: 'Transfer', color: 'bg-primary/10 text-primary' },
+  membership_transfer: { icon: ArrowLeftRight, label: 'Membership Transfer', color: 'bg-primary/10 text-primary' },
+  branch_transfer: { icon: Building2, label: 'Branch Transfer', color: 'bg-violet-500/10 text-violet-600' },
   refund: { icon: DollarSign, label: 'Refund', color: 'bg-destructive/10 text-destructive' },
   discount: { icon: Percent, label: 'Discount', color: 'bg-warning/10 text-warning' },
   complimentary: { icon: Gift, label: 'Complimentary', color: 'bg-success/10 text-success' },

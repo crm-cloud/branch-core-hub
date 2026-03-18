@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TransferMembershipDrawerProps {
   open: boolean;
@@ -25,6 +26,8 @@ interface TransferMembershipDrawerProps {
 
 export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberName, membershipId, branchId }: TransferMembershipDrawerProps) {
   const queryClient = useQueryClient();
+  const { hasAnyRole } = useAuth();
+  const isManagement = hasAnyRole(['owner', 'admin', 'manager']);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
   const [isChargeable, setIsChargeable] = useState(false);
@@ -67,7 +70,33 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
       if (!membershipId) throw new Error('No membership to transfer');
       if (!reason.trim()) throw new Error('Please provide a reason');
 
-      // Update membership to point to new member
+      if (!isManagement) {
+        // Staff: Insert approval request instead of direct update
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error } = await supabase.from('approval_requests').insert({
+          approval_type: 'membership_transfer' as any,
+          reference_id: membershipId,
+          reference_type: 'membership_transfer',
+          branch_id: branchId,
+          requested_by: user?.id,
+          request_data: {
+            from_member_id: memberId,
+            from_member_name: memberName,
+            to_member_id: selectedTarget.id,
+            to_member_name: selectedTarget.full_name,
+            to_member_code: selectedTarget.member_code,
+            is_chargeable: isChargeable,
+            transfer_fee: isChargeable ? parseFloat(transferFee) : 0,
+            reason,
+            membershipId,
+          },
+          status: 'pending',
+        });
+        if (error) throw error;
+        return { isApprovalRequest: true };
+      }
+
+      // Management: Direct update (existing behavior)
       const { error: msError } = await supabase
         .from('memberships')
         .update({ member_id: selectedTarget.id })
@@ -117,13 +146,20 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
         new_data: { member_id: selectedTarget.id, member_name: selectedTarget.full_name, fee: isChargeable ? transferFee : 0 },
         action_description: `Transferred membership from ${memberName} to ${selectedTarget.full_name}. ${isChargeable ? `Fee: ₹${transferFee}` : 'Free transfer'}. Reason: ${reason}`,
       });
+
+      return { isApprovalRequest: false };
     },
-    onSuccess: () => {
-      toast.success(`Membership transferred to ${selectedTarget?.full_name}`);
+    onSuccess: (result) => {
+      if (result?.isApprovalRequest) {
+        toast.success('Transfer requested. Pending Manager Approval.');
+      } else {
+        toast.success(`Membership transferred to ${selectedTarget?.full_name}`);
+      }
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
       queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
       queryClient.invalidateQueries({ queryKey: ['active-membership'] });
+      queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
       setSelectedTarget(null);
       setSearchTerm('');
       setReason('');
@@ -140,10 +176,12 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ArrowLeftRight className="h-5 w-5 text-primary" />
-            Transfer Membership
+            {isManagement ? 'Transfer Membership' : 'Request Membership Transfer'}
           </SheetTitle>
           <SheetDescription>
-            Transfer {memberName}'s active membership to another member
+            {isManagement
+              ? `Transfer ${memberName}'s active membership to another member`
+              : `Submit a transfer request for ${memberName}'s membership (requires manager approval)`}
           </SheetDescription>
         </SheetHeader>
 
@@ -239,7 +277,9 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
           <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
             <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0 mt-0.5" />
             <p className="text-xs text-muted-foreground">
-              This action will move the active membership to the selected member. The original member will lose access.
+              {isManagement
+                ? 'This action will move the active membership to the selected member. The original member will lose access.'
+                : 'This will submit a transfer request for manager approval. The membership will not be transferred until approved.'}
             </p>
           </div>
         </div>
@@ -250,7 +290,9 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
             onClick={() => transferMutation.mutate()}
             disabled={transferMutation.isPending || !selectedTarget || !reason.trim() || (isChargeable && !transferFee)}
           >
-            {transferMutation.isPending ? 'Transferring...' : 'Transfer Membership'}
+            {transferMutation.isPending
+              ? (isManagement ? 'Transferring...' : 'Submitting...')
+              : (isManagement ? 'Transfer Membership' : 'Submit for Approval')}
           </Button>
         </SheetFooter>
       </SheetContent>
