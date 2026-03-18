@@ -418,6 +418,28 @@ export default function ApprovalQueuePage() {
       );
     }
 
+    if (request.approval_type === 'membership_transfer') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">From:</span> {data.from_member_name}</p>
+          <p><span className="text-muted-foreground">To:</span> {data.to_member_name} {data.to_member_code ? `(${data.to_member_code})` : ''}</p>
+          {data.is_chargeable && <p><span className="text-muted-foreground">Fee:</span> ₹{data.transfer_fee}</p>}
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
+    if (request.approval_type === 'branch_transfer') {
+      return (
+        <div className="space-y-1 text-sm">
+          <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>
+          <p><span className="text-muted-foreground">From:</span> {data.from_branch_name}</p>
+          <p><span className="text-muted-foreground">To:</span> {data.to_branch_name}</p>
+          {data.reason && <p><span className="text-muted-foreground">Reason:</span> {data.reason}</p>}
+        </div>
+      );
+    }
+
     return (
       <div className="text-sm">
         {data?.memberName && <p><span className="text-muted-foreground">Member:</span> {data.memberName}</p>}
