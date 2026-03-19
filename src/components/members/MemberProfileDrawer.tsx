@@ -706,7 +706,7 @@ export function MemberProfileDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto overscroll-contain">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -716,36 +716,36 @@ export function MemberProfileDrawer({
 
         <div className="mt-6 space-y-6">
           {/* Profile Header */}
-          <div className="flex items-start gap-4">
-            <Avatar className="h-20 w-20">
+          <div className="flex items-start gap-3">
+            <Avatar className="h-14 w-14 sm:h-20 sm:w-20 shrink-0">
               <AvatarImage src={profile?.avatar_url} />
               <AvatarFallback className="text-lg">
                 {profile?.full_name?.charAt(0) || 'M'}
               </AvatarFallback>
             </Avatar>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold">{profile?.full_name || 'N/A'}</h2>
-                <Badge className={getMemberStatusColor(member.status)}>{member.status}</Badge>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-nowrap">
+                <h2 className="text-lg sm:text-xl font-semibold truncate min-w-0 flex-1">{profile?.full_name || 'N/A'}</h2>
+                <Badge className={`${getMemberStatusColor(member.status)} shrink-0`}>{member.status}</Badge>
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-6 w-6 p-0"
+                  className="h-6 w-6 p-0 shrink-0"
                   onClick={() => setEditProfileOpen(true)}
                 >
                   <Edit className="h-3 w-3" />
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground font-mono">{member.member_code}</p>
-              <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:gap-4 gap-1 mt-2 text-sm text-muted-foreground">
                 {profile?.email && (
-                  <span className="flex items-center gap-1">
-                    <Mail className="h-3 w-3" /> {profile.email}
+                  <span className="flex items-center gap-1 min-w-0">
+                    <Mail className="h-3 w-3 shrink-0" /> <span className="truncate">{profile.email}</span>
                   </span>
                 )}
                 {profile?.phone && (
                   <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> {profile.phone}
+                    <Phone className="h-3 w-3 shrink-0" /> {profile.phone}
                   </span>
                 )}
               </div>
@@ -753,7 +753,7 @@ export function MemberProfileDrawer({
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <Card>
               <CardContent className="pt-4 text-center">
               {activeMembership ? (
@@ -766,14 +766,14 @@ export function MemberProfileDrawer({
                     </>
                   ) : daysLeft > 0 ? (
                     <>
-                      <div className={`text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
+                      <div className={`text-xl sm:text-2xl font-bold ${getDaysLeftColor(daysLeft)}`}>{daysLeft}</div>
                       <p className="text-xs text-muted-foreground truncate">
                         {activeMembership.membership_plans?.name || 'Days Left'}
                       </p>
                     </>
                   ) : (
                     <>
-                      <div className="text-lg font-bold text-destructive">EXPIRED</div>
+                      <div className="text-sm sm:text-lg font-bold text-destructive">EXPIRED</div>
                       <p className="text-xs text-muted-foreground truncate">
                         {activeMembership.membership_plans?.name || 'Plan Status'}
                       </p>
@@ -789,7 +789,7 @@ export function MemberProfileDrawer({
             </Card>
             <Card>
               <CardContent className="pt-4 text-center">
-                <div className="text-2xl font-bold text-primary">
+                <div className="text-xl sm:text-2xl font-bold text-primary">
                   {activePTPackage ? (
                     activePTPackage.sessions_total > 0
                       ? activePTPackage.sessions_remaining
@@ -803,7 +803,7 @@ export function MemberProfileDrawer({
             </Card>
             <Card>
               <CardContent className="pt-4 text-center">
-                <div className="text-2xl font-bold">
+                <div className="text-xl sm:text-2xl font-bold">
                   {attendance.length}
                 </div>
                 <p className="text-xs text-muted-foreground">Recent Visits</p>
@@ -815,20 +815,20 @@ export function MemberProfileDrawer({
           <div className="flex gap-2">
             <Button 
               variant={activeMembership && daysLeft > 0 ? 'outline' : 'default'} 
-              className="flex-1"
+              className="flex-1 min-h-[44px] h-auto py-2 whitespace-normal"
               onClick={() => { onOpenChange(false); onPurchaseMembership(); }}
               disabled={activeMembership?.status === 'frozen'}
             >
-              <CreditCard className="h-4 w-4 mr-2" />
+              <CreditCard className="h-4 w-4 mr-2 shrink-0" />
               {activeMembership?.status === 'frozen' ? 'Frozen – Cannot Purchase' : activeMembership && daysLeft > 0 ? 'Upgrade Plan' : (activeMembership && daysLeft <= 0 ? 'Renew Plan' : 'Add Plan')}
             </Button>
             <Button 
               variant="outline" 
-              className="flex-1"
+              className="flex-1 min-h-[44px]"
               onClick={() => { onOpenChange(false); onPurchasePT(); }}
               disabled={!activeMembership}
             >
-              <Dumbbell className="h-4 w-4 mr-2" />
+              <Dumbbell className="h-4 w-4 mr-2 shrink-0" />
               Buy PT
             </Button>
           </div>
@@ -836,77 +836,77 @@ export function MemberProfileDrawer({
           {/* Quick Actions - Row 2 */}
           <div className="grid grid-cols-2 gap-2">
             {activeMembership?.status === 'active' && (
-              <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)} className="justify-start">
-                <Snowflake className="h-4 w-4 mr-2" />
+              <Button variant="outline" size="sm" onClick={() => setFreezeOpen(true)} className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left">
+                <Snowflake className="h-4 w-4 mr-2 shrink-0" />
                 Freeze Plan
               </Button>
             )}
             {activeMembership?.status === 'frozen' && (
-              <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)} className="justify-start">
-                <Play className="h-4 w-4 mr-2" />
+              <Button variant="outline" size="sm" onClick={() => setUnfreezeOpen(true)} className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left">
+                <Play className="h-4 w-4 mr-2 shrink-0" />
                 Unfreeze Plan
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)} className="justify-start">
-              <UserCog className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={() => setAssignTrainerOpen(true)} className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left">
+              <UserCog className="h-4 w-4 mr-2 shrink-0" />
               {member.assigned_trainer_id ? 'Change Trainer' : 'Assign Trainer'}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)} className="justify-start">
-              <Ruler className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={() => setMeasurementOpen(true)} className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left">
+              <Ruler className="h-4 w-4 mr-2 shrink-0" />
               Record Body
             </Button>
             {activeMembership && (
-              <Button variant="outline" size="sm" className="text-destructive justify-start" onClick={() => setCancelOpen(true)}>
-                <XCircle className="h-4 w-4 mr-2" />
+              <Button variant="outline" size="sm" className="text-destructive justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setCancelOpen(true)}>
+                <XCircle className="h-4 w-4 mr-2 shrink-0" />
                 Cancel Plan
               </Button>
             )}
             <Button 
               variant="outline" 
               size="sm" 
-              className={`justify-start ${member.status === 'active' ? 'text-destructive' : 'text-success'}`}
+              className={`justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left ${member.status === 'active' ? 'text-destructive' : 'text-success'}`}
               onClick={toggleMemberStatus}
               disabled={isTogglingStatus}
             >
-              {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2" /> : <UserCheck className="h-4 w-4 mr-2" />}
+              {member.status === 'active' ? <UserMinus className="h-4 w-4 mr-2 shrink-0" /> : <UserCheck className="h-4 w-4 mr-2 shrink-0" />}
               {member.status === 'active' ? 'Deactivate' : 'Activate'}
             </Button>
             {isManagerOrAbove && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
-                <Gift className="h-4 w-4 mr-2" /> Comp/Gift
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2 shrink-0" /> Comp/Gift
               </Button>
             )}
             {isManagerOrAbove && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
-                <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2 shrink-0" /> Transfer Branch
               </Button>
             )}
             {isManagerOrAbove && activeMembership && activeMembership?.membership_plans?.is_transferable !== false && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
-                <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2 shrink-0" /> Transfer Plan
               </Button>
             )}
             {!isManagerOrAbove && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setCompGiftOpen(true)}>
-                <Gift className="h-4 w-4 mr-2" /> Request Comp
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setCompGiftOpen(true)}>
+                <Gift className="h-4 w-4 mr-2 shrink-0" /> Request Comp
               </Button>
             )}
             {!isManagerOrAbove && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferBranchOpen(true)}>
-                <Building2 className="h-4 w-4 mr-2" /> Request Transfer
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setTransferBranchOpen(true)}>
+                <Building2 className="h-4 w-4 mr-2 shrink-0" /> Request Transfer
               </Button>
             )}
             {!isManagerOrAbove && activeMembership && activeMembership?.membership_plans?.is_transferable !== false && (
-              <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
-                <Share2 className="h-4 w-4 mr-2" /> Request Plan Transfer
+              <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setTransferMembershipOpen(true)}>
+                <Share2 className="h-4 w-4 mr-2 shrink-0" /> Request Plan Transfer
               </Button>
             )}
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
               setRegistrationFormOpen(true);
             }}>
-              <FileText className="h-4 w-4 mr-2" /> Registration Form
+              <FileText className="h-4 w-4 mr-2 shrink-0" /> Registration Form
             </Button>
-            <Button variant="outline" size="sm" className="justify-start" onClick={() => {
+            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
               const p = profile;
               const ms = activeMembership;
               printRegistrationForm({
@@ -923,24 +923,54 @@ export function MemberProfileDrawer({
                 branchName: memberDetails?.branch?.name,
               });
             }}>
-              <Printer className="h-4 w-4 mr-2" /> Quick Print
+              <Printer className="h-4 w-4 mr-2 shrink-0" /> Quick Print
             </Button>
           </div>
 
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-9">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="membership">Plan</TabsTrigger>
-              <TabsTrigger value="benefits">Benefits</TabsTrigger>
-              <TabsTrigger value="measurements">Body</TabsTrigger>
-              <TabsTrigger value="payments">Pay</TabsTrigger>
-              <TabsTrigger value="rewards">Rewards</TabsTrigger>
-              <TabsTrigger value="documents">Docs</TabsTrigger>
-              <TabsTrigger value="hardware">Access</TabsTrigger>
-              <TabsTrigger value="activity">Activity</TabsTrigger>
-            </TabsList>
+            <div className="relative">
+              <TabsList className="flex w-full overflow-x-auto scrollbar-hide h-auto p-1 gap-0.5 pr-8 sm:pr-1">
+                <TabsTrigger value="overview" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Overview</span>
+                </TabsTrigger>
+                <TabsTrigger value="membership" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Plan</span>
+                </TabsTrigger>
+                <TabsTrigger value="benefits" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <Heart className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Benefits</span>
+                </TabsTrigger>
+                <TabsTrigger value="measurements" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <Ruler className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Body</span>
+                </TabsTrigger>
+                <TabsTrigger value="payments" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <IndianRupee className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Pay</span>
+                </TabsTrigger>
+                <TabsTrigger value="rewards" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <Award className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Rewards</span>
+                </TabsTrigger>
+                <TabsTrigger value="documents" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Docs</span>
+                </TabsTrigger>
+                <TabsTrigger value="hardware" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <IdCard className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Access</span>
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
+                  <Activity className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Activity</span>
+                </TabsTrigger>
+              </TabsList>
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-muted to-transparent pointer-events-none sm:hidden rounded-r-md" />
+            </div>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
               {/* Personal Info */}
