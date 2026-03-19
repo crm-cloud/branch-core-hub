@@ -354,6 +354,42 @@ export default function AIFitnessPage() {
 
   const allTemplates = [...templates, ...DEFAULT_TEMPLATES.filter(dt => dt.type === planType && !templates.some((t: any) => t.name === dt.name))];
 
+  // Member plans query
+  const { data: memberPlans = [], isLoading: memberPlansLoading } = useQuery({
+    queryKey: ['member-fitness-plans'],
+    enabled: activeTab === 'member-plans',
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('diet_plans')
+        .select('id, name, description, plan_type, start_date, end_date, is_active, member_id, members:member_id(member_code, user_id, profiles:user_id(full_name, avatar_url))')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const handleEditTemplate = (template: FitnessPlanTemplate) => {
+    const content = template.content as any;
+    setMemberInfo({
+      name: template.name,
+      age: '',
+      gender: '',
+      height: '',
+      weight: '',
+      fitnessGoals: template.goal || '',
+      healthConditions: '',
+      experience: template.difficulty || 'intermediate',
+      preferences: '',
+    });
+    setPlanType(template.type as 'workout' | 'diet');
+    setPlanMode('global');
+    setGeneratedPlan(content);
+    setEditingTemplate(template);
+    setActiveTab('generate');
+    toast.info('Template loaded for editing. Modify and re-generate to update.');
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
