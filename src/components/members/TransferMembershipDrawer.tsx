@@ -132,7 +132,7 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
           start_date: todayStr,
           end_date: newEndDate.toISOString().split('T')[0],
           status: 'active',
-        });
+        } as any);
       if (insertErr) throw insertErr;
 
       // Create transfer fee invoice if chargeable

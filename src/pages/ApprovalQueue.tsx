@@ -258,7 +258,7 @@ export default function ApprovalQueuePage() {
                   start_date: todayStr,
                   end_date: newEndDate.toISOString().split('T')[0],
                   status: 'active',
-                });
+                } as any);
             }
 
             // Create transfer fee invoice if chargeable

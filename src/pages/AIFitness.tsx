@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download, Edit, Users } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
+import { format } from "date-fns";
 import { useGenerateFitnessPlan } from "@/hooks/usePTPackages";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchPlanTemplates, createPlanTemplate, FitnessPlanTemplate } from "@/services/fitnessService";
