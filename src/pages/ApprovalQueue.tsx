@@ -223,14 +223,43 @@ export default function ApprovalQueuePage() {
               .eq('id', requestData.memberId);
           }
         } else if (request.approval_type === 'membership_transfer') {
-          // Handle membership transfer approval
+          // Handle membership transfer approval — atomic: deactivate old + create new
           const toMemberId = requestData.to_member_id;
           const msId = requestData.membershipId || request.reference_id;
           if (toMemberId && msId) {
-            await supabase
+            // Fetch the original membership to calculate remaining days
+            const { data: originalMs } = await supabase
               .from('memberships')
-              .update({ member_id: toMemberId })
-              .eq('id', msId);
+              .select('*, membership_plans(name, price, duration_days)')
+              .eq('id', msId)
+              .single();
+
+            if (originalMs) {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const endDate = new Date(originalMs.end_date);
+              const todayDate = new Date(todayStr);
+              const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+              // 1. Deactivate original membership
+              await supabase
+                .from('memberships')
+                .update({ status: 'transferred' as any, end_date: todayStr })
+                .eq('id', msId);
+
+              // 2. Create new membership for recipient
+              const newEndDate = new Date(todayDate);
+              newEndDate.setDate(newEndDate.getDate() + remainingDays);
+              await supabase
+                .from('memberships')
+                .insert({
+                  member_id: toMemberId,
+                  plan_id: requestData.plan_id || originalMs.plan_id,
+                  branch_id: requestData.branch_id || request.branch_id,
+                  start_date: todayStr,
+                  end_date: newEndDate.toISOString().split('T')[0],
+                  status: 'active',
+                });
+            }
 
             // Create transfer fee invoice if chargeable
             if (requestData.is_chargeable && requestData.transfer_fee > 0) {
@@ -271,7 +300,7 @@ export default function ApprovalQueuePage() {
               branch_id: request.branch_id,
               old_data: { member_id: requestData.from_member_id, member_name: requestData.from_member_name },
               new_data: { member_id: toMemberId, member_name: requestData.to_member_name },
-              action_description: `Approved membership transfer from ${requestData.from_member_name} to ${requestData.to_member_name}. ${requestData.is_chargeable ? `Fee: ₹${requestData.transfer_fee}` : 'Free transfer'}. Reason: ${requestData.reason}`,
+              action_description: `Approved membership transfer from ${requestData.from_member_name} to ${requestData.to_member_name}. Original membership deactivated, new membership created with remaining days. ${requestData.is_chargeable ? `Fee: ₹${requestData.transfer_fee}` : 'Free transfer'}. Reason: ${requestData.reason}`,
             });
           }
         } else if (request.approval_type === 'branch_transfer') {

@@ -596,6 +596,67 @@ export default function ClassesPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Attendees Roster Drawer */}
+      <Sheet open={!!rosterClassId} onOpenChange={(open) => !open && setRosterClassId(null)}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Class Attendees
+            </SheetTitle>
+            <SheetDescription>
+              {rosterClassId && filteredClasses.find(c => c.id === rosterClassId)?.name} — {rosterClassId && filteredClasses.find(c => c.id === rosterClassId)?.scheduled_at && format(new Date(filteredClasses.find(c => c.id === rosterClassId)!.scheduled_at), 'PPP p')}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {(!rosterBookings || rosterBookings.length === 0) ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p>No bookings for this class yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
+                  <span>{rosterBookings.length} booking(s)</span>
+                  <span>{rosterBookings.filter(b => b.status === 'attended').length} attended</span>
+                </div>
+                {rosterBookings.map((booking) => (
+                  <div key={booking.id} className="flex items-center gap-3 p-3 rounded-xl border bg-card">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={(booking as any).member_avatar} />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                        {booking.member_name?.charAt(0) || 'M'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{booking.member_name}</p>
+                      {booking.member_phone ? (
+                        <a href={`tel:${booking.member_phone}`} className="text-xs text-primary hover:underline flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> {booking.member_phone}
+                        </a>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No phone</p>
+                      )}
+                    </div>
+                    <Badge
+                      variant={
+                        booking.status === 'attended' ? 'default' :
+                        booking.status === 'no_show' ? 'destructive' :
+                        booking.status === 'cancelled' ? 'outline' :
+                        'secondary'
+                      }
+                      className="text-xs"
+                    >
+                      {booking.status}
+                    </Badge>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }

@@ -89,6 +89,9 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
             transfer_fee: isChargeable ? parseFloat(transferFee) : 0,
             reason,
             membershipId,
+            // Include plan info for the approval handler to create new membership
+            plan_id: membership?.plan_id,
+            branch_id: branchId,
           },
           status: 'pending',
         });
