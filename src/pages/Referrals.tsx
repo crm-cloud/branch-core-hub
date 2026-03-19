@@ -7,9 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Gift, Users, Wallet, Copy, Check, Plus, Download } from 'lucide-react';
+import { Gift, Users, Wallet, Copy, Check, Plus, Download, ArrowRightLeft, AlertCircle, IndianRupee } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
@@ -22,9 +23,15 @@ export default function ReferralsPage() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [createReferralOpen, setCreateReferralOpen] = useState(false);
   const [newReferral, setNewReferral] = useState({ referrerMemberId: '', referredName: '', referredPhone: '', referredEmail: '' });
+
+  // Convert drawer state
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [convertingReferral, setConvertingReferral] = useState<any>(null);
+  const [convertMemberId, setConvertMemberId] = useState('');
+
   const queryClient = useQueryClient();
 
-  // Fetch members for referrer selection
+  // Fetch members for referrer selection and convert member selection
   const { data: members = [] } = useQuery({
     queryKey: ['referral-members'],
     enabled: !!user,
@@ -33,13 +40,29 @@ export default function ReferralsPage() {
         .from('members')
         .select('id, member_code, user_id')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(500);
       if (error) throw error;
-      // Fetch profiles separately
       const userIds = (data || []).map(m => m.user_id).filter(Boolean);
       const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
       return (data || []).map(m => ({ ...m, profiles: profileMap.get(m.user_id) || null }));
+    },
+  });
+
+  // Fetch active referral settings (global — pick first active)
+  const { data: referralSettings } = useQuery({
+    queryKey: ['referral-settings-global'],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('referral_settings')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -64,6 +87,69 @@ export default function ReferralsPage() {
       setNewReferral({ referrerMemberId: '', referredName: '', referredPhone: '', referredEmail: '' });
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  // Convert referral mutation — links to a member and creates rewards
+  const convertMutation = useMutation({
+    mutationFn: async () => {
+      if (!convertingReferral) throw new Error('No referral selected');
+      if (!convertMemberId) throw new Error('Select the member who joined');
+
+      // 1. Update referral: mark converted, link member
+      const { error: updateError } = await supabase
+        .from('referrals')
+        .update({
+          status: 'converted' as const,
+          referred_member_id: convertMemberId,
+          converted_at: new Date().toISOString(),
+        })
+        .eq('id', convertingReferral.id);
+      if (updateError) throw updateError;
+
+      // 2. Create rewards if settings exist
+      if (referralSettings) {
+        const referrerId = convertingReferral.referrer_member_id;
+
+        // Compute reward values (fixed or percentage)
+        let referrerValue = referralSettings.referrer_reward_value || 0;
+        let referredValue = referralSettings.referred_reward_value || 0;
+
+        // Create reward for referrer
+        if (referrerId && referrerValue > 0) {
+          const { error: referrerRewardErr } = await supabase.from('referral_rewards').insert({
+            referral_id: convertingReferral.id,
+            member_id: referrerId,
+            reward_type: referralSettings.referrer_reward_type || 'wallet_credit',
+            reward_value: referrerValue,
+            description: `Referral bonus for referring ${convertingReferral.referred_name || 'a new member'}`,
+            is_claimed: false,
+          });
+          if (referrerRewardErr) throw referrerRewardErr;
+        }
+
+        // Create reward for referred member
+        if (referredValue > 0) {
+          const { error: referredRewardErr } = await supabase.from('referral_rewards').insert({
+            referral_id: convertingReferral.id,
+            member_id: convertMemberId,
+            reward_type: referralSettings.referred_reward_type || 'wallet_credit',
+            reward_value: referredValue,
+            description: `Welcome bonus for joining via referral`,
+            is_claimed: false,
+          });
+          if (referredRewardErr) throw referredRewardErr;
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Referral converted and rewards issued!');
+      queryClient.invalidateQueries({ queryKey: ['all-referrals'] });
+      queryClient.invalidateQueries({ queryKey: ['all-rewards'] });
+      setConvertOpen(false);
+      setConvertingReferral(null);
+      setConvertMemberId('');
+    },
+    onError: (e: any) => toast.error(e.message || 'Failed to convert referral'),
   });
 
   const { data: referrals = [], isLoading: referralsLoading } = useQuery({
@@ -119,12 +205,36 @@ export default function ReferralsPage() {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
+  const openConvertDrawer = (referral: any) => {
+    setConvertingReferral(referral);
+    setConvertMemberId('');
+    setConvertOpen(true);
+  };
+
   const stats = {
     total: referrals.length,
     converted: referrals.filter((r: any) => r.status === 'converted').length,
-    pending: referrals.filter((r: any) => r.status === 'pending').length,
+    pending: referrals.filter((r: any) => r.status === 'pending' || r.status === 'new').length,
     totalRewards: rewards.reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0),
     claimedRewards: rewards.filter((r: any) => r.is_claimed).reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0),
+  };
+
+  // Compute preview reward values for the convert drawer
+  const previewReferrerReward = referralSettings
+    ? (referralSettings.reward_mode === 'percentage'
+      ? `${referralSettings.referrer_reward_value}% of plan value`
+      : `₹${referralSettings.referrer_reward_value}`)
+    : null;
+  const previewReferredReward = referralSettings
+    ? (referralSettings.reward_mode === 'percentage'
+      ? `${referralSettings.referred_reward_value}% of plan value`
+      : `₹${referralSettings.referred_reward_value}`)
+    : null;
+
+  const getStatusClass = (status: string) => {
+    if (status === 'converted') return 'bg-green-500/10 text-green-500';
+    if (status === 'expired') return 'bg-red-500/10 text-red-500';
+    return 'bg-yellow-500/10 text-yellow-500';
   };
 
   return (
@@ -191,7 +301,14 @@ export default function ReferralsPage() {
         <Tabs defaultValue="referrals">
           <TabsList>
             <TabsTrigger value="referrals">Referrals</TabsTrigger>
-            <TabsTrigger value="rewards">Rewards</TabsTrigger>
+            <TabsTrigger value="rewards">
+              Rewards
+              {rewards.filter((r: any) => !r.is_claimed).length > 0 && (
+                <Badge className="ml-2 h-5 min-w-[20px] bg-yellow-500/10 text-yellow-600 text-[10px]">
+                  {rewards.filter((r: any) => !r.is_claimed).length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="referrals" className="mt-4">
@@ -213,6 +330,7 @@ export default function ReferralsPage() {
                         <TableHead>Referred</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Date</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -242,19 +360,33 @@ export default function ReferralsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {referral.referred?.profiles?.full_name || referral.referred?.member_code || '-'}
+                            {referral.referred?.profiles?.full_name || referral.referred?.member_code || referral.referred_name || '-'}
                           </TableCell>
                           <TableCell>
-                            <Badge className={referral.status === 'converted' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}>
+                            <Badge className={getStatusClass(referral.status)}>
                               {referral.status}
                             </Badge>
                           </TableCell>
                           <TableCell>{new Date(referral.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            {(referral.status === 'new' || referral.status === 'pending') && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs"
+                                onClick={() => openConvertDrawer(referral)}
+                                data-testid={`button-convert-referral-${referral.id}`}
+                              >
+                                <ArrowRightLeft className="h-3 w-3" />
+                                Convert
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       {referrals.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             <Gift className="h-8 w-8 mx-auto mb-2 opacity-50" />
                             No referrals yet
                           </TableCell>
@@ -282,6 +414,7 @@ export default function ReferralsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Member</TableHead>
+                        <TableHead>Referral Code</TableHead>
                         <TableHead>Reward Type</TableHead>
                         <TableHead>Value</TableHead>
                         <TableHead>Status</TableHead>
@@ -294,11 +427,21 @@ export default function ReferralsPage() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Wallet className="h-4 w-4 text-muted-foreground" />
-                              {reward.members?.profiles?.full_name || reward.members?.member_code}
+                              {reward.members?.profiles?.full_name || reward.members?.member_code || '—'}
                             </div>
                           </TableCell>
-                          <TableCell className="capitalize">{reward.reward_type.replace('_', ' ')}</TableCell>
-                          <TableCell className="font-medium">₹{reward.reward_value || 0}</TableCell>
+                          <TableCell>
+                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                              {reward.referrals?.referral_code || '—'}
+                            </code>
+                          </TableCell>
+                          <TableCell className="capitalize">{(reward.reward_type || '').replace('_', ' ')}</TableCell>
+                          <TableCell className="font-medium">
+                            <span className="flex items-center gap-1">
+                              <IndianRupee className="h-3 w-3" />
+                              {reward.reward_value || 0}
+                            </span>
+                          </TableCell>
                           <TableCell>
                             <Badge className={reward.is_claimed ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}>
                               {reward.is_claimed ? 'Claimed' : 'Pending'}
@@ -311,18 +454,24 @@ export default function ReferralsPage() {
                                 variant="outline"
                                 onClick={() => claimMutation.mutate({ rewardId: reward.id, memberId: reward.member_id })}
                                 disabled={claimMutation.isPending}
+                                data-testid={`button-claim-reward-${reward.id}`}
                               >
-                                Claim
+                                Claim & Credit Wallet
                               </Button>
+                            )}
+                            {reward.is_claimed && reward.claimed_at && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(reward.claimed_at).toLocaleDateString()}
+                              </span>
                             )}
                           </TableCell>
                         </TableRow>
                       ))}
                       {rewards.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                             <Gift className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            No rewards yet
+                            No rewards yet. Convert a referral to issue rewards.
                           </TableCell>
                         </TableRow>
                       )}
@@ -375,6 +524,114 @@ export default function ReferralsPage() {
               </Button>
             </SheetFooter>
           </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* Convert Referral Drawer */}
+      <Sheet open={convertOpen} onOpenChange={(open) => {
+        setConvertOpen(open);
+        if (!open) { setConvertingReferral(null); setConvertMemberId(''); }
+      }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5" />
+              Convert Referral
+            </SheetTitle>
+            <SheetDescription>
+              Mark this referral as converted by linking it to the member who joined.
+              Rewards will be issued automatically based on your referral settings.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-5 py-4">
+            {/* Referral summary */}
+            {convertingReferral && (
+              <div className="rounded-lg bg-muted/50 p-4 space-y-2 text-sm">
+                <p className="font-medium text-foreground">Referral Details</p>
+                <div className="grid grid-cols-2 gap-y-1 text-muted-foreground">
+                  <span>Referred by:</span>
+                  <span className="text-foreground font-medium">
+                    {convertingReferral.referrer?.profiles?.full_name || convertingReferral.referrer?.member_code || '—'}
+                  </span>
+                  <span>Referred name:</span>
+                  <span className="text-foreground">{convertingReferral.referred_name || '—'}</span>
+                  <span>Phone:</span>
+                  <span className="text-foreground">{convertingReferral.referred_phone || '—'}</span>
+                  <span>Code:</span>
+                  <code className="text-foreground bg-muted px-1 rounded">{convertingReferral.referral_code}</code>
+                </div>
+              </div>
+            )}
+
+            {/* Member select */}
+            <div className="space-y-2">
+              <Label>Member Who Joined *</Label>
+              <Select value={convertMemberId} onValueChange={setConvertMemberId}>
+                <SelectTrigger data-testid="select-convert-member">
+                  <SelectValue placeholder="Search and select the joined member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((m: any) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.profiles?.full_name || m.member_code} — {m.member_code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Select the existing member record for the person who joined via this referral.</p>
+            </div>
+
+            {/* Reward preview */}
+            {referralSettings ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Gift className="h-4 w-4 text-primary" />
+                  Rewards that will be issued
+                </p>
+                <div className="space-y-2 text-sm">
+                  {(referralSettings.referrer_reward_value || 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">
+                        Referrer ({convertingReferral?.referrer?.profiles?.full_name || 'referrer'})
+                      </span>
+                      <span className="font-semibold text-primary">{previewReferrerReward}</span>
+                    </div>
+                  )}
+                  {(referralSettings.referred_reward_value || 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">New member (joined)</span>
+                      <span className="font-semibold text-primary">{previewReferredReward}</span>
+                    </div>
+                  )}
+                  {(referralSettings.referrer_reward_value || 0) === 0 && (referralSettings.referred_reward_value || 0) === 0 && (
+                    <p className="text-muted-foreground text-xs">No rewards configured (both reward values are 0).</p>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Reward type: <span className="capitalize">{(referralSettings.referrer_reward_type || 'wallet_credit').replace('_', ' ')}</span>. Rewards will be unclaimed until admin clicks "Claim & Credit Wallet" in the Rewards tab.
+                </p>
+              </div>
+            ) : (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  No active referral settings found. The referral will be marked as converted but no rewards will be issued. Configure referral settings in Settings → Referral Program first.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+
+          <SheetFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => setConvertOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => convertMutation.mutate()}
+              disabled={convertMutation.isPending || !convertMemberId}
+              data-testid="button-confirm-convert"
+            >
+              {convertMutation.isPending ? 'Converting...' : 'Confirm Conversion'}
+            </Button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
     </AppLayout>

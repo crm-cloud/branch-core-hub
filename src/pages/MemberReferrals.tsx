@@ -71,7 +71,8 @@ export default function MemberReferrals() {
   }
 
   const convertedCount = referrals.filter((r: any) => r.status === 'converted').length;
-  const totalRewardsValue = rewards.filter((r: any) => r.is_claimed).reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0);
+  const totalRewardsValue = rewards.reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0);
+  const claimedRewardsValue = rewards.filter((r: any) => r.is_claimed).reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -128,7 +129,7 @@ export default function MemberReferrals() {
             variant="success"
           />
           <StatCard
-            title="Rewards Earned"
+            title="Rewards Available"
             value={`₹${totalRewardsValue.toLocaleString()}`}
             icon={Gift}
             variant="accent"
@@ -138,7 +139,12 @@ export default function MemberReferrals() {
         {/* Rewards */}
         {rewards.length > 0 && (
           <Card className="border-border/50">
-            <CardHeader><CardTitle className="text-lg">My Rewards</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-lg">My Rewards</CardTitle>
+              {claimedRewardsValue > 0 && (
+                <p className="text-sm text-muted-foreground">₹{claimedRewardsValue.toLocaleString()} credited to your wallet</p>
+              )}
+            </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {rewards.map((reward: any) => (
