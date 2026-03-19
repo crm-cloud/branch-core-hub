@@ -39,6 +39,7 @@ export default function ClassesPage() {
   const { data: classes, isLoading } = useClasses(branchId, { activeOnly: false });
   const { data: trainers } = useTrainers(branchId);
   const { data: bookings } = useClassBookings(selectedClass || "");
+  const { data: rosterBookings } = useClassBookings(rosterClassId || "");
   const markAttendance = useMarkAttendance();
   const cancelBooking = useCancelBooking();
 
