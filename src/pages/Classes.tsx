@@ -384,17 +384,30 @@ export default function ClassesPage() {
                               </Badge>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditClass(cls);
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRosterClassId(cls.id);
+                              }}
+                              title="View Attendees"
+                            >
+                              <ClipboardList className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditClass(cls);
+                              }}
+                              title="Edit Class"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                         {cls.description && (
                           <CardDescription className="line-clamp-2 mt-1">{cls.description}</CardDescription>
