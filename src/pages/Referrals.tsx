@@ -10,16 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Gift, Users, Wallet, Copy, Check, Plus, Download, ArrowRightLeft, AlertCircle, IndianRupee } from 'lucide-react';
+import { Gift, Users, Wallet, Copy, Check, Plus, Download, ArrowRightLeft, AlertCircle, IndianRupee, ExternalLink } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { claimReward } from '@/services/referralService';
 import { exportToCSV } from '@/lib/csvExport';
 
 export default function ReferralsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [createReferralOpen, setCreateReferralOpen] = useState(false);
   const [newReferral, setNewReferral] = useState({ referrerMemberId: '', referredName: '', referredPhone: '', referredEmail: '' });
@@ -31,14 +33,14 @@ export default function ReferralsPage() {
 
   const queryClient = useQueryClient();
 
-  // Fetch members for referrer selection and convert member selection
+  // Fetch members for referrer/convert member selection
   const { data: members = [] } = useQuery({
     queryKey: ['referral-members'],
     enabled: !!user,
     queryFn: async (): Promise<any[]> => {
       const { data, error } = await supabase
         .from('members')
-        .select('id, member_code, user_id')
+        .select('id, member_code, user_id, branch_id')
         .order('created_at', { ascending: false })
         .limit(500);
       if (error) throw error;
@@ -49,16 +51,40 @@ export default function ReferralsPage() {
     },
   });
 
-  // Fetch active referral settings (global — pick first active)
-  const { data: referralSettings } = useQuery({
-    queryKey: ['referral-settings-global'],
-    enabled: !!user,
+  // Branch-aware referral settings — fetched when convert drawer opens
+  // Resolves branch from the referral itself or the referrer's member record
+  const { data: convertSettings, isLoading: convertSettingsLoading } = useQuery({
+    queryKey: ['convert-referral-settings', convertingReferral?.id],
+    enabled: convertOpen && !!convertingReferral,
     queryFn: async () => {
+      // Resolve branch: from referral.branch_id, then referrer's member record
+      let branchId: string | null = convertingReferral.branch_id || null;
+
+      if (!branchId && convertingReferral.referrer_member_id) {
+        const referrerInList = members.find((m: any) => m.id === convertingReferral.referrer_member_id);
+        branchId = referrerInList?.branch_id || null;
+
+        if (!branchId) {
+          const { data: referrerMember } = await supabase
+            .from('members')
+            .select('branch_id')
+            .eq('id', convertingReferral.referrer_member_id)
+            .maybeSingle();
+          branchId = referrerMember?.branch_id || null;
+        }
+      }
+
+      // Fetch settings for this branch, with fallback to global (branch_id IS NULL)
+      const filterExpr = branchId
+        ? `branch_id.eq.${branchId},branch_id.is.null`
+        : 'branch_id.is.null';
+
       const { data, error } = await supabase
         .from('referral_settings')
         .select('*')
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
+        .or(filterExpr)
+        .order('branch_id', { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
       if (error) throw error;
@@ -89,7 +115,7 @@ export default function ReferralsPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Convert referral mutation — links to a member and creates rewards
+  // Convert referral mutation — links to a member and creates branch-specific rewards
   const convertMutation = useMutation({
     mutationFn: async () => {
       if (!convertingReferral) throw new Error('No referral selected');
@@ -106,22 +132,22 @@ export default function ReferralsPage() {
         .eq('id', convertingReferral.id);
       if (updateError) throw updateError;
 
-      // 2. Create rewards if settings exist
-      if (referralSettings) {
+      // 2. Create rewards using branch-specific settings (already resolved in convertSettings)
+      const settings = convertSettings;
+      if (settings) {
         const referrerId = convertingReferral.referrer_member_id;
-
-        // Compute reward values (fixed or percentage)
-        let referrerValue = referralSettings.referrer_reward_value || 0;
-        let referredValue = referralSettings.referred_reward_value || 0;
+        const referrerValue = settings.referrer_reward_value || 0;
+        const referredValue = settings.referred_reward_value || 0;
+        const referredName = convertingReferral.referred_name || 'a new member';
 
         // Create reward for referrer
         if (referrerId && referrerValue > 0) {
           const { error: referrerRewardErr } = await supabase.from('referral_rewards').insert({
             referral_id: convertingReferral.id,
             member_id: referrerId,
-            reward_type: referralSettings.referrer_reward_type || 'wallet_credit',
+            reward_type: settings.referrer_reward_type || 'wallet_credit',
             reward_value: referrerValue,
-            description: `Referral bonus for referring ${convertingReferral.referred_name || 'a new member'}`,
+            description: `Referral bonus for referring ${referredName}`,
             is_claimed: false,
           });
           if (referrerRewardErr) throw referrerRewardErr;
@@ -132,7 +158,7 @@ export default function ReferralsPage() {
           const { error: referredRewardErr } = await supabase.from('referral_rewards').insert({
             referral_id: convertingReferral.id,
             member_id: convertMemberId,
-            reward_type: referralSettings.referred_reward_type || 'wallet_credit',
+            reward_type: settings.referred_reward_type || 'wallet_credit',
             reward_value: referredValue,
             description: `Welcome bonus for joining via referral`,
             is_claimed: false,
@@ -160,8 +186,8 @@ export default function ReferralsPage() {
         .from('referrals')
         .select(`
           *,
-          referrer:referrer_member_id(member_code, user_id, profiles:user_id(full_name)),
-          referred:referred_member_id(member_code, user_id, profiles:user_id(full_name))
+          referrer:referrer_member_id(id, member_code, user_id, branch_id, profiles:user_id(full_name)),
+          referred:referred_member_id(id, member_code, user_id, profiles:user_id(full_name))
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -177,7 +203,7 @@ export default function ReferralsPage() {
         .from('referral_rewards')
         .select(`
           *,
-          members(member_code, profiles:user_id(full_name)),
+          members(id, member_code, profiles:user_id(full_name)),
           referrals(referral_code)
         `)
         .order('created_at', { ascending: false });
@@ -219,16 +245,16 @@ export default function ReferralsPage() {
     claimedRewards: rewards.filter((r: any) => r.is_claimed).reduce((sum: number, r: any) => sum + (r.reward_value || 0), 0),
   };
 
-  // Compute preview reward values for the convert drawer
-  const previewReferrerReward = referralSettings
-    ? (referralSettings.reward_mode === 'percentage'
-      ? `${referralSettings.referrer_reward_value}% of plan value`
-      : `₹${referralSettings.referrer_reward_value}`)
+  // Reward preview values for convert drawer
+  const previewReferrerReward = convertSettings
+    ? (convertSettings.reward_mode === 'percentage'
+      ? `${convertSettings.referrer_reward_value}% of plan value`
+      : `₹${convertSettings.referrer_reward_value}`)
     : null;
-  const previewReferredReward = referralSettings
-    ? (referralSettings.reward_mode === 'percentage'
-      ? `${referralSettings.referred_reward_value}% of plan value`
-      : `₹${referralSettings.referred_reward_value}`)
+  const previewReferredReward = convertSettings
+    ? (convertSettings.reward_mode === 'percentage'
+      ? `${convertSettings.referred_reward_value}% of plan value`
+      : `₹${convertSettings.referred_reward_value}`)
     : null;
 
   const getStatusClass = (status: string) => {
@@ -255,7 +281,11 @@ export default function ReferralsPage() {
             }}>
               <Download className="h-4 w-4" /> Export
             </Button>
-            <Button onClick={() => setCreateReferralOpen(true)} className="bg-accent hover:bg-accent/90">
+            <Button
+              onClick={() => setCreateReferralOpen(true)}
+              className="bg-accent hover:bg-accent/90"
+              data-testid="button-create-referral"
+            >
               <Plus className="mr-2 h-4 w-4" />
               Create Referral
             </Button>
@@ -268,7 +298,7 @@ export default function ReferralsPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Referrals</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
+              <div className="text-2xl font-bold" data-testid="text-total-referrals">{stats.total}</div>
             </CardContent>
           </Card>
           <Card>
@@ -276,7 +306,7 @@ export default function ReferralsPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Converted</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-500">{stats.converted}</div>
+              <div className="text-2xl font-bold text-green-500" data-testid="text-converted-referrals">{stats.converted}</div>
             </CardContent>
           </Card>
           <Card>
@@ -284,7 +314,7 @@ export default function ReferralsPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-500">{stats.pending}</div>
+              <div className="text-2xl font-bold text-yellow-500" data-testid="text-pending-referrals">{stats.pending}</div>
             </CardContent>
           </Card>
           <Card>
@@ -335,7 +365,7 @@ export default function ReferralsPage() {
                     </TableHeader>
                     <TableBody>
                       {referrals.map((referral: any) => (
-                        <TableRow key={referral.id}>
+                        <TableRow key={referral.id} data-testid={`row-referral-${referral.id}`}>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Users className="h-4 w-4 text-muted-foreground" />
@@ -350,6 +380,7 @@ export default function ReferralsPage() {
                                 variant="ghost"
                                 className="h-6 w-6"
                                 onClick={() => copyCode(referral.referral_code)}
+                                data-testid={`button-copy-code-${referral.id}`}
                               >
                                 {copiedCode === referral.referral_code ? (
                                   <Check className="h-3 w-3 text-green-500" />
@@ -360,14 +391,29 @@ export default function ReferralsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {referral.referred?.profiles?.full_name || referral.referred?.member_code || referral.referred_name || '-'}
+                            {referral.referred?.id ? (
+                              <button
+                                className="flex items-center gap-1 text-primary hover:underline text-sm font-medium"
+                                onClick={() => navigate(`/members?search=${referral.referred.member_code || ''}`)}
+                                data-testid={`link-referred-member-${referral.id}`}
+                              >
+                                {referral.referred?.profiles?.full_name || referral.referred?.member_code}
+                                <ExternalLink className="h-3 w-3" />
+                              </button>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">
+                                {referral.referred_name || '—'}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge className={getStatusClass(referral.status)}>
                               {referral.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>{new Date(referral.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(referral.created_at).toLocaleDateString()}
+                          </TableCell>
                           <TableCell>
                             {(referral.status === 'new' || referral.status === 'pending') && (
                               <Button
@@ -423,7 +469,7 @@ export default function ReferralsPage() {
                     </TableHeader>
                     <TableBody>
                       {rewards.map((reward: any) => (
-                        <TableRow key={reward.id}>
+                        <TableRow key={reward.id} data-testid={`row-reward-${reward.id}`}>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Wallet className="h-4 w-4 text-muted-foreground" />
@@ -494,8 +540,13 @@ export default function ReferralsPage() {
           <form onSubmit={(e) => { e.preventDefault(); createReferralMutation.mutate(); }} className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Referrer Member *</Label>
-              <Select value={newReferral.referrerMemberId} onValueChange={(v) => setNewReferral({ ...newReferral, referrerMemberId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select member who referred" /></SelectTrigger>
+              <Select
+                value={newReferral.referrerMemberId}
+                onValueChange={(v) => setNewReferral({ ...newReferral, referrerMemberId: v })}
+              >
+                <SelectTrigger data-testid="select-referrer-member">
+                  <SelectValue placeholder="Select member who referred" />
+                </SelectTrigger>
                 <SelectContent>
                   {members.map((m: any) => (
                     <SelectItem key={m.id} value={m.id}>
@@ -507,19 +558,39 @@ export default function ReferralsPage() {
             </div>
             <div className="space-y-2">
               <Label>Referred Person Name</Label>
-              <Input value={newReferral.referredName} onChange={(e) => setNewReferral({ ...newReferral, referredName: e.target.value })} placeholder="Name of the referred person" />
+              <Input
+                value={newReferral.referredName}
+                onChange={(e) => setNewReferral({ ...newReferral, referredName: e.target.value })}
+                placeholder="Name of the referred person"
+                data-testid="input-referred-name"
+              />
             </div>
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input value={newReferral.referredPhone} onChange={(e) => setNewReferral({ ...newReferral, referredPhone: e.target.value })} placeholder="Phone number" />
+              <Input
+                value={newReferral.referredPhone}
+                onChange={(e) => setNewReferral({ ...newReferral, referredPhone: e.target.value })}
+                placeholder="Phone number"
+                data-testid="input-referred-phone"
+              />
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
-              <Input type="email" value={newReferral.referredEmail} onChange={(e) => setNewReferral({ ...newReferral, referredEmail: e.target.value })} placeholder="Email address" />
+              <Input
+                type="email"
+                value={newReferral.referredEmail}
+                onChange={(e) => setNewReferral({ ...newReferral, referredEmail: e.target.value })}
+                placeholder="Email address"
+                data-testid="input-referred-email"
+              />
             </div>
             <SheetFooter className="pt-4">
               <Button type="button" variant="outline" onClick={() => setCreateReferralOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createReferralMutation.isPending || !newReferral.referrerMemberId}>
+              <Button
+                type="submit"
+                disabled={createReferralMutation.isPending || !newReferral.referrerMemberId}
+                data-testid="button-submit-create-referral"
+              >
                 {createReferralMutation.isPending ? 'Creating...' : 'Create Referral'}
               </Button>
             </SheetFooter>
@@ -540,7 +611,7 @@ export default function ReferralsPage() {
             </SheetTitle>
             <SheetDescription>
               Mark this referral as converted by linking it to the member who joined.
-              Rewards will be issued automatically based on your referral settings.
+              Rewards will be issued automatically based on your branch referral settings.
             </SheetDescription>
           </SheetHeader>
 
@@ -579,18 +650,24 @@ export default function ReferralsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Select the existing member record for the person who joined via this referral.</p>
+              <p className="text-xs text-muted-foreground">
+                Select the existing member record for the person who joined via this referral.
+              </p>
             </div>
 
             {/* Reward preview */}
-            {referralSettings ? (
+            {convertSettingsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+              </div>
+            ) : convertSettings ? (
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
                 <p className="text-sm font-medium flex items-center gap-2">
                   <Gift className="h-4 w-4 text-primary" />
                   Rewards that will be issued
                 </p>
                 <div className="space-y-2 text-sm">
-                  {(referralSettings.referrer_reward_value || 0) > 0 && (
+                  {(convertSettings.referrer_reward_value || 0) > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">
                         Referrer ({convertingReferral?.referrer?.profiles?.full_name || 'referrer'})
@@ -598,25 +675,27 @@ export default function ReferralsPage() {
                       <span className="font-semibold text-primary">{previewReferrerReward}</span>
                     </div>
                   )}
-                  {(referralSettings.referred_reward_value || 0) > 0 && (
+                  {(convertSettings.referred_reward_value || 0) > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">New member (joined)</span>
                       <span className="font-semibold text-primary">{previewReferredReward}</span>
                     </div>
                   )}
-                  {(referralSettings.referrer_reward_value || 0) === 0 && (referralSettings.referred_reward_value || 0) === 0 && (
+                  {(convertSettings.referrer_reward_value || 0) === 0 && (convertSettings.referred_reward_value || 0) === 0 && (
                     <p className="text-muted-foreground text-xs">No rewards configured (both reward values are 0).</p>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Reward type: <span className="capitalize">{(referralSettings.referrer_reward_type || 'wallet_credit').replace('_', ' ')}</span>. Rewards will be unclaimed until admin clicks "Claim & Credit Wallet" in the Rewards tab.
+                  Reward type: <span className="capitalize">{(convertSettings.referrer_reward_type || 'wallet_credit').replace('_', ' ')}</span>.
+                  Rewards will be unclaimed until admin clicks "Claim & Credit Wallet" in the Rewards tab.
                 </p>
               </div>
             ) : (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  No active referral settings found. The referral will be marked as converted but no rewards will be issued. Configure referral settings in Settings → Referral Program first.
+                  No active referral settings found for this branch. The referral will be marked as converted
+                  but no rewards will be issued. Configure referral settings in Settings → Referral Program first.
                 </AlertDescription>
               </Alert>
             )}
@@ -626,7 +705,7 @@ export default function ReferralsPage() {
             <Button type="button" variant="outline" onClick={() => setConvertOpen(false)}>Cancel</Button>
             <Button
               onClick={() => convertMutation.mutate()}
-              disabled={convertMutation.isPending || !convertMemberId}
+              disabled={convertMutation.isPending || !convertMemberId || convertSettingsLoading}
               data-testid="button-confirm-convert"
             >
               {convertMutation.isPending ? 'Converting...' : 'Confirm Conversion'}
