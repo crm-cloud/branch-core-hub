@@ -10,8 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Users, Clock, CalendarDays, Check, X, UserX, Edit, Phone, User, Search, Filter, Dumbbell, Calendar } from "lucide-react";
+import { Plus, Users, Clock, CalendarDays, Check, X, UserX, Edit, Phone, User, Search, Filter, Dumbbell, Calendar, ClipboardList } from "lucide-react";
 import { useClasses, useClassBookings, useMarkAttendance, useCancelBooking } from "@/hooks/useClasses";
 import { useTrainers } from "@/hooks/useTrainers";
 import { useBranchContext } from '@/contexts/BranchContext';
