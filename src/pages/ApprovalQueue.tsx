@@ -258,6 +258,7 @@ export default function ApprovalQueuePage() {
                   start_date: todayStr,
                   end_date: newEndDate.toISOString().split('T')[0],
                   original_end_date: newEndDate.toISOString().split('T')[0],
+                  price_paid: 0,
                   status: 'active',
                 } as any);
             }
