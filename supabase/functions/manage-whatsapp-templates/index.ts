@@ -153,6 +153,7 @@ serve(async (req) => {
       const templates = metaData.data || [];
 
       // Update local DB statuses for mapped templates (those with meta_template_name set)
+      // Scope by branch_id to prevent cross-branch status contamination
       for (const mt of templates) {
         await supabase
           .from("templates")
@@ -161,7 +162,9 @@ serve(async (req) => {
             meta_rejection_reason: mt.rejected_reason || null,
           })
           .eq("meta_template_name", mt.name)
-          .not("meta_template_name", "is", null);
+          .not("meta_template_name", "is", null)
+          // Only update templates belonging to this branch OR global templates (branch_id IS NULL)
+          .or(`branch_id.eq.${branch_id},branch_id.is.null`);
       }
 
       // Return full Meta API list (includes category, status, etc.)
@@ -227,15 +230,36 @@ serve(async (req) => {
       }
 
       // Persist Meta name + status back into the local template row
+      // Scope by branch_id to prevent cross-branch writes
       if (local_template_id) {
-        await supabase
+        const { data: targetTemplate, error: templateFetchErr } = await supabase
           .from("templates")
-          .update({
-            meta_template_name: safeName,
-            meta_template_status: metaData.status || "PENDING",
-            meta_rejection_reason: null,
-          })
-          .eq("id", local_template_id);
+          .select("id, branch_id")
+          .eq("id", local_template_id)
+          .maybeSingle();
+
+        if (templateFetchErr || !targetTemplate) {
+          // Template not found — still return success for the Meta submission
+          console.warn("Could not find local template:", local_template_id);
+        } else {
+          // Enforce: template must belong to the requesting branch, or be a global template (branch_id IS NULL)
+          const templateBranch = targetTemplate.branch_id;
+          if (templateBranch !== null && templateBranch !== branch_id) {
+            return new Response(
+              JSON.stringify({ error: "Forbidden — template does not belong to the requested branch" }),
+              { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          await supabase
+            .from("templates")
+            .update({
+              meta_template_name: safeName,
+              meta_template_status: metaData.status || "PENDING",
+              meta_rejection_reason: null,
+            })
+            .eq("id", local_template_id);
+        }
       }
 
       return new Response(
@@ -270,7 +294,7 @@ serve(async (req) => {
         );
       }
 
-      // Update matching local record
+      // Update matching local record — scoped to requesting branch + global templates
       await supabase
         .from("templates")
         .update({
@@ -278,7 +302,8 @@ serve(async (req) => {
           meta_rejection_reason: metaData.rejected_reason || null,
         })
         .eq("meta_template_name", metaData.name)
-        .not("meta_template_name", "is", null);
+        .not("meta_template_name", "is", null)
+        .or(`branch_id.eq.${branch_id},branch_id.is.null`);
 
       return new Response(
         JSON.stringify({
