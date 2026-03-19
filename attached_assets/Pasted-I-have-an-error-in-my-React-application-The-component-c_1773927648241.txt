@@ -1,0 +1,15 @@
+I have an error in my React application. The component crashed at route: /dashboard. The error message is: `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog. Here is the stack trace: Error
+    at console.error (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/src/services/errorLogService.ts:92:26)
+    at Proxy.<anonymous> (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/__replco/static/devtools/injected.js:37:27)
+    at https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-3DPXIRRB.js?v=c6bf92c6:326:30
+    at commitHookEffectListMount (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:16915:34)
+    at commitPassiveMountOnFiber (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:18156:19)
+    at commitPassiveMountEffects_complete (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:18129:17)
+    at commitPassiveMountEffects_begin (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:18119:15)
+    at commitPassiveMountEffects (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:18109:11)
+    at flushPassiveEffectsImpl (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:19490:11)
+    at flushPassiveEffects (https://6fdf0f5e-e835-4fc5-a32d-47ee7a626c5a-00-2533q8x8jicc2.riker.replit.dev/node_modules/.vite/deps/chunk-T2SWDQEL.js?v=c6bf92c6:19447:22). Please audit the relevant code and provide a fix.
