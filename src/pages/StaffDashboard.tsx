@@ -414,7 +414,11 @@ function PricingDrawer({ open, onOpenChange, branchId }: { open: boolean; onOpen
   const { data: plans = [] } = useQuery({
     queryKey: ['membership-plans-pricing', branchId],
     queryFn: async () => {
-      let query = supabase.from('membership_plans').select('id, name, duration_days, price, is_active').eq('is_active', true).order('price', { ascending: true });
+      let query = supabase
+        .from('membership_plans')
+        .select('id, name, duration_days, price, is_active, plan_benefits(id, benefit_type, frequency, limit_count, benefit_types(name, code))')
+        .eq('is_active', true)
+        .order('price', { ascending: true });
       if (branchId) query = query.eq('branch_id', branchId);
       const { data, error } = await query;
       if (error) throw error;
@@ -422,6 +426,11 @@ function PricingDrawer({ open, onOpenChange, branchId }: { open: boolean; onOpen
     },
     enabled: open,
   });
+
+  const formatFrequency = (f: string | null) => {
+    if (!f) return '';
+    return f === 'per_membership' ? 'total' : f === 'unlimited' ? '∞' : `/${f}`;
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -432,30 +441,46 @@ function PricingDrawer({ open, onOpenChange, branchId }: { open: boolean; onOpen
             Membership Pricing
           </SheetTitle>
         </SheetHeader>
-        <div className="mt-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plan</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plans.map((plan: any) => (
-                <TableRow key={plan.id}>
-                  <TableCell className="font-medium">{plan.name}</TableCell>
-                  <TableCell>{plan.duration_days} days</TableCell>
-                  <TableCell className="text-right font-semibold">₹{plan.price?.toLocaleString('en-IN')}</TableCell>
-                </TableRow>
-              ))}
-              {plans.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground py-8">No plans configured</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <div className="mt-4 space-y-4">
+          {plans.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">No plans configured</p>
+          )}
+          {plans.map((plan: any) => (
+            <Card key={plan.id} className="rounded-xl border shadow-sm">
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-semibold text-base">{plan.name}</p>
+                    <p className="text-xs text-muted-foreground">{plan.duration_days} days</p>
+                  </div>
+                  <Badge className="bg-primary/10 text-primary border-primary/20 text-sm font-bold">
+                    ₹{plan.price?.toLocaleString('en-IN')}
+                  </Badge>
+                </div>
+                {plan.plan_benefits && plan.plan_benefits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Included Benefits</p>
+                    <ul className="space-y-1">
+                      {plan.plan_benefits.map((pb: any) => (
+                        <li key={pb.id} className="flex items-center gap-2 text-sm">
+                          <CheckCircle className="h-3.5 w-3.5 text-success flex-shrink-0" />
+                          <span>{pb.benefit_types?.name || pb.benefit_type}</span>
+                          {pb.limit_count && (
+                            <span className="text-xs text-muted-foreground">
+                              {pb.limit_count} {formatFrequency(pb.frequency)}
+                            </span>
+                          )}
+                          {pb.frequency === 'unlimited' && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Unlimited</Badge>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </SheetContent>
     </Sheet>

@@ -1,67 +1,80 @@
 
+# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-# Transfers, Class Roster, Staff Pricing & AI Fitness Refactor
+## 1. Critical Query Bug Fixes
 
-## Module 1: Membership Transfer Bug Fix (Revenue Leak)
+### 1a. `employees` Relationship Error in HRM
+**File:** `src/pages/HRM.tsx` (line 58)
+**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
+**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
 
-**The Bug**: Both the direct management transfer (line 100-103 in `TransferMembershipDrawer.tsx`) and the approval queue handler (line 230-233 in `ApprovalQueue.tsx`) only do `update({ member_id: toMemberId })` — they never deactivate the original membership or cap the sender's end date.
+### 1b. `members(full_name)` Error in Analytics
+**File:** `src/pages/Analytics.tsx` (line 183)
+**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
+**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
 
-**The Fix** (3 locations):
+### 1c. Staff Dashboard Login Crash
+**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
+**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
+**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
 
-1. **`TransferMembershipDrawer.tsx`** (management direct path, ~line 100): After the `update({ member_id })`, add a second query to fetch the membership's remaining days, then:
-   - Calculate `remainingDays = membership.end_date - today`
-   - Update the original membership: `status = 'transferred', end_date = today`
-   - Insert a NEW membership for the recipient with `start_date = today, end_date = today + remainingDays, status = 'active'`
-   - Remove the simple `update({ member_id })` approach entirely
+## 2. Database Migration
 
-2. **`ApprovalQueue.tsx`** (approval handler, ~line 225-276): Same atomic logic — deactivate old, create new with remaining days.
+Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
 
-3. **Store remaining days in approval payload**: Update the staff approval insert to include `remaining_days` and `plan_id` so the approval handler can create the new membership correctly.
+```sql
+-- employees.user_id currently references auth.users(id)
+-- Add an additional FK to profiles for PostgREST joins
+ALTER TABLE public.employees
+  ADD CONSTRAINT employees_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+```
 
-## Module 2: Class Attendees Roster Drawer
+This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
 
-**Current state**: Classes page already has an "Attendance" tab that shows bookings for a selected class. But there's no quick "View Attendees" button on each class card.
+## 3. AI Fitness Page Redesign
 
-**The Fix** in `src/pages/Classes.tsx`:
-- Add a "View Attendees" `Button` on each class card (next to the Edit button)
-- Clicking it opens a `Sheet` drawer that queries `class_bookings` joined with member profiles (avatar, name, phone)
-- Display a clean roster list with attendance status badges and action buttons
-- Reuse existing `useClassBookings` hook
+**File:** `src/pages/AIFitness.tsx` (full rewrite)
 
-## Module 3: Staff Dashboard Pricing with Benefits
+Redesign with 3 clear tabs and modern Vuexy styling:
 
-**Current state**: `PricingDrawer` (line 413-463 in `StaffDashboard.tsx`) only selects `id, name, duration_days, price, is_active` — no benefits.
+- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
+- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
+- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
 
-**The Fix** in `src/pages/StaffDashboard.tsx`:
-- Update the query to join `plan_benefits` with `benefit_types`: `select('id, name, duration_days, price, is_active, plan_benefits(id, benefit_type, frequency, limit_count, benefit_types(name, code))')`
-- Replace the simple table with cards showing plan name, price, duration, and a bulleted list of benefits under each plan
-- Format benefits as "Benefit Name — frequency (limit)" entries
+Key improvements:
+- Remove the cluttered nested tabs (plan type inside generate tab)
+- Plan type (workout/diet) becomes a toggle at the top level
+- Generated plan renders as structured day cards, not raw JSON
+- Add "Random Daily Workout" quick action
 
-## Module 4: AI Fitness Planner Template Library
+## 4. Public Website CMS/DB Sync
 
-**Current state**: AIFitness.tsx (913 lines) already has tabs for Generate/Templates/Assign, uses `fitness_plan_templates` table, has CRUD for templates, and has an `AssignPlanDrawer`. It already supports Global Templates vs. saved templates with delete.
+**File:** `src/pages/PublicWebsite.tsx`
 
-**What's actually missing**: Edit functionality and a cleaner "Global Templates" vs "Member Plans" tab split.
+Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
 
-**The Fix** in `src/pages/AIFitness.tsx`:
-- Rename existing tabs: "Generate" → "Generate", "Templates" → "Template Library" (combine default + saved)
-- Add an "Edit" button on saved templates that loads the template content back into the Generate form for modification (re-save overwrites)
-- Ensure "Download PDF" button exists on every template card (already partially implemented)
-- Add "Member Plans" tab that queries `member_fitness_plans` and shows assigned plans with member name, plan type, validity
+- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
+- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
+- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
+- **Classes section:** Fetch upcoming classes from `classes` table.
+- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
+- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
 
-## Files to Modify
+## 5. Files to Change
 
 | File | Change |
 |------|--------|
-| `src/components/members/TransferMembershipDrawer.tsx` | Atomic transfer: deactivate old + create new membership |
-| `src/pages/ApprovalQueue.tsx` | Same atomic transfer logic on approval |
-| `src/pages/Classes.tsx` | Add "View Attendees" button + roster Sheet drawer |
-| `src/pages/StaffDashboard.tsx` | Join plan_benefits in pricing query, render benefits list |
-| `src/pages/AIFitness.tsx` | Add Edit button, rename tabs, add Member Plans tab |
+| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
+| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
+| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
+| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
+| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
+| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
 
 ## Execution Order
-1. Transfer bug fix (TransferMembershipDrawer + ApprovalQueue)
-2. Class attendees roster drawer
-3. Staff pricing benefits
-4. AI Fitness template library refinements
 
+1. DB migration (add FK for employees -> profiles)
+2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
+3. Redesign AI Fitness page
+4. Sync Public Website with DB data

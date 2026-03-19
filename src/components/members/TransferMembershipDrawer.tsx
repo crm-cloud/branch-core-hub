@@ -89,6 +89,9 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
             transfer_fee: isChargeable ? parseFloat(transferFee) : 0,
             reason,
             membershipId,
+            // Include plan info for the approval handler to create new membership
+            plan_id: membership?.plan_id,
+            branch_id: branchId,
           },
           status: 'pending',
         });
@@ -96,12 +99,41 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
         return { isApprovalRequest: true };
       }
 
-      // Management: Direct update (existing behavior)
-      const { error: msError } = await supabase
+      // Management: Atomic transfer — deactivate old, create new for recipient
+      // 1. Fetch the current membership details
+      const { data: currentMs, error: fetchErr } = await supabase
         .from('memberships')
-        .update({ member_id: selectedTarget.id })
+        .select('*, membership_plans(name, price, duration_days)')
+        .eq('id', membershipId)
+        .single();
+      if (fetchErr || !currentMs) throw new Error('Failed to fetch membership details');
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const endDate = new Date(currentMs.end_date);
+      const todayDate = new Date(todayStr);
+      const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // 2. Deactivate original membership
+      const { error: deactivateErr } = await supabase
+        .from('memberships')
+        .update({ status: 'transferred' as any, end_date: todayStr })
         .eq('id', membershipId);
-      if (msError) throw msError;
+      if (deactivateErr) throw deactivateErr;
+
+      // 3. Create new membership for the recipient with remaining days
+      const newEndDate = new Date(todayDate);
+      newEndDate.setDate(newEndDate.getDate() + remainingDays);
+      const { error: insertErr } = await supabase
+        .from('memberships')
+        .insert({
+          member_id: selectedTarget.id,
+          plan_id: currentMs.plan_id,
+          branch_id: currentMs.branch_id,
+          start_date: todayStr,
+          end_date: newEndDate.toISOString().split('T')[0],
+          status: 'active',
+        } as any);
+      if (insertErr) throw insertErr;
 
       // Create transfer fee invoice if chargeable
       if (isChargeable && transferFee && parseFloat(transferFee) > 0) {
