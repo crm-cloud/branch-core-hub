@@ -441,6 +441,74 @@ const DeviceManagement = () => {
                   );
                 })}
               </div>
+
+              {/* Android SDK Reference */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-sm">📱 Android SDK Reference (SMDT)</h4>
+
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                  <p className="font-medium">Integration flow for APK developers</p>
+                  <p>
+                    The APK must include <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded font-mono">SmdtAccessControl_1_1.jar</code> as a dependency.
+                    On startup, call <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded font-mono">sync_request</code> against the Terminal Sync URL above to download the member roster and enroll faces locally.
+                    When a card or face is detected, send an <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded font-mono">access_event</code> to the server.
+                    Use the server's <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded font-mono">allow</code> / <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded font-mono">deny</code> response to drive the relay and LEDs via the SMDT SDK calls below.
+                  </p>
+                </div>
+
+                {[
+                  {
+                    label: 'Initialization',
+                    code: 'SmdtManager smdt = SmdtManager.create(this);',
+                  },
+                  {
+                    label: 'Open gate (relay on)',
+                    code: 'smdt.setRelayIoValue(1);\nsmdt.setRelayIoMode(1, 5); // auto-close after 5 seconds',
+                  },
+                  {
+                    label: 'Close gate (relay off)',
+                    code: 'smdt.setRelayIoValue(0);',
+                  },
+                  {
+                    label: 'LED — Access granted (green)',
+                    code: 'smdt.setLedLighted(SmdtManager.LED_GREEN, true);',
+                  },
+                  {
+                    label: 'LED — Access denied (red)',
+                    code: 'smdt.setLedLighted(SmdtManager.LED_RED, true);',
+                  },
+                  {
+                    label: 'LED — Idle / off (white)',
+                    code: 'smdt.setLedLighted(SmdtManager.LED_WHITE, false);',
+                  },
+                  {
+                    label: 'Read Wiegand card (blocking — run in background thread)',
+                    code: '// Start reading (blocks until card is presented)\nbyte[] cardData = smdt.smdtReadWiegandData();\n\n// Release the read lock when done\nsmdt.smdtReleaseWiegandRead();',
+                  },
+                  {
+                    label: 'Send card number via Wiegand (format 1 = Wiegand 26)',
+                    code: 'smdt.smdtSendCard(cardNumber, 1);',
+                  },
+                ].map((snippet) => (
+                  <div key={snippet.label} className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">{snippet.label}</p>
+                    <div className="relative">
+                      <pre className="text-xs font-mono bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto whitespace-pre">{snippet.code}</pre>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 text-slate-400 hover:text-white"
+                        onClick={() => {
+                          navigator.clipboard.writeText(snippet.code);
+                          toast.info("Code copied!");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </CollapsibleContent>
         </Card>
