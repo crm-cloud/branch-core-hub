@@ -131,6 +131,7 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
           branch_id: currentMs.branch_id,
           start_date: todayStr,
           end_date: newEndDate.toISOString().split('T')[0],
+          original_end_date: newEndDate.toISOString().split('T')[0],
           status: 'active',
         } as any);
       if (insertErr) throw insertErr;

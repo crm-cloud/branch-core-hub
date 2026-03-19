@@ -257,6 +257,7 @@ export default function ApprovalQueuePage() {
                   branch_id: requestData.branch_id || request.branch_id,
                   start_date: todayStr,
                   end_date: newEndDate.toISOString().split('T')[0],
+                  original_end_date: newEndDate.toISOString().split('T')[0],
                   status: 'active',
                 } as any);
             }
