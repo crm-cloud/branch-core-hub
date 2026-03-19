@@ -15,7 +15,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { 
   CreditCard, MessageSquare, Mail, Phone,
-  Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink
+  Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink,
+  RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send
 } from 'lucide-react';
 
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business';
@@ -356,6 +357,12 @@ export function IntegrationSettings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Meta Approved Templates Panel */}
+          <MetaTemplatesPanel
+            integrations={integrations}
+            selectedBranch={selectedBranch}
+          />
 
           {/* WhatsApp Business API Setup Guide */}
           <Card className="border-primary/20">
@@ -737,6 +744,179 @@ function IntegrationConfigSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function MetaTemplatesPanel({
+  integrations,
+  selectedBranch,
+}: {
+  integrations: any[];
+  selectedBranch: string;
+}) {
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const { data: localTemplates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['communication-templates', 'whatsapp'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('templates')
+        .select('id, name, type, meta_template_name, meta_template_status, meta_rejection_reason')
+        .eq('type', 'whatsapp')
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const hasWhatsAppConfig = integrations.some(
+    (i) => i.integration_type === 'whatsapp' && i.is_active
+  );
+
+  const handleSync = async () => {
+    const branch = selectedBranch !== 'all' ? selectedBranch : null;
+    if (!branch) {
+      toast.error('Please select a specific branch to sync Meta templates');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+        body: { action: 'list', branch_id: branch },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const syncedCount = data?.templates?.length ?? 0;
+      toast.success(`Synced ${syncedCount} template(s) from Meta`);
+      queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to sync templates from Meta');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
+    APPROVED: { label: 'Approved', icon: CheckCircle, className: 'bg-green-100 text-green-700 border-green-200' },
+    PENDING: { label: 'Pending', icon: Clock, className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    REJECTED: { label: 'Rejected', icon: XCircle, className: 'bg-red-100 text-red-700 border-red-200' },
+    PAUSED: { label: 'Paused', icon: PauseCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
+    DISABLED: { label: 'Disabled', icon: PauseCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
+  };
+
+  const submittedTemplates = localTemplates.filter((t) => t.meta_template_name);
+
+  return (
+    <Card>
+      <CardHeader
+        className="pb-3 cursor-pointer select-none"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <CardTitle className="flex items-center justify-between text-base">
+          <div className="flex items-center gap-2">
+            <Send className="h-4 w-4 text-green-600" />
+            Meta Approved Templates
+            {submittedTemplates.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {submittedTemplates.length} submitted
+              </Badge>
+            )}
+          </div>
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </CardTitle>
+      </CardHeader>
+
+      {expanded && (
+        <CardContent className="space-y-4">
+          {!hasWhatsAppConfig && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <p className="text-xs text-amber-700">
+                Configure a WhatsApp integration above before syncing or submitting templates to Meta.
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Templates submitted to Meta for approval.{' '}
+              {submittedTemplates.length === 0 && 'Use "Submit to Meta" on any WhatsApp template.'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSync}
+              disabled={isSyncing || !hasWhatsAppConfig}
+              data-testid="btn-sync-meta-templates"
+              className="flex-shrink-0"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing…' : 'Sync from Meta'}
+            </Button>
+          </div>
+
+          {loadingTemplates ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+            </div>
+          ) : submittedTemplates.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Send className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No templates submitted to Meta yet.</p>
+              <p className="text-xs mt-1">
+                Go to <strong>Communication Templates</strong> and click "Submit to Meta" on any WhatsApp template.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {submittedTemplates.map((t) => {
+                const status = t.meta_template_status;
+                const cfg = status ? statusConfig[status] : null;
+                const Icon = cfg?.icon;
+                return (
+                  <div
+                    key={t.id}
+                    className="flex items-start justify-between p-3 rounded-lg border bg-card"
+                    data-testid={`meta-template-row-${t.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-sm">{t.name}</p>
+                        {cfg && Icon && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.className}`}>
+                            <Icon className="h-3 w-3" />
+                            {cfg.label}
+                          </span>
+                        )}
+                        {!status && (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                      {t.meta_template_name && (
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                          {t.meta_template_name}
+                        </p>
+                      )}
+                      {status === 'REJECTED' && t.meta_rejection_reason && (
+                        <p className="text-xs text-red-600 mt-1">
+                          <strong>Reason:</strong> {t.meta_rejection_reason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Click "Sync from Meta" to refresh approval statuses. Deletion must be done in Meta Business Manager.
+          </p>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
