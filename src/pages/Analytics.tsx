@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, CreditCard, TrendingUp, Calendar, AlertCircle, DollarSign, ShoppingBag, Package, ArrowUp, ArrowDown, Dumbbell, Trophy, Award } from 'lucide-react';
+import { Users, CreditCard, TrendingUp, Calendar, AlertCircle, DollarSign, ShoppingBag, Package, ArrowUp, ArrowDown, Dumbbell, Trophy, Award, Clock, Activity, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { format, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getDay } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getDay, subDays, addDays } from 'date-fns';
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   BarChart,
   Bar,
@@ -242,6 +244,109 @@ export default function AnalyticsPage() {
       return data || [];
     },
   });
+
+  // Footfall Heatmap: check-ins per day-of-week (0=Mon) x hour for past 90 days
+  const { data: footfallData = [], isLoading: footfallLoading } = useQuery({
+    queryKey: ['analytics-footfall', branchFilter],
+    queryFn: async () => {
+      const since = subDays(new Date(), 90).toISOString();
+      let q = supabase.from('member_attendance').select('check_in').gte('check_in', since);
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
+      // Build map: [dayOfWeek][hour] = count  (dayOfWeek 0=Mon..6=Sun)
+      const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+      data?.forEach((row) => {
+        const d = new Date(row.check_in);
+        const jsDay = d.getDay(); // 0=Sun
+        const dayIdx = jsDay === 0 ? 6 : jsDay - 1; // Mon=0..Sun=6
+        const hour = d.getHours();
+        grid[dayIdx][hour]++;
+      });
+      return grid;
+    },
+  });
+
+  // Upcoming renewals: active memberships expiring within 30 days
+  const { data: renewalData, isLoading: renewalLoading } = useQuery({
+    queryKey: ['analytics-renewals', branchFilter],
+    queryFn: async () => {
+      const today = new Date();
+      const in30 = addDays(today, 30).toISOString().split('T')[0];
+      const todayStr = today.toISOString().split('T')[0];
+      let q = supabase
+        .from('memberships')
+        .select('id, end_date, member_id, members(profiles:user_id(full_name))')
+        .eq('status', 'active')
+        .gte('end_date', todayStr)
+        .lte('end_date', in30)
+        .order('end_date');
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
+      type RenewalRow = {
+        id: string;
+        end_date: string;
+        member_id: string;
+        members: { profiles: { full_name: string | null } | null } | null;
+      };
+      const members = (data as RenewalRow[] | null || []).map((m) => ({
+        id: m.id,
+        name: m.members?.profiles?.full_name || 'Unknown',
+        endDate: m.end_date,
+      }));
+      const in7 = addDays(today, 7).toISOString().split('T')[0];
+      const in14 = addDays(today, 14).toISOString().split('T')[0];
+      return {
+        all: members,
+        bucket7: members.filter((m) => m.endDate <= in7),
+        bucket14: members.filter((m) => m.endDate <= in14),
+        bucket30: members,
+      };
+    },
+  });
+
+  // Avg session duration per day for last 14 days
+  const { data: sessionDurationData = [], isLoading: sessionLoading } = useQuery({
+    queryKey: ['analytics-session-duration', branchFilter],
+    queryFn: async () => {
+      const since = subDays(new Date(), 14).toISOString();
+      let q = supabase
+        .from('member_attendance')
+        .select('check_in, check_out')
+        .gte('check_in', since)
+        .not('check_out', 'is', null);
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data } = await q;
+      if (!data || data.length === 0) return [];
+      // Group by date, compute average duration in minutes
+      const byDay: Record<string, { total: number; count: number }> = {};
+      data.forEach((row) => {
+        const dateKey = row.check_in.split('T')[0];
+        const durationMs = new Date(row.check_out!).getTime() - new Date(row.check_in).getTime();
+        const durationMin = durationMs / 60000;
+        if (durationMin <= 0 || durationMin > 480) return; // skip bad data
+        if (!byDay[dateKey]) byDay[dateKey] = { total: 0, count: 0 };
+        byDay[dateKey].total += durationMin;
+        byDay[dateKey].count++;
+      });
+      return Object.entries(byDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, { total, count }]) => ({
+          date: format(new Date(date), 'dd MMM'),
+          avgMinutes: Math.round(total / count),
+        }));
+    },
+  });
+
+  const [renewalDialog, setRenewalDialog] = useState<{ open: boolean; bucket: string; members: { id: string; name: string; endDate: string }[] }>({
+    open: false, bucket: '', members: [],
+  });
+
+  const HEATMAP_HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 9 PM
+  const HEATMAP_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  const footfallMax = footfallData.length > 0
+    ? Math.max(...footfallData.flatMap((row) => HEATMAP_HOURS.map((h) => row[h])))
+    : 1;
 
   const formatCurrency = (value: number) => `₹${value.toLocaleString()}`;
   const collectionRate = stats?.totalRevenue && stats?.pendingAmount
@@ -684,7 +789,207 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Operational Insights Section */}
+        <div>
+          <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            Operational Insights
+          </h2>
+          <div className="grid gap-6 md:grid-cols-3">
+            {/* Footfall Heatmap */}
+            <Card className="rounded-2xl border-none shadow-lg shadow-primary/5 md:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  Gym Footfall Heatmap
+                </CardTitle>
+                <CardDescription>Check-in intensity by day and hour (past 90 days)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {footfallLoading ? (
+                  <div className="h-40 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : footfallMax === 0 ? (
+                  <div className="h-40 flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No attendance data in the past 90 days</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[520px]">
+                      {/* Hour labels */}
+                      <div className="flex mb-1">
+                        <div className="w-10 shrink-0" />
+                        {HEATMAP_HOURS.map((h) => (
+                          <div key={h} className="flex-1 text-center text-[9px] text-muted-foreground font-medium" style={{ minWidth: 0 }}>
+                            {h === 12 ? '12p' : h < 12 ? `${h}a` : `${h - 12}p`}
+                          </div>
+                        ))}
+                      </div>
+                      {HEATMAP_DAYS.map((day, dayIdx) => (
+                        <div key={day} className="flex items-center gap-0.5 mb-0.5">
+                          <div className="w-10 shrink-0 text-[10px] text-muted-foreground font-medium text-right pr-2">{day}</div>
+                          {HEATMAP_HOURS.map((h) => {
+                            const count = footfallData[dayIdx]?.[h] ?? 0;
+                            const intensity = footfallMax > 0 ? count / footfallMax : 0;
+                            const alpha = intensity === 0 ? 0 : Math.max(0.08, intensity);
+                            return (
+                              <div
+                                key={h}
+                                className="flex-1 rounded-sm cursor-default transition-transform hover:scale-110"
+                                style={{
+                                  aspectRatio: '1',
+                                  minWidth: 0,
+                                  backgroundColor: `hsl(var(--primary) / ${alpha})`,
+                                  border: intensity === 0 ? '1px solid hsl(var(--border))' : 'none',
+                                }}
+                                title={`${day} ${h}:00 — ${count} check-in${count !== 1 ? 's' : ''}`}
+                                data-testid={`heatmap-cell-${dayIdx}-${h}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                      {/* Colour scale legend */}
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="text-[10px] text-muted-foreground">Low</span>
+                        {[0.08, 0.25, 0.45, 0.65, 0.85, 1].map((a) => (
+                          <div key={a} className="h-3 w-5 rounded-sm" style={{ backgroundColor: `hsl(var(--primary) / ${a})` }} />
+                        ))}
+                        <span className="text-[10px] text-muted-foreground">High</span>
+                        <span className="text-[10px] text-muted-foreground ml-2">Peak: {footfallMax} check-ins</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Upcoming Renewals */}
+            <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
+              <CardHeader>
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 text-primary" />
+                  Upcoming Renewals
+                </CardTitle>
+                <CardDescription>Active memberships expiring soon</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {renewalLoading ? (
+                  <div className="h-32 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Next 7 days', members: renewalData?.bucket7 || [], color: 'text-destructive', bg: 'bg-destructive/10' },
+                      { label: 'Next 14 days', members: renewalData?.bucket14 || [], color: 'text-warning', bg: 'bg-warning/10' },
+                      { label: 'Next 30 days', members: renewalData?.bucket30 || [], color: 'text-info', bg: 'bg-info/10' },
+                    ].map(({ label, members, color, bg }) => (
+                      <button
+                        key={label}
+                        className={`w-full flex items-center justify-between rounded-xl px-4 py-3 ${bg} hover:opacity-80 transition-opacity cursor-pointer`}
+                        onClick={() => setRenewalDialog({ open: true, bucket: label, members })}
+                        data-testid={`renewal-bucket-${label.replace(/\s+/g, '-').toLowerCase()}`}
+                      >
+                        <div className="text-left">
+                          <p className="text-sm font-semibold text-foreground">{label}</p>
+                          <p className={`text-xs font-medium ${color}`}>{members.length} member{members.length !== 1 ? 's' : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${renewalData?.bucket30?.length ? Math.min(100, (members.length / (renewalData.bucket30.length || 1)) * 100) : 0}%`,
+                                backgroundColor: `hsl(var(--primary))`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                    {!renewalData?.bucket30?.length && (
+                      <div className="text-center text-muted-foreground text-sm py-4">
+                        <RefreshCw className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                        No renewals in the next 30 days
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Session Duration */}
+          <div className="mt-6">
+            <Card className="rounded-2xl border-none shadow-lg shadow-primary/5">
+              <CardHeader>
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  Avg Session Duration
+                </CardTitle>
+                <CardDescription>Average time members spend per day (last 14 days, minutes)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {sessionLoading ? (
+                  <div className="h-48 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : sessionDurationData.length > 0 ? (
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={sessionDurationData}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}m`} />
+                        <Tooltip
+                          formatter={(value: number) => [`${value} min`, 'Avg Duration']}
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: 'none', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        />
+                        <Bar dataKey="avgMinutes" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-48 flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No session data yet</p>
+                      <p className="text-xs mt-1">Data appears when check-out times are recorded</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
+
+      {/* Renewal members dialog */}
+      <Dialog open={renewalDialog.open} onOpenChange={(open) => setRenewalDialog((p) => ({ ...p, open }))}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Expiring — {renewalDialog.bucket}</DialogTitle>
+          </DialogHeader>
+          {renewalDialog.members.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No members expiring in this window.</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {renewalDialog.members.map((m) => (
+                <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0" data-testid={`renewal-member-${m.id}`}>
+                  <p className="text-sm font-medium text-foreground">{m.name}</p>
+                  <Badge variant="outline" className="text-xs">{format(new Date(m.endDate), 'dd MMM yyyy')}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
