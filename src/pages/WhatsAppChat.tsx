@@ -199,10 +199,13 @@ export default function WhatsAppChatPage() {
           toast.info('Message saved. WhatsApp delivery failed — check integration settings.');
         } else {
           // Edge function succeeded — update status to 'sent' in DB
-          await supabase
+          const { error: updateErr } = await supabase
             .from('whatsapp_messages')
             .update({ status: 'sent' })
             .eq('id', messageId);
+          if (updateErr) {
+            console.warn('Failed to update message status to sent:', updateErr.message);
+          }
         }
       } catch (apiErr) {
         console.warn('send-whatsapp invocation error:', apiErr);
