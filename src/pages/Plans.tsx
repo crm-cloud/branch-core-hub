@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { usePlans } from '@/hooks/usePlans';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,26 +10,121 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddPlanDrawer } from '@/components/plans/AddPlanDrawer';
 import { EditPlanDrawer } from '@/components/plans/EditPlanDrawer';
-import { Plus, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star, IndianRupee, Sparkles } from 'lucide-react';
+import {
+  Plus, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star,
+  IndianRupee, Sparkles, Check, Dumbbell, ChevronRight, Tag,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { format } from 'date-fns';
 
-const gradientBorderColors = [
-  'border-l-violet-600',
-  'border-l-emerald-600',
-  'border-l-amber-500',
-  'border-l-rose-500',
-  'border-l-sky-500',
-  'border-l-fuchsia-500',
+const accentColors = [
+  { border: 'border-l-violet-500', gradient: 'from-violet-600 to-indigo-600', bg: 'bg-violet-500' },
+  { border: 'border-l-emerald-500', gradient: 'from-emerald-600 to-teal-600', bg: 'bg-emerald-500' },
+  { border: 'border-l-amber-500', gradient: 'from-amber-500 to-orange-500', bg: 'bg-amber-500' },
+  { border: 'border-l-rose-500', gradient: 'from-rose-600 to-pink-600', bg: 'bg-rose-500' },
+  { border: 'border-l-sky-500', gradient: 'from-sky-600 to-blue-600', bg: 'bg-sky-500' },
+  { border: 'border-l-fuchsia-500', gradient: 'from-fuchsia-600 to-purple-600', bg: 'bg-fuchsia-500' },
 ];
 
-interface PlanRowProps {
+interface PlanListItemProps {
   plan: MembershipPlanWithBenefits;
   index: number;
   isPopular: boolean;
+  memberCount: number;
+  isSelected: boolean;
+  formatPrice: (price: number) => string;
+  getDurationLabel: (days: number) => string;
+  onClick: () => void;
+  animationDelay: number;
+}
+
+function PlanListItem({
+  plan,
+  index,
+  isPopular,
+  memberCount,
+  isSelected,
+  formatPrice,
+  getDurationLabel,
+  onClick,
+  animationDelay,
+}: PlanListItemProps) {
+  const [visible, setVisible] = useState(false);
+  const accent = accentColors[index % accentColors.length];
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), animationDelay);
+    return () => clearTimeout(t);
+  }, [animationDelay]);
+
+  return (
+    <div
+      data-testid={`plan-list-item-${plan.id}`}
+      onClick={onClick}
+      className={`
+        relative flex items-center gap-3 px-4 py-3.5 cursor-pointer border-l-4 transition-all duration-150
+        ${accent.border}
+        ${isSelected
+          ? 'bg-gradient-to-r from-primary/10 to-transparent shadow-md scale-[1.01]'
+          : 'hover:bg-muted/50 hover:shadow-md hover:scale-[1.01]'
+        }
+        ${!visible ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}
+        ${!plan.is_active ? 'opacity-60' : ''}
+        transition-all duration-300
+      `}
+    >
+      {isSelected && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" />
+      )}
+
+      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${accent.gradient} flex items-center justify-center text-white shrink-0`}>
+        <Crown className="h-4 w-4" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-semibold text-sm text-foreground truncate">{plan.name}</span>
+          {isPopular && (
+            <Badge className="bg-amber-500 text-white border-0 gap-1 text-[10px] px-1.5 py-0 shrink-0" data-testid={`badge-popular-${plan.id}`}>
+              <Star className="h-2.5 w-2.5 fill-current" />
+              ⭐ Popular Choice
+            </Badge>
+          )}
+          {!plan.is_active && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0" data-testid={`badge-inactive-${plan.id}`}>Inactive</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-xs font-bold text-foreground">
+            {formatPrice(plan.discounted_price ?? plan.price)}
+          </span>
+          {plan.discounted_price && (
+            <span className="text-[10px] text-muted-foreground line-through">{formatPrice(plan.price)}</span>
+          )}
+          <span className="text-muted-foreground">·</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+            <Clock className="h-3 w-3" />
+            {getDurationLabel(plan.duration_days)}
+          </span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+            <Users className="h-3 w-3" />
+            {memberCount}
+          </span>
+        </div>
+      </div>
+
+      <ChevronRight className={`h-4 w-4 shrink-0 transition-colors ${isSelected ? 'text-primary' : 'text-muted-foreground/50'}`} />
+    </div>
+  );
+}
+
+interface PlanDetailPanelProps {
+  plan: MembershipPlanWithBenefits;
+  planIndex: number;
   memberCount: number;
   formatPrice: (price: number) => string;
   getDurationLabel: (days: number) => string;
@@ -37,106 +132,182 @@ interface PlanRowProps {
   onMemberCountClick: (planId: string, planName: string) => void;
 }
 
-function PlanRow({ plan, index, isPopular, memberCount, formatPrice, getDurationLabel, onEdit, onMemberCountClick }: PlanRowProps) {
-  const borderColor = gradientBorderColors[index % gradientBorderColors.length];
+function PlanDetailPanel({
+  plan,
+  planIndex,
+  memberCount,
+  formatPrice,
+  getDurationLabel,
+  onEdit,
+  onMemberCountClick,
+}: PlanDetailPanelProps) {
+  const [animIn, setAnimIn] = useState(false);
+  const accent = accentColors[planIndex % accentColors.length];
+
+  useEffect(() => {
+    setAnimIn(false);
+    const t = setTimeout(() => setAnimIn(true), 20);
+    return () => clearTimeout(t);
+  }, [plan.id]);
+
+  const discountPct = plan.discounted_price
+    ? Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)
+    : 0;
+
+  const benefits = plan.plan_benefits || [];
 
   return (
-    <TableRow
-      data-testid={`row-plan-${plan.id}`}
-      className={`border-l-4 ${plan.is_active ? borderColor : 'border-l-muted'} ${!plan.is_active ? 'opacity-60' : ''} hover:bg-muted/40 transition-colors`}
+    <div
+      data-testid={`plan-detail-${plan.id}`}
+      className={`h-full flex flex-col transition-all duration-200 ${animIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
     >
-      {/* Name + badges */}
-      <TableCell className="py-3 pl-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm text-foreground">{plan.name}</span>
-          {isPopular && (
-            <Badge className="bg-amber-500 text-white border-0 gap-1 text-[11px] px-1.5 py-0" data-testid={`badge-popular-${plan.id}`}>
-              <Star className="h-2.5 w-2.5 fill-current" />
-              Popular
-            </Badge>
-          )}
-          {!plan.is_active && (
-            <Badge variant="secondary" className="text-[11px] px-1.5 py-0" data-testid={`badge-inactive-${plan.id}`}>Inactive</Badge>
-          )}
-        </div>
-      </TableCell>
-
-      {/* Price */}
-      <TableCell className="py-3">
-        <div className="flex items-baseline gap-1.5 flex-wrap">
-          <span className="font-bold text-sm text-foreground">
-            {formatPrice(plan.discounted_price ?? plan.price)}
-          </span>
-          {plan.discounted_price && (
-            <>
-              <span className="text-xs text-muted-foreground line-through">{formatPrice(plan.price)}</span>
-              <Badge variant="destructive" className="text-[10px] px-1 py-0">
-                {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
+      {/* Hero banner */}
+      <div className={`relative bg-gradient-to-br ${accent.gradient} rounded-2xl p-6 text-white overflow-hidden mb-6`}>
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-16 translate-x-16" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-8 -translate-x-8" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-white/70 text-sm font-medium uppercase tracking-wider mb-1">Membership Plan</p>
+              <h2 className="text-2xl font-bold leading-tight">{plan.name}</h2>
+              {plan.description && (
+                <p className="text-white/80 text-sm mt-1.5 max-w-xs">{plan.description}</p>
+              )}
+            </div>
+            {!plan.is_active && (
+              <Badge className="bg-white/20 text-white border-white/30 shrink-0">Inactive</Badge>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 mt-4">
+            <span className="text-4xl font-extrabold tracking-tight">
+              {formatPrice(plan.discounted_price ?? plan.price)}
+            </span>
+            {plan.discounted_price && (
+              <span className="text-white/60 text-lg line-through">{formatPrice(plan.price)}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <span className="flex items-center gap-1 text-white/80 text-sm">
+              <Clock className="h-4 w-4" />
+              {getDurationLabel(plan.duration_days)}
+            </span>
+            {discountPct > 0 && (
+              <Badge className="bg-white/20 text-white border-0">
+                <Tag className="h-3 w-3 mr-1" />
+                {discountPct}% OFF
               </Badge>
-            </>
-          )}
+            )}
+          </div>
         </div>
-      </TableCell>
+      </div>
 
-      {/* Duration */}
-      <TableCell className="py-3">
-        <span className="flex items-center gap-1 text-sm text-muted-foreground whitespace-nowrap">
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-          {getDurationLabel(plan.duration_days)}
-        </span>
-      </TableCell>
-
-      {/* Members */}
-      <TableCell className="py-3">
-        <button
-          data-testid={`btn-members-${plan.id}`}
-          onClick={() => onMemberCountClick(plan.id, plan.name)}
-          className={`flex items-center gap-1 text-sm font-medium transition-colors ${
-            memberCount > 0
-              ? 'text-primary hover:text-primary/70 cursor-pointer'
-              : 'text-muted-foreground cursor-default'
-          }`}
-        >
-          <Users className="h-3.5 w-3.5 shrink-0" />
-          {memberCount}
-        </button>
-      </TableCell>
-
-      {/* Feature badges */}
-      <TableCell className="py-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {plan.max_freeze_days && plan.max_freeze_days > 0 && (
-            <Badge variant="outline" className="text-[11px] gap-1 rounded-full px-1.5 py-0" data-testid={`badge-freeze-${plan.id}`}>
-              <Snowflake className="h-2.5 w-2.5" />
-              {plan.max_freeze_days}d
-            </Badge>
-          )}
-          {plan.is_transferable && (
-            <Badge variant="outline" className="text-[11px] gap-1 rounded-full px-1.5 py-0" data-testid={`badge-transfer-${plan.id}`}>
-              <ArrowRightLeft className="h-2.5 w-2.5" />
-              Transfer
-            </Badge>
-          )}
-          {!plan.max_freeze_days && !plan.is_transferable && (
-            <span className="text-xs text-muted-foreground">—</span>
-          )}
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="rounded-xl bg-muted/40 px-4 py-3 text-center">
+          <button
+            data-testid={`btn-members-${plan.id}`}
+            onClick={() => onMemberCountClick(plan.id, plan.name)}
+            className={`w-full transition-colors ${memberCount > 0 ? 'cursor-pointer' : 'cursor-default'}`}
+          >
+            <div className={`text-2xl font-bold ${memberCount > 0 ? 'text-primary' : 'text-foreground'}`}>
+              {memberCount}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+              <Users className="h-3 w-3" />
+              Members
+            </div>
+          </button>
         </div>
-      </TableCell>
+        <div className="rounded-xl bg-muted/40 px-4 py-3 text-center">
+          <div className="text-2xl font-bold text-foreground">{plan.max_freeze_days ?? '—'}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+            <Snowflake className="h-3 w-3" />
+            Freeze Days
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/40 px-4 py-3 text-center">
+          <div className="text-2xl font-bold text-foreground">{plan.is_transferable ? 'Yes' : 'No'}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+            <ArrowRightLeft className="h-3 w-3" />
+            Transfer
+          </div>
+        </div>
+      </div>
 
-      {/* Edit */}
-      <TableCell className="py-3 pr-4 text-right">
+      {/* Benefits */}
+      <div className="flex-1 mb-6">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          Plan Benefits
+        </h3>
+        {benefits.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">No benefits configured for this plan.</p>
+        ) : (
+          <div className={`grid gap-2 ${benefits.length > 4 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {benefits.map((b) => (
+              <div
+                key={b.id}
+                data-testid={`benefit-${b.id}`}
+                className="flex items-start gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2"
+              >
+                <div className="mt-0.5 shrink-0">
+                  <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground leading-snug">
+                    {b.benefit_types?.name || b.benefit_type}
+                  </p>
+                  {b.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{b.description}</p>
+                  )}
+                  {b.limit_count != null && (
+                    <p className="text-xs text-muted-foreground">
+                      {b.limit_count}× / {b.frequency}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3 pt-4 border-t border-border/40">
         <Button
           data-testid={`btn-edit-plan-${plan.id}`}
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
           onClick={() => onEdit(plan)}
+          className="flex-1 gap-2 rounded-xl"
         >
-          <Edit2 className="h-3.5 w-3.5" />
-          Edit
+          <Edit2 className="h-4 w-4" />
+          Edit Plan
         </Button>
-      </TableCell>
-    </TableRow>
+        {memberCount > 0 && (
+          <Button
+            data-testid={`btn-view-members-${plan.id}`}
+            variant="outline"
+            onClick={() => onMemberCountClick(plan.id, plan.name)}
+            className="flex-1 gap-2 rounded-xl"
+          >
+            <Users className="h-4 w-4" />
+            View Members
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyDetailState() {
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-center px-8">
+      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-5 animate-pulse">
+        <Dumbbell className="h-10 w-10 text-primary/60" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Select a plan</h3>
+      <p className="text-sm text-muted-foreground max-w-xs">
+        Click any plan on the left to view its full details, benefits, and quick actions.
+      </p>
+    </div>
   );
 }
 
@@ -146,7 +317,9 @@ export default function PlansPage() {
   const defaultBranchId = effectiveBranchId || '';
   const [addPlanOpen, setAddPlanOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<MembershipPlanWithBenefits | null>(null);
+  const [editPlan, setEditPlan] = useState<MembershipPlanWithBenefits | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
   const [memberListPlanId, setMemberListPlanId] = useState<string | null>(null);
   const [memberListPlanName, setMemberListPlanName] = useState('');
 
@@ -207,7 +380,7 @@ export default function PlansPage() {
   };
 
   const handleEditPlan = (plan: MembershipPlanWithBenefits) => {
-    setSelectedPlan(plan);
+    setEditPlan(plan);
     setEditPlanOpen(true);
   };
 
@@ -218,8 +391,14 @@ export default function PlansPage() {
     }
   };
 
+  const handleSelectPlan = (plan: MembershipPlanWithBenefits, globalIndex: number) => {
+    setSelectedPlanId(plan.id);
+    setSelectedPlanIndex(globalIndex);
+  };
+
   const activePlans = plans?.filter(p => p.is_active) || [];
   const inactivePlans = plans?.filter(p => !p.is_active) || [];
+  const selectedPlan = plans?.find(p => p.id === selectedPlanId) ?? null;
   const totalMembers = Object.values(memberCounts).reduce((a, b) => a + b, 0);
   const mostPopularPlan = plans?.reduce((max, plan) =>
     (memberCounts[plan.id] || 0) > (memberCounts[max?.id || ''] || 0) ? plan : max,
@@ -228,13 +407,6 @@ export default function PlansPage() {
   const avgPrice = plans?.length
     ? Math.round(plans.reduce((sum, p) => sum + p.price, 0) / plans.length)
     : 0;
-
-  const rowProps = {
-    formatPrice,
-    getDurationLabel,
-    onEdit: handleEditPlan,
-    onMemberCountClick: handleMemberCountClick,
-  };
 
   return (
     <AppLayout>
@@ -304,20 +476,18 @@ export default function PlansPage() {
           </Card>
         </div>
 
-        {/* Plans Table */}
+        {/* Two-panel area */}
         {isLoading ? (
-          <Card className="rounded-2xl shadow-lg">
-            <CardContent className="p-0">
-              <div className="p-4 space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-white/20 shadow-2xl rounded-3xl overflow-hidden">
+            <div className="p-4 space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-xl" />
+              ))}
+            </div>
+          </div>
         ) : plans?.length === 0 ? (
-          <Card className="rounded-2xl shadow-lg">
-            <CardContent className="py-20 text-center">
+          <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-white/20 shadow-2xl rounded-3xl overflow-hidden">
+            <div className="py-20 text-center px-8">
               <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-6">
                 <Sparkles className="h-10 w-10 text-primary" />
               </div>
@@ -327,65 +497,84 @@ export default function PlansPage() {
                 <Plus className="h-4 w-4" />
                 Create Your First Plan
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
-          <Card className="rounded-2xl shadow-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="pl-4 py-2.5 text-xs font-semibold uppercase tracking-wider">Plan</TableHead>
-                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Price</TableHead>
-                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Duration</TableHead>
-                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Members</TableHead>
-                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Features</TableHead>
-                  <TableHead className="pr-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {activePlans.map((plan, index) => (
-                  <PlanRow
-                    key={plan.id}
-                    plan={plan}
-                    index={index}
-                    isPopular={mostPopularPlan?.id === plan.id && (memberCounts[plan.id] || 0) > 0}
-                    memberCount={memberCounts[plan.id] || 0}
-                    {...rowProps}
-                  />
-                ))}
-                {inactivePlans.length > 0 && (
-                  <>
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={6} className="py-2 px-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          <div className="h-px flex-1 bg-border" />
-                          Inactive Plans
-                          <div className="h-px flex-1 bg-border" />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {inactivePlans.map((plan, index) => (
-                      <PlanRow
+          <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-white/20 shadow-2xl rounded-3xl overflow-hidden flex min-h-[520px]">
+            {/* Left panel — plan list (35%) */}
+            <div className="w-[35%] bg-muted/30 flex flex-col overflow-y-auto border-r border-border/40 divide-y divide-border/40">
+              {/* Active plans */}
+              {activePlans.map((plan, index) => (
+                <PlanListItem
+                  key={plan.id}
+                  plan={plan}
+                  index={index}
+                  isPopular={mostPopularPlan?.id === plan.id && (memberCounts[plan.id] || 0) > 0}
+                  memberCount={memberCounts[plan.id] || 0}
+                  isSelected={selectedPlan?.id === plan.id}
+                  formatPrice={formatPrice}
+                  getDurationLabel={getDurationLabel}
+                  onClick={() => handleSelectPlan(plan, index)}
+                  animationDelay={index * 50}
+                />
+              ))}
+
+              {/* Inactive plans section */}
+              {inactivePlans.length > 0 && (
+                <>
+                  <div className="px-4 py-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50">
+                    <div className="h-px flex-1 bg-border/60" />
+                    Inactive Plans
+                    <div className="h-px flex-1 bg-border/60" />
+                  </div>
+                  {inactivePlans.map((plan, index) => {
+                    const globalIndex = activePlans.length + index;
+                    return (
+                      <PlanListItem
                         key={plan.id}
                         plan={plan}
-                        index={activePlans.length + index}
+                        index={globalIndex}
                         isPopular={false}
                         memberCount={memberCounts[plan.id] || 0}
-                        {...rowProps}
+                        isSelected={selectedPlan?.id === plan.id}
+                        formatPrice={formatPrice}
+                        getDurationLabel={getDurationLabel}
+                        onClick={() => handleSelectPlan(plan, globalIndex)}
+                        animationDelay={globalIndex * 50}
                       />
-                    ))}
-                  </>
-                )}
-              </TableBody>
-            </Table>
-          </Card>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            {/* Right panel — detail (65%) */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="sticky top-0 p-6">
+              {selectedPlan ? (
+                <PlanDetailPanel
+                  key={selectedPlan.id}
+                  plan={selectedPlan}
+                  planIndex={selectedPlanIndex}
+                  memberCount={memberCounts[selectedPlan.id] || 0}
+                  formatPrice={formatPrice}
+                  getDurationLabel={getDurationLabel}
+                  onEdit={handleEditPlan}
+                  onMemberCountClick={handleMemberCountClick}
+                />
+              ) : (
+                <EmptyDetailState />
+              )}
+              </div>
+            </div>
+          </div>
         )}
 
         <AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} branchId={defaultBranchId} />
         <EditPlanDrawer
           open={editPlanOpen}
           onOpenChange={setEditPlanOpen}
-          plan={selectedPlan}
+          plan={editPlan}
           branchId={defaultBranchId}
         />
 
