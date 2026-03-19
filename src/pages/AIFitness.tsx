@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download } from "lucide-react";
+import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download, Edit, Users } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useGenerateFitnessPlan } from "@/hooks/usePTPackages";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
