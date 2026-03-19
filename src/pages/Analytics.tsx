@@ -288,7 +288,7 @@ export default function AnalyticsPage() {
         member_id: string;
         members: { profiles: { full_name: string | null } | null } | null;
       };
-      const members = (data as RenewalRow[] | null || []).map((m) => ({
+      const members = ((data as unknown as RenewalRow[]) || []).map((m) => ({
         id: m.id,
         name: m.members?.profiles?.full_name || 'Unknown',
         endDate: m.end_date,

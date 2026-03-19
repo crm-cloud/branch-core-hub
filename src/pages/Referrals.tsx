@@ -303,7 +303,7 @@ export default function ReferralsPage() {
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Referral[];
+      return (data ?? []) as unknown as Referral[];
     },
   });
 
@@ -320,7 +320,7 @@ export default function ReferralsPage() {
         `)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Reward[];
+      return (data ?? []) as unknown as Reward[];
     },
   });
 

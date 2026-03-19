@@ -65,7 +65,7 @@ export function ThemePicker() {
                 )}
                 style={
                   isActive
-                    ? { ringColor: theme.gradient[1], boxShadow: `0 4px 20px -4px ${theme.gradient[1]}55` }
+                    ? { boxShadow: `0 0 0 2px ${theme.gradient[1]}, 0 4px 20px -4px ${theme.gradient[1]}55` }
                     : {}
                 }
               >
