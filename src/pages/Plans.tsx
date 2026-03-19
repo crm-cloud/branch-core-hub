@@ -10,12 +10,135 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddPlanDrawer } from '@/components/plans/AddPlanDrawer';
 import { EditPlanDrawer } from '@/components/plans/EditPlanDrawer';
-import { Plus, Check, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star, IndianRupee, Sparkles } from 'lucide-react';
+import { Plus, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star, IndianRupee, Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { format } from 'date-fns';
+
+const gradientBorderColors = [
+  'border-l-violet-600',
+  'border-l-emerald-600',
+  'border-l-amber-500',
+  'border-l-rose-500',
+  'border-l-sky-500',
+  'border-l-fuchsia-500',
+];
+
+interface PlanRowProps {
+  plan: MembershipPlanWithBenefits;
+  index: number;
+  isPopular: boolean;
+  memberCount: number;
+  formatPrice: (price: number) => string;
+  getDurationLabel: (days: number) => string;
+  onEdit: (plan: MembershipPlanWithBenefits) => void;
+  onMemberCountClick: (planId: string, planName: string) => void;
+}
+
+function PlanRow({ plan, index, isPopular, memberCount, formatPrice, getDurationLabel, onEdit, onMemberCountClick }: PlanRowProps) {
+  const borderColor = gradientBorderColors[index % gradientBorderColors.length];
+
+  return (
+    <TableRow
+      data-testid={`row-plan-${plan.id}`}
+      className={`border-l-4 ${plan.is_active ? borderColor : 'border-l-muted'} ${!plan.is_active ? 'opacity-60' : ''} hover:bg-muted/40 transition-colors`}
+    >
+      {/* Name + badges */}
+      <TableCell className="py-3 pl-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-sm text-foreground">{plan.name}</span>
+          {isPopular && (
+            <Badge className="bg-amber-500 text-white border-0 gap-1 text-[11px] px-1.5 py-0" data-testid={`badge-popular-${plan.id}`}>
+              <Star className="h-2.5 w-2.5 fill-current" />
+              Popular
+            </Badge>
+          )}
+          {!plan.is_active && (
+            <Badge variant="secondary" className="text-[11px] px-1.5 py-0" data-testid={`badge-inactive-${plan.id}`}>Inactive</Badge>
+          )}
+        </div>
+      </TableCell>
+
+      {/* Price */}
+      <TableCell className="py-3">
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          <span className="font-bold text-sm text-foreground">
+            {formatPrice(plan.discounted_price ?? plan.price)}
+          </span>
+          {plan.discounted_price && (
+            <>
+              <span className="text-xs text-muted-foreground line-through">{formatPrice(plan.price)}</span>
+              <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
+              </Badge>
+            </>
+          )}
+        </div>
+      </TableCell>
+
+      {/* Duration */}
+      <TableCell className="py-3">
+        <span className="flex items-center gap-1 text-sm text-muted-foreground whitespace-nowrap">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          {getDurationLabel(plan.duration_days)}
+        </span>
+      </TableCell>
+
+      {/* Members */}
+      <TableCell className="py-3">
+        <button
+          data-testid={`btn-members-${plan.id}`}
+          onClick={() => onMemberCountClick(plan.id, plan.name)}
+          className={`flex items-center gap-1 text-sm font-medium transition-colors ${
+            memberCount > 0
+              ? 'text-primary hover:text-primary/70 cursor-pointer'
+              : 'text-muted-foreground cursor-default'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5 shrink-0" />
+          {memberCount}
+        </button>
+      </TableCell>
+
+      {/* Feature badges */}
+      <TableCell className="py-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {plan.max_freeze_days && plan.max_freeze_days > 0 && (
+            <Badge variant="outline" className="text-[11px] gap-1 rounded-full px-1.5 py-0" data-testid={`badge-freeze-${plan.id}`}>
+              <Snowflake className="h-2.5 w-2.5" />
+              {plan.max_freeze_days}d
+            </Badge>
+          )}
+          {plan.is_transferable && (
+            <Badge variant="outline" className="text-[11px] gap-1 rounded-full px-1.5 py-0" data-testid={`badge-transfer-${plan.id}`}>
+              <ArrowRightLeft className="h-2.5 w-2.5" />
+              Transfer
+            </Badge>
+          )}
+          {!plan.max_freeze_days && !plan.is_transferable && (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </div>
+      </TableCell>
+
+      {/* Edit */}
+      <TableCell className="py-3 pr-4 text-right">
+        <Button
+          data-testid={`btn-edit-plan-${plan.id}`}
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => onEdit(plan)}
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function PlansPage() {
   const { effectiveBranchId, branchFilter } = useBranchContext();
@@ -41,7 +164,6 @@ export default function PlansPage() {
     },
   });
 
-  // Fetch members for selected plan
   const { data: planMembers = [], isLoading: membersLoading } = useQuery({
     queryKey: ['plan-members', memberListPlanId],
     queryFn: async () => {
@@ -52,13 +174,13 @@ export default function PlansPage() {
         .eq('plan_id', memberListPlanId)
         .eq('status', 'active');
       if (error) throw error;
-      
+
       const userIds = data?.map((m: any) => m.members?.user_id).filter(Boolean) || [];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, email, phone, avatar_url')
         .in('id', userIds);
-      
+
       const profileMap: Record<string, any> = {};
       profiles?.forEach(p => { profileMap[p.id] = p; });
 
@@ -71,7 +193,8 @@ export default function PlansPage() {
     enabled: !!memberListPlanId,
   });
 
-  const formatPrice = (price: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price);
+  const formatPrice = (price: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(price);
 
   const getDurationLabel = (days: number) => {
     if (days === 1) return '1 Day';
@@ -96,26 +219,26 @@ export default function PlansPage() {
   };
 
   const activePlans = plans?.filter(p => p.is_active) || [];
+  const inactivePlans = plans?.filter(p => !p.is_active) || [];
   const totalMembers = Object.values(memberCounts).reduce((a, b) => a + b, 0);
-  const mostPopularPlan = plans?.reduce((max, plan) => 
-    (memberCounts[plan.id] || 0) > (memberCounts[max?.id || ''] || 0) ? plan : max
-  , plans?.[0]);
-  const avgPrice = plans?.length 
-    ? Math.round(plans.reduce((sum, p) => sum + p.price, 0) / plans.length) 
+  const mostPopularPlan = plans?.reduce((max, plan) =>
+    (memberCounts[plan.id] || 0) > (memberCounts[max?.id || ''] || 0) ? plan : max,
+    plans?.[0]
+  );
+  const avgPrice = plans?.length
+    ? Math.round(plans.reduce((sum, p) => sum + p.price, 0) / plans.length)
     : 0;
 
-  const gradients = [
-    'from-violet-600 to-indigo-600',
-    'from-emerald-600 to-teal-600',
-    'from-amber-500 to-orange-600',
-    'from-rose-500 to-pink-600',
-    'from-sky-500 to-cyan-600',
-    'from-fuchsia-500 to-purple-600',
-  ];
+  const rowProps = {
+    formatPrice,
+    getDurationLabel,
+    onEdit: handleEditPlan,
+    onMemberCountClick: handleMemberCountClick,
+  };
 
   return (
     <AppLayout>
-      <div className="p-6 space-y-8">
+      <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -127,7 +250,11 @@ export default function PlansPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Design, manage, and optimize your membership tiers</p>
           </div>
-          <Button onClick={() => setAddPlanOpen(true)} className="gap-2 h-11 rounded-xl shadow-lg shadow-primary/20">
+          <Button
+            data-testid="btn-create-plan"
+            onClick={() => setAddPlanOpen(true)}
+            className="gap-2 h-11 rounded-xl shadow-lg shadow-primary/20"
+          >
             <Plus className="h-4 w-4" />
             Create Plan
           </Button>
@@ -139,7 +266,7 @@ export default function PlansPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-6 translate-x-6" />
             <CardContent className="pt-6 pb-5 relative z-10">
               <Crown className="h-5 w-5 opacity-80 mb-2" />
-              <div className="text-3xl font-bold">{activePlans.length}</div>
+              <div className="text-3xl font-bold" data-testid="stat-active-plans">{activePlans.length}</div>
               <p className="text-sm opacity-80 mt-0.5">Active Plans</p>
             </CardContent>
           </Card>
@@ -147,7 +274,7 @@ export default function PlansPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-6 translate-x-6" />
             <CardContent className="pt-6 pb-5 relative z-10">
               <Users className="h-5 w-5 opacity-80 mb-2" />
-              <div className="text-3xl font-bold">{totalMembers}</div>
+              <div className="text-3xl font-bold" data-testid="stat-total-members">{totalMembers}</div>
               <p className="text-sm opacity-80 mt-0.5">Active Members</p>
             </CardContent>
           </Card>
@@ -158,7 +285,7 @@ export default function PlansPage() {
                   <TrendingUp className="h-4 w-4 text-amber-600" />
                 </div>
               </div>
-              <div className="text-2xl font-bold text-foreground truncate">{mostPopularPlan?.name || 'N/A'}</div>
+              <div className="text-2xl font-bold text-foreground truncate" data-testid="stat-popular-plan">{mostPopularPlan?.name || 'N/A'}</div>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {mostPopularPlan ? `${memberCounts[mostPopularPlan.id] || 0} members` : 'Most Popular'}
               </p>
@@ -171,27 +298,23 @@ export default function PlansPage() {
                   <IndianRupee className="h-4 w-4 text-primary" />
                 </div>
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatPrice(avgPrice)}</div>
+              <div className="text-2xl font-bold text-foreground" data-testid="stat-avg-price">{formatPrice(avgPrice)}</div>
               <p className="text-sm text-muted-foreground mt-0.5">Avg Plan Price</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Plans Grid */}
+        {/* Plans Table */}
         {isLoading ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="rounded-2xl">
-                <CardContent className="p-6">
-                  <Skeleton className="h-6 w-32 mb-2" />
-                  <Skeleton className="h-4 w-48 mb-4" />
-                  <Skeleton className="h-10 w-24 mb-4" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-3/4 mt-2" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Card className="rounded-2xl shadow-lg">
+            <CardContent className="p-0">
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ) : plans?.length === 0 ? (
           <Card className="rounded-2xl shadow-lg">
             <CardContent className="py-20 text-center">
@@ -200,141 +323,68 @@ export default function PlansPage() {
               </div>
               <h3 className="text-xl font-semibold mb-2">No Plans Yet</h3>
               <p className="text-muted-foreground mb-6 max-w-sm mx-auto">Create your first membership plan to start selling memberships</p>
-              <Button onClick={() => setAddPlanOpen(true)} className="gap-2 rounded-xl">
+              <Button onClick={() => setAddPlanOpen(true)} className="gap-2 rounded-xl" data-testid="btn-create-first-plan">
                 <Plus className="h-4 w-4" />
                 Create Your First Plan
               </Button>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {plans?.map((plan, index) => {
-              const memberCount = memberCounts[plan.id] || 0;
-              const isPopular = mostPopularPlan?.id === plan.id && memberCount > 0;
-              const gradient = gradients[index % gradients.length];
-              
-              return (
-                <Card 
-                  key={plan.id} 
-                  className={`group relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 rounded-2xl border-border/50 shadow-lg ${!plan.is_active ? 'opacity-50' : ''}`}
-                >
-                  <div className={`h-1.5 bg-gradient-to-r ${plan.is_active ? gradient : 'from-muted to-muted'}`} />
-                  {isPopular && (
-                    <div className="absolute top-4 right-4 z-10">
-                      <Badge className="bg-amber-500 text-white border-0 gap-1 shadow-md">
-                        <Star className="h-3 w-3 fill-current" />
-                        Popular
-                      </Badge>
-                    </div>
-                  )}
-                  
-                  <CardContent className="p-6 space-y-5">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-lg font-bold text-foreground tracking-tight">{plan.name}</h3>
-                        {!plan.is_active && <Badge variant="secondary" className="text-xs">Inactive</Badge>}
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{plan.description || 'No description'}</p>
-                    </div>
-
-                    <div className="py-3 px-4 rounded-xl bg-muted/50 border border-border/30">
-                      <div className="flex items-baseline gap-2">
-                        {plan.discounted_price ? (
-                          <>
-                            <span className="text-3xl font-extrabold text-foreground">{formatPrice(plan.discounted_price)}</span>
-                            <span className="text-base text-muted-foreground line-through">{formatPrice(plan.price)}</span>
-                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                              {Math.round(((plan.price - plan.discounted_price) / plan.price) * 100)}% OFF
-                            </Badge>
-                          </>
-                        ) : (
-                          <span className="text-3xl font-extrabold text-foreground">{formatPrice(plan.price)}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5" />
-                          {getDurationLabel(plan.duration_days)}
-                        </span>
-                        {plan.admission_fee && plan.admission_fee > 0 && (
-                          <span className="text-xs">+ {formatPrice(plan.admission_fee)} joining</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Clickable Member Count */}
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleMemberCountClick(plan.id, plan.name); }}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                          memberCount > 0 
-                            ? 'bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer' 
-                            : 'bg-muted text-muted-foreground cursor-default'
-                        }`}
-                      >
-                        <Users className="h-3.5 w-3.5" />
-                        {memberCount} {memberCount === 1 ? 'member' : 'members'}
-                      </button>
-                    </div>
-
-                    {plan.plan_benefits && plan.plan_benefits.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Included Benefits</p>
-                        <div className="space-y-1.5">
-                          {plan.plan_benefits.slice(0, 5).map((benefit) => (
-                            <div key={benefit.id} className="flex items-center gap-2.5 text-sm">
-                              <div className="w-5 h-5 rounded-full bg-success/10 flex items-center justify-center flex-shrink-0">
-                                <Check className="h-3 w-3 text-success" />
-                              </div>
-                              <span className="text-foreground">{benefit.benefit_types?.name || benefit.benefit_type}</span>
-                              {benefit.limit_count && benefit.frequency !== 'unlimited' && (
-                                <span className="text-xs text-muted-foreground ml-auto">
-                                  {benefit.limit_count}/{benefit.frequency === 'daily' ? 'day' : benefit.frequency === 'weekly' ? 'week' : benefit.frequency === 'monthly' ? 'mo' : 'total'}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          {plan.plan_benefits.length > 5 && (
-                            <p className="text-xs text-primary font-medium pl-7">+{plan.plan_benefits.length - 5} more benefits</p>
-                          )}
+          <Card className="rounded-2xl shadow-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="pl-4 py-2.5 text-xs font-semibold uppercase tracking-wider">Plan</TableHead>
+                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Price</TableHead>
+                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Duration</TableHead>
+                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Members</TableHead>
+                  <TableHead className="py-2.5 text-xs font-semibold uppercase tracking-wider">Features</TableHead>
+                  <TableHead className="pr-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activePlans.map((plan, index) => (
+                  <PlanRow
+                    key={plan.id}
+                    plan={plan}
+                    index={index}
+                    isPopular={mostPopularPlan?.id === plan.id && (memberCounts[plan.id] || 0) > 0}
+                    memberCount={memberCounts[plan.id] || 0}
+                    {...rowProps}
+                  />
+                ))}
+                {inactivePlans.length > 0 && (
+                  <>
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={6} className="py-2 px-4">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          <div className="h-px flex-1 bg-border" />
+                          Inactive Plans
+                          <div className="h-px flex-1 bg-border" />
                         </div>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {plan.max_freeze_days && plan.max_freeze_days > 0 && (
-                        <Badge variant="outline" className="text-xs gap-1 rounded-full">
-                          <Snowflake className="h-3 w-3" />
-                          {plan.max_freeze_days}d freeze
-                        </Badge>
-                      )}
-                      {plan.is_transferable && (
-                        <Badge variant="outline" className="text-xs gap-1 rounded-full">
-                          <ArrowRightLeft className="h-3 w-3" />
-                          Transferable
-                        </Badge>
-                      )}
-                    </div>
-
-                    <Button 
-                      variant="outline" 
-                      className="w-full rounded-xl gap-2 border-border/50 hover:bg-muted/50"
-                      onClick={() => handleEditPlan(plan)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                      Edit Plan
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                      </TableCell>
+                    </TableRow>
+                    {inactivePlans.map((plan, index) => (
+                      <PlanRow
+                        key={plan.id}
+                        plan={plan}
+                        index={activePlans.length + index}
+                        isPopular={false}
+                        memberCount={memberCounts[plan.id] || 0}
+                        {...rowProps}
+                      />
+                    ))}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
         )}
 
         <AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} branchId={defaultBranchId} />
-        <EditPlanDrawer 
-          open={editPlanOpen} 
-          onOpenChange={setEditPlanOpen} 
+        <EditPlanDrawer
+          open={editPlanOpen}
+          onOpenChange={setEditPlanOpen}
           plan={selectedPlan}
           branchId={defaultBranchId}
         />
