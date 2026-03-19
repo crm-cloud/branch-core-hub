@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { motion, useInView } from 'framer-motion';
 import {
   Dumbbell, Users, Activity, Clock, Star, ChevronRight, Instagram, Facebook, Twitter, Youtube,
   Phone, Mail, MapPin, Check, ArrowRight, Loader2, Play, Zap, Shield, Trophy, Target, Heart,
@@ -14,12 +15,11 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
-// Fallback data
 const FALLBACK_TRAINERS = [
-  { name: 'Vikram Mehta', role: 'Head Strength Coach', exp: '12 yrs', img: 'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400' },
-  { name: 'Neha Sharma', role: 'Yoga & Wellness Expert', exp: '8 yrs', img: 'https://images.pexels.com/photos/3823488/pexels-photo-3823488.jpeg?auto=compress&cs=tinysrgb&w=400' },
-  { name: 'Arjun Kapoor', role: 'HIIT & Cardio Specialist', exp: '10 yrs', img: 'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=400' },
-  { name: 'Riya Patel', role: 'Nutrition & Lifestyle Coach', exp: '6 yrs', img: 'https://images.pexels.com/photos/3076509/pexels-photo-3076509.jpeg?auto=compress&cs=tinysrgb&w=400' },
+  { name: 'Vikram Mehta', role: 'Head Strength Coach', bio: '12 years of elite powerlifting and strength training.', exp: '12 yrs', img: 'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400' },
+  { name: 'Neha Sharma', role: 'Yoga & Wellness Expert', bio: 'Certified yoga instructor focused on mind-body harmony.', exp: '8 yrs', img: 'https://images.pexels.com/photos/3823488/pexels-photo-3823488.jpeg?auto=compress&cs=tinysrgb&w=400' },
+  { name: 'Arjun Kapoor', role: 'HIIT & Cardio Specialist', bio: 'High-intensity interval training specialist with sports science background.', exp: '10 yrs', img: 'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=400' },
+  { name: 'Riya Patel', role: 'Nutrition & Lifestyle Coach', bio: 'Transforms lives through science-backed nutrition and habit coaching.', exp: '6 yrs', img: 'https://images.pexels.com/photos/3076509/pexels-photo-3076509.jpeg?auto=compress&cs=tinysrgb&w=400' },
 ];
 
 const FALLBACK_CLASSES = [
@@ -41,12 +41,12 @@ const FAQS = [
 ];
 
 const FEATURES_ADVANCED = [
-  { icon: BarChart3, title: 'Progress Tracking', desc: 'AI-powered analytics monitor your gains, body measurements, and performance metrics weekly.', color: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/30' },
-  { icon: Zap, title: 'Smart Nutrition', desc: 'Personalized diet plans crafted by certified nutritionists aligned with your fitness goals.', color: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/30' },
-  { icon: Shield, title: 'Safety First', desc: 'CCTV monitored, trained staff on duty, and world-class equipment maintained bi-weekly.', color: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/30' },
-  { icon: Sparkles, title: 'AI Fitness Coach', desc: 'Get 24/7 personalized workout recommendations powered by machine learning and real data.', color: 'from-rose-500/20 to-pink-500/20', border: 'border-rose-500/30' },
-  { icon: TrendingUp, title: 'Recovery Science', desc: 'Ice baths, stretching zones, foam rolling stations, and recovery tracking built in.', color: 'from-teal-500/20 to-cyan-500/20', border: 'border-teal-500/30' },
-  { icon: Award, title: 'Reward Program', desc: 'Earn points for every visit, class, and referral. Redeem for merchandise and session credits.', color: 'from-violet-500/20 to-purple-500/20', border: 'border-violet-500/30' },
+  { icon: BarChart3, title: 'Progress Tracking', desc: 'AI-powered analytics monitor your gains, body measurements, and performance metrics weekly.', color: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/30', glow: 'rgba(59,130,246,0.15)' },
+  { icon: Zap, title: 'Smart Nutrition', desc: 'Personalized diet plans crafted by certified nutritionists aligned with your fitness goals.', color: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/30', glow: 'rgba(245,158,11,0.15)' },
+  { icon: Shield, title: 'Safety First', desc: 'CCTV monitored, trained staff on duty, and world-class equipment maintained bi-weekly.', color: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/30', glow: 'rgba(16,185,129,0.15)' },
+  { icon: Sparkles, title: 'AI Fitness Coach', desc: 'Get 24/7 personalized workout recommendations powered by machine learning and real data.', color: 'from-rose-500/20 to-pink-500/20', border: 'border-rose-500/30', glow: 'rgba(244,63,94,0.15)' },
+  { icon: TrendingUp, title: 'Recovery Science', desc: 'Ice baths, stretching zones, foam rolling stations, and recovery tracking built in.', color: 'from-teal-500/20 to-cyan-500/20', border: 'border-teal-500/30', glow: 'rgba(20,184,166,0.15)' },
+  { icon: Award, title: 'Reward Program', desc: 'Earn points for every visit, class, and referral. Redeem for merchandise and session credits.', color: 'from-violet-500/20 to-purple-500/20', border: 'border-violet-500/30', glow: 'rgba(139,92,246,0.15)' },
 ];
 
 const CLASS_ICON_MAP: Record<string, any> = {
@@ -67,6 +67,257 @@ function getClassIcon(name: string) {
   return Activity;
 }
 
+function ParticleCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    let width = canvas.offsetWidth;
+    let height = canvas.offsetHeight;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const NUM_PARTICLES = 80;
+    const CONNECT_DIST = 130;
+
+    type Particle = { x: number; y: number; vx: number; vy: number; radius: number };
+
+    const particles: Particle[] = Array.from({ length: NUM_PARTICLES }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      radius: Math.random() * 2 + 1,
+    }));
+
+    function draw() {
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, width, height);
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(249,115,22,0.6)';
+        ctx.fill();
+
+        for (let j = i + 1; j < particles.length; j++) {
+          const q = particles[j];
+          const dx = p.x - q.x;
+          const dy = p.y - q.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < CONNECT_DIST) {
+            const alpha = (1 - dist / CONNECT_DIST) * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = `rgba(249,115,22,${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+          }
+        }
+      }
+      animId = requestAnimationFrame(draw);
+    }
+
+    draw();
+
+    const handleResize = () => {
+      width = canvas.offsetWidth;
+      height = canvas.offsetHeight;
+      canvas.width = width;
+      canvas.height = height;
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />;
+}
+
+function FeatureCard3D({ icon: Icon, title, desc, color, border, glow, index }: any) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const rx = ((e.clientY - cy) / (rect.height / 2)) * 5;
+    const ry = ((e.clientX - cx) / (rect.width / 2)) * -5;
+    setTilt({ x: rx, y: ry });
+  };
+  const handleMouseLeave = () => setTilt({ x: 0, y: 0 });
+
+  const isHovered = tilt.x !== 0 || tilt.y !== 0;
+
+  return (
+    <motion.div
+      ref={cardRef}
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, delay: index * 0.08 }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateZ(${isHovered ? '20px' : '0px'})`,
+        transition: 'transform 0.3s ease-out',
+        boxShadow: isHovered ? `0 30px 60px ${glow}` : 'none',
+      }}
+      className={`group p-6 rounded-2xl bg-gradient-to-br ${color} border ${border} cursor-default backdrop-blur-md bg-white/[0.05]`}
+    >
+      <div className="h-12 w-12 rounded-xl bg-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+        <Icon className="h-6 w-6 text-white" />
+      </div>
+      <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+      <p className="text-sm text-white/60 leading-relaxed">{desc}</p>
+    </motion.div>
+  );
+}
+
+function TrainerFlipCard({ trainer, idx }: { trainer: any; idx: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, delay: idx * 0.1 }}
+      className="card-3d-container"
+      style={{ height: '340px' }}
+    >
+      <div className="card-3d-inner rounded-2xl">
+        <div className="card-3d-front rounded-2xl overflow-hidden border border-white/[0.06]">
+          <div className="w-full h-full relative">
+            <img src={trainer.img} alt={trainer.name} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-5">
+              <div className="text-white font-bold text-lg">{trainer.name}</div>
+              <div className="text-white/60 text-sm mb-2">{trainer.role}</div>
+              <div className="flex items-center gap-2">
+                {trainer.exp && <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs font-medium">{trainer.exp} exp</span>}
+                <div className="flex gap-0.5">{[...Array(5)].map((_, i) => (<Star key={i} className="h-3 w-3 fill-orange-400 text-orange-400" />))}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="card-3d-back rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/20 to-red-600/10 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
+          <div className="h-16 w-16 rounded-2xl overflow-hidden border-2 border-orange-500/40 mb-4">
+            <img src={trainer.img} alt={trainer.name} className="w-full h-full object-cover" />
+          </div>
+          <div className="text-white font-black text-xl mb-1">{trainer.name}</div>
+          <div className="text-orange-400 text-sm font-semibold mb-4">{trainer.role}</div>
+          <p className="text-white/70 text-sm leading-relaxed">{trainer.bio || 'Dedicated fitness professional committed to helping you reach your peak performance.'}</p>
+          <div className="flex gap-0.5 mt-4">{[...Array(5)].map((_, i) => (<Star key={i} className="h-4 w-4 fill-orange-400 text-orange-400" />))}</div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function PricingCard({ plan, idx, isPopular, onCta }: { plan: any; idx: number; isPopular: boolean; onCta: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const rx = ((e.clientY - cy) / (rect.height / 2)) * 5;
+    const ry = ((e.clientX - cx) / (rect.width / 2)) * -5;
+    setTilt({ x: rx, y: ry });
+  };
+  const handleMouseEnter = () => setHovered(true);
+  const handleMouseLeave = () => { setHovered(false); setTilt({ x: 0, y: 0 }); };
+
+  const floatClassMap = ['animate-price-float-1', 'animate-price-float-2', 'animate-price-float-3'];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 50 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.5, delay: idx * 0.1 }}
+      data-testid={`card-plan-${idx}`}
+    >
+      <div
+        ref={cardRef}
+        onMouseMove={handleMouseMove}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className={`relative rounded-3xl border transition-shadow duration-300 ${hovered ? '' : floatClassMap[idx % 3]} ${isPopular ? 'bg-gradient-to-b from-orange-500/20 to-red-600/10 border-orange-500/40 shadow-2xl shadow-orange-500/20' : 'bg-white/[0.03] border-white/[0.08]'}`}
+        style={{
+          transform: hovered
+            ? `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) translateZ(${isPopular ? '60px' : '20px'}) scale(1.02)`
+            : isPopular
+            ? 'translateZ(40px) scale(1.04)'
+            : 'none',
+          transition: 'transform 0.3s ease-out, box-shadow 0.3s ease-out',
+          zIndex: isPopular ? 10 : 1,
+        }}
+      >
+        <div className="p-7">
+          {isPopular && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-bold shadow-lg shadow-orange-500/30">MOST POPULAR</div>}
+          <div className="mb-6">
+            <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>
+            <div className="text-white/50 text-sm">{plan.duration}</div>
+          </div>
+          <div className="mb-7">
+            <div className="flex items-end gap-2">
+              <span className="text-5xl font-black text-white">₹{plan.price.toLocaleString()}</span>
+              <span className="text-white/40 text-sm mb-2">/{plan.duration?.split(' ')[0] === '1' ? 'mo' : plan.duration?.includes('3') ? '3mo' : 'yr'}</span>
+            </div>
+          </div>
+          <ul className="space-y-3 mb-8">
+            {(plan.features || []).map((f: string) => (
+              <li key={f} className="flex items-center gap-3 text-sm text-white/70"><Check className="h-4 w-4 text-orange-400 shrink-0" />{f}</li>
+            ))}
+          </ul>
+          <button
+            data-testid={`button-get-plan-${idx}`}
+            onClick={onCta}
+            className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all ${isPopular ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40' : 'bg-white/[0.06] text-white hover:bg-white/10 border border-white/10'}`}
+          >
+            Get Started <ArrowRight className="inline h-4 w-4 ml-1" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function RevealSection({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.6 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 export default function PublicWebsite() {
   const [theme, setTheme] = useState<ThemeSettings>(cmsService.getDefaultTheme());
   const [mousePosition, setMousePosition] = useState({ x: 0.5, y: 0.5 });
@@ -76,12 +327,13 @@ export default function PublicWebsite() {
   const [leadForm, setLeadForm] = useState({ fullName: '', phone: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [countersVisible, setCountersVisible] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
-  const statsRef = useRef<HTMLDivElement>(null);
+  const [heroTilt, setHeroTilt] = useState({ x: 0, y: 0 });
 
-  // Fetch real trainers from DB
+  const statsRef = useRef<HTMLDivElement>(null);
+  const statsInView = useInView(statsRef, { once: true });
+
   const { data: dbTrainers = [] } = useQuery({
     queryKey: ['public-trainers'],
     queryFn: async () => {
@@ -94,6 +346,7 @@ export default function PublicWebsite() {
       return (data || []).map((t: any) => ({
         name: t.profiles?.full_name || 'Trainer',
         role: t.specializations?.[0] || 'Fitness Expert',
+        bio: t.bio || '',
         exp: '',
         img: t.profiles?.avatar_url || 'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400',
       }));
@@ -101,7 +354,6 @@ export default function PublicWebsite() {
     staleTime: 300000,
   });
 
-  // Fetch real plans from DB
   const { data: dbPlans = [] } = useQuery({
     queryKey: ['public-plans'],
     queryFn: async () => {
@@ -115,18 +367,17 @@ export default function PublicWebsite() {
       return (data || []).map((p: any) => {
         const months = Math.round((p.duration_days || 30) / 30);
         return {
-        name: p.name,
-        price: p.price,
-        duration: months === 1 ? '1 Month' : months === 3 ? '3 Months' : `${months} Months`,
-        features: [],
-        isPopular: false,
-      };
+          name: p.name,
+          price: p.price,
+          duration: months === 1 ? '1 Month' : months === 3 ? '3 Months' : `${months} Months`,
+          features: [],
+          isPopular: false,
+        };
       });
     },
     staleTime: 300000,
   });
 
-  // Fetch upcoming classes from DB
   const { data: dbClasses = [] } = useQuery({
     queryKey: ['public-classes'],
     queryFn: async () => {
@@ -150,7 +401,6 @@ export default function PublicWebsite() {
     staleTime: 300000,
   });
 
-  // Fetch real stats from DB
   const { data: dbStats } = useQuery({
     queryKey: ['public-stats'],
     queryFn: async () => {
@@ -168,7 +418,6 @@ export default function PublicWebsite() {
     staleTime: 300000,
   });
 
-  // Resolve data: use DB data if available, fall back to hardcoded/theme
   const trainers = dbTrainers.length > 0 ? dbTrainers : FALLBACK_TRAINERS;
   const pricingPlans = dbPlans.length > 0 ? dbPlans : theme.pricingPlans;
   const classes = dbClasses.length > 0 ? dbClasses : FALLBACK_CLASSES;
@@ -192,20 +441,19 @@ export default function PublicWebsite() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (heroRef.current) {
-        const rect = heroRef.current.getBoundingClientRect();
-        setMousePosition({ x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height });
-      }
+      if (!heroRef.current) return;
+      const rect = heroRef.current.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+      const nx = (e.clientX - rect.left) / rect.width;
+      const ny = (e.clientY - rect.top) / rect.height;
+      setMousePosition({ x: nx, y: ny });
+      setHeroTilt({
+        x: (ny - 0.5) * 16,
+        y: (nx - 0.5) * -16,
+      });
     };
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
-  useEffect(() => {
-    if (!statsRef.current) return;
-    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) setCountersVisible(true); }, { threshold: 0.3 });
-    observer.observe(statsRef.current);
-    return () => observer.disconnect();
   }, []);
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
@@ -230,10 +478,10 @@ export default function PublicWebsite() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#080810] text-white overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden font-sans">
 
-      {/* ── NAVIGATION ── */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#080810]/95 backdrop-blur-2xl border-b border-white/[0.06] shadow-2xl shadow-black/50' : 'bg-transparent'}`}>
+      {/* NAV */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0a0a0f]/90 backdrop-blur-2xl border-b border-white/[0.06] shadow-2xl shadow-black/50' : 'bg-transparent backdrop-blur-md'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/30">
@@ -243,21 +491,21 @@ export default function PublicWebsite() {
           </div>
           <div className="hidden lg:flex items-center gap-8">
             {['Features', 'Classes', 'Trainers', 'Pricing', 'Reviews', 'Contact'].map((label) => (
-              <button key={label} onClick={() => scrollTo(label.toLowerCase() === 'reviews' ? 'testimonials' : label.toLowerCase())} className="text-sm text-white/70 hover:text-white transition-colors">{label}</button>
+              <button key={label} data-testid={`nav-${label.toLowerCase()}`} onClick={() => scrollTo(label.toLowerCase() === 'reviews' ? 'testimonials' : label.toLowerCase())} className="text-sm text-white/70 hover:text-white transition-colors">{label}</button>
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/auth" className="hidden sm:block"><Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10 hover:border-white/40">Sign In</Button></Link>
-            <button onClick={() => scrollTo('contact')} className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-sm font-semibold text-white shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 transition-all">
+            <Link to="/auth" className="hidden sm:block"><Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10 hover:border-white/40 bg-white/5">Sign In</Button></Link>
+            <button data-testid="button-free-trial-nav" onClick={() => scrollTo('contact')} className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-sm font-semibold text-white shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 transition-all">
               Free Trial <ArrowRight className="h-4 w-4" />
             </button>
-            <button className="lg:hidden p-2 rounded-lg hover:bg-white/10 transition-colors" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
+            <button data-testid="button-mobile-menu" className="lg:hidden p-2 rounded-lg hover:bg-white/10 transition-colors" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
         </div>
         <div className={`lg:hidden transition-all duration-300 overflow-hidden ${mobileMenuOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="px-4 pb-4 pt-2 bg-[#080810]/98 backdrop-blur-2xl border-b border-white/[0.06] flex flex-col gap-1">
+          <div className="px-4 pb-4 pt-2 bg-[#0a0a0f]/98 backdrop-blur-2xl border-b border-white/[0.06] flex flex-col gap-1">
             {['Features', 'Classes', 'Trainers', 'Pricing', 'Reviews', 'Contact'].map((label) => (
               <button key={label} onClick={() => scrollTo(label.toLowerCase() === 'reviews' ? 'testimonials' : label.toLowerCase())} className="text-left py-3 px-4 rounded-lg text-white/70 hover:text-white hover:bg-white/5 transition-colors text-sm font-medium">{label}</button>
             ))}
@@ -269,42 +517,99 @@ export default function PublicWebsite() {
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <section id="hero" ref={heroRef} className="relative min-h-screen flex items-center justify-center overflow-hidden" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(251,146,60,0.15) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 80%, rgba(239,68,68,0.1) 0%, transparent 50%), #080810' }}>
+      {/* HERO */}
+      <section id="hero" ref={heroRef} className="relative min-h-screen flex items-center justify-center overflow-hidden" style={{ background: '#0a0a0f' }}>
+        <ParticleCanvas />
+
+        {/* Floating gradient blobs */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute w-[600px] h-[600px] rounded-full opacity-30" style={{ background: 'radial-gradient(circle, rgba(251,146,60,0.3) 0%, transparent 70%)', left: `${30 + mousePosition.x * 8}%`, top: `${20 + mousePosition.y * 8}%`, transform: 'translate(-50%, -50%)', transition: 'left 0.8s ease-out, top 0.8s ease-out' }} />
-          <div className="absolute w-[400px] h-[400px] rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.4) 0%, transparent 70%)', right: `${10 + mousePosition.x * 5}%`, bottom: `${20 + mousePosition.y * 5}%`, transition: 'right 0.8s ease-out, bottom 0.8s ease-out' }} />
-          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '80px 80px' }} />
+          <div className="animate-float-slow absolute w-[700px] h-[700px] rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.35) 0%, transparent 70%)', left: '15%', top: '10%', transform: 'translate(-50%, -50%)', filter: 'blur(60px)' }} />
+          <div className="animate-float-medium absolute w-[500px] h-[500px] rounded-full opacity-15"
+            style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.4) 0%, transparent 70%)', right: '10%', top: '20%', filter: 'blur(80px)' }} />
+          <div className="animate-float-alt absolute w-[400px] h-[400px] rounded-full opacity-15"
+            style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.35) 0%, transparent 70%)', left: '50%', bottom: '10%', filter: 'blur(70px)' }} />
+          <div className="animate-float-fast absolute w-[300px] h-[300px] rounded-full opacity-10"
+            style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.4) 0%, transparent 70%)', right: '30%', bottom: '30%', filter: 'blur(50px)' }} />
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)', backgroundSize: '80px 80px' }} />
         </div>
+
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-24 pb-16">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-8 animate-pulse">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-8 animate-pulse"
+              >
                 <Flame className="h-4 w-4" /> Limited: 50% OFF First Month — 48 hrs left
-              </div>
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black leading-[0.95] tracking-tight mb-6">
+              </motion.div>
+
+              <motion.h1
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.1 }}
+                className="text-6xl sm:text-7xl lg:text-8xl font-black leading-[0.92] tracking-tight mb-6"
+              >
                 <span className="text-white">{theme.heroTitle?.split(' ').slice(0, 2).join(' ') || 'FORGE YOUR'}</span><br />
-                <span className="text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #f97316, #ef4444, #ec4899)' }}>{theme.heroTitle?.split(' ').slice(2).join(' ') || 'BEST BODY'}</span><br />
-                <span className="text-white/90">IN 2026</span>
-              </h1>
-              <p className="text-lg sm:text-xl text-white/60 mb-8 max-w-lg mx-auto lg:mx-0 leading-relaxed">{theme.heroSubtitle || "India's most advanced gym management platform meets world-class facilities."}</p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-12">
-                <button onClick={() => scrollTo('contact')} className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-lg shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 active:scale-100 transition-all">
+                <span
+                  className="text-transparent bg-clip-text animate-shimmer"
+                  style={{ backgroundImage: 'linear-gradient(90deg, #f97316, #ef4444, #ec4899, #f97316)', backgroundSize: '200% 100%' }}
+                >
+                  {theme.heroTitle?.split(' ').slice(2).join(' ') || 'STRONGER'}
+                </span><br />
+                <span className="text-white/90">BODY IN 2026</span>
+              </motion.h1>
+
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+                className="text-lg sm:text-xl text-white/60 mb-8 max-w-lg mx-auto lg:mx-0 leading-relaxed"
+              >
+                {theme.heroSubtitle || "India's most advanced gym — world-class facilities meet cutting-edge tech."}
+              </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+                className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-10"
+              >
+                <button data-testid="button-start-trial-hero" onClick={() => scrollTo('contact')} className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-lg shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/60 hover:scale-105 active:scale-100 transition-all">
                   Start Free Trial <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button onClick={() => setVideoPlaying(true)} className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl border border-white/20 text-white font-semibold text-lg hover:bg-white/5 hover:border-white/40 transition-all">
+                <button data-testid="button-watch-tour" onClick={() => setVideoPlaying(true)} className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl border border-white/20 text-white font-semibold text-lg hover:bg-white/5 hover:border-white/40 transition-all">
                   <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors"><Play className="h-4 w-4 ml-0.5" /></div>
                   Watch Tour
                 </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-6 justify-center lg:justify-start text-sm text-white/40">
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.7 }}
+                className="flex flex-wrap items-center gap-6 justify-center lg:justify-start text-sm text-white/40"
+              >
                 <span className="flex items-center gap-1.5"><Check className="h-4 w-4 text-green-400" /> No credit card</span>
                 <span className="flex items-center gap-1.5"><Check className="h-4 w-4 text-green-400" /> Cancel anytime</span>
                 <span className="flex items-center gap-1.5"><Check className="h-4 w-4 text-green-400" /> Free 3-day pass</span>
-              </div>
+              </motion.div>
             </div>
+
+            {/* 3D hero card with mouse tilt — max ±8° each axis */}
             <div className="relative hidden lg:flex items-center justify-center">
-              <div className="relative w-full max-w-sm" style={{ transform: `perspective(800px) rotateY(${(mousePosition.x - 0.5) * -10}deg) rotateX(${(mousePosition.y - 0.5) * 6}deg)`, transition: 'transform 0.3s ease-out' }}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                style={{
+                  transform: `perspective(800px) rotateX(${heroTilt.x}deg) rotateY(${heroTilt.y}deg)`,
+                  transition: 'transform 0.3s ease-out',
+                }}
+                className="relative w-full max-w-sm"
+              >
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-black/60 border border-white/10">
                   <img src="https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=600" alt="Gym training" className="w-full h-80 object-cover" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -315,28 +620,36 @@ export default function PublicWebsite() {
                     </div>
                   </div>
                 </div>
-                <div className="absolute -top-6 -right-8 px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
+
+                {/* Floating stat pills — staggered bob animations at different z-levels via shadow depth */}
+                <div className="animate-bob-1 absolute -top-6 -right-8 px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20" style={{ boxShadow: '0 30px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)', zIndex: 4 }}>
                   <div className="text-2xl font-black text-orange-400">{stats[0].value}</div>
                   <div className="text-xs text-white/60">Active Members</div>
                 </div>
-                <div className="absolute -bottom-6 -left-8 px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl">
+                <div className="animate-bob-2 absolute -bottom-6 -left-8 px-4 py-3 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20" style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.5)', zIndex: 3 }}>
                   <div className="flex items-center gap-2">
-                    <div className="flex -space-x-2">{[1, 2, 3].map((i) => (<div key={i} className="h-7 w-7 rounded-full bg-gradient-to-br from-orange-400 to-red-500 border-2 border-[#080810]" />))}</div>
+                    <div className="flex -space-x-2">{[1, 2, 3].map((i) => (<div key={i} className="h-7 w-7 rounded-full bg-gradient-to-br from-orange-400 to-red-500 border-2 border-[#0a0a0f]" />))}</div>
                     <div><div className="text-xs font-bold text-white">42 checking in</div><div className="text-xs text-white/50">right now</div></div>
                   </div>
                 </div>
-                <div className="absolute top-1/2 -left-10 -translate-y-1/2 px-3 py-2 rounded-xl bg-green-500/20 backdrop-blur-xl border border-green-500/30 shadow-xl">
+                <div className="animate-bob-3 absolute top-1/2 -left-10 -translate-y-1/2 px-3 py-2 rounded-xl bg-green-500/20 backdrop-blur-xl border border-green-500/30" style={{ boxShadow: '0 40px 80px rgba(0,0,0,0.7), 0 8px 16px rgba(16,185,129,0.15)', zIndex: 5 }}>
                   <div className="flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" /><span className="text-xs font-semibold text-green-400">LIVE</span></div>
                 </div>
-              </div>
+                <div className="animate-bob-4 absolute top-4 left-0 px-3 py-2 rounded-xl bg-violet-500/20 backdrop-blur-xl border border-violet-500/30" style={{ boxShadow: '0 10px 20px rgba(0,0,0,0.4)', zIndex: 2 }}>
+                  <div className="text-xs font-semibold text-violet-300">⭐ 4.9 Rating</div>
+                </div>
+              </motion.div>
             </div>
           </div>
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 text-xs"><span>Scroll to explore</span><ChevronDown className="h-5 w-5 animate-bounce" /></div>
+
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 text-xs">
+            <span>Scroll to explore</span><ChevronDown className="h-5 w-5 animate-bounce" />
+          </div>
         </div>
       </section>
 
-      {/* ── SOCIAL PROOF BANNER ── */}
-      <div className="py-5 bg-gradient-to-r from-orange-500/10 via-red-500/10 to-orange-500/10 border-y border-orange-500/20 overflow-hidden">
+      {/* SOCIAL PROOF BANNER */}
+      <div className="relative py-5 bg-gradient-to-r from-orange-500/10 via-red-500/10 to-orange-500/10 border-y border-orange-500/20 overflow-hidden noise-overlay">
         <div className="flex items-center gap-12 animate-marquee whitespace-nowrap">
           {[...Array(3)].map((_, gi) => (
             <div key={gi} className="flex items-center gap-12 shrink-0">
@@ -348,39 +661,47 @@ export default function PublicWebsite() {
         </div>
       </div>
 
-      {/* ── STATS ── */}
-      <section ref={statsRef} className="py-20 bg-[#080810]">
+      {/* STATS */}
+      <section
+        ref={statsRef}
+        className="relative py-20 overflow-hidden"
+        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(249,115,22,0.08) 0%, transparent 60%), #0a0a0f' }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {stats.map(({ value, label, icon: Icon }) => (
-              <div key={label} className={`p-6 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-center group hover:border-orange-500/30 transition-all duration-300 ${countersVisible ? 'animate-fade-in-up' : 'opacity-0'}`}>
+            {stats.map(({ value, label, icon: Icon }, i) => (
+              <motion.div
+                key={label}
+                initial={{ opacity: 0, y: 30 }}
+                animate={statsInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                data-testid={`stat-${label.toLowerCase().replace(/\s+/g, '-')}`}
+                whileHover={{ scale: 1.04, y: -4 }}
+                className="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-center group hover:border-orange-500/30 hover:bg-white/[0.05] transition-colors duration-300 cursor-default"
+              >
                 <div className="h-12 w-12 rounded-xl bg-orange-500/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-orange-500/20 transition-colors"><Icon className="h-6 w-6 text-orange-400" /></div>
                 <div className="text-4xl font-black text-white mb-1">{value}</div>
                 <div className="text-sm text-white/50">{label}</div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-24 bg-[#0c0c14]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+      {/* FEATURES */}
+      <section id="features" className="relative py-24 overflow-hidden noise-overlay" style={{ background: 'radial-gradient(ellipse at 30% 50%, rgba(99,102,241,0.12) 0%, transparent 60%), #0c0c14' }}>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><Zap className="h-4 w-4" /> Everything You Need</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">Built for Champions</h2>
             <p className="text-lg text-white/50 max-w-2xl mx-auto">World-class facilities combined with cutting-edge technology to accelerate your results.</p>
-          </div>
+          </RevealSection>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {FEATURES_ADVANCED.map(({ icon: Icon, title, desc, color, border }) => (
-              <div key={title} className={`group p-6 rounded-2xl bg-gradient-to-br ${color} border ${border} hover:scale-[1.02] hover:shadow-xl transition-all duration-300 cursor-default`}>
-                <div className="h-12 w-12 rounded-xl bg-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Icon className="h-6 w-6 text-white" /></div>
-                <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-                <p className="text-sm text-white/60 leading-relaxed">{desc}</p>
-              </div>
+            {FEATURES_ADVANCED.map((feat, i) => (
+              <FeatureCard3D key={feat.title} {...feat} index={i} />
             ))}
           </div>
-          <div className="mt-12 grid lg:grid-cols-2 gap-8 items-center p-8 rounded-3xl bg-gradient-to-br from-orange-500/10 to-red-600/5 border border-orange-500/20">
+          <RevealSection className="mt-12 grid lg:grid-cols-2 gap-8 items-center p-8 rounded-3xl bg-gradient-to-br from-orange-500/10 to-red-600/5 border border-orange-500/20">
             <div>
               <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 mb-4">AI Powered</Badge>
               <h3 className="text-3xl font-black text-white mb-4">Your Personal AI Fitness Coach</h3>
@@ -393,25 +714,34 @@ export default function PublicWebsite() {
             </div>
             <div className="relative">
               <img src="https://images.pexels.com/photos/3823488/pexels-photo-3823488.jpeg?auto=compress&cs=tinysrgb&w=600" alt="AI fitness coaching" className="w-full rounded-2xl object-cover h-72" />
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-[#080810]/60 to-transparent" />
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-[#0a0a0f]/60 to-transparent" />
             </div>
-          </div>
+          </RevealSection>
         </div>
       </section>
 
-      {/* ── CLASSES (DB-synced) ── */}
-      <section id="classes" className="py-24 bg-[#080810]">
+      {/* CLASSES */}
+      <section id="classes" className="relative py-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse at 70% 50%, rgba(249,115,22,0.08) 0%, transparent 60%), #0a0a0f' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><Calendar className="h-4 w-4" /> Today's Schedule</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">50+ Weekly Classes</h2>
             <p className="text-lg text-white/50">From high-intensity to mindful movement — find your perfect class.</p>
-          </div>
+          </RevealSection>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {classes.map((cls: any) => {
+            {classes.map((cls: any, idx: number) => {
               const Icon = cls.icon || Activity;
               return (
-                <div key={cls.name} className="group p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 hover:bg-white/[0.05] transition-all duration-300 cursor-pointer">
+                <motion.div
+                  key={cls.name}
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: idx * 0.05 }}
+                  data-testid={`card-class-${idx}`}
+                  whileHover={{ scale: 1.02 }}
+                  className="group p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 hover:bg-white/[0.05] transition-colors duration-300 cursor-pointer"
+                >
                   <div className="flex items-start justify-between mb-4">
                     <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${cls.color} flex items-center justify-center shadow-lg`}><Icon className="h-6 w-6 text-white" /></div>
                     <div className={`px-2 py-1 rounded-lg text-xs font-semibold ${cls.spots <= 3 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>{cls.spots <= 3 ? `${cls.spots} spots left!` : `${cls.spots} open`}</div>
@@ -421,46 +751,33 @@ export default function PublicWebsite() {
                     <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{cls.time}</span>
                     <span>{cls.duration}</span>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-          <div className="text-center mt-8">
-            <button onClick={() => scrollTo('contact')} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/20 text-white font-semibold text-sm hover:bg-white/5 transition-all">View Full Schedule <ChevronRight className="h-4 w-4" /></button>
-          </div>
+          <RevealSection className="text-center mt-8">
+            <button data-testid="button-view-schedule" onClick={() => scrollTo('contact')} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/20 text-white font-semibold text-sm hover:bg-white/5 transition-all">View Full Schedule <ChevronRight className="h-4 w-4" /></button>
+          </RevealSection>
         </div>
       </section>
 
-      {/* ── TRAINERS (DB-synced) ── */}
-      <section id="trainers" className="py-24 bg-[#0c0c14]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+      {/* TRAINERS */}
+      <section id="trainers" className="relative py-24 overflow-hidden noise-overlay" style={{ background: 'radial-gradient(ellipse at 20% 50%, rgba(139,92,246,0.1) 0%, transparent 60%), #0c0c14' }}>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><Trophy className="h-4 w-4" /> Expert Team</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">World-Class Trainers</h2>
-            <p className="text-lg text-white/50 max-w-2xl mx-auto">Certified experts dedicated to your transformation.</p>
-          </div>
+            <p className="text-lg text-white/50 max-w-2xl mx-auto">Hover to learn more. Certified experts dedicated to your transformation.</p>
+          </RevealSection>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {trainers.slice(0, 4).map((trainer: any, idx: number) => (
-              <div key={`trainer-${idx}-${trainer.name}`} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] hover:border-orange-500/30 transition-all duration-300 cursor-pointer">
-                <div className="aspect-[3/4] overflow-hidden">
-                  <img src={trainer.img} alt={trainer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-5">
-                  <div className="text-white font-bold text-lg">{trainer.name}</div>
-                  <div className="text-white/60 text-sm mb-2">{trainer.role}</div>
-                  <div className="flex items-center gap-2">
-                    {trainer.exp && <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs font-medium">{trainer.exp} exp</span>}
-                    <div className="flex gap-0.5">{[...Array(5)].map((_, i) => (<Star key={i} className="h-3 w-3 fill-orange-400 text-orange-400" />))}</div>
-                  </div>
-                </div>
-              </div>
+              <TrainerFlipCard key={`trainer-${idx}-${trainer.name}`} trainer={trainer} idx={idx} />
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── GALLERY ── */}
+      {/* GALLERY */}
       <section className="py-8 overflow-hidden">
         <div className="flex gap-4 overflow-hidden">
           {['https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=600', 'https://images.pexels.com/photos/3823488/pexels-photo-3823488.jpeg?auto=compress&cs=tinysrgb&w=600', 'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=600', 'https://images.pexels.com/photos/3076509/pexels-photo-3076509.jpeg?auto=compress&cs=tinysrgb&w=600', 'https://images.pexels.com/photos/6975489/pexels-photo-6975489.jpeg?auto=compress&cs=tinysrgb&w=600', 'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=600'].map((url, i) => (
@@ -471,105 +788,113 @@ export default function PublicWebsite() {
         </div>
       </section>
 
-      {/* ── PRICING (DB-synced) ── */}
-      <section id="pricing" className="py-24 bg-[#0c0c14]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+      {/* PRICING */}
+      <section id="pricing" className="relative py-24 overflow-hidden noise-overlay" style={{ background: 'radial-gradient(ellipse at 60% 40%, rgba(249,115,22,0.1) 0%, transparent 55%), #0c0c14' }}>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><Target className="h-4 w-4" /> Membership Plans</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">Simple, Transparent Pricing</h2>
             <p className="text-lg text-white/50">No hidden fees. Cancel anytime.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {pricingPlans.map((plan: any, idx: number) => (
-              <div key={plan.id || `plan-${idx}`} className={`relative p-7 rounded-3xl border transition-all duration-300 hover:scale-[1.02] ${plan.isPopular ? 'bg-gradient-to-b from-orange-500/20 to-red-600/10 border-orange-500/40 shadow-2xl shadow-orange-500/20' : 'bg-white/[0.03] border-white/[0.08] hover:border-white/20'}`}>
-                {plan.isPopular && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-bold shadow-lg shadow-orange-500/30">MOST POPULAR</div>}
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold text-white mb-1">{plan.name}</h3>
-                  <div className="text-white/50 text-sm">{plan.duration}</div>
-                </div>
-                <div className="mb-7">
-                  <div className="flex items-end gap-2">
-                    <span className="text-5xl font-black text-white">₹{plan.price.toLocaleString()}</span>
-                    <span className="text-white/40 text-sm mb-2">/{plan.duration?.split(' ')[0] === '1' ? 'mo' : plan.duration?.includes('3') ? '3mo' : 'yr'}</span>
-                  </div>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {(plan.features || []).map((f: string) => (
-                    <li key={f} className="flex items-center gap-3 text-sm text-white/70"><Check className="h-4 w-4 text-orange-400 shrink-0" />{f}</li>
-                  ))}
-                </ul>
-                <button onClick={() => scrollTo('contact')} className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all ${plan.isPopular ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40' : 'bg-white/[0.06] text-white hover:bg-white/10 border border-white/10'}`}>
-                  Get Started <ArrowRight className="inline h-4 w-4 ml-1" />
-                </button>
-              </div>
-            ))}
+          </RevealSection>
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto" style={{ perspective: '1200px' }}>
+            {pricingPlans.map((plan: any, idx: number) => {
+              const isPopular = plan.isPopular || (pricingPlans.length > 1 && idx === Math.floor(pricingPlans.length / 2));
+              return (
+                <PricingCard
+                  key={plan.id || `plan-${idx}`}
+                  plan={plan}
+                  idx={idx}
+                  isPopular={isPopular}
+                  onCta={() => scrollTo('contact')}
+                />
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
-      <section id="testimonials" className="py-24 bg-[#080810]">
+      {/* TESTIMONIALS */}
+      <section id="testimonials" className="relative py-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse at 80% 20%, rgba(99,102,241,0.08) 0%, transparent 55%), #0a0a0f' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><Star className="h-4 w-4" /> Testimonials</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">Loved by Members</h2>
-          </div>
+          </RevealSection>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {theme.testimonials.slice(0, 6).map((t) => (
-              <div key={t.name} className="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 transition-all duration-300 group">
+            {theme.testimonials.slice(0, 6).map((t, i) => (
+              <motion.div
+                key={t.name}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: i * 0.08 }}
+                data-testid={`card-testimonial-${i}`}
+                whileHover={{ scale: 1.02 }}
+                className="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 transition-colors duration-300 group backdrop-blur-sm"
+              >
                 <Quote className="h-8 w-8 text-orange-500/30 mb-4" />
                 <p className="text-white/80 text-sm leading-relaxed mb-6 italic">"{t.quote}"</p>
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm shrink-0">{t.name.charAt(0)}</div>
                   <div>
                     <div className="font-bold text-white text-sm">{t.name}</div>
-                    <div className="flex gap-0.5 mt-1">{[...Array(5)].map((_, i) => (<Star key={i} className="h-3 w-3 fill-orange-400 text-orange-400" />))}</div>
+                    <div className="flex gap-0.5 mt-1">{[...Array(5)].map((_, j) => (<Star key={j} className="h-3 w-3 fill-orange-400 text-orange-400" />))}</div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── FAQ ── */}
-      <section className="py-24 bg-[#0c0c14]">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-16">
+      {/* FAQ */}
+      <section className="relative py-24 overflow-hidden noise-overlay" style={{ background: 'radial-gradient(ellipse at 30% 70%, rgba(249,115,22,0.06) 0%, transparent 55%), #0c0c14' }}>
+        <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6">
+          <RevealSection className="text-center mb-16">
             <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6"><MessageCircle className="h-4 w-4" /> FAQ</span>
             <h2 className="text-4xl sm:text-5xl font-black text-white mb-4">Got Questions?</h2>
-          </div>
+          </RevealSection>
           <div className="space-y-3">
             {FAQS.map((faq, i) => (
-              <div key={i} className={`rounded-2xl border transition-all duration-300 overflow-hidden ${openFaq === i ? 'border-orange-500/30 bg-orange-500/5' : 'border-white/[0.06] bg-white/[0.02]'}`}>
-                <button className="w-full text-left px-6 py-5 flex items-center justify-between gap-4" onClick={() => setOpenFaq(openFaq === i ? null : i)} aria-expanded={openFaq === i}>
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: i * 0.06 }}
+                data-testid={`faq-item-${i}`}
+                className={`rounded-2xl border transition-all duration-300 overflow-hidden ${openFaq === i ? 'border-orange-500/30 bg-orange-500/5' : 'border-white/[0.06] bg-white/[0.02]'}`}
+              >
+                <button data-testid={`button-faq-${i}`} className="w-full text-left px-6 py-5 flex items-center justify-between gap-4" onClick={() => setOpenFaq(openFaq === i ? null : i)} aria-expanded={openFaq === i}>
                   <span className="font-semibold text-white text-sm sm:text-base">{faq.q}</span>
                   <ChevronDown className={`h-5 w-5 text-orange-400 shrink-0 transition-transform duration-300 ${openFaq === i ? 'rotate-180' : ''}`} />
                 </button>
                 <div className={`transition-all duration-300 ${openFaq === i ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
                   <p className="px-6 pb-5 text-sm text-white/60 leading-relaxed">{faq.a}</p>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CONTACT / CTA ── */}
-      <section id="contact" className="py-24 bg-[#080810]">
+      {/* CONTACT */}
+      <section id="contact" className="relative py-24 overflow-hidden" style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(249,115,22,0.12) 0%, transparent 60%), #0a0a0f' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-500/20 via-red-600/15 to-transparent border border-orange-500/20 p-10 sm:p-14 mb-16 text-center">
-            <div className="absolute inset-0 pointer-events-none"><div className="absolute top-0 left-1/4 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" /><div className="absolute bottom-0 right-1/4 w-96 h-96 bg-red-600/10 rounded-full blur-3xl" /></div>
-            <div className="relative">
-              <h2 className="text-4xl sm:text-6xl font-black text-white mb-4">Your Transformation<br /><span className="text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #f97316, #ef4444)' }}>Starts Today</span></h2>
-              <p className="text-white/60 text-lg max-w-xl mx-auto mb-8">Join {stats[0].value} members who transformed their lives. First 3 days are on us.</p>
-              <button onClick={() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-black text-xl shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 transition-all">
-                Claim Free 3-Day Pass <ArrowRight className="h-6 w-6" />
-              </button>
+          <RevealSection>
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-500/20 via-red-600/15 to-transparent border border-orange-500/20 p-10 sm:p-14 mb-16 text-center">
+              <div className="absolute inset-0 pointer-events-none"><div className="absolute top-0 left-1/4 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" /><div className="absolute bottom-0 right-1/4 w-96 h-96 bg-red-600/10 rounded-full blur-3xl" /></div>
+              <div className="relative">
+                <h2 className="text-4xl sm:text-6xl font-black text-white mb-4">Your Transformation<br /><span className="text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #f97316, #ef4444)' }}>Starts Today</span></h2>
+                <p className="text-white/60 text-lg max-w-xl mx-auto mb-8">Join {stats[0].value} members who transformed their lives. First 3 days are on us.</p>
+                <button data-testid="button-claim-trial-cta" onClick={() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-black text-xl shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105 transition-all">
+                  Claim Free 3-Day Pass <ArrowRight className="h-6 w-6" />
+                </button>
+              </div>
             </div>
-          </div>
+          </RevealSection>
           <div className="grid lg:grid-cols-2 gap-12">
-            <div>
+            <RevealSection>
               <h3 className="text-2xl font-black text-white mb-8">Find Us</h3>
               <div className="space-y-5">
                 {[
@@ -596,35 +921,37 @@ export default function PublicWebsite() {
                   </a>
                 ))}
               </div>
-            </div>
-            <div id="lead-form">
-              <div className="p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-xl">
-                <h3 className="text-2xl font-black text-white mb-2">Start Your Free Trial</h3>
-                <p className="text-white/50 text-sm mb-6">3-day complimentary pass. No credit card required.</p>
-                {submitted ? (
-                  <div className="text-center py-10">
-                    <div className="h-20 w-20 rounded-2xl bg-green-500/20 border border-green-500/30 flex items-center justify-center mx-auto mb-6"><Check className="h-10 w-10 text-green-400" /></div>
-                    <h4 className="text-2xl font-black text-white mb-2">You're In!</h4>
-                    <p className="text-white/50 text-sm">We'll call you within 2 hours to schedule your free trial session.</p>
-                  </div>
-                ) : (
-                  <form className="space-y-4" onSubmit={handleLeadSubmit} noValidate>
-                    <div><label htmlFor="fullName" className="block text-xs font-medium text-white/50 mb-1.5">Full Name *</label><input id="fullName" type="text" placeholder="Rahul Sharma" value={leadForm.fullName} onChange={(e) => setLeadForm(prev => ({ ...prev, fullName: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" required autoComplete="name" /></div>
-                    <div><label htmlFor="phone" className="block text-xs font-medium text-white/50 mb-1.5">Phone Number *</label><input id="phone" type="tel" placeholder="+91 98765 43210" value={leadForm.phone} onChange={(e) => setLeadForm(prev => ({ ...prev, phone: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" required autoComplete="tel" /></div>
-                    <div><label htmlFor="email" className="block text-xs font-medium text-white/50 mb-1.5">Email <span className="text-white/25">(optional)</span></label><input id="email" type="email" placeholder="rahul@example.com" value={leadForm.email} onChange={(e) => setLeadForm(prev => ({ ...prev, email: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" autoComplete="email" /></div>
-                    <button type="submit" disabled={isSubmitting} className="w-full py-4 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-base shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
-                      {isSubmitting ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" /> Submitting...</span> : <span className="flex items-center justify-center gap-2">Claim Free Trial Pass <ArrowRight className="h-5 w-5" /></span>}
-                    </button>
-                    <p className="text-center text-xs text-white/25">By submitting, you agree to our Privacy Policy.</p>
-                  </form>
-                )}
+            </RevealSection>
+            <RevealSection>
+              <div id="lead-form">
+                <div className="p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-xl">
+                  <h3 className="text-2xl font-black text-white mb-2">Start Your Free Trial</h3>
+                  <p className="text-white/50 text-sm mb-6">3-day complimentary pass. No credit card required.</p>
+                  {submitted ? (
+                    <div className="text-center py-10">
+                      <div className="h-20 w-20 rounded-2xl bg-green-500/20 border border-green-500/30 flex items-center justify-center mx-auto mb-6"><Check className="h-10 w-10 text-green-400" /></div>
+                      <h4 className="text-2xl font-black text-white mb-2">You're In!</h4>
+                      <p className="text-white/50 text-sm">We'll call you within 2 hours to schedule your free trial session.</p>
+                    </div>
+                  ) : (
+                    <form className="space-y-4" onSubmit={handleLeadSubmit} noValidate>
+                      <div><label htmlFor="fullName" className="block text-xs font-medium text-white/50 mb-1.5">Full Name *</label><input data-testid="input-fullname" id="fullName" type="text" placeholder="Rahul Sharma" value={leadForm.fullName} onChange={(e) => setLeadForm(prev => ({ ...prev, fullName: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" required autoComplete="name" /></div>
+                      <div><label htmlFor="phone" className="block text-xs font-medium text-white/50 mb-1.5">Phone Number *</label><input data-testid="input-phone" id="phone" type="tel" placeholder="+91 98765 43210" value={leadForm.phone} onChange={(e) => setLeadForm(prev => ({ ...prev, phone: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" required autoComplete="tel" /></div>
+                      <div><label htmlFor="email" className="block text-xs font-medium text-white/50 mb-1.5">Email <span className="text-white/25">(optional)</span></label><input data-testid="input-email" id="email" type="email" placeholder="rahul@example.com" value={leadForm.email} onChange={(e) => setLeadForm(prev => ({ ...prev, email: e.target.value }))} className="w-full px-4 py-3.5 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white placeholder:text-white/25 focus:border-orange-500/60 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all text-sm" autoComplete="email" /></div>
+                      <button data-testid="button-submit-trial" type="submit" disabled={isSubmitting} className="w-full py-4 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-base shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
+                        {isSubmitting ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" /> Submitting...</span> : <span className="flex items-center justify-center gap-2">Claim Free Trial Pass <ArrowRight className="h-5 w-5" /></span>}
+                      </button>
+                      <p className="text-center text-xs text-white/25">By submitting, you agree to our Privacy Policy.</p>
+                    </form>
+                  )}
+                </div>
               </div>
-            </div>
+            </RevealSection>
           </div>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
+      {/* FOOTER */}
       <footer className="bg-[#050508] border-t border-white/[0.05]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
@@ -668,22 +995,26 @@ export default function PublicWebsite() {
         </div>
       </footer>
 
-      {/* ── VIDEO MODAL ── */}
+      {/* VIDEO MODAL */}
       {videoPlaying && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4" onClick={() => setVideoPlaying(false)}>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setVideoPlaying(false)}
+        >
           <button className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors" onClick={() => setVideoPlaying(false)} aria-label="Close"><X className="h-5 w-5 text-white" /></button>
           <div className="w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl border border-white/10" onClick={e => e.stopPropagation()}>
             <img src="https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=1200" alt="Gym tour" className="w-full h-auto" />
-            <div className="bg-[#111] px-6 py-4 text-white/60 text-sm text-center">🎬 Full gym tour video coming soon! Contact us for a live walkthrough.</div>
+            <div className="bg-[#111] px-6 py-4 text-white/60 text-sm text-center">Full gym tour video coming soon! Contact us for a live walkthrough.</div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       <style>{`
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-33.33%); } }
         .animate-marquee { animation: marquee 30s linear infinite; }
-        @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in-up { animation: fade-in-up 0.6s ease-out forwards; }
       `}</style>
     </div>
   );

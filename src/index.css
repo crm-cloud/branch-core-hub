@@ -272,4 +272,102 @@
     50% { transform: rotate(0deg) translateY(-12px); }
     75% { transform: rotate(4deg) translateY(-8px); }
   }
+
+  /* 3D floating hero blob animations */
+  .animate-float-slow {
+    animation: floatSlow 8s ease-in-out infinite;
+  }
+  .animate-float-medium {
+    animation: floatMedium 6s ease-in-out infinite;
+  }
+  .animate-float-fast {
+    animation: floatFast 4s ease-in-out infinite;
+  }
+  .animate-float-alt {
+    animation: floatAlt 7s ease-in-out infinite;
+  }
+
+  @keyframes floatSlow {
+    0%, 100% { transform: translateY(0px) translateX(0px); }
+    33% { transform: translateY(-18px) translateX(8px); }
+    66% { transform: translateY(8px) translateX(-6px); }
+  }
+  @keyframes floatMedium {
+    0%, 100% { transform: translateY(0px) translateX(0px); }
+    50% { transform: translateY(-14px) translateX(-10px); }
+  }
+  @keyframes floatFast {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes floatAlt {
+    0%, 100% { transform: translateY(0px) translateX(0px) rotate(0deg); }
+    40% { transform: translateY(-12px) translateX(12px) rotate(2deg); }
+    80% { transform: translateY(6px) translateX(-8px) rotate(-1deg); }
+  }
+
+  /* Gradient shimmer for headline word */
+  .animate-shimmer {
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+
+  /* Stat pill bob */
+  .animate-bob-1 { animation: bob 3s ease-in-out infinite; }
+  .animate-bob-2 { animation: bob 3.5s ease-in-out infinite 0.5s; }
+  .animate-bob-3 { animation: bob 4s ease-in-out infinite 1s; }
+  .animate-bob-4 { animation: bob 3.2s ease-in-out infinite 1.5s; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+  }
+
+  /* Pricing card float */
+  .animate-price-float-1 { animation: priceFloat 5s ease-in-out infinite; }
+  .animate-price-float-2 { animation: priceFloat 5.5s ease-in-out infinite 0.8s; }
+  .animate-price-float-3 { animation: priceFloat 6s ease-in-out infinite 1.6s; }
+  @keyframes priceFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+  }
+
+  /* 3D card flip */
+  .card-3d-container {
+    perspective: 800px;
+  }
+  .card-3d-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s ease;
+  }
+  .card-3d-container:hover .card-3d-inner {
+    transform: rotateY(180deg);
+  }
+  .card-3d-front,
+  .card-3d-back {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .card-3d-back {
+    transform: rotateY(180deg);
+  }
+
+  /* Noise texture overlay */
+  .noise-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.05;
+    z-index: 0;
+  }
 }
