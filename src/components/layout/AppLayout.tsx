@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useCallback } from 'react';
 import { AppSidebar, MobileNav } from './AppSidebar';
 import { AppHeader } from './AppHeader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,12 +7,34 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
+
+function getInitialCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
   const { profile } = useAuth();
+  const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
+
+  const handleToggleCollapse = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+      }
+      return next;
+    });
+  }, []);
 
   const { data: org } = useQuery({
     queryKey: ['org-branding'],
@@ -34,7 +56,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar />
+      <AppSidebar collapsed={collapsed} onToggleCollapse={handleToggleCollapse} />
       
       <div className="flex-1 flex flex-col min-w-0">
         {/* Desktop header */}
