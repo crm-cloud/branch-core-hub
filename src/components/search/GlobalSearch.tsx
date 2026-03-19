@@ -146,7 +146,7 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
       // Search trainers
       const { data: trainersByProfile } = await supabase
         .from('profiles')
-        .select('id, full_name, email, phone, trainers!trainers_user_id_fkey(id, trainer_code, is_active)')
+        .select('id, full_name, email, phone, trainers!trainers_user_id_profiles_fkey(id, trainer_code, is_active)')
         .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
         .limit(10);
 

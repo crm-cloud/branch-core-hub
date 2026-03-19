@@ -34,7 +34,9 @@ export function ReferralSettings() {
         .from('referral_settings')
         .select('*')
         .eq('branch_id', selectedBranch)
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
       return data;
     },

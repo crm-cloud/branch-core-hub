@@ -41,13 +41,15 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
     queryFn: async () => {
       const { data, error } = await supabase
         .from('memberships')
-        .select('*, membership_plans(name, price)')
+        .select('*, membership_plans(name, price, is_transferable)')
         .eq('id', membershipId!)
         .single();
       if (error) throw error;
       return data;
     },
   });
+
+  const isTransferable = (membership as any)?.membership_plans?.is_transferable !== false;
 
   // Search target members
   const { data: searchResults = [] } = useQuery({
@@ -220,6 +222,20 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
+          {/* Not Transferable Warning */}
+          {membership && !isTransferable && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-destructive">Transfer Not Allowed</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The <strong>{(membership as any).membership_plans?.name}</strong> plan does not allow membership transfers.
+                  To enable transfers, edit the plan and toggle "Allow membership transfer" on.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Current Membership */}
           {membership && (
             <Card className="border-primary/20 bg-primary/5">
@@ -322,7 +338,7 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={() => transferMutation.mutate()}
-            disabled={transferMutation.isPending || !selectedTarget || !reason.trim() || (isChargeable && !transferFee)}
+            disabled={transferMutation.isPending || !selectedTarget || !reason.trim() || (isChargeable && !transferFee) || !isTransferable}
           >
             {transferMutation.isPending
               ? (isManagement ? 'Transferring...' : 'Submitting...')

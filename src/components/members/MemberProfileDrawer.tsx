@@ -487,7 +487,7 @@ export function MemberProfileDrawer({
           created_by_profile:created_by(full_name, email),
           memberships(
             *,
-            membership_plans(name, duration_days, price)
+            membership_plans(name, duration_days, price, is_transferable)
           ),
           member_pt_packages(
             *,
@@ -881,7 +881,7 @@ export function MemberProfileDrawer({
                 <Building2 className="h-4 w-4 mr-2" /> Transfer Branch
               </Button>
             )}
-            {isManagerOrAbove && activeMembership && (
+            {isManagerOrAbove && activeMembership && activeMembership?.membership_plans?.is_transferable !== false && (
               <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
                 <Share2 className="h-4 w-4 mr-2" /> Transfer Plan
               </Button>
@@ -896,7 +896,7 @@ export function MemberProfileDrawer({
                 <Building2 className="h-4 w-4 mr-2" /> Request Transfer
               </Button>
             )}
-            {!isManagerOrAbove && activeMembership && (
+            {!isManagerOrAbove && activeMembership && activeMembership?.membership_plans?.is_transferable !== false && (
               <Button variant="outline" size="sm" className="justify-start" onClick={() => setTransferMembershipOpen(true)}>
                 <Share2 className="h-4 w-4 mr-2" /> Request Plan Transfer
               </Button>

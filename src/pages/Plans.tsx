@@ -12,8 +12,9 @@ import { AddPlanDrawer } from '@/components/plans/AddPlanDrawer';
 import { EditPlanDrawer } from '@/components/plans/EditPlanDrawer';
 import {
   Plus, Clock, Users, Snowflake, ArrowRightLeft, Edit2, Crown, TrendingUp, Star,
-  IndianRupee, Sparkles, Check, Dumbbell, ChevronRight, Tag,
+  IndianRupee, Sparkles, Check, Dumbbell, ChevronRight, Tag, Search, X,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
@@ -322,6 +323,7 @@ export default function PlansPage() {
   const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
   const [memberListPlanId, setMemberListPlanId] = useState<string | null>(null);
   const [memberListPlanName, setMemberListPlanName] = useState('');
+  const [planSearch, setPlanSearch] = useState('');
 
   const { data: memberCounts = {} } = useQuery({
     queryKey: ['plan-member-counts'],
@@ -396,8 +398,13 @@ export default function PlansPage() {
     setSelectedPlanIndex(globalIndex);
   };
 
-  const activePlans = plans?.filter(p => p.is_active) || [];
-  const inactivePlans = plans?.filter(p => !p.is_active) || [];
+  const searchLower = planSearch.toLowerCase();
+  const activePlans = (plans?.filter(p => p.is_active) || []).filter(
+    p => !planSearch || p.name.toLowerCase().includes(searchLower)
+  );
+  const inactivePlans = (plans?.filter(p => !p.is_active) || []).filter(
+    p => !planSearch || p.name.toLowerCase().includes(searchLower)
+  );
   const selectedPlan = plans?.find(p => p.id === selectedPlanId) ?? null;
   const totalMembers = Object.values(memberCounts).reduce((a, b) => a + b, 0);
   const mostPopularPlan = plans?.reduce((max, plan) =>
@@ -502,7 +509,30 @@ export default function PlansPage() {
         ) : (
           <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-white/20 shadow-2xl rounded-3xl overflow-hidden flex min-h-[520px]">
             {/* Left panel — plan list (35%) */}
-            <div className="w-[35%] bg-muted/30 flex flex-col overflow-y-auto border-r border-border/40 divide-y divide-border/40">
+            <div className="w-[35%] bg-muted/30 flex flex-col overflow-y-auto border-r border-border/40">
+              {/* Search */}
+              <div className="p-3 border-b border-border/40 sticky top-0 bg-muted/30 backdrop-blur-sm z-10">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    data-testid="input-plan-search"
+                    value={planSearch}
+                    onChange={e => setPlanSearch(e.target.value)}
+                    placeholder="Search plans..."
+                    className="pl-8 h-8 text-sm rounded-lg"
+                  />
+                  {planSearch && (
+                    <button
+                      onClick={() => setPlanSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Plan list */}
+              <div className="divide-y divide-border/40 flex-1">
               {/* Active plans */}
               {activePlans.map((plan, index) => (
                 <PlanListItem
@@ -546,6 +576,10 @@ export default function PlansPage() {
                   })}
                 </>
               )}
+              {activePlans.length === 0 && inactivePlans.length === 0 && (
+                <div className="p-6 text-center text-sm text-muted-foreground">No plans match your search.</div>
+              )}
+              </div>
             </div>
 
             {/* Right panel — detail (65%) */}
