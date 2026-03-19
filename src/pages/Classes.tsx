@@ -30,6 +30,7 @@ export default function ClassesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [classToEdit, setClassToEdit] = useState<ClassWithDetails | null>(null);
+  const [rosterClassId, setRosterClassId] = useState<string | null>(null);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [classTypeFilter, setClassTypeFilter] = useState<string>("all");
