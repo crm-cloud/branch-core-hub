@@ -468,9 +468,10 @@ export default function AIFitnessPage() {
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
           <TabsList className="bg-muted/50">
-            <TabsTrigger value="generate" className="gap-1.5"><Sparkles className="h-4 w-4" /> Generate Plan</TabsTrigger>
-            <TabsTrigger value="templates" className="gap-1.5"><Library className="h-4 w-4" /> Templates Library</TabsTrigger>
-            <TabsTrigger value="assign" className="gap-1.5"><UserPlus className="h-4 w-4" /> Assign to Member</TabsTrigger>
+            <TabsTrigger value="generate" className="gap-1.5"><Sparkles className="h-4 w-4" /> Generate</TabsTrigger>
+            <TabsTrigger value="templates" className="gap-1.5"><Library className="h-4 w-4" /> Template Library</TabsTrigger>
+            <TabsTrigger value="member-plans" className="gap-1.5"><Users className="h-4 w-4" /> Member Plans</TabsTrigger>
+            <TabsTrigger value="assign" className="gap-1.5"><UserPlus className="h-4 w-4" /> Assign</TabsTrigger>
           </TabsList>
 
           {/* ── GENERATE TAB ── */}
