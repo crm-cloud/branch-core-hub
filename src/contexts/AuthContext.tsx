@@ -171,12 +171,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithOtp = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-      },
-    });
+    // NOTE: Do NOT pass emailRedirectTo here — when it's present Supabase sends a
+    // magic-link URL instead of a 6-digit OTP code.  Without it, Supabase uses the
+    // "OTP" email template which must contain {{ .Token }} in your Supabase Dashboard
+    // (Authentication → Email Templates → Magic Link).
+    const { error } = await supabase.auth.signInWithOtp({ email });
     return { error: error as Error | null };
   };
 
