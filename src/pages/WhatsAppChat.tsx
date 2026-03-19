@@ -1,20 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
-import { 
-  MessageSquare, Send, Search, Phone, User, 
-  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2
+import {
+  MessageSquare, Send, Search, Phone, User,
+  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle,
 } from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ChatContact {
   phone_number: string;
@@ -34,6 +44,8 @@ interface Message {
   message_type: string;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatChatDate(dateStr: string) {
   const d = new Date(dateStr);
   if (isToday(d)) return 'Today';
@@ -48,15 +60,35 @@ function formatContactTime(dateStr: string) {
   return format(d, 'MMM dd');
 }
 
+function isAiNotConfiguredError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('not configured') ||
+    lower.includes('api key') ||
+    lower.includes('openai') ||
+    lower.includes('configuration') ||
+    lower.includes('not set up')
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function WhatsAppChatPage() {
   const { selectedBranch } = useBranchContext();
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [aiSuggesting, setAiSuggesting] = useState(false);
+
+  // New chat dialog state
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatPhone, setNewChatPhone] = useState('');
+  const [newChatName, setNewChatName] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
+  // Realtime subscription: refresh messages + contacts on any change
   useEffect(() => {
     const channel = supabase
       .channel('whatsapp-realtime')
@@ -68,20 +100,35 @@ export default function WhatsAppChatPage() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
-  const { data: contacts = [] } = useQuery({
+  // Contacts query — builds a unique contact list from whatsapp_messages
+  const { data: contacts = [] } = useQuery<ChatContact[]>({
     queryKey: ['whatsapp-contacts', selectedBranch],
-    queryFn: async () => {
+    queryFn: async (): Promise<ChatContact[]> => {
       const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
-      let query = supabase.from('whatsapp_messages').select('phone_number, contact_name, member_id, content, created_at, direction').order('created_at', { ascending: false });
-      if (branchFilter) query = query.eq('branch_id', branchFilter);
-      const { data, error } = await query;
+      let q = supabase
+        .from('whatsapp_messages')
+        .select('phone_number, contact_name, member_id, content, created_at, direction')
+        .order('created_at', { ascending: false });
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data, error } = await q;
       if (error) throw error;
       const contactMap = new Map<string, ChatContact>();
-      data?.forEach((msg: any) => {
+      (data || []).forEach((msg: {
+        phone_number: string;
+        contact_name: string | null;
+        member_id: string | null;
+        content: string | null;
+        created_at: string;
+        direction: string;
+      }) => {
         if (!contactMap.has(msg.phone_number)) {
           contactMap.set(msg.phone_number, {
-            phone_number: msg.phone_number, contact_name: msg.contact_name, member_id: msg.member_id,
-            last_message: msg.content || '', last_message_time: msg.created_at, unread_count: 0,
+            phone_number: msg.phone_number,
+            contact_name: msg.contact_name,
+            member_id: msg.member_id,
+            last_message: msg.content || '',
+            last_message_time: msg.created_at,
+            unread_count: 0,
           });
         }
       });
@@ -89,47 +136,76 @@ export default function WhatsAppChatPage() {
     },
   });
 
-  const { data: messages = [] } = useQuery({
+  // Messages query for the selected contact
+  const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['whatsapp-messages', selectedContact?.phone_number, selectedBranch],
-    queryFn: async () => {
+    queryFn: async (): Promise<Message[]> => {
       if (!selectedContact) return [];
-      let query = supabase.from('whatsapp_messages').select('*').eq('phone_number', selectedContact.phone_number).order('created_at', { ascending: true });
-      if (selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
-      const { data, error } = await query;
+      let q = supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('phone_number', selectedContact.phone_number)
+        .order('created_at', { ascending: true });
+      if (selectedBranch !== 'all') q = q.eq('branch_id', selectedBranch);
+      const { data, error } = await q;
       if (error) throw error;
-      return data as Message[];
+      return (data ?? []) as Message[];
     },
     enabled: !!selectedContact,
   });
 
+  // Send message mutation
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      if (!selectedContact || !selectedBranch || selectedBranch === 'all') throw new Error('Select a contact and branch');
-      // 1. Insert message record
-      const { data, error } = await supabase.from('whatsapp_messages').insert({
-        branch_id: selectedBranch, phone_number: selectedContact.phone_number, contact_name: selectedContact.contact_name,
-        member_id: selectedContact.member_id, content, direction: 'outbound', status: 'pending', message_type: 'text',
-      }).select().single();
+      if (!selectedContact) throw new Error('No contact selected');
+      if (!selectedBranch || selectedBranch === 'all') {
+        throw new Error('Please select a specific branch before sending messages');
+      }
+
+      // 1. Insert message row as pending
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          branch_id: selectedBranch,
+          phone_number: selectedContact.phone_number,
+          contact_name: selectedContact.contact_name,
+          member_id: selectedContact.member_id,
+          content,
+          direction: 'outbound',
+          status: 'pending',
+          message_type: 'text',
+        })
+        .select()
+        .single();
       if (error) throw error;
 
-      // 2. Invoke send-whatsapp edge function to actually deliver via API
+      const messageId: string = data.id;
+
+      // 2. Call the edge function; update status to 'sent' on success.
+      // We intentionally do NOT throw if the edge function fails so that
+      // the message row is always persisted (admin can retry delivery).
       try {
-        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-whatsapp', {
+        const { error: sendError } = await supabase.functions.invoke('send-whatsapp', {
           body: {
-            message_id: data.id,
+            message_id: messageId,
             phone_number: selectedContact.phone_number,
             content,
             branch_id: selectedBranch,
           },
         });
+
         if (sendError) {
-          console.warn('WhatsApp API send failed (message saved as pending):', sendError);
-        } else if (sendResult?.error) {
-          console.warn('WhatsApp API error:', sendResult.error);
+          console.warn('WhatsApp delivery failed (message saved as pending):', sendError);
           toast.info('Message saved. WhatsApp delivery failed — check integration settings.');
+        } else {
+          // Edge function succeeded — update status to 'sent' in DB
+          await supabase
+            .from('whatsapp_messages')
+            .update({ status: 'sent' })
+            .eq('id', messageId);
         }
       } catch (apiErr) {
-        console.warn('send-whatsapp invocation failed:', apiErr);
+        console.warn('send-whatsapp invocation error:', apiErr);
       }
 
       return data;
@@ -139,16 +215,25 @@ export default function WhatsAppChatPage() {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
       queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
     },
-    onError: (error: any) => toast.error(error.message || 'Failed to send message'),
+    onError: (error: Error) => toast.error(error.message || 'Failed to send message'),
   });
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const filteredContacts = contacts.filter((c: ChatContact) =>
-    (c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone_number.includes(searchQuery))
+    (c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.phone_number.includes(searchQuery))
   );
 
-  const handleSend = () => { if (newMessage.trim()) sendMessage.mutate(newMessage.trim()); };
+  const handleSend = () => {
+    if (selectedBranch === 'all') {
+      toast.warning('Please select a specific branch from the selector before sending messages');
+      return;
+    }
+    if (newMessage.trim()) sendMessage.mutate(newMessage.trim());
+  };
 
   const handleAiSuggest = async () => {
     if (!selectedContact || messages.length === 0) {
@@ -168,20 +253,70 @@ export default function WhatsAppChatPage() {
           context_type: 'general',
         },
       });
-      if (error) throw error;
-      if (data?.error) {
-        toast.error(data.error);
+
+      if (error) {
+        const msg = (error as { message?: string }).message || '';
+        if (isAiNotConfiguredError(msg)) {
+          toast.warning('AI reply requires configuration in Integration Settings');
+        } else {
+          toast.error(msg || 'Failed to get AI suggestion');
+        }
         return;
       }
+
+      if (data?.error) {
+        if (isAiNotConfiguredError(String(data.error))) {
+          toast.warning('AI reply requires configuration in Integration Settings');
+        } else {
+          toast.error(String(data.error));
+        }
+        return;
+      }
+
       if (data?.suggested_reply) {
         setNewMessage(data.suggested_reply);
         toast.success('AI suggestion ready — review and send!');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to get AI suggestion');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to get AI suggestion';
+      if (isAiNotConfiguredError(msg)) {
+        toast.warning('AI reply requires configuration in Integration Settings');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setAiSuggesting(false);
     }
+  };
+
+  const handleOpenNewChat = () => {
+    if (selectedBranch === 'all') {
+      toast.warning('Please select a specific branch before starting a new chat');
+      return;
+    }
+    setNewChatPhone('');
+    setNewChatName('');
+    setNewChatOpen(true);
+  };
+
+  const handleStartNewChat = () => {
+    const phone = newChatPhone.trim();
+    if (!phone) {
+      toast.error('Phone number is required');
+      return;
+    }
+    const contact: ChatContact = {
+      phone_number: phone,
+      contact_name: newChatName.trim() || null,
+      member_id: null,
+      last_message: '',
+      last_message_time: new Date().toISOString(),
+      unread_count: 0,
+    };
+    setSelectedContact(contact);
+    setNewChatOpen(false);
+    setNewChatPhone('');
+    setNewChatName('');
   };
 
   const getStatusIcon = (status: string) => {
@@ -205,11 +340,14 @@ export default function WhatsAppChatPage() {
     }
   });
 
+  const isBranchUnselected = selectedBranch === 'all';
+
   return (
     <AppLayout>
       <div className="h-[calc(100vh-5rem)] p-4">
         <div className="h-full rounded-2xl border border-border/50 shadow-xl overflow-hidden flex bg-card">
-          {/* Sidebar */}
+
+          {/* ── Sidebar ──────────────────────────────────────────────────── */}
           <div className="w-[340px] border-r border-border/50 flex flex-col bg-card">
             {/* Sidebar Header */}
             <div className="p-4 border-b border-border/30">
@@ -220,15 +358,28 @@ export default function WhatsAppChatPage() {
                   </div>
                   Chats
                 </h2>
-                <Badge variant="secondary" className="rounded-full text-xs">{contacts.length}</Badge>
+                <div className="flex items-center gap-1">
+                  <Badge variant="secondary" className="rounded-full text-xs">{contacts.length}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-xl text-emerald-600 hover:bg-emerald-500/10"
+                    onClick={handleOpenNewChat}
+                    title="Start new chat"
+                    data-testid="button-new-chat"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search or start new chat..."
+                  placeholder="Search conversations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+                  data-testid="input-search-contacts"
                 />
               </div>
             </div>
@@ -239,6 +390,9 @@ export default function WhatsAppChatPage() {
                 <div className="p-6 text-center text-muted-foreground">
                   <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No conversations yet</p>
+                  <p className="text-xs mt-1 text-muted-foreground/60">
+                    Use the + button to start a new chat
+                  </p>
                 </div>
               ) : (
                 filteredContacts.map((contact: ChatContact) => (
@@ -250,16 +404,15 @@ export default function WhatsAppChatPage() {
                         : 'border-l-2 border-l-transparent'
                     }`}
                     onClick={() => setSelectedContact(contact)}
+                    data-testid={`contact-item-${contact.phone_number}`}
                   >
-                    <div className="relative">
-                      <Avatar className="h-11 w-11 ring-2 ring-background">
-                        <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
-                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
-                        </AvatarFallback>
-                      </Avatar>
-                      {/* Online indicator */}
-                      <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-background" />
-                    </div>
+                    {/* Avatar — no fake online dot */}
+                    <Avatar className="h-11 w-11 ring-2 ring-background flex-shrink-0">
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
+                        {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                      </AvatarFallback>
+                    </Avatar>
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-sm text-foreground truncate">
@@ -271,6 +424,7 @@ export default function WhatsAppChatPage() {
                       </div>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.last_message}</p>
                     </div>
+
                     {contact.unread_count > 0 && (
                       <Badge className="rounded-full h-5 min-w-[20px] flex items-center justify-center bg-emerald-500 text-white text-[10px] p-0">
                         {contact.unread_count}
@@ -282,12 +436,12 @@ export default function WhatsAppChatPage() {
             </ScrollArea>
           </div>
 
-          {/* Chat Area */}
-          <div className="flex-1 flex flex-col">
+          {/* ── Chat Area ────────────────────────────────────────────────── */}
+          <div className="flex-1 flex flex-col overflow-hidden">
             {selectedContact ? (
               <>
                 {/* Chat Header */}
-                <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between bg-card">
+                <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between bg-card flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold">
@@ -312,12 +466,33 @@ export default function WhatsAppChatPage() {
                   </Button>
                 </div>
 
+                {/* Branch-not-selected inline notice */}
+                {isBranchUnselected && (
+                  <div className="flex items-center gap-2.5 px-5 py-2.5 bg-yellow-500/10 border-b border-yellow-500/20 text-sm text-yellow-700 dark:text-yellow-400">
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    <span>
+                      Please select a specific branch from the branch selector to send messages.
+                    </span>
+                  </div>
+                )}
+
                 {/* Messages Area */}
                 <div className="flex-1 overflow-hidden">
                   <ScrollArea className="h-full">
-                    <div className="p-4 space-y-1" style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                    }}>
+                    <div
+                      className="p-4 space-y-1"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                      }}
+                    >
+                      {groupedMessages.length === 0 && (
+                        <div className="flex items-center justify-center py-16 text-muted-foreground">
+                          <div className="text-center">
+                            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">No messages yet. Send the first one!</p>
+                          </div>
+                        </div>
+                      )}
                       {groupedMessages.map((group) => (
                         <div key={group.date}>
                           {/* Date divider */}
@@ -330,6 +505,7 @@ export default function WhatsAppChatPage() {
                             <div
                               key={msg.id}
                               className={`flex mb-1 ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
+                              data-testid={`message-${msg.id}`}
                             >
                               <div
                                 className={`max-w-[65%] rounded-2xl px-4 py-2.5 shadow-sm ${
@@ -339,9 +515,11 @@ export default function WhatsAppChatPage() {
                                 }`}
                               >
                                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                                <div className={`flex items-center justify-end gap-1 mt-1 ${
-                                  msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'
-                                }`}>
+                                <div
+                                  className={`flex items-center justify-end gap-1 mt-1 ${
+                                    msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'
+                                  }`}
+                                >
                                   <span className="text-[10px]">{format(new Date(msg.created_at), 'HH:mm')}</span>
                                   {msg.direction === 'outbound' && getStatusIcon(msg.status)}
                                 </div>
@@ -356,12 +534,24 @@ export default function WhatsAppChatPage() {
                 </div>
 
                 {/* Message Input */}
-                <div className="px-4 py-3 border-t border-border/30 bg-card">
+                <div className="px-4 py-3 border-t border-border/30 bg-card flex-shrink-0">
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
+                      disabled
+                      title="Emoji picker (coming soon)"
+                    >
                       <Smile className="h-5 w-5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
+                      disabled
+                      title="Attach file (coming soon)"
+                    >
                       <Paperclip className="h-5 w-5" />
                     </Button>
                     <Button
@@ -371,21 +561,25 @@ export default function WhatsAppChatPage() {
                       onClick={handleAiSuggest}
                       disabled={aiSuggesting || messages.length === 0}
                       title="AI Suggest Reply"
+                      data-testid="button-ai-suggest"
                     >
                       {aiSuggesting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
                     </Button>
                     <Input
-                      placeholder="Type a message..."
+                      placeholder={isBranchUnselected ? 'Select a branch to send messages…' : 'Type a message…'}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                      className="flex-1 rounded-xl bg-muted/50 border-0 focus-visible:ring-1"
+                      disabled={isBranchUnselected}
+                      className="flex-1 rounded-xl bg-muted/50 border-0 focus-visible:ring-1 disabled:opacity-60"
+                      data-testid="input-new-message"
                     />
-                    <Button 
-                      onClick={handleSend} 
-                      disabled={!newMessage.trim() || sendMessage.isPending}
+                    <Button
+                      onClick={handleSend}
+                      disabled={!newMessage.trim() || sendMessage.isPending || isBranchUnselected}
                       size="icon"
                       className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+                      data-testid="button-send-message"
                     >
                       <Send className="h-4 w-4" />
                     </Button>
@@ -393,19 +587,97 @@ export default function WhatsAppChatPage() {
                 </div>
               </>
             ) : (
+              /* Empty state */
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-4">
                     <MessageSquare className="h-10 w-10 text-emerald-500/50" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-1">WhatsApp Chat</h3>
-                  <p className="text-sm text-muted-foreground max-w-xs">Select a conversation from the sidebar to start chatting with your members</p>
+                  <p className="text-sm text-muted-foreground max-w-xs mb-4">
+                    Select a conversation from the sidebar, or start a new one with the + button.
+                  </p>
+                  {!isBranchUnselected && (
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={handleOpenNewChat}
+                      data-testid="button-start-new-chat-empty"
+                    >
+                      <Plus className="h-4 w-4" /> New Chat
+                    </Button>
+                  )}
+                  {isBranchUnselected && (
+                    <div className="flex items-center gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 rounded-lg px-3 py-2 max-w-xs mx-auto">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                      Select a specific branch from the selector above to send messages
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* ── New Chat Dialog ────────────────────────────────────────────────── */}
+      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10">
+                <MessageSquare className="h-4 w-4 text-emerald-500" />
+              </div>
+              New Chat
+            </DialogTitle>
+            <DialogDescription>
+              Enter a phone number to start a new WhatsApp conversation.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-chat-phone">Phone Number *</Label>
+              <Input
+                id="new-chat-phone"
+                placeholder="+91 98765 43210"
+                value={newChatPhone}
+                onChange={(e) => setNewChatPhone(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
+                data-testid="input-new-chat-phone"
+              />
+              <p className="text-xs text-muted-foreground">
+                Include country code (e.g. +91 for India)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-chat-name">Contact Name (optional)</Label>
+              <Input
+                id="new-chat-name"
+                placeholder="e.g. John Doe"
+                value={newChatName}
+                onChange={(e) => setNewChatName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
+                data-testid="input-new-chat-name"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewChatOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStartNewChat}
+              disabled={!newChatPhone.trim()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              data-testid="button-start-chat"
+            >
+              Open Chat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
