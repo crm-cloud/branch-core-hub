@@ -164,7 +164,8 @@ function seededShuffle<T>(array: T[], seed: string): T[] {
 export default function AIFitnessPage() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign">("generate");
+  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">("generate");
+  const [editingTemplate, setEditingTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
   const [memberInfo, setMemberInfo] = useState({
     name: "", age: "", gender: "", height: "", weight: "",
