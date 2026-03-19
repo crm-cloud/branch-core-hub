@@ -846,6 +846,9 @@ export default function AIFitnessPage() {
                               }}>
                                 <Download className="h-3.5 w-3.5" />
                               </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleEditTemplate(template)} title="Edit">
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
                               <Button size="sm" variant="ghost" onClick={() => deleteTemplateMutation.mutate(template.id)}>
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
                               </Button>
