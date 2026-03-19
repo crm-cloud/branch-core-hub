@@ -17,8 +17,32 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    // ── STEP 1: Verify caller identity via JWT ─────────────────────────────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create a user-scoped client (respects RLS, validates JWT)
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — invalid or expired session" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Service-role client for DB writes and privileged lookups
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
     const { action, branch_id, template_id, template_data } = body;
@@ -30,8 +54,46 @@ serve(async (req) => {
       );
     }
 
-    // Fetch WhatsApp integration settings for the branch
-    const { data: integration, error: intError } = await supabase
+    // ── STEP 2: Verify caller has access to requested branch ───────────────
+    // Check the user has a role in this branch (or is the org owner)
+    const { data: branchAccess, error: accessError } = await supabase
+      .from("branch_members")
+      .select("id, role")
+      .eq("user_id", user.id)
+      .eq("branch_id", branch_id)
+      .limit(1)
+      .maybeSingle();
+
+    // Also check if user is an org-level owner/admin (branch_id IS NULL roles)
+    const { data: globalRole } = await supabase
+      .from("branch_members")
+      .select("id, role")
+      .eq("user_id", user.id)
+      .is("branch_id", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (!branchAccess && !globalRole) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden — you do not have access to this branch" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Restrict template creation/management to admin-level roles
+    const allowedRoles = ["owner", "admin", "manager"];
+    const userRole = branchAccess?.role || globalRole?.role;
+    if (!allowedRoles.includes(userRole)) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden — only owners, admins, and managers can manage Meta templates" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── STEP 3: Fetch WhatsApp integration settings ────────────────────────
+    // Try branch-specific first, then global (null branch_id)
+    let activeIntegration: any = null;
+    const { data: branchIntegration } = await supabase
       .from("integration_settings")
       .select("config, credentials, is_active")
       .eq("branch_id", branch_id)
@@ -40,9 +102,9 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // If no branch-specific integration, try global (null branch_id)
-    let activeIntegration = integration;
-    if (intError || !integration) {
+    if (branchIntegration) {
+      activeIntegration = branchIntegration;
+    } else {
       const { data: globalIntegration } = await supabase
         .from("integration_settings")
         .select("config, credentials, is_active")
@@ -90,7 +152,7 @@ serve(async (req) => {
 
       const templates = metaData.data || [];
 
-      // Update local DB statuses for any matched templates
+      // Update local DB statuses for mapped templates (those with meta_template_name set)
       for (const mt of templates) {
         await supabase
           .from("templates")
@@ -102,6 +164,7 @@ serve(async (req) => {
           .not("meta_template_name", "is", null);
       }
 
+      // Return full Meta API list (includes category, status, etc.)
       return new Response(
         JSON.stringify({ templates }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -126,9 +189,11 @@ serve(async (req) => {
         );
       }
 
-      // Build Meta template payload
+      // Enforce Meta name format: lowercase, letters/numbers/underscores only
+      const safeName = name.toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+
       const metaPayload = {
-        name: name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+        name: safeName,
         category,
         language,
         components: [
@@ -161,12 +226,12 @@ serve(async (req) => {
         );
       }
 
-      // Update local template record with Meta status
+      // Persist Meta name + status back into the local template row
       if (local_template_id) {
         await supabase
           .from("templates")
           .update({
-            meta_template_name: metaPayload.name,
+            meta_template_name: safeName,
             meta_template_status: metaData.status || "PENDING",
             meta_rejection_reason: null,
           })
@@ -174,7 +239,7 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ success: true, meta_template_id: metaData.id, status: metaData.status }),
+        JSON.stringify({ success: true, meta_template_id: metaData.id, status: metaData.status, name: safeName }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -205,7 +270,7 @@ serve(async (req) => {
         );
       }
 
-      // Update local record by matching meta_template_name
+      // Update matching local record
       await supabase
         .from("templates")
         .update({

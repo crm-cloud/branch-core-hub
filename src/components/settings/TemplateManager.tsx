@@ -242,7 +242,8 @@ export function TemplateManager() {
   };
 
   const openMetaDialog = (template: Template) => {
-    const slugName = template.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    // Meta requires lowercase with underscores only (hyphens not permitted)
+    const slugName = template.name.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
     setMetaTarget(template);
     setMetaForm({
       name: template.meta_template_name || slugName,

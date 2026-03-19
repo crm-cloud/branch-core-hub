@@ -747,6 +747,15 @@ function IntegrationConfigSheet({
   );
 }
 
+interface MetaApiTemplate {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language?: string;
+  rejected_reason?: string;
+}
+
 function MetaTemplatesPanel({
   integrations,
   selectedBranch,
@@ -757,9 +766,12 @@ function MetaTemplatesPanel({
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  // Live results from Meta API after a sync — shown in the table with category
+  const [metaApiTemplates, setMetaApiTemplates] = useState<MetaApiTemplate[] | null>(null);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
-  const { data: localTemplates = [], isLoading: loadingTemplates } = useQuery({
-    queryKey: ['communication-templates', 'whatsapp'],
+  const { data: localTemplates = [], isLoading: loadingLocal } = useQuery({
+    queryKey: ['communication-templates', 'whatsapp-meta'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('templates')
@@ -772,7 +784,7 @@ function MetaTemplatesPanel({
   });
 
   const hasWhatsAppConfig = integrations.some(
-    (i) => i.integration_type === 'whatsapp' && i.is_active
+    (i: any) => i.integration_type === 'whatsapp' && i.is_active
   );
 
   const handleSync = async () => {
@@ -789,9 +801,12 @@ function MetaTemplatesPanel({
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      const syncedCount = data?.templates?.length ?? 0;
-      toast.success(`Synced ${syncedCount} template(s) from Meta`);
+      const templates: MetaApiTemplate[] = data?.templates || [];
+      setMetaApiTemplates(templates);
+      setLastSynced(new Date().toLocaleTimeString());
+      toast.success(`Synced ${templates.length} template(s) from Meta`);
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['communication-templates', 'whatsapp-meta'] });
     } catch (err: any) {
       toast.error(err.message || 'Failed to sync templates from Meta');
     } finally {
@@ -807,7 +822,14 @@ function MetaTemplatesPanel({
     DISABLED: { label: 'Disabled', icon: PauseCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
   };
 
-  const submittedTemplates = localTemplates.filter((t) => t.meta_template_name);
+  // Local templates that have been submitted to Meta (have meta_template_name set)
+  const submittedLocal = localTemplates.filter((t: any) => t.meta_template_name);
+
+  // Decide what rows to render:
+  // After sync → show full Meta API list (includes category, live status)
+  // Before sync → show locally-submitted templates (from DB) as a fallback
+  const useMetaList = metaApiTemplates !== null;
+  const totalCount = useMetaList ? metaApiTemplates.length : submittedLocal.length;
 
   return (
     <Card>
@@ -819,9 +841,9 @@ function MetaTemplatesPanel({
           <div className="flex items-center gap-2">
             <Send className="h-4 w-4 text-green-600" />
             Meta Approved Templates
-            {submittedTemplates.length > 0 && (
+            {totalCount > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {submittedTemplates.length} submitted
+                {totalCount}
               </Badge>
             )}
           </div>
@@ -839,10 +861,11 @@ function MetaTemplatesPanel({
             </div>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              Templates submitted to Meta for approval.{' '}
-              {submittedTemplates.length === 0 && 'Use "Submit to Meta" on any WhatsApp template.'}
+              {useMetaList
+                ? `${metaApiTemplates.length} templates registered with Meta.${lastSynced ? ` Last synced: ${lastSynced}.` : ''}`
+                : 'Click "Sync from Meta" to see all templates registered with your WABA.'}
             </p>
             <Button
               variant="outline"
@@ -857,62 +880,107 @@ function MetaTemplatesPanel({
             </Button>
           </div>
 
-          {loadingTemplates ? (
-            <div className="flex items-center justify-center py-6">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-            </div>
-          ) : submittedTemplates.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Send className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No templates submitted to Meta yet.</p>
-              <p className="text-xs mt-1">
-                Go to <strong>Communication Templates</strong> and click "Submit to Meta" on any WhatsApp template.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {submittedTemplates.map((t) => {
-                const status = t.meta_template_status;
-                const cfg = status ? statusConfig[status] : null;
-                const Icon = cfg?.icon;
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-start justify-between p-3 rounded-lg border bg-card"
-                    data-testid={`meta-template-row-${t.id}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-sm">{t.name}</p>
-                        {cfg && Icon && (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.className}`}>
-                            <Icon className="h-3 w-3" />
-                            {cfg.label}
-                          </span>
-                        )}
-                        {!status && (
-                          <span className="text-xs text-muted-foreground">—</span>
+          {/* After sync: show full Meta API list with category */}
+          {useMetaList && (
+            metaApiTemplates.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Send className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No templates found in your WABA.</p>
+                <p className="text-xs mt-1">Submit a template using the "Submit to Meta" button in Communication Templates.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {metaApiTemplates.map((mt) => {
+                  const cfg = statusConfig[mt.status];
+                  const Icon = cfg?.icon;
+                  return (
+                    <div
+                      key={mt.id}
+                      className="flex items-start justify-between p-3 rounded-lg border bg-card"
+                      data-testid={`meta-template-row-${mt.id}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{mt.name}</p>
+                          {cfg && Icon && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.className}`}>
+                              <Icon className="h-3 w-3" />
+                              {cfg.label}
+                            </span>
+                          )}
+                          <Badge variant="outline" className="text-xs rounded-full capitalize">
+                            {mt.category?.toLowerCase().replace('_', ' ')}
+                          </Badge>
+                          {mt.language && (
+                            <span className="text-xs text-muted-foreground font-mono">{mt.language}</span>
+                          )}
+                        </div>
+                        {mt.status === 'REJECTED' && mt.rejected_reason && (
+                          <p className="text-xs text-red-600 mt-1">
+                            <strong>Reason:</strong> {mt.rejected_reason}
+                          </p>
                         )}
                       </div>
-                      {t.meta_template_name && (
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                          {t.meta_template_name}
-                        </p>
-                      )}
-                      {status === 'REJECTED' && t.meta_rejection_reason && (
-                        <p className="text-xs text-red-600 mt-1">
-                          <strong>Reason:</strong> {t.meta_rejection_reason}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {/* Before sync: show locally-submitted templates as fallback */}
+          {!useMetaList && (
+            loadingLocal ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+              </div>
+            ) : submittedLocal.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Send className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No templates submitted to Meta yet.</p>
+                <p className="text-xs mt-1">
+                  Go to <strong>Communication Templates</strong> and click "Submit to Meta" on any WhatsApp template.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {submittedLocal.map((t: any) => {
+                  const cfg = t.meta_template_status ? statusConfig[t.meta_template_status] : null;
+                  const Icon = cfg?.icon;
+                  return (
+                    <div
+                      key={t.id}
+                      className="flex items-start p-3 rounded-lg border bg-card"
+                      data-testid={`local-meta-template-row-${t.id}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{t.name}</p>
+                          {cfg && Icon && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.className}`}>
+                              <Icon className="h-3 w-3" />
+                              {cfg.label}
+                            </span>
+                          )}
+                        </div>
+                        {t.meta_template_name && (
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{t.meta_template_name}</p>
+                        )}
+                        {t.meta_template_status === 'REJECTED' && t.meta_rejection_reason && (
+                          <p className="text-xs text-red-600 mt-1">
+                            <strong>Reason:</strong> {t.meta_rejection_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           )}
 
           <p className="text-xs text-muted-foreground">
-            Click "Sync from Meta" to refresh approval statuses. Deletion must be done in Meta Business Manager.
+            Sync to refresh live statuses. Template deletion must be done in Meta Business Manager.
           </p>
         </CardContent>
       )}
