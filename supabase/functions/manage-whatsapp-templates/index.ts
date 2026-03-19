@@ -54,6 +54,15 @@ serve(async (req) => {
       );
     }
 
+    // Validate branch_id is a valid UUID to guard against filter-injection in dynamic .or() filters
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(branch_id)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid branch_id format — must be a UUID" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ── STEP 2: Verify caller has access to requested branch ───────────────
     // Check the user has a role in this branch (or is the org owner)
     const { data: branchAccess, error: accessError } = await supabase
