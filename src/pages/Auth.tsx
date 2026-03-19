@@ -81,7 +81,7 @@ export default function AuthPage() {
 
         {/* Login Card — self-contained with all auth modes */}
         <Card className="rounded-2xl border-0 shadow-2xl shadow-black/20 bg-card">
-          <CardContent className="p-7 sm:p-8">
+          <CardContent className="p-5 sm:p-7">
             <LoginForm onSuccess={handleLoginSuccess} />
           </CardContent>
         </Card>

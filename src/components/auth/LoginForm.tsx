@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Loader2, ArrowLeft, Mail, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -46,7 +46,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const navigate = useNavigate();
   const { signInWithOtp, verifyOtp } = useAuth();
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const firstOtpSlotRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<PasswordLoginData>({
     resolver: zodResolver(passwordLoginSchema),
@@ -58,12 +57,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (otpStep === 'verify' && firstOtpSlotRef.current) {
-      setTimeout(() => firstOtpSlotRef.current?.focus(), 100);
-    }
-  }, [otpStep]);
 
   const startCountdown = () => {
     setCountdown(RESEND_COOLDOWN);
@@ -147,270 +140,267 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     navigate('/home');
   };
 
-  const switchToEmailCode = () => {
-    setMode('email_code');
-    setOtpStep('send');
-    setOtpEmail('');
-    setOtp('');
-    setOtpEmailError('');
-    setCountdown(0);
-    if (countdownRef.current) clearInterval(countdownRef.current);
+  const switchMode = (next: Mode) => {
+    if (next === mode) return;
+    setMode(next);
+    if (next === 'email_code') {
+      setOtpStep('send');
+      setOtpEmail('');
+      setOtp('');
+      setOtpEmailError('');
+    } else {
+      setOtp('');
+      setCountdown(0);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    }
   };
 
-  const switchToPassword = () => {
-    setMode('password');
-    setOtpStep('send');
-    setOtp('');
-    setCountdown(0);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-  };
+  return (
+    <div className="space-y-5">
+      {/* Mode toggle — persists across both modes so user always sees both options */}
+      <div className="flex rounded-xl bg-muted/60 p-1 gap-1">
+        <button
+          type="button"
+          data-testid="tab-password"
+          onClick={() => switchMode('password')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
+            mode === 'password'
+              ? 'bg-card shadow-sm text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Password
+        </button>
+        <button
+          type="button"
+          data-testid="tab-email-code"
+          onClick={() => switchMode('email_code')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
+            mode === 'email_code'
+              ? 'bg-card shadow-sm text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Email code
+        </button>
+      </div>
 
-  if (mode === 'email_code') {
-    return (
-      <div className="space-y-5">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 mb-4">
-            <button
-              type="button"
-              onClick={switchToPassword}
-              data-testid="btn-back-to-password"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              Back
-            </button>
+      {/* ── PASSWORD MODE ── */}
+      {mode === 'password' && (
+        <div className="space-y-4">
+          <div className="space-y-0.5">
+            <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
+            <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
           </div>
 
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handlePasswordSubmit)} className="space-y-3.5">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-foreground font-medium">Email</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          autoComplete="email"
+                          data-testid="input-email"
+                          className="h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent"
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-foreground font-medium">Password</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          data-testid="input-password"
+                          className="h-12 pl-9 pr-11 text-base bg-secondary/50 border-border focus:border-accent"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                type="submit"
+                data-testid="btn-sign-in"
+                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</>
+                ) : (
+                  'Sign In'
+                )}
+              </Button>
+            </form>
+          </Form>
+
+          <div className="flex items-center justify-center">
+            <Link
+              to="/auth/forgot-password"
+              data-testid="link-forgot-password"
+              className="text-sm text-muted-foreground hover:text-accent transition-colors"
+            >
+              Forgot your password?
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMAIL CODE MODE ── */}
+      {mode === 'email_code' && (
+        <div className="space-y-4">
           {otpStep === 'send' ? (
             <>
-              <h2 className="text-xl font-bold text-foreground">Sign in with a code</h2>
-              <p className="text-sm text-muted-foreground">
-                Enter your email and we'll send a 6-digit sign-in code.
-              </p>
+              <div className="space-y-0.5">
+                <h2 className="text-xl font-bold text-foreground">Sign in with a code</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter your email and we'll send a 6-digit sign-in code.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="otp-email" className="text-sm font-medium text-foreground">
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="otp-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={otpEmail}
+                    onChange={e => { setOtpEmail(e.target.value); setOtpEmailError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && handleSendCode()}
+                    disabled={isLoading}
+                    autoComplete="email"
+                    autoFocus
+                    data-testid="input-otp-email"
+                    className={`h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent ${otpEmailError ? 'border-destructive' : ''}`}
+                  />
+                </div>
+                {otpEmailError && (
+                  <p className="text-xs text-destructive">{otpEmailError}</p>
+                )}
+              </div>
+
+              <Button
+                onClick={handleSendCode}
+                disabled={isLoading || !otpEmail}
+                data-testid="btn-send-code"
+                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+              >
+                {isLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending code...</>
+                ) : (
+                  'Send code'
+                )}
+              </Button>
             </>
           ) : (
             <>
-              <h2 className="text-xl font-bold text-foreground">Enter the code</h2>
-              <p className="text-sm text-muted-foreground">
-                A 6-digit code was sent to{' '}
-                <button
-                  type="button"
-                  onClick={() => { setOtpStep('send'); setOtp(''); }}
-                  className="font-semibold text-foreground underline-offset-2 hover:underline"
+              <div className="space-y-0.5">
+                <h2 className="text-xl font-bold text-foreground">Enter the code</h2>
+                <p className="text-sm text-muted-foreground">
+                  A 6-digit code was sent to{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setOtpStep('send'); setOtp(''); }}
+                    data-testid="btn-change-email"
+                    className="font-semibold text-foreground underline-offset-2 hover:underline"
+                  >
+                    {otpEmail}
+                  </button>
+                  . Check your inbox and spam folder.
+                </p>
+              </div>
+
+              {/* OTP slots — sized to fit 320px screens (w-9 at min, w-10 at sm+) */}
+              <div className="flex justify-center">
+                <InputOTP
+                  maxLength={6}
+                  value={otp}
+                  onChange={setOtp}
+                  disabled={isLoading}
+                  onComplete={handleVerifyOtp}
+                  autoFocus
+                  data-testid="input-otp-code"
                 >
-                  {otpEmail}
-                </button>
-                . Check your inbox and spam folder.
+                  <InputOTPGroup className="gap-1.5 sm:gap-2">
+                    <InputOTPSlot index={0} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={1} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={2} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={3} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={4} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={5} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+
+              <Button
+                onClick={handleVerifyOtp}
+                disabled={isLoading || otp.length !== 6}
+                data-testid="btn-verify-code"
+                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+              >
+                {isLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Verify &amp; Sign In</>
+                )}
+              </Button>
+
+              <p className="text-center text-sm text-muted-foreground">
+                Didn't receive it?{' '}
+                {countdown > 0 ? (
+                  <span className="text-muted-foreground/70">
+                    Resend in <span className="tabular-nums font-medium">{countdown}s</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isLoading}
+                    data-testid="btn-resend-code"
+                    className="text-accent hover:underline font-medium inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Resend now
+                  </button>
+                )}
               </p>
             </>
           )}
         </div>
-
-        {otpStep === 'send' ? (
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="otp-email" className="text-sm font-medium text-foreground">
-                Email address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="otp-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={otpEmail}
-                  onChange={e => { setOtpEmail(e.target.value); setOtpEmailError(''); }}
-                  onKeyDown={e => e.key === 'Enter' && handleSendCode()}
-                  disabled={isLoading}
-                  autoComplete="email"
-                  autoFocus
-                  data-testid="input-otp-email"
-                  className={`h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent ${otpEmailError ? 'border-destructive' : ''}`}
-                />
-              </div>
-              {otpEmailError && (
-                <p className="text-xs text-destructive">{otpEmailError}</p>
-              )}
-            </div>
-            <Button
-              onClick={handleSendCode}
-              disabled={isLoading || !otpEmail}
-              data-testid="btn-send-code"
-              className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
-            >
-              {isLoading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending code...</>
-              ) : (
-                'Send code'
-              )}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="flex justify-center">
-              <InputOTP
-                maxLength={6}
-                value={otp}
-                onChange={setOtp}
-                disabled={isLoading}
-                onComplete={handleVerifyOtp}
-                data-testid="input-otp-code"
-              >
-                <InputOTPGroup className="gap-2">
-                  <InputOTPSlot index={0} className="h-12 w-10 text-lg rounded-xl border-border" />
-                  <InputOTPSlot index={1} className="h-12 w-10 text-lg rounded-xl border-border" />
-                  <InputOTPSlot index={2} className="h-12 w-10 text-lg rounded-xl border-border" />
-                  <InputOTPSlot index={3} className="h-12 w-10 text-lg rounded-xl border-border" />
-                  <InputOTPSlot index={4} className="h-12 w-10 text-lg rounded-xl border-border" />
-                  <InputOTPSlot index={5} className="h-12 w-10 text-lg rounded-xl border-border" />
-                </InputOTPGroup>
-              </InputOTP>
-            </div>
-
-            <Button
-              onClick={handleVerifyOtp}
-              disabled={isLoading || otp.length !== 6}
-              data-testid="btn-verify-code"
-              className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
-            >
-              {isLoading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
-              ) : (
-                <><CheckCircle2 className="mr-2 h-4 w-4" /> Verify &amp; Sign In</>
-              )}
-            </Button>
-
-            <p className="text-center text-sm text-muted-foreground">
-              Didn't receive it?{' '}
-              {countdown > 0 ? (
-                <span className="text-muted-foreground/70">
-                  Resend in <span className="tabular-nums font-medium">{countdown}s</span>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResendCode}
-                  disabled={isLoading}
-                  data-testid="btn-resend-code"
-                  className="text-accent hover:underline font-medium inline-flex items-center gap-1"
-                >
-                  <RefreshCw className="h-3 w-3" /> Resend now
-                </button>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
-        <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
-      </div>
-
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(handlePasswordSubmit)} className="space-y-4">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-foreground font-medium">Email</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input
-                      type="email"
-                      placeholder="you@example.com"
-                      autoComplete="email"
-                      data-testid="input-email"
-                      className="h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent"
-                      {...field}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-foreground font-medium">Password</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                      data-testid="input-password"
-                      className="h-12 pl-9 pr-11 text-base bg-secondary/50 border-border focus:border-accent"
-                      {...field}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <Button
-            type="submit"
-            data-testid="btn-sign-in"
-            className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</>
-            ) : (
-              'Sign In'
-            )}
-          </Button>
-        </form>
-      </Form>
-
-      <div className="flex items-center justify-center">
-        <Link
-          to="/auth/forgot-password"
-          data-testid="link-forgot-password"
-          className="text-sm text-muted-foreground hover:text-accent transition-colors"
-        >
-          Forgot your password?
-        </Link>
-      </div>
-
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
-        </div>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        data-testid="btn-email-code"
-        onClick={switchToEmailCode}
-        className="w-full h-12 border-border hover:border-accent/60 hover:bg-accent/5 transition-all text-base"
-      >
-        <Mail className="mr-2 h-4 w-4 text-accent" />
-        Sign in without a password
-      </Button>
+      )}
     </div>
   );
 }
