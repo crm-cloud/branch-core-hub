@@ -5127,12 +5127,8 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean | null
-          meta_rejection_reason: string | null
-          meta_template_name: string | null
-          meta_template_status: string | null
           name: string
           subject: string | null
-          trigger: string | null
           type: string
           updated_at: string
           variables: Json | null
@@ -5143,12 +5139,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
-          meta_rejection_reason?: string | null
-          meta_template_name?: string | null
-          meta_template_status?: string | null
           name: string
           subject?: string | null
-          trigger?: string | null
           type: string
           updated_at?: string
           variables?: Json | null
@@ -5159,12 +5151,8 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
-          meta_rejection_reason?: string | null
-          meta_template_name?: string | null
-          meta_template_status?: string | null
           name?: string
           subject?: string | null
-          trigger?: string | null
           type?: string
           updated_at?: string
           variables?: Json | null
@@ -6010,6 +5998,7 @@ export type Database = {
         | "frozen"
         | "expired"
         | "cancelled"
+        | "transferred"
       no_show_policy: "mark_used" | "allow_reschedule" | "charge_penalty"
       order_status:
         | "pending"
@@ -6258,6 +6247,7 @@ export const Constants = {
         "frozen",
         "expired",
         "cancelled",
+        "transferred",
       ],
       no_show_policy: ["mark_used", "allow_reschedule", "charge_penalty"],
       order_status: [

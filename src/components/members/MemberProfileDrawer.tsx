@@ -934,7 +934,7 @@ export function MemberProfileDrawer({
               <TabsList className="flex w-full overflow-x-auto scrollbar-hide h-auto p-1 gap-0.5 pr-8 sm:pr-1">
                 <TabsTrigger value="overview" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
                   <User className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Overview</span>
+                  <span className="text-xs">Overview</span>
                 </TabsTrigger>
                 <TabsTrigger value="membership" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
                   <CreditCard className="h-4 w-4" />
