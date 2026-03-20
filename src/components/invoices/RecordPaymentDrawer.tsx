@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,12 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, IndianRupee } from 'lucide-react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { CreditCard, IndianRupee, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useQuery } from '@tanstack/react-query';
+import { fetchWallet, debitWallet } from '@/services/walletService';
 
 interface RecordPaymentDrawerProps {
   open: boolean;
@@ -39,6 +40,15 @@ export function RecordPaymentDrawer({
   const [notes, setNotes] = useState('');
   const [incomeCategoryId, setIncomeCategoryId] = useState<string>('');
 
+  const effectiveMemberId = memberId || invoice?.member_id;
+
+  // Fetch wallet balance when wallet payment method is selected
+  const { data: walletData, isLoading: walletLoading } = useQuery({
+    queryKey: ['member-wallet-balance', effectiveMemberId],
+    queryFn: () => fetchWallet(effectiveMemberId!),
+    enabled: open && paymentMethod === 'wallet' && !!effectiveMemberId,
+  });
+
   const { data: incomeCategories = [] } = useQuery({
     queryKey: ['income-categories'],
     queryFn: async () => {
@@ -52,6 +62,8 @@ export function RecordPaymentDrawer({
     },
   });
 
+  const insufficientWallet = paymentMethod === 'wallet' && walletData && amount > walletData.balance;
+
   const recordPayment = useMutation({
     mutationFn: async () => {
       if (amount <= 0) {
@@ -61,12 +73,28 @@ export function RecordPaymentDrawer({
         throw new Error('Amount cannot exceed due amount');
       }
 
+      // If wallet payment, debit the wallet first
+      if (paymentMethod === 'wallet') {
+        if (!effectiveMemberId) throw new Error('Member ID required for wallet payment');
+        if (!walletData || walletData.balance < amount) {
+          throw new Error('Insufficient wallet balance');
+        }
+        await debitWallet(
+          effectiveMemberId,
+          amount,
+          `Payment for invoice ${invoice?.invoice_number || 'N/A'}`,
+          'invoice_payment',
+          invoice?.id,
+          user?.id
+        );
+      }
+
       // Create payment record
       const { error: paymentError } = await supabase
         .from('payments')
         .insert({
           branch_id: branchId,
-          member_id: memberId || invoice?.member_id || null,
+          member_id: effectiveMemberId || null,
           invoice_id: invoice?.id,
           amount,
           payment_method: paymentMethod as any,
@@ -105,6 +133,8 @@ export function RecordPaymentDrawer({
       queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['member-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet-balance'] });
       onOpenChange(false);
       resetForm();
     },
@@ -122,9 +152,9 @@ export function RecordPaymentDrawer({
   };
 
   // Reset amount when invoice changes
-  useState(() => {
+  useEffect(() => {
     setAmount(dueAmount);
-  });
+  }, [dueAmount]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -210,6 +240,38 @@ export function RecordPaymentDrawer({
             </Select>
           </div>
 
+          {/* Wallet Balance Info */}
+          {paymentMethod === 'wallet' && (
+            <Card className={`border ${insufficientWallet ? 'border-destructive/50 bg-destructive/5' : 'border-primary/20 bg-primary/5'}`}>
+              <CardContent className="pt-3 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Wallet Balance</span>
+                  </div>
+                  {walletLoading ? (
+                    <span className="text-sm text-muted-foreground">Loading...</span>
+                  ) : walletData ? (
+                    <span className={`text-sm font-bold ${insufficientWallet ? 'text-destructive' : 'text-primary'}`}>
+                      ₹{walletData.balance.toLocaleString()}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No wallet</span>
+                  )}
+                </div>
+                {insufficientWallet && (
+                  <div className="flex items-center gap-1.5 mt-2 text-xs text-destructive">
+                    <AlertTriangle className="h-3 w-3" />
+                    Insufficient balance. Need ₹{(amount - (walletData?.balance || 0)).toLocaleString()} more.
+                  </div>
+                )}
+                {!effectiveMemberId && (
+                  <p className="text-xs text-destructive mt-1">Member ID required for wallet payments</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Income Category */}
           <div className="space-y-2">
             <Label>Income Category</Label>
@@ -225,8 +287,7 @@ export function RecordPaymentDrawer({
             </Select>
           </div>
 
-
-          {paymentMethod !== 'cash' && (
+          {paymentMethod !== 'cash' && paymentMethod !== 'wallet' && (
             <div className="space-y-2">
               <Label>Transaction ID</Label>
               <Input
@@ -258,6 +319,11 @@ export function RecordPaymentDrawer({
                   {amount.toLocaleString()}
                 </span>
               </div>
+              {paymentMethod === 'wallet' && walletData && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Wallet balance after: ₹{(walletData.balance - amount).toLocaleString()}
+                </p>
+              )}
               {amount < dueAmount && (
                 <p className="text-sm text-muted-foreground mt-1">
                   Remaining due: ₹{(dueAmount - amount).toLocaleString()}
@@ -273,7 +339,12 @@ export function RecordPaymentDrawer({
           </Button>
           <Button 
             onClick={() => recordPayment.mutate()} 
-            disabled={amount <= 0 || amount > dueAmount || recordPayment.isPending}
+            disabled={
+              amount <= 0 || 
+              amount > dueAmount || 
+              recordPayment.isPending ||
+              (paymentMethod === 'wallet' && (!!insufficientWallet || !effectiveMemberId || !walletData))
+            }
           >
             {recordPayment.isPending ? 'Recording...' : 'Record Payment'}
           </Button>

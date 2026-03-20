@@ -43,8 +43,29 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
         ?.replace(/\{\{name\}\}/gi, recipientName)
         ?.replace(/\{\{1\}\}/g, recipientName);
 
+      // First create a whatsapp_messages record to get the message_id
+      const { data: msgRecord, error: msgError } = await (supabase as any)
+        .from('whatsapp_messages')
+        .insert({
+          branch_id: branchId,
+          phone_number: phoneNumber,
+          direction: 'outbound',
+          content,
+          status: 'pending',
+          template_name: selectedTemplate.name,
+        })
+        .select('id')
+        .single();
+
+      if (msgError) throw msgError;
+
       const { error } = await supabase.functions.invoke('send-whatsapp', {
-        body: { phone_number: phoneNumber, content, branch_id: branchId },
+        body: {
+          message_id: msgRecord.id,
+          phone_number: phoneNumber,
+          content,
+          branch_id: branchId,
+        },
       });
       if (error) throw error;
       toast.success(`Template "${selectedTemplate.name}" sent to ${recipientName}`);
@@ -115,7 +136,7 @@ export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber
   try {
     const { data: templates } = await (supabase as any)
       .from('templates')
-      .select('id, content')
+      .select('id, content, name')
       .eq('channel', 'whatsapp')
       .eq('trigger_event', triggerEvent)
       .eq('is_active', true)
@@ -127,8 +148,29 @@ export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber
       ?.replace(/\{\{name\}\}/gi, recipientName)
       ?.replace(/\{\{1\}\}/g, recipientName);
 
+    // Create message record first
+    const { data: msgRecord } = await (supabase as any)
+      .from('whatsapp_messages')
+      .insert({
+        branch_id: branchId,
+        phone_number: phoneNumber,
+        direction: 'outbound',
+        content,
+        status: 'pending',
+        template_name: templates[0].name,
+      })
+      .select('id')
+      .single();
+
+    if (!msgRecord) return;
+
     await supabase.functions.invoke('send-whatsapp', {
-      body: { phone_number: phoneNumber, content, branch_id: branchId },
+      body: {
+        message_id: msgRecord.id,
+        phone_number: phoneNumber,
+        content,
+        branch_id: branchId,
+      },
     });
   } catch {
     // Silently fail for auto-triggers — don't block the main flow

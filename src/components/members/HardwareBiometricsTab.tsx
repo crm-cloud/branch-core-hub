@@ -5,16 +5,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { 
   Fingerprint, CreditCard, MessageCircle, Shield, 
-  Upload, CheckCircle, Clock, AlertTriangle, Loader2, RefreshCw
+  CheckCircle, Clock, AlertTriangle, Loader2, RefreshCw, Info
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { queueMemberSync, getSyncStatus } from '@/services/biometricService';
+import { getSyncStatus } from '@/services/biometricService';
 
 interface HardwareBiometricsTabProps {
   memberId: string;
@@ -32,7 +31,6 @@ export function HardwareBiometricsTab({
   memberId,
   memberName,
   memberStatus,
-  biometricPhotoUrl,
   biometricEnrolled,
   wiegandCode: initialWiegandCode,
   customWelcomeMessage: initialMessage,
@@ -43,7 +41,6 @@ export function HardwareBiometricsTab({
   const [wiegandCode, setWiegandCode] = useState(initialWiegandCode || '');
   const [welcomeMessage, setWelcomeMessage] = useState(initialMessage || 'Welcome! Enjoy your workout');
   const [accessEnabled, setAccessEnabled] = useState(initialAccessEnabled ?? true);
-  const [isUploading, setIsUploading] = useState(false);
 
   const isFrozenOrExpired = ['frozen', 'expired', 'cancelled'].includes(memberStatus);
 
@@ -77,43 +74,6 @@ export function HardwareBiometricsTab({
     saveMutation.mutate({ hardware_access_enabled: checked });
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `biometric/${memberId}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('member-photos')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('member-photos')
-        .getPublicUrl(filePath);
-
-      // Queue sync to all face terminals
-      await queueMemberSync(memberId, publicUrl, memberName);
-      
-      toast.success('Biometric photo uploaded & sync queued');
-      queryClient.invalidateQueries({ queryKey: ['member-details', memberId] });
-      queryClient.invalidateQueries({ queryKey: ['biometric-sync-status', memberId] });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to upload photo');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const enrollmentStatus = biometricEnrolled 
     ? 'enrolled' 
     : syncStatuses.some(s => s.status === 'pending' || s.status === 'syncing')
@@ -133,7 +93,7 @@ export function HardwareBiometricsTab({
 
   return (
     <TabsContent value="hardware" className="space-y-4 mt-4">
-      {/* Face Enrollment */}
+      {/* Face Enrollment Status — device-managed */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -144,34 +104,15 @@ export function HardwareBiometricsTab({
             {getEnrollmentBadge()}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-24 w-24 rounded-xl border-2 border-dashed border-muted-foreground/30">
-              <AvatarImage src={biometricPhotoUrl || undefined} className="object-cover" />
-              <AvatarFallback className="rounded-xl text-lg bg-muted">
-                <Fingerprint className="h-8 w-8 text-muted-foreground" />
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Upload a high-resolution front-facing photo for biometric registration.
+        <CardContent>
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+            <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">Face enrollment is handled at the terminal</p>
+              <p>
+                To enroll this member's face, use the "Enroll" option directly on the access control 
+                terminal at the gym entrance. The device will capture and store the biometric data automatically.
               </p>
-              <label htmlFor="biometric-upload">
-                <Button variant="outline" size="sm" asChild disabled={isUploading}>
-                  <span>
-                    {isUploading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Upload className="h-3 w-3 mr-1" />}
-                    {biometricPhotoUrl ? 'Replace Photo' : 'Upload Photo'}
-                  </span>
-                </Button>
-              </label>
-              <input
-                id="biometric-upload"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePhotoUpload}
-                disabled={isUploading}
-              />
             </div>
           </div>
         </CardContent>
@@ -289,7 +230,7 @@ export function HardwareBiometricsTab({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No sync records. Upload a biometric photo to start.
+              No sync records. Face enrollment is handled at the terminal device.
             </p>
           )}
         </CardContent>
