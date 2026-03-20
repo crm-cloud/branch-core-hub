@@ -1,80 +1,51 @@
 
-# Fix Plan: Query Bugs, AI Fitness Redesign, Public Website CMS Sync, Staff Login
 
-## 1. Critical Query Bug Fixes
+# Deep Audit & Fix: Comp/Gift Role Logic, Rewards Wallet, WA Templates, Profile UX
 
-### 1a. `employees` Relationship Error in HRM
-**File:** `src/pages/HRM.tsx` (line 58)
-**Bug:** `employees(employee_code, profile:user_id(full_name))` — `employees.user_id` FK points to `auth.users`, not `profiles`. Supabase cannot traverse `user_id -> profiles`.
-**Fix:** Use a 2-step fetch pattern (as noted in project memory). Fetch contracts first, then enrich with profile data by fetching `profiles` separately using the employee's `user_id`.
+## Issues Found
 
-### 1b. `members(full_name)` Error in Analytics
-**File:** `src/pages/Analytics.tsx` (line 183)
-**Bug:** `members(full_name)` — `members` table has no `full_name` column. Name lives in `profiles`.
-**Fix:** Change to `members(member_code, profiles:user_id(full_name))` (same pattern used in `Invoices.tsx`, `Dashboard.tsx` etc.). Update the UI mapping from `invoice.members?.full_name` to `invoice.members?.profiles?.full_name`.
+### 1. CompGiftDrawer Always Routes Through Approval (BUG)
+**Root cause**: `CompGiftDrawer` has no role awareness. Both admin/manager AND staff see "Submit for Approval" and insert into `approval_requests`. The `MemberProfileDrawer` correctly shows different button labels ("Comp/Gift" vs "Request Comp") but both open the same drawer that always creates an approval request.
 
-### 1c. Staff Dashboard Login Crash
-**File:** `src/pages/StaffDashboard.tsx` (line 29-34)
-**Bug:** `.single()` throws a hard error if no employee record exists for the logged-in staff user, crashing the entire dashboard.
-**Fix:** Change `.single()` to `.maybeSingle()` so it returns null instead of throwing. The existing fallback on line 36 already handles the null case.
+**Fix**: Add role detection to `CompGiftDrawer`. If `isManagerOrAbove`, execute the comp/extension directly (update `end_date` on membership, or insert `member_comps`). If staff, keep the approval flow.
 
-## 2. Database Migration
+### 2. Rewards & Wallet End-to-End Audit
+**Current state**: 
+- `referralService.claimReward()` credits the wallet via `creditWallet()` — this works.
+- `RecordPaymentDrawer` has a "Wallet" payment method option but it just records `payment_method: 'wallet'` — it does NOT actually debit the wallet balance.
+- `payWithWallet()` in `walletService.ts` exists but is never called from the payment drawer.
 
-Add a FK from `employees.user_id` to `profiles.id` so that Supabase PostgREST can resolve the `profiles:user_id(full_name)` join pattern consistently:
+**Fix**: When `payment_method === 'wallet'` is selected in `RecordPaymentDrawer`, validate wallet balance and call `payWithWallet()` instead of the manual insert. Show wallet balance in the drawer when wallet is selected.
 
-```sql
--- employees.user_id currently references auth.users(id)
--- Add an additional FK to profiles for PostgREST joins
-ALTER TABLE public.employees
-  ADD CONSTRAINT employees_user_id_profiles_fkey
-  FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
-```
+### 3. WhatsApp Template API Audit
+**Bug found**: `WhatsAppTemplateDrawer` calls `supabase.functions.invoke('send-whatsapp', { body: { phone_number, content, branch_id } })` but the edge function requires `message_id` as a mandatory field (line 18: `if (!message_id || !phone_number || !content || !branch_id)`). The template drawer never sends `message_id`, so every call returns 400.
 
-This lets the HRM query work as `employees(employee_code, profiles:user_id(full_name))` without needing the 2-step fetch pattern.
+**Fix**: Update the template drawer to first insert a record into `whatsapp_messages` table, then pass the resulting `id` as `message_id` to the edge function.
 
-## 3. AI Fitness Page Redesign
+### 4. Member Profile Drawer — Overview Tab Visibility
+**Issue**: The Overview tab trigger on line 935-937 has `<span className="hidden sm:inline text-xs">Overview</span>` — the label is hidden on mobile, and since it's the first tab, the `view` text appears as just an icon with no visual indication it's selected vs other icon-only tabs.
 
-**File:** `src/pages/AIFitness.tsx` (full rewrite)
+**Fix**: Always show "Overview" label (remove `hidden sm:inline`), or add `text-xs` inline label for the first tab. Also rename the tab text from the internal comment "view" to display "Overview" consistently.
 
-Redesign with 3 clear tabs and modern Vuexy styling:
+### 5. Access Tab — Face Upload Redundancy
+**Issue**: The `HardwareBiometricsTab` still has a manual photo upload feature for face enrollment. Per the user's architecture, face capture is now handled by the device itself. The "Upload Photo" section causes confusion between avatar and face ID.
 
-- **"Generate AI Plan" tab:** Cleaner two-column layout. Left: member info form (name, age, gender, height, weight, goals, experience). Right: generated plan display with structured cards for each day/meal. Add a "Quick Shuffle" button that randomizes exercise order using the deterministic seeded randomizer (member ID + date).
-- **"Templates Library" tab:** Card grid of saved templates with difficulty badges, goal tags, and assign/delete actions. Add a "Default Plans" section showing built-in starter templates (Beginner Full Body, Weight Loss, Muscle Building).
-- **"Assign to Member" tab:** Member search dropdown, plan selection (from generated or template), date range picker, and assign button.
+**Fix**: Simplify the Access tab. Remove the manual photo upload section. Keep: Wiegand Code, Welcome Message, Access Toggle, and Device Sync Status. Rename the tab label from "Access" to something clearer. Add a note explaining face enrollment is handled at the terminal.
 
-Key improvements:
-- Remove the cluttered nested tabs (plan type inside generate tab)
-- Plan type (workout/diet) becomes a toggle at the top level
-- Generated plan renders as structured day cards, not raw JSON
-- Add "Random Daily Workout" quick action
-
-## 4. Public Website CMS/DB Sync
-
-**File:** `src/pages/PublicWebsite.tsx`
-
-Currently uses hardcoded arrays (TRAINERS, STATS, CLASSES, FAQS). Fix:
-
-- **Trainers section:** Fetch real trainers from `trainers` table joined with `profiles` for name/avatar. Fall back to hardcoded data if DB returns empty.
-- **Pricing section:** Fetch real plans from `membership_plans` table (active ones). Show actual prices and benefits from `plan_benefits`.
-- **Stats section:** Use CMS theme `stats` if configured, otherwise compute from DB (member count, trainer count, branch count).
-- **Classes section:** Fetch upcoming classes from `classes` table.
-- **FAQs, Features:** Keep from CMS theme settings or fall back to hardcoded defaults.
-- **Hero, Contact info:** Already partially synced via theme; ensure all CMS fields are used (gym name, tagline, address, phone, email, social links).
-
-## 5. Files to Change
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| **DB Migration** | Add `employees_user_id_profiles_fkey` FK |
-| `src/pages/HRM.tsx` | Fix contracts query to use `profiles:user_id(full_name)` via new FK |
-| `src/pages/Analytics.tsx` | Fix invoice query: `members(member_code, profiles:user_id(full_name))` |
-| `src/pages/StaffDashboard.tsx` | Change `.single()` to `.maybeSingle()` on employee query |
-| `src/pages/AIFitness.tsx` | Full redesign with 3 tabs, quick shuffle, structured plan display |
-| `src/pages/PublicWebsite.tsx` | Sync trainers/plans/classes/stats from DB, keep CMS theme for styling |
+| `src/components/members/CompGiftDrawer.tsx` | Add role-aware logic: managers execute directly, staff submit for approval |
+| `src/components/invoices/RecordPaymentDrawer.tsx` | Integrate `payWithWallet()` when wallet payment selected |
+| `src/components/communication/WhatsAppTemplateDrawer.tsx` | Insert `whatsapp_messages` record before invoking edge function |
+| `src/components/members/MemberProfileDrawer.tsx` | Fix Overview tab label visibility |
+| `src/components/members/HardwareBiometricsTab.tsx` | Remove manual photo upload, add device-handled note |
 
 ## Execution Order
+1. CompGiftDrawer role-aware fix (critical — admin workflow broken)
+2. Overview tab label visibility fix
+3. HardwareBiometricsTab simplification
+4. WhatsApp template drawer fix (message_id bug)
+5. RecordPaymentDrawer wallet integration
 
-1. DB migration (add FK for employees -> profiles)
-2. Fix critical query bugs (Analytics, HRM, StaffDashboard)
-3. Redesign AI Fitness page
-4. Sync Public Website with DB data
