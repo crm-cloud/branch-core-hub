@@ -29,12 +29,40 @@ const readSn = (body: Record<string, unknown>): string | null => {
   )
 }
 
+/** Parse body as JSON first; fall back to form-urlencoded. */
+async function parseBody(req: Request): Promise<Record<string, unknown>> {
+  const ct = (req.headers.get('content-type') || '').toLowerCase()
+  const raw = await req.text()
+
+  // Try JSON first (even if content-type says otherwise — some devices lie)
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    try { return JSON.parse(raw) } catch { /* fall through */ }
+  }
+
+  // Form-urlencoded fallback
+  if (ct.includes('form') || raw.includes('=')) {
+    const params = new URLSearchParams(raw)
+    const obj: Record<string, string> = {}
+    for (const [k, v] of params.entries()) obj[k] = v
+    // Also parse query string params
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!obj[k]) obj[k] = v
+    }
+    return obj
+  }
+
+  // Last resort — try JSON anyway
+  try { return JSON.parse(raw) } catch { return {} }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
-  if (req.method !== 'POST') {
+  // Accept both GET and POST — some devices send heartbeat as GET with query params
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return new Response(JSON.stringify({ code: 1, msg: 'method not allowed' }), {
       status: 405,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -42,7 +70,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = (await req.json()) as Record<string, unknown>
+    let body: Record<string, unknown> = {}
+    if (req.method === 'POST') {
+      body = await parseBody(req)
+    }
+    // Merge query string params (devices often put SN in query)
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!body[k]) body[k] = v
+    }
+
     const deviceSn = readSn(body)
     const deviceKey = toText(body.deviceKey) || toText(body.device_key)
     const ipAddress =
@@ -94,18 +131,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Compatibility bridge: keep legacy access_devices heartbeat fields fresh for Device Management UI.
+    // Compatibility bridge: keep legacy access_devices heartbeat fields fresh.
+    // Only update if ipAddress is non-null to avoid inet cast errors.
+    const accessUpdate: Record<string, unknown> = {
+      is_online: true,
+      last_heartbeat: nowIso,
+      firmware_version:
+        toText(body.firmware_version) ||
+        toText(body.firmwareVersion) ||
+        null,
+    }
+    if (ipAddress) {
+      accessUpdate.ip_address = ipAddress
+    }
     await supabase
       .from('access_devices')
-      .update({
-        is_online: true,
-        last_heartbeat: nowIso,
-        ip_address: ipAddress,
-        firmware_version:
-          toText(body.firmware_version) ||
-          toText(body.firmwareVersion) ||
-          null,
-      })
+      .update(accessUpdate)
       .eq('serial_number', deviceSn)
 
     return new Response(
