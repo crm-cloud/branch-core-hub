@@ -1,51 +1,103 @@
 
 
-# Deep Audit & Fix: Comp/Gift Role Logic, Rewards Wallet, WA Templates, Profile UX
+# Device Integration Redesign: Stock ZKTeco Terminal ↔ Incline Cloud
 
-## Issues Found
+## The Core Problem
 
-### 1. CompGiftDrawer Always Routes Through Approval (BUG)
-**Root cause**: `CompGiftDrawer` has no role awareness. Both admin/manager AND staff see "Submit for Approval" and insert into `approval_requests`. The `MemberProfileDrawer` correctly shows different button labels ("Comp/Gift" vs "Request Comp") but both open the same drawer that always creates an approval request.
+Your terminal runs **stock ZKTeco firmware (v1.42.0.2)**. The current codebase assumes a **custom Android APK** will call the `terminal-sync` endpoint — but no such APK exists. The stock firmware uses the **ICLOCK/PUSH protocol**, where the device POSTs attendance data to a configured server URL.
 
-**Fix**: Add role detection to `CompGiftDrawer`. If `isManagerOrAbove`, execute the comp/extension directly (update `end_date` on membership, or insert `member_comps`). If staff, keep the approval flow.
+## How Stock ZKTeco Terminals Work
 
-### 2. Rewards & Wallet End-to-End Audit
-**Current state**: 
-- `referralService.claimReward()` credits the wallet via `creditWallet()` — this works.
-- `RecordPaymentDrawer` has a "Wallet" payment method option but it just records `payment_method: 'wallet'` — it does NOT actually debit the wallet balance.
-- `payWithWallet()` in `walletService.ts` exists but is never called from the payment drawer.
+```text
+┌─────────────────┐         PUSH (every 30s)        ┌──────────────────┐
+│  ZKTeco Terminal │ ──── POST /iclock/cdata ──────► │  Incline Cloud   │
+│  (stock firmware)│ ◄─── Response with commands ─── │  (edge function) │
+│  SN: 01MA10      │                                  │  /terminal-sync  │
+└─────────────────┘                                  └──────────────────┘
 
-**Fix**: When `payment_method === 'wallet'` is selected in `RecordPaymentDrawer`, validate wallet balance and call `payWithWallet()` instead of the manual insert. Show wallet balance in the drawer when wallet is selected.
+The device:
+1. POSTs to Server URL/iclock/cdata?SN=01MA10&...  (heartbeat + push data)
+2. POSTs attendance records as tab-separated lines
+3. Expects specific response format: "OK" or commands like "C:ID:DATA"
+```
 
-### 3. WhatsApp Template API Audit
-**Bug found**: `WhatsAppTemplateDrawer` calls `supabase.functions.invoke('send-whatsapp', { body: { phone_number, content, branch_id } })` but the edge function requires `message_id` as a mandatory field (line 18: `if (!message_id || !phone_number || !content || !branch_id)`). The template drawer never sends `message_id`, so every call returns 400.
+The terminal's **"App Settings" → "Server URL"** needs your edge function URL. But the current `terminal-sync` edge function expects JSON, not the ICLOCK protocol format.
 
-**Fix**: Update the template drawer to first insert a record into `whatsapp_messages` table, then pass the resulting `id` as `message_id` to the edge function.
+## What Needs to Change
 
-### 4. Member Profile Drawer — Overview Tab Visibility
-**Issue**: The Overview tab trigger on line 935-937 has `<span className="hidden sm:inline text-xs">Overview</span>` — the label is hidden on mobile, and since it's the first tab, the `view` text appears as just an icon with no visual indication it's selected vs other icon-only tabs.
+### 1. New Edge Function: `terminal-iclock` (the ZKTeco protocol handler)
 
-**Fix**: Always show "Overview" label (remove `hidden sm:inline`), or add `text-xs` inline label for the first tab. Also rename the tab text from the internal comment "view" to display "Overview" consistently.
+A new edge function that speaks the ICLOCK/PUSH protocol natively:
 
-### 5. Access Tab — Face Upload Redundancy
-**Issue**: The `HardwareBiometricsTab` still has a manual photo upload feature for face enrollment. Per the user's architecture, face capture is now handled by the device itself. The "Upload Photo" section causes confusion between avatar and face ID.
+- **`GET /iclock/cdata?SN=xxx`** — Device handshake. Returns `OK` + push parameters.
+- **`POST /iclock/cdata?SN=xxx&table=ATTLOG`** — Device pushes attendance events (face scan, card tap). Each line: `PIN\tTimestamp\tVerifyMode\tInOutMode\tWorkCode`. Parse and route through the existing `validate_member_checkin` → `member_check_in` flow.
+- **`GET /iclock/getrequest?SN=xxx`** — Device polls for pending commands. Return roster sync commands (`DATA UPDATE USERINFO`) to push member photos/names to the device.
+- **`POST /iclock/devicecmd?SN=xxx`** — Device confirms command execution.
 
-**Fix**: Simplify the Access tab. Remove the manual photo upload section. Keep: Wiegand Code, Welcome Message, Access Toggle, and Device Sync Status. Rename the tab label from "Access" to something clearer. Add a note explaining face enrollment is handled at the terminal.
+This replaces the need for a custom APK entirely.
 
-## Files to Modify
+### 2. Roster Push (Cloud → Device)
 
-| File | Change |
+Stock terminals accept user enrollment via the ICLOCK protocol:
+
+```text
+C:1:DATA UPDATE USERINFO PIN=member_uuid\tName=John\tPri=0
+C:2:DATA UPDATE BIODATA PIN=member_uuid\tNo=0\tIndex=0\tValid=1\tDuress=0\tType=9\tTmp=<base64_face_template>
+```
+
+When you add a member photo via the web app, the system queues a sync command. On the next device poll (`getrequest`), the command is delivered and the terminal enrolls the face locally.
+
+### 3. Redesign Device Management UI
+
+The current UI is missing critical "what to type into the terminal" information:
+
+- **Add a "Device Setup Card"** per device that shows:
+  - **Server URL to enter on terminal**: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/terminal-iclock`
+  - **Device SN**: Show the registered SN with a note "This must match the terminal's SN in App Settings"
+  - **Connection Status**: Real-time heartbeat indicator
+  - **Roster Sync Status**: How many members are synced to this device
+- **Replace the generic "Terminal Setup Guide"** with stock-firmware-specific steps:
+  1. On terminal → System Settings → App Settings
+  2. Set Server URL to the displayed URL
+  3. Set Push Interval to 30 seconds
+  4. Enable "Realtime Push"
+  5. Verify connection goes green
+
+### 4. Fix Device SN Mismatch
+
+The registered device has SN `D1146D682A96B1C2` but the terminal header shows `01MA10`. Need to update the DB record or clarify which SN the device actually reports. Add a "Test Connection" button that sends a test heartbeat and shows whether the SN matches.
+
+### 5. Member Photo Enrollment Flow
+
+Currently all 5 members have `biometric_photo_url: null`. The enrollment flow needs:
+
+- **Web Upload**: Admin uploads member photo → stored in `member-photos` bucket → URL saved to `biometric_photo_url` → queued for device sync via ICLOCK `DATA UPDATE BIODATA` command
+- **Terminal Capture**: Device captures face locally → reports enrollment via `ATTLOG` → cloud marks `biometric_enrolled = true`
+
+## Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| `src/components/members/CompGiftDrawer.tsx` | Add role-aware logic: managers execute directly, staff submit for approval |
-| `src/components/invoices/RecordPaymentDrawer.tsx` | Integrate `payWithWallet()` when wallet payment selected |
-| `src/components/communication/WhatsAppTemplateDrawer.tsx` | Insert `whatsapp_messages` record before invoking edge function |
-| `src/components/members/MemberProfileDrawer.tsx` | Fix Overview tab label visibility |
-| `src/components/members/HardwareBiometricsTab.tsx` | Remove manual photo upload, add device-handled note |
+| `supabase/functions/terminal-iclock/index.ts` | **New** — ZKTeco ICLOCK protocol handler |
+| `supabase/config.toml` | Add `[functions.terminal-iclock]` with `verify_jwt = false` |
+| `src/pages/DeviceManagement.tsx` | Redesign setup guide for stock firmware, add per-device setup card |
+| `src/components/devices/AddDeviceDrawer.tsx` | Add protocol type selector (ICLOCK vs Custom APK) |
+| `src/components/devices/DeviceSetupCard.tsx` | **New** — Shows exact terminal configuration values |
 
 ## Execution Order
-1. CompGiftDrawer role-aware fix (critical — admin workflow broken)
-2. Overview tab label visibility fix
-3. HardwareBiometricsTab simplification
-4. WhatsApp template drawer fix (message_id bug)
-5. RecordPaymentDrawer wallet integration
+
+1. Create `terminal-iclock` edge function (ICLOCK protocol)
+2. Add config.toml entry
+3. Redesign Device Management UI with stock firmware setup guide
+4. Add per-device setup card with copyable Server URL and SN
+5. Wire member photo enrollment to device sync queue
+
+## Important Note
+
+Before building, you need to verify the exact SN format your terminal reports. On the terminal:
+- Go to **App Settings** → look for "Device Serial Number" or "SN"
+- The `01MA10` shown in the top bar may be a device alias, not the SN
+- The actual SN may be `D1146D682A96B1C2` (which you already registered)
+
+The Server URL to enter in the terminal will be: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/terminal-iclock`
 
