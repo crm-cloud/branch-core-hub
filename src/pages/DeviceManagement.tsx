@@ -17,13 +17,14 @@ import {
   CreditCard,
   RefreshCw,
   Info,
-  Users
+  Users,
+  Link
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { fetchDevices, deleteDevice, getDeviceStats, AccessDevice } from "@/services/deviceService";
-import { getBiometricStats, syncBranchMembersToDevices } from "@/services/biometricService";
+import { getBiometricStats, getMemberSyncAudit, syncBranchMembersToDevices } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
 import LiveAccessLog from "@/components/devices/LiveAccessLog";
@@ -63,6 +64,11 @@ const DeviceManagement = () => {
     queryFn: () => getBiometricStats(selectedBranchFilter || undefined),
   });
 
+  const { data: memberSyncAudit } = useQuery({
+    queryKey: ['member-sync-audit', selectedBranchFilter],
+    queryFn: () => getMemberSyncAudit(selectedBranchFilter || undefined),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: deleteDevice,
     onSuccess: () => {
@@ -78,15 +84,24 @@ const DeviceManagement = () => {
 
   const syncMembersMutation = useMutation({
     mutationFn: () => syncBranchMembersToDevices(selectedBranchFilter || undefined),
-    onSuccess: ({ members, devices, queued }) => {
+    onSuccess: ({ members, devices, queued, audit }) => {
       if (queued === 0) {
-        toast.info(`No eligible members with biometric photos found. Devices checked: ${devices}`);
+        if (audit.eligibleForDeviceEnrollment > 0) {
+          toast.info(
+            `No members with photos for app push. ${audit.eligibleForDeviceEnrollment} member records (name/id) are ready for device enrollment sync. Devices checked: ${devices}`
+          );
+        } else {
+          toast.info(
+            `No eligible members for sync. Active: ${audit.totalActiveMembers}, access enabled: ${audit.membersWithHardwareAccess}, with photo: ${audit.membersWithBiometricPhoto}, devices checked: ${devices}`
+          );
+        }
       } else {
         toast.success(`Queued ${queued} sync item${queued !== 1 ? 's' : ''} for ${members} member${members !== 1 ? 's' : ''} across ${devices} device${devices !== 1 ? 's' : ''}`);
       }
 
       queryClient.invalidateQueries({ queryKey: ['biometric-stats'] });
       queryClient.invalidateQueries({ queryKey: ['access-devices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-sync-audit'] });
     },
     onError: (error: Error) => {
       toast.error(`Failed to queue member sync: ${error.message}`);
@@ -117,6 +132,17 @@ const DeviceManagement = () => {
     return labels[type] || type;
   };
 
+  const registerUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-register`;
+
+  const handleCopyRegisterUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(registerUrl);
+      toast.success('Registered address URL copied');
+    } catch {
+      toast.error('Failed to copy Registered address URL');
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -141,6 +167,61 @@ const DeviceManagement = () => {
           </Button>
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Member Sync Workflow</CardTitle>
+          <CardDescription>
+            Use either path: App Sync for existing photos, or Device Enrollment to capture new photos at terminal.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Active Members</p>
+              <p className="text-xl font-semibold">{memberSyncAudit?.totalActiveMembers ?? 0}</p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Access Enabled</p>
+              <p className="text-xl font-semibold">{memberSyncAudit?.membersWithHardwareAccess ?? 0}</p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">With Biometric Photo</p>
+              <p className="text-xl font-semibold">{memberSyncAudit?.membersWithBiometricPhoto ?? 0}</p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Eligible For App Sync</p>
+              <p className="text-xl font-semibold">{memberSyncAudit?.eligibleForAppSync ?? 0}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs text-muted-foreground">Ready For Device Enrollment (Name/ID)</p>
+            <p className="text-sm font-medium">
+              {memberSyncAudit?.eligibleForDeviceEnrollment ?? 0} member{(memberSyncAudit?.eligibleForDeviceEnrollment ?? 0) !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => syncMembersMutation.mutate()}
+              disabled={syncMembersMutation.isPending}
+            >
+              <Users className={`h-4 w-4 mr-2 ${syncMembersMutation.isPending ? 'animate-pulse' : ''}`} />
+              {syncMembersMutation.isPending ? 'Syncing From App...' : 'Sync From App'}
+            </Button>
+            <Button variant="outline" onClick={handleCopyRegisterUrl}>
+              <Link className="h-4 w-4 mr-2" />
+              Copy Device Register URL
+            </Button>
+          </div>
+
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>App Sync path: requires hardware access ON and biometric photo present.</p>
+            <p>Device path: member name and id are synced even without photo, then enroll face directly on terminal and callback updates biometric photo.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">

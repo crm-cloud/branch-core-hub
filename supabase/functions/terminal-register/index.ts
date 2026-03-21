@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
         }, {});
       }
 
-      const roster = (members || []).map((member) => {
+            const roster = (members || []).map((member) => {
         const idCode = member.member_code || member.wiegand_code || member.id;
         const personName = profileMap[member.user_id] || "Member";
         const imageUrl = member.biometric_photo_url || null;

@@ -16,6 +16,16 @@ export interface BiometricSyncItem {
   processed_at?: string;
 }
 
+export interface MemberSyncAudit {
+  totalActiveMembers: number;
+  membersWithHardwareAccess: number;
+  membersWithBiometricPhoto: number;
+  eligibleForAppSync: number;
+  eligibleForDeviceEnrollment: number;
+  blockedByNoPhoto: number;
+  blockedByAccessDisabled: number;
+}
+
 export const queueMemberSync = async (
   memberId: string,
   photoUrl: string,
@@ -311,10 +321,43 @@ export const getBiometricStats = async (branchId?: string) => {
   };
 };
 
+export const getMemberSyncAudit = async (branchId?: string): Promise<MemberSyncAudit> => {
+  let memberQuery = supabase
+    .from('members')
+    .select('biometric_photo_url, hardware_access_enabled')
+    .eq('status', 'active');
+
+  if (branchId) {
+    memberQuery = memberQuery.eq('branch_id', branchId);
+  }
+
+  const { data: members, error } = await memberQuery;
+  if (error) throw error;
+
+  const rows = members || [];
+  const totalActiveMembers = rows.length;
+  const membersWithHardwareAccess = rows.filter((m) => m.hardware_access_enabled === true).length;
+  const membersWithBiometricPhoto = rows.filter((m) => !!m.biometric_photo_url).length;
+  const eligibleForAppSync = rows.filter(
+    (m) => m.hardware_access_enabled === true && !!m.biometric_photo_url
+  ).length;
+
+  return {
+    totalActiveMembers,
+    membersWithHardwareAccess,
+    membersWithBiometricPhoto,
+    eligibleForAppSync,
+    eligibleForDeviceEnrollment: membersWithHardwareAccess,
+    blockedByNoPhoto: Math.max(0, membersWithHardwareAccess - eligibleForAppSync),
+    blockedByAccessDisabled: Math.max(0, totalActiveMembers - membersWithHardwareAccess),
+  };
+};
+
 export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
   members: number;
   devices: number;
   queued: number;
+  audit: MemberSyncAudit;
 }> => {
   let deviceQuery = supabase
     .from('access_devices')
@@ -348,8 +391,10 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
   if (membersError) throw membersError;
 
   const activeMembers = (members || []).filter((member) => !!member.biometric_photo_url);
+  const audit = await getMemberSyncAudit(branchId);
+
   if (activeMembers.length === 0) {
-    return { members: 0, devices: targetDevices.length, queued: 0 };
+    return { members: 0, devices: targetDevices.length, queued: 0, audit };
   }
 
   const userIds = activeMembers.map((member) => member.user_id).filter(Boolean);
@@ -398,5 +443,6 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
     members: activeMembers.length,
     devices: targetDevices.length,
     queued: syncItems.length,
+    audit,
   };
 };
