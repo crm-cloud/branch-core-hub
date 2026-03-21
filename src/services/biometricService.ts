@@ -310,3 +310,93 @@ export const getBiometricStats = async (branchId?: string) => {
     pendingSyncs: pendingCount || 0,
   };
 };
+
+export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
+  members: number;
+  devices: number;
+  queued: number;
+}> => {
+  let deviceQuery = supabase
+    .from('access_devices')
+    .select('id')
+    .in('device_type', ['face_terminal', 'face terminal']);
+
+  if (branchId) {
+    deviceQuery = deviceQuery.eq('branch_id', branchId);
+  }
+
+  const { data: devices, error: devicesError } = await deviceQuery;
+  if (devicesError) throw devicesError;
+
+  const targetDevices = (devices || []).map((d) => d.id);
+  if (targetDevices.length === 0) {
+    throw new Error('No face recognition devices found for the selected branch');
+  }
+
+  let memberQuery = supabase
+    .from('members')
+    .select('id, user_id, member_code, biometric_photo_url')
+    .eq('status', 'active')
+    .eq('hardware_access_enabled', true)
+    .not('biometric_photo_url', 'is', null);
+
+  if (branchId) {
+    memberQuery = memberQuery.eq('branch_id', branchId);
+  }
+
+  const { data: members, error: membersError } = await memberQuery;
+  if (membersError) throw membersError;
+
+  const activeMembers = (members || []).filter((member) => !!member.biometric_photo_url);
+  if (activeMembers.length === 0) {
+    return { members: 0, devices: targetDevices.length, queued: 0 };
+  }
+
+  const userIds = activeMembers.map((member) => member.user_id).filter(Boolean);
+  const profileMap: Record<string, string> = {};
+
+  if (userIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds);
+
+    if (profilesError) throw profilesError;
+
+    (profiles || []).forEach((profile) => {
+      profileMap[profile.id] = profile.full_name || 'Member';
+    });
+  }
+
+  const syncItems = activeMembers.flatMap((member) => {
+    const personName = profileMap[member.user_id] || member.member_code || 'Member';
+
+    return targetDevices.map((deviceId) => ({
+      member_id: member.id,
+      device_id: deviceId,
+      sync_type: 'add' as const,
+      photo_url: member.biometric_photo_url!,
+      person_uuid: member.id,
+      person_name: personName,
+      status: 'pending' as const,
+      retry_count: 0,
+    }));
+  });
+
+  const { error: upsertError } = await supabase
+    .from('biometric_sync_queue')
+    .upsert(syncItems, { onConflict: 'member_id,device_id' });
+
+  if (upsertError) throw upsertError;
+
+  await supabase
+    .from('access_devices')
+    .update({ last_sync: new Date().toISOString() })
+    .in('id', targetDevices);
+
+  return {
+    members: activeMembers.length,
+    devices: targetDevices.length,
+    queued: syncItems.length,
+  };
+};

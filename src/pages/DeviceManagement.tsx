@@ -16,13 +16,14 @@ import {
   Fingerprint,
   CreditCard,
   RefreshCw,
-  Info
+  Info,
+  Users
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
 import { fetchDevices, deleteDevice, getDeviceStats, AccessDevice } from "@/services/deviceService";
-import { getBiometricStats } from "@/services/biometricService";
+import { getBiometricStats, syncBranchMembersToDevices } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
 import LiveAccessLog from "@/components/devices/LiveAccessLog";
@@ -75,6 +76,23 @@ const DeviceManagement = () => {
     },
   });
 
+  const syncMembersMutation = useMutation({
+    mutationFn: () => syncBranchMembersToDevices(selectedBranchFilter || undefined),
+    onSuccess: ({ members, devices, queued }) => {
+      if (queued === 0) {
+        toast.info(`No eligible members with biometric photos found. Devices checked: ${devices}`);
+      } else {
+        toast.success(`Queued ${queued} sync item${queued !== 1 ? 's' : ''} for ${members} member${members !== 1 ? 's' : ''} across ${devices} device${devices !== 1 ? 's' : ''}`);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['biometric-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['access-devices'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to queue member sync: ${error.message}`);
+    },
+  });
+
   const handleRelayAction = () => {
     toast.info("Remote relay trigger is disabled in callback-webhook mode");
   };
@@ -109,6 +127,14 @@ const DeviceManagement = () => {
         </div>
         <div className="flex items-center gap-4">
           {/* Branch selector moved to global header */}
+          <Button
+            variant="outline"
+            onClick={() => syncMembersMutation.mutate()}
+            disabled={syncMembersMutation.isPending}
+          >
+            <Users className={`h-4 w-4 mr-2 ${syncMembersMutation.isPending ? 'animate-pulse' : ''}`} />
+            {syncMembersMutation.isPending ? 'Syncing Members...' : 'Sync Members'}
+          </Button>
           <Button onClick={() => setIsAddDrawerOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Device

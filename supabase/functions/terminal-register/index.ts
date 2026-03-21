@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
 
     const nowIso = new Date().toISOString()
     let device: { id: string; branch_id: string | null } | null = null
+    let accessDevice: { id: string; branch_id: string | null } | null = null
 
     if (deviceSn) {
       const { data } = await supabase
@@ -123,9 +124,32 @@ Deno.serve(async (req) => {
         .single()
 
       device = data || null
+
+      const { data: linkedAccessDevice } = await supabase
+        .from('access_devices')
+        .select('id, branch_id')
+        .eq('serial_number', deviceSn)
+        .maybeSingle()
+
+      accessDevice = linkedAccessDevice || null
+
+      // Keep both device registries aligned so roster pulls can resolve branch consistently.
+      if (accessDevice?.branch_id && !device?.branch_id) {
+        await supabase
+          .from('hardware_devices')
+          .update({ branch_id: accessDevice.branch_id, updated_at: nowIso })
+          .eq('id', device.id)
+
+        device.branch_id = accessDevice.branch_id
+      }
     }
 
-    const branchId = toText(body.branch_id) || toText(body.branchId) || device?.branch_id || null
+    const branchId =
+      toText(body.branch_id) ||
+      toText(body.branchId) ||
+      device?.branch_id ||
+      accessDevice?.branch_id ||
+      null
 
     if (['pull', 'pull_members', 'sync', 'roster', 'get_roster'].includes(action)) {
       if (!branchId) {
@@ -165,6 +189,13 @@ Deno.serve(async (req) => {
         imageUrl: member.biometric_photo_url,
         updatedAt: member.updated_at,
       }))
+
+      if (accessDevice?.id) {
+        await supabase
+          .from('access_devices')
+          .update({ last_sync: nowIso })
+          .eq('id', accessDevice.id)
+      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success', members: roster }), {
         status: 200,
