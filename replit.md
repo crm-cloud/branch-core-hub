@@ -19,7 +19,7 @@ A comprehensive multi-branch gym management SaaS built with React, TypeScript, a
 - Lockers & equipment management
 - WhatsApp messaging (Meta Cloud API)
 - Payment gateway (Razorpay/PhonePe)
-- AI-generated fitness plans (Gemini via Lovable AI Gateway)
+- AI-generated fitness plans
 - Hardware access control (biometric devices)
 - Retention automation & lead management
 - HRM, tasks, announcements
@@ -34,7 +34,7 @@ A comprehensive multi-branch gym management SaaS built with React, TypeScript, a
 ```
 npm run dev
 ```
-Runs on port 5000.
+Runs on the configured Vite development port.
 
 ## Supabase Edge Functions
 Located in `supabase/functions/` — these run on Supabase infrastructure, not locally:
@@ -42,16 +42,15 @@ Located in `supabase/functions/` — these run on Supabase infrastructure, not l
 - `payment-webhook` — Razorpay/PhonePe webhook handling
 - `generate-fitness-plan` — AI fitness plan generation
 - `run-retention-nudges` — Automated member retention
-- `terminal-sync` — Biometric device sync
-- `device-heartbeat`, `device-trigger-relay`, etc. — Hardware access control
+- `terminal-heartbeat` — Device heartbeat callback
+- `terminal-identify` — Face identify callback
+- `terminal-register` — Device register/roster callback
 - And more...
 
 ## Database
 Full schema in `supabase/migrations/` — 50+ migrations covering all entities.
 The database is hosted on Supabase with Row Level Security (RLS) enforcing role-based access.
 
-## Migration Notes (Lovable → Replit)
-- Removed lovable-tagger from Vite config
-- Supabase credentials moved to Replit environment variables
-- Vite config updated: port 5000, host 0.0.0.0, allowedHosts: true for Replit proxy
-- No server-side Node.js needed — this is a frontend-only app using Supabase directly
+## Notes
+- Supabase credentials are loaded from environment variables in local and deployed environments.
+- This is a frontend-first architecture with Supabase services handling backend responsibilities.

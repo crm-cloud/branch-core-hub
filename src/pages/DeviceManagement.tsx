@@ -321,16 +321,29 @@ const DeviceManagement = () => {
             <CardContent className="space-y-6">
               {/* Step-by-step Guide */}
               <div className="space-y-4">
-                <h4 className="font-semibold text-sm">Setup Steps</h4>
+                <h4 className="font-semibold text-sm">Android Terminal Setup Steps (Firmware Variants)</h4>
                 <ol className="space-y-3 text-sm list-decimal list-inside">
                   <li><span className="font-medium">Register the device</span> — Click "Add Device" above. Enter a name, select the branch, and enter the <strong>Serial Number (SN)</strong> from the terminal's System Info screen.</li>
-                  <li><span className="font-medium">Open terminal settings</span> — On the terminal, go to <strong>System Settings → App Settings</strong> (or Communication Settings on some models).</li>
-                  <li><span className="font-medium">Open Callback settings</span> — Go to <strong>App Settings → Callback settings</strong>.</li>
-                  <li><span className="font-medium">Set Heartbeat Url</span> — Use the heartbeat URL from the setup card.</li>
-                  <li><span className="font-medium">Set Identify Callback Url</span> — Use the identify URL from the setup card.</li>
-                  <li><span className="font-medium">Set Registered address</span> — Use the register URL from the setup card.</li>
+                  <li><span className="font-medium">Open System Settings Center</span> — On the terminal home screen, tap the settings icon and enter admin password if prompted.</li>
+                  <li><span className="font-medium">Open App Settings</span> — Path is usually <strong>System Settings Center → App Settings</strong>.</li>
+                  <li><span className="font-medium">Open callback screen</span> — Look for <strong>Callback settings</strong>. On some firmware this appears under <strong>App Settings → Custom</strong> or as <strong>Identify/Heartbeat Settings</strong>.</li>
+                  <li><span className="font-medium">Set callback options</span> — Enable <strong>Callback include imgBase64</strong>, keep <strong>Close Stranger data upload</strong> OFF unless you need stranger uploads.</li>
+                  <li><span className="font-medium">Set Heartbeat Url</span> — Paste the heartbeat URL from the setup card.</li>
+                  <li><span className="font-medium">Set Identify Callback Url</span> — Paste the identify URL from the setup card.</li>
+                  <li><span className="font-medium">Set Registered address</span> — Paste the register URL from the setup card.</li>
                   <li><span className="font-medium">Verify connection</span> — The device status card above should show <span className="text-green-600 font-medium">"Connected"</span> within 30–60 seconds.</li>
                 </ol>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">Exact Field Mapping (Terminal Screen)</h4>
+                <div className="p-3 rounded-lg bg-muted/30 border text-xs space-y-1.5">
+                  <p><strong>Identify Callback Url</strong> → <span className="font-mono">/functions/v1/terminal-identify</span></p>
+                  <p><strong>Heartbeat Url</strong> → <span className="font-mono">/functions/v1/terminal-heartbeat</span></p>
+                  <p><strong>Registered address</strong> → <span className="font-mono">/functions/v1/terminal-register</span></p>
+                  <p><strong>Callback include imgBase64</strong> → ON</p>
+                  <p><strong>Close Stranger data upload</strong> → OFF (recommended)</p>
+                </div>
               </div>
 
               {/* How callback flow works */}
@@ -369,6 +382,9 @@ const DeviceManagement = () => {
                   <p>• <strong>Status stays "Not Connected"</strong> — Double-check the Heartbeat Url and verify terminal internet access.</p>
                   <p>• <strong>Scans not appearing</strong> — Verify Identify Callback Url and check the identifier in payload matches member/staff records.</p>
                   <p>• <strong>Registration not syncing</strong> — Verify Registered address URL and branch mapping for the device serial number.</p>
+                  <p>• <strong>Cannot find "Callback settings"</strong> — Check alternate paths: <strong>App Settings → Custom</strong>, <strong>Communication Settings</strong>, or firmware menus named <strong>Identify/Heartbeat</strong>.</p>
+                  <p>• <strong>Field names differ on your firmware</strong> — Map by purpose: Identify = face scan callback, Heartbeat = online ping, Registered address = roster/register callback.</p>
+                  <p>• <strong>Still missing callback menu</strong> — This is firmware-dependent; request vendor to enable cloud callback module or upgrade firmware to the callback-enabled build.</p>
                 </div>
               </div>
             </CardContent>
