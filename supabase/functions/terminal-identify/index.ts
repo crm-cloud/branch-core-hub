@@ -37,8 +37,34 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
     toText(body.custom_id) ||
     toText(body.person_uuid) ||
     toText(body.uid) ||
-    toText(body.pin)
+    toText(body.pin) ||
+    toText(body.id_card) ||
+    toText(body.idCard) ||
+    toText(body.searchScore) // some devices put an identifier-like field here
   )
+}
+
+/** Parse body as JSON first; fall back to form-urlencoded. */
+async function parseBody(req: Request): Promise<Record<string, unknown>> {
+  const ct = (req.headers.get('content-type') || '').toLowerCase()
+  const raw = await req.text()
+
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    try { return JSON.parse(raw) } catch { /* fall through */ }
+  }
+
+  if (ct.includes('form') || raw.includes('=')) {
+    const params = new URLSearchParams(raw)
+    const obj: Record<string, string> = {}
+    for (const [k, v] of params.entries()) obj[k] = v
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!obj[k]) obj[k] = v
+    }
+    return obj
+  }
+
+  try { return JSON.parse(raw) } catch { return {} }
 }
 
 Deno.serve(async (req) => {
@@ -54,7 +80,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = (await req.json()) as Record<string, unknown>
+    const body = await parseBody(req)
+    // Merge query string params
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!body[k]) body[k] = v
+    }
+
     const deviceSn = readSn(body)
     const personIdentifier = readIdentifier(body)
 
@@ -102,13 +134,14 @@ Deno.serve(async (req) => {
 
       if (accessDevice) {
         accessDeviceId = accessDevice.id
+        const accessUpdate: Record<string, unknown> = {
+          is_online: true,
+          last_heartbeat: nowIso,
+        }
+        if (ipAddress) accessUpdate.ip_address = ipAddress
         await supabase
           .from('access_devices')
-          .update({
-            is_online: true,
-            last_heartbeat: nowIso,
-            ip_address: ipAddress,
-          })
+          .update(accessUpdate)
           .eq('id', accessDevice.id)
       }
     }
@@ -117,6 +150,9 @@ Deno.serve(async (req) => {
       toText(body.branch_id) || toText(body.branchId) || hardwareDevice?.branch_id || null
 
     if (!personIdentifier) {
+      // Log the raw payload for debugging but don't treat as error
+      console.log('terminal-identify: no person identifier found in payload keys:', Object.keys(body))
+      
       await supabase.from('access_logs').insert({
         device_sn: deviceSn || 'UNKNOWN',
         hardware_device_id: hardwareDevice?.id || null,
@@ -128,15 +164,17 @@ Deno.serve(async (req) => {
         payload: body,
       })
 
-      await supabase.from('device_access_events').insert({
-        device_id: accessDeviceId,
-        branch_id: fallbackBranchId,
-        event_type: 'identify',
-        access_granted: false,
-        denial_reason: 'missing_identifier',
-        device_message: 'Missing person identifier',
-        processed_at: nowIso,
-      })
+      if (accessDeviceId && fallbackBranchId) {
+        await supabase.from('device_access_events').insert({
+          device_id: accessDeviceId,
+          branch_id: fallbackBranchId,
+          event_type: 'identify',
+          access_granted: false,
+          denial_reason: 'missing_identifier',
+          device_message: 'Missing person identifier',
+          processed_at: nowIso,
+        })
+      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -243,15 +281,17 @@ Deno.serve(async (req) => {
         payload: body,
       })
 
-      await supabase.from('device_access_events').insert({
-        device_id: accessDeviceId,
-        branch_id: staffBranchId || fallbackBranchId,
-        staff_id: staffUserId,
-        event_type: 'identify',
-        access_granted: true,
-        device_message: 'Staff identify success',
-        processed_at: nowIso,
-      })
+      if (accessDeviceId) {
+        await supabase.from('device_access_events').insert({
+          device_id: accessDeviceId,
+          branch_id: staffBranchId || fallbackBranchId,
+          staff_id: staffUserId,
+          event_type: 'identify',
+          access_granted: true,
+          device_message: 'Staff identify success',
+          processed_at: nowIso,
+        })
+      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -260,28 +300,47 @@ Deno.serve(async (req) => {
     }
 
     if (member) {
+      const branchForCheckin = member.branch_id || fallbackBranchId
+
+      // Call member_check_in RPC to validate membership and record attendance
+      let checkInResult: any = null
+      if (branchForCheckin) {
+        const { data: rpcResult } = await supabase.rpc('member_check_in', {
+          _member_id: member.id,
+          _branch_id: branchForCheckin,
+          _method: 'terminal',
+        })
+        checkInResult = rpcResult
+      }
+
+      const accessGranted = checkInResult?.valid === true || checkInResult?.success === true
+      const checkInMessage = checkInResult?.message || (accessGranted ? 'Member check-in success' : 'Member identified but check-in failed')
+
       await supabase.from('access_logs').insert({
         device_sn: deviceSn || 'UNKNOWN',
         hardware_device_id: hardwareDevice?.id || null,
-        branch_id: member.branch_id || fallbackBranchId,
+        branch_id: branchForCheckin,
         member_id: member.id,
         profile_id: member.user_id,
         event_type: 'identify',
-        result: 'member',
-        message: 'Member identify success',
+        result: accessGranted ? 'member' : 'member_denied',
+        message: checkInMessage,
         captured_at: nowIso,
         payload: body,
       })
 
-      await supabase.from('device_access_events').insert({
-        device_id: accessDeviceId,
-        branch_id: member.branch_id || fallbackBranchId,
-        member_id: member.id,
-        event_type: 'identify',
-        access_granted: true,
-        device_message: 'Member identify success',
-        processed_at: nowIso,
-      })
+      if (accessDeviceId && branchForCheckin) {
+        await supabase.from('device_access_events').insert({
+          device_id: accessDeviceId,
+          branch_id: branchForCheckin,
+          member_id: member.id,
+          event_type: 'identify',
+          access_granted: accessGranted,
+          denial_reason: accessGranted ? null : (checkInResult?.reason || 'check_in_failed'),
+          device_message: checkInMessage,
+          processed_at: nowIso,
+        })
+      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -300,15 +359,17 @@ Deno.serve(async (req) => {
       payload: body,
     })
 
-    await supabase.from('device_access_events').insert({
-      device_id: accessDeviceId,
-      branch_id: fallbackBranchId,
-      event_type: 'identify',
-      access_granted: false,
-      denial_reason: 'not_found',
-      device_message: `No match for ${personIdentifier}`,
-      processed_at: nowIso,
-    })
+    if (accessDeviceId && fallbackBranchId) {
+      await supabase.from('device_access_events').insert({
+        device_id: accessDeviceId,
+        branch_id: fallbackBranchId,
+        event_type: 'identify',
+        access_granted: false,
+        denial_reason: 'not_found',
+        device_message: `No match for ${personIdentifier}`,
+        processed_at: nowIso,
+      })
+    }
 
     return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
       status: 200,
@@ -316,7 +377,6 @@ Deno.serve(async (req) => {
     })
   } catch (error) {
     console.error('terminal-identify error:', error)
-    // Return success-shaped payload to avoid terminal retry storms.
     return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

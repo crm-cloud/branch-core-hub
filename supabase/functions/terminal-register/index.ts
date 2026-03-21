@@ -41,12 +41,35 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
   )
 }
 
+/** Parse body as JSON first; fall back to form-urlencoded. */
+async function parseBody(req: Request): Promise<Record<string, unknown>> {
+  const ct = (req.headers.get('content-type') || '').toLowerCase()
+  const raw = await req.text()
+
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    try { return JSON.parse(raw) } catch { /* fall through */ }
+  }
+
+  if (ct.includes('form') || raw.includes('=')) {
+    const params = new URLSearchParams(raw)
+    const obj: Record<string, string> = {}
+    for (const [k, v] of params.entries()) obj[k] = v
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!obj[k]) obj[k] = v
+    }
+    return obj
+  }
+
+  try { return JSON.parse(raw) } catch { return {} }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return new Response(JSON.stringify({ code: 1, msg: 'method not allowed' }), {
       status: 405,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -54,7 +77,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = (await req.json()) as Record<string, unknown>
+    let body: Record<string, unknown> = {}
+    if (req.method === 'POST') {
+      body = await parseBody(req)
+    }
+    // Merge query string params
+    const url = new URL(req.url)
+    for (const [k, v] of url.searchParams.entries()) {
+      if (!body[k]) body[k] = v
+    }
+
     const action = (toText(body.action) || toText(body.mode) || 'pull_members').toLowerCase()
     const deviceSn = readSn(body)
     const personIdentifier = readIdentifier(body)
