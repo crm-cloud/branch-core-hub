@@ -16,14 +16,12 @@ import {
   Fingerprint,
   CreditCard,
   RefreshCw,
-  Activity,
-  Copy,
   Info
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
-import { fetchDevices, deleteDevice, triggerRelay, sendDeviceCommand, subscribeToCommandStatus, getDeviceStats, AccessDevice } from "@/services/deviceService";
+import { fetchDevices, deleteDevice, getDeviceStats, AccessDevice } from "@/services/deviceService";
 import { getBiometricStats } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
@@ -39,11 +37,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 const DeviceManagement = () => {
   const queryClient = useQueryClient();
-  const { selectedBranch, branches, effectiveBranchId } = useBranchContext();
+  const { selectedBranch, branches } = useBranchContext();
   const selectedBranchFilter = selectedBranch !== 'all' ? selectedBranch : '';
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<AccessDevice | null>(null);
@@ -77,31 +75,9 @@ const DeviceManagement = () => {
     },
   });
 
-  const triggerMutation = useMutation({
-    mutationFn: async (deviceId: string) => {
-      // Send via Realtime device_commands table
-      const { id: commandId } = await sendDeviceCommand(deviceId, 'relay_open', { duration: 5 });
-      toast.info("Command sent to device...");
-      
-      // Also fire the edge function as fallback
-      triggerRelay(deviceId).catch(() => {});
-
-      // Subscribe to status updates
-      const unsub = subscribeToCommandStatus(commandId, (status) => {
-        if (status === 'executed') {
-          toast.success("Gate opened successfully");
-          unsub();
-        }
-      });
-
-      // Timeout after 10s
-      setTimeout(() => unsub(), 10000);
-      return { message: 'Command sent' };
-    },
-    onError: (error: Error) => {
-      toast.error(`Failed to trigger relay: ${error.message}`);
-    },
-  });
+  const handleRelayAction = () => {
+    toast.info("Remote relay trigger is disabled in callback-webhook mode");
+  };
 
   const getDeviceTypeIcon = (type: string) => {
     switch (type) {
@@ -231,7 +207,8 @@ const DeviceManagement = () => {
                     {devices.map((device) => {
                       const caps = (device.config as any)?.capabilities || {};
                       const heartbeatAge = device.last_heartbeat ? (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000 : Infinity;
-                      const isLive = heartbeatAge < 60;
+                      const isLive = heartbeatAge < 120;
+                      const relaySupported = !!caps.relay_turnstile;
                       return (
                       <TableRow key={device.id}>
                         <TableCell>
@@ -276,9 +253,10 @@ const DeviceManagement = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => triggerMutation.mutate(device.id)}
-                              disabled={!device.is_online || triggerMutation.isPending}
-                              title="Remote Trigger (setRelayIoValue)"
+                              onClick={handleRelayAction}
+                              disabled={!relaySupported || !device.is_online}
+                              title={relaySupported ? "Remote trigger disabled in callback mode" : "Relay not supported by device"}
+                              aria-label="Remote relay trigger"
                             >
                               <PlayCircle className="h-4 w-4" />
                             </Button>
@@ -286,6 +264,7 @@ const DeviceManagement = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => setEditingDevice(device)}
+                              aria-label="Edit device"
                             >
                               <Settings2 className="h-4 w-4" />
                             </Button>
@@ -294,6 +273,7 @@ const DeviceManagement = () => {
                               size="sm"
                               onClick={() => setDeletingDevice(device)}
                               className="text-destructive hover:text-destructive"
+                              aria-label="Delete device"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -327,15 +307,15 @@ const DeviceManagement = () => {
         </div>
       )}
 
-      {/* Terminal Setup Guide — Stock Firmware */}
+      {/* Terminal Setup Guide — Callback Webhooks */}
       <Collapsible>
         <Card className="border-dashed">
           <CardHeader className="pb-3">
             <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
               <Info className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm font-medium">Stock Firmware Setup Guide (ZKTeco / SMDT)</CardTitle>
+              <CardTitle className="text-sm font-medium">Callback Setup Guide (Android Facial Terminal)</CardTitle>
             </CollapsibleTrigger>
-            <CardDescription className="text-xs">Configure your face terminal to sync with Incline Cloud — no custom APK required</CardDescription>
+            <CardDescription className="text-xs">Configure terminal callback URLs to sync with Incline Cloud</CardDescription>
           </CardHeader>
           <CollapsibleContent>
             <CardContent className="space-y-6">
@@ -345,25 +325,25 @@ const DeviceManagement = () => {
                 <ol className="space-y-3 text-sm list-decimal list-inside">
                   <li><span className="font-medium">Register the device</span> — Click "Add Device" above. Enter a name, select the branch, and enter the <strong>Serial Number (SN)</strong> from the terminal's System Info screen.</li>
                   <li><span className="font-medium">Open terminal settings</span> — On the terminal, go to <strong>System Settings → App Settings</strong> (or Communication Settings on some models).</li>
-                  <li><span className="font-medium">Set Server URL</span> — Enter the <strong>Server URL</strong> shown in the device setup card above. This is where the terminal sends attendance data.</li>
-                  <li><span className="font-medium">Set Push Interval</span> — Set to <strong>30 seconds</strong> for real-time attendance, or 60 seconds for lower traffic.</li>
-                  <li><span className="font-medium">Enable Realtime Push</span> — Toggle ON so face scans are sent to the cloud immediately.</li>
+                  <li><span className="font-medium">Open Callback settings</span> — Go to <strong>App Settings → Callback settings</strong>.</li>
+                  <li><span className="font-medium">Set Heartbeat Url</span> — Use the heartbeat URL from the setup card.</li>
+                  <li><span className="font-medium">Set Identify Callback Url</span> — Use the identify URL from the setup card.</li>
+                  <li><span className="font-medium">Set Registered address</span> — Use the register URL from the setup card.</li>
                   <li><span className="font-medium">Verify connection</span> — The device status card above should show <span className="text-green-600 font-medium">"Connected"</span> within 30–60 seconds.</li>
                 </ol>
               </div>
 
-              {/* How ICLOCK works */}
+              {/* How callback flow works */}
               <div className="space-y-2">
-                <h4 className="font-semibold text-sm">How It Works (ICLOCK Protocol)</h4>
+                <h4 className="font-semibold text-sm">How It Works (Callback Webhooks)</h4>
                 <p className="text-xs text-muted-foreground">
-                  Stock ZKTeco terminals use the ICLOCK/PUSH protocol. The terminal automatically sends data to your server:
+                  The terminal calls three webhook endpoints to sync status and identify events:
                 </p>
                 <div className="grid gap-2">
                   {[
-                    { event: 'Heartbeat', desc: 'Terminal POSTs to /iclock/cdata every 30s — keeps the cloud status "Connected" and picks up pending commands.' },
-                    { event: 'Attendance Push', desc: 'When a face or card is scanned, the terminal pushes the record as ATTLOG data. The cloud validates membership and logs the check-in.' },
-                    { event: 'Command Poll', desc: 'Terminal GETs /iclock/getrequest to receive pending commands — e.g., enroll a new member, open relay, reboot.' },
-                    { event: 'Roster Sync', desc: 'When you add/remove members in the web app, the cloud queues USERINFO commands. The terminal picks them up on the next poll.' },
+                    { event: 'Heartbeat', desc: 'Terminal POSTs heartbeat payloads so the cloud updates last online timestamp.' },
+                    { event: 'Identify', desc: 'Terminal POSTs face recognition callbacks, and the cloud records staff or member access.' },
+                    { event: 'Register', desc: 'Terminal POSTs roster pull or registration callbacks for member sync workflows.' },
                   ].map((item) => (
                     <div key={item.event} className="flex gap-2 p-2 rounded bg-muted/50 text-xs">
                       <span className="font-mono text-primary font-medium whitespace-nowrap min-w-[110px]">{item.event}</span>
@@ -378,7 +358,7 @@ const DeviceManagement = () => {
                 <h4 className="font-semibold text-sm">Face Enrollment</h4>
                 <div className="p-3 rounded-lg bg-muted/30 border text-xs space-y-2">
                   <p><strong>Option A — Terminal Capture:</strong> Enroll faces directly on the terminal. The device stores the face template locally. Attendance records are pushed to the cloud automatically.</p>
-                  <p><strong>Option B — Cloud Push:</strong> Upload a member photo via the web app. The cloud queues a sync command. On the next device poll, the member is enrolled on the terminal.</p>
+                  <p><strong>Option B — Callback Register:</strong> When the terminal sends registration callbacks, the cloud stores registration events and can return active member roster data from the register endpoint.</p>
                 </div>
               </div>
 
@@ -386,9 +366,9 @@ const DeviceManagement = () => {
               <div className="space-y-2">
                 <h4 className="font-semibold text-sm">Troubleshooting</h4>
                 <div className="space-y-2 text-xs text-muted-foreground">
-                  <p>• <strong>Status stays "Not Connected"</strong> — Double-check the Server URL. Ensure the terminal has internet access (Wi-Fi or Ethernet). Check that the SN in the app matches the terminal's actual SN.</p>
-                  <p>• <strong>Scans not appearing</strong> — Verify "Realtime Push" is enabled. Check that the Push Interval is ≤ 60 seconds.</p>
-                  <p>• <strong>Member denied despite active plan</strong> — The PIN on the terminal must match the member's UUID, member code, or Wiegand code in the system.</p>
+                  <p>• <strong>Status stays "Not Connected"</strong> — Double-check the Heartbeat Url and verify terminal internet access.</p>
+                  <p>• <strong>Scans not appearing</strong> — Verify Identify Callback Url and check the identifier in payload matches member/staff records.</p>
+                  <p>• <strong>Registration not syncing</strong> — Verify Registered address URL and branch mapping for the device serial number.</p>
                 </div>
               </div>
             </CardContent>

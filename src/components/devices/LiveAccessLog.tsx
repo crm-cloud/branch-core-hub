@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, CheckCircle, XCircle, User } from "lucide-react";
+import { Activity, User } from "lucide-react";
 import { fetchAccessEvents, subscribeToAccessEvents, DeviceAccessEvent } from "@/services/deviceService";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
@@ -29,8 +27,6 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
 
   // Subscribe to real-time access device events
   useEffect(() => {
-    if (!branchId) return;
-
     const unsubscribe = subscribeToAccessEvents(branchId, (newEvent) => {
       setLiveEvents((prev) => {
         const updated = [newEvent, ...prev].slice(0, limit);
@@ -45,17 +41,15 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
 
   // Subscribe to real-time member attendance check-ins
   useEffect(() => {
-    if (!branchId) return;
-
     const channel = supabase
-      .channel('live-attendance-' + branchId)
+      .channel('live-attendance-' + (branchId || 'all'))
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'member_attendance',
-          filter: `branch_id=eq.${branchId}`,
+          ...(branchId ? { filter: `branch_id=eq.${branchId}` } : {}),
         },
         (payload) => {
           const record = payload.new as any;
@@ -78,26 +72,6 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
       supabase.removeChannel(channel);
     };
   }, [branchId, limit]);
-
-  const getEventIcon = (granted: boolean) => {
-    return granted ? (
-      <CheckCircle className="h-4 w-4 text-green-500" />
-    ) : (
-      <XCircle className="h-4 w-4 text-destructive" />
-    );
-  };
-
-  const getEventBadge = (event: DeviceAccessEvent) => {
-    if (event.access_granted) {
-      return <Badge variant="default" className="bg-green-500 text-xs">Granted</Badge>;
-    }
-    return <Badge variant="destructive" className="text-xs">Denied</Badge>;
-  };
-
-  const getMemberName = async (memberId: string): Promise<string> => {
-    // This would ideally be part of the event data
-    return "Member";
-  };
 
   return (
     <div className="h-full">
@@ -137,7 +111,7 @@ const LiveAccessLog = ({ branchId, limit = 10 }: LiveAccessLogProps) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm">
                       <span className="font-semibold">
-                        {event.member?.member_code || event.device_message || 'Unknown'}
+                          {event.device_message || event.member?.member_code || event.member_id || 'Unknown'}
                       </span>
                       <span className="text-muted-foreground ml-1">
                         {event.access_granted ? 'checked in' : 'denied'}

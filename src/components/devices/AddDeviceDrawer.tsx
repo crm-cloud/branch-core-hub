@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ interface AddDeviceDrawerProps {
 
 const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDeviceDrawerProps) => {
   const queryClient = useQueryClient();
+  const normalizeSn = (value: string) => value.trim().toUpperCase();
+  const isValidIp = (value: string) => /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(value);
+  const isValidMac = (value: string) => /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(value);
   const [formData, setFormData] = useState({
     device_name: "",
     serial_number: "",
@@ -66,15 +69,26 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     });
   };
 
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, branch_id: defaultBranchId || "" }));
+  }, [defaultBranchId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.device_name.trim()) { toast.error("Device name is required"); return; }
-    if (!formData.serial_number.trim()) { toast.error("Serial Number is required"); return; }
+    if (!normalizeSn(formData.serial_number)) { toast.error("Serial Number is required"); return; }
     if (!formData.branch_id) { toast.error("Please select a branch"); return; }
+
+    const ip = formData.ip_address.trim();
+    const mac = formData.mac_address.trim();
+    if (ip && !isValidIp(ip)) { toast.error("Invalid IP address format"); return; }
+    if (mac && !isValidMac(mac)) { toast.error("Invalid MAC address format"); return; }
 
     addMutation.mutate({
       ...formData,
-      ip_address: formData.ip_address.trim() || '0.0.0.0',
+      serial_number: normalizeSn(formData.serial_number),
+      ip_address: ip || '0.0.0.0',
+      mac_address: mac || undefined,
       config: {
         capabilities: {
           facial_recognition: formData.cap_facial,
@@ -101,7 +115,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
 
           <div className="space-y-2">
             <Label htmlFor="serial_number">Device Serial Number (SN) *</Label>
-            <Input id="serial_number" placeholder="e.g., SN-2024-ABCDEF" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
+              <Input id="serial_number" placeholder="e.g., SN-2024-ABCDEF" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: normalizeSn(e.target.value) })} />
             <p className="text-xs text-muted-foreground">Primary identifier — the device registers with the cloud using this SN</p>
           </div>
 

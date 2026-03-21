@@ -22,6 +22,9 @@ interface EditDeviceDrawerProps {
 
 const EditDeviceDrawer = ({ isOpen, onClose, device, branches }: EditDeviceDrawerProps) => {
   const queryClient = useQueryClient();
+  const normalizeSn = (value: string) => value.trim().toUpperCase();
+  const isValidIp = (value: string) => /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(value);
+  const isValidMac = (value: string) => /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(value);
   const config = (device.config as any) || {};
   const caps = config?.capabilities || {};
 
@@ -43,7 +46,7 @@ const EditDeviceDrawer = ({ isOpen, onClose, device, branches }: EditDeviceDrawe
     if (device) {
       setFormData({
         device_name: device.device_name || "",
-        serial_number: device.serial_number || "",
+          serial_number: normalizeSn(device.serial_number || ""),
         ip_address: String(device.ip_address) || "",
         mac_address: device.mac_address || "",
         branch_id: device.branch_id || "",
@@ -73,13 +76,18 @@ const EditDeviceDrawer = ({ isOpen, onClose, device, branches }: EditDeviceDrawe
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.device_name.trim()) { toast.error("Device name is required"); return; }
-    if (!formData.serial_number.trim()) { toast.error("Serial Number is required"); return; }
+    if (!normalizeSn(formData.serial_number)) { toast.error("Serial Number is required"); return; }
+
+    const ip = formData.ip_address.trim();
+    const mac = formData.mac_address.trim();
+    if (ip && !isValidIp(ip)) { toast.error("Invalid IP address format"); return; }
+    if (mac && !isValidMac(mac)) { toast.error("Invalid MAC address format"); return; }
 
     updateMutation.mutate({
       device_name: formData.device_name,
-      serial_number: formData.serial_number,
-      ip_address: formData.ip_address.trim() || '0.0.0.0',
-      mac_address: formData.mac_address,
+      serial_number: normalizeSn(formData.serial_number),
+      ip_address: ip || '0.0.0.0',
+      mac_address: mac,
       branch_id: formData.branch_id,
       model: formData.model,
       relay_mode: formData.relay_mode,
@@ -125,7 +133,7 @@ const EditDeviceDrawer = ({ isOpen, onClose, device, branches }: EditDeviceDrawe
 
           <div className="space-y-2">
             <Label>Serial Number (SN) *</Label>
-            <Input value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
+              <Input value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: normalizeSn(e.target.value) })} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

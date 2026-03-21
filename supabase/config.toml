@@ -1,6 +1,12 @@
 project_id = "iyqqpbvnszyrrgerniog"
 
-[functions.terminal-iclock]
+[functions.terminal-heartbeat]
+verify_jwt = false
+
+[functions.terminal-identify]
+verify_jwt = false
+
+[functions.terminal-register]
 verify_jwt = false
 
 [functions.admin-create-user]
@@ -30,21 +36,6 @@ verify_jwt = true
 [functions.payment-webhook]
 verify_jwt = false
 
-[functions.device-access-event]
-verify_jwt = false
-
-[functions.device-heartbeat]
-verify_jwt = false
-
-[functions.device-sync-data]
-verify_jwt = false
-
-[functions.device-sync-callback]
-verify_jwt = false
-
-[functions.device-trigger-relay]
-verify_jwt = true
-
 [functions.send-broadcast]
 verify_jwt = false
 
@@ -63,9 +54,6 @@ verify_jwt = false
 [functions.export-data]
 verify_jwt = false
 
-
-[functions.terminal-sync]
-verify_jwt = false
 
 [functions.send-whatsapp]
 verify_jwt = true

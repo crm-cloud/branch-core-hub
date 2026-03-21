@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Wifi, WifiOff, CheckCircle2, AlertCircle, Users } from "lucide-react";
+import { Copy, Wifi, WifiOff, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { AccessDevice } from "@/services/deviceService";
@@ -11,7 +11,9 @@ interface DeviceSetupCardProps {
 }
 
 const DeviceSetupCard = ({ device }: DeviceSetupCardProps) => {
-  const serverUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-iclock`;
+  const heartbeatUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-heartbeat`;
+  const identifyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-identify`;
+  const registerUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/terminal-register`;
   const heartbeatAge = device.last_heartbeat
     ? (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000
     : Infinity;
@@ -40,16 +42,41 @@ const DeviceSetupCard = ({ device }: DeviceSetupCardProps) => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Server URL */}
+        {/* Callback URLs */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Server URL (enter in terminal App Settings)</label>
+          <label className="text-xs font-medium text-muted-foreground">Callback URLs (enter in terminal Callback settings)</label>
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-background border">
-            <code className="text-xs font-mono break-all flex-1">{serverUrl}</code>
+            <code className="text-xs font-mono break-all flex-1">Heartbeat Url: {heartbeatUrl}</code>
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 shrink-0"
-              onClick={() => copyToClipboard(serverUrl, "Server URL")}
+              onClick={() => copyToClipboard(heartbeatUrl, "Heartbeat URL")}
+              aria-label="Copy heartbeat URL"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-background border">
+            <code className="text-xs font-mono break-all flex-1">Identify Callback Url: {identifyUrl}</code>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={() => copyToClipboard(identifyUrl, "Identify Callback URL")}
+              aria-label="Copy identify callback URL"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-background border">
+            <code className="text-xs font-mono break-all flex-1">Registered address: {registerUrl}</code>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={() => copyToClipboard(registerUrl, "Registered Address URL")}
+              aria-label="Copy registered address URL"
             >
               <Copy className="h-3 w-3" />
             </Button>
@@ -67,6 +94,7 @@ const DeviceSetupCard = ({ device }: DeviceSetupCardProps) => {
                 size="icon"
                 className="h-7 w-7 shrink-0"
                 onClick={() => copyToClipboard(device.serial_number!, "Serial Number")}
+                aria-label="Copy serial number"
               >
                 <Copy className="h-3 w-3" />
               </Button>
@@ -102,9 +130,10 @@ const DeviceSetupCard = ({ device }: DeviceSetupCardProps) => {
           <p className="text-xs font-semibold">Quick Setup</p>
           <ol className="space-y-1.5 text-xs text-muted-foreground list-decimal list-inside">
             <li>On terminal → <strong>System Settings → App Settings</strong></li>
-            <li>Set <strong>Server URL</strong> to the URL above</li>
-            <li>Set <strong>Push Interval</strong> to <strong>30 seconds</strong></li>
-            <li>Enable <strong>Realtime Push</strong></li>
+            <li>Open <strong>Callback settings</strong></li>
+            <li>Set <strong>Heartbeat Url</strong> to the first URL above</li>
+            <li>Set <strong>Identify Callback Url</strong> to the second URL above</li>
+            <li>Set <strong>Registered address</strong> to the third URL above</li>
             <li>Verify status turns <span className="text-green-600 font-medium">Connected</span> above</li>
           </ol>
         </div>
@@ -119,7 +148,7 @@ const DeviceSetupCard = ({ device }: DeviceSetupCardProps) => {
           ) : (
             <div className="flex items-center gap-1 text-xs text-destructive">
               <AlertCircle className="h-3 w-3" />
-              No heartbeat — check Server URL
+              No heartbeat — check Heartbeat Url
             </div>
           )}
           {device.firmware_version && (

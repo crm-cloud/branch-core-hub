@@ -147,13 +147,11 @@ export const deleteDevice = async (id: string): Promise<void> => {
   if (error) throw error;
 };
 
-export const triggerRelay = async (deviceId: string): Promise<{ success: boolean; message: string }> => {
-  const { data, error } = await supabase.functions.invoke('device-trigger-relay', {
-    body: { device_id: deviceId },
-  });
-
-  if (error) throw error;
-  return data;
+export const triggerRelay = async (_deviceId: string): Promise<{ success: boolean; message: string }> => {
+  return {
+    success: false,
+    message: 'Relay trigger is not available in callback-webhook mode. Configure relay behavior on the terminal device.',
+  };
 };
 
 export const fetchAccessEvents = async (
@@ -203,18 +201,20 @@ export const fetchAccessEvents = async (
 };
 
 export const subscribeToAccessEvents = (
-  branchId: string,
+  branchId: string | undefined,
   callback: (event: DeviceAccessEvent) => void
 ) => {
-  const channel = supabase
+  const channelBuilder = supabase
     .channel('device_access_events_realtime')
+  
+  const channel = channelBuilder
     .on(
       'postgres_changes',
       {
         event: 'INSERT',
         schema: 'public',
         table: 'device_access_events',
-        filter: `branch_id=eq.${branchId}`,
+        ...(branchId ? { filter: `branch_id=eq.${branchId}` } : {}),
       },
       (payload) => {
         callback(payload.new as DeviceAccessEvent);
