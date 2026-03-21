@@ -28,6 +28,7 @@ import { getBiometricStats } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
 import LiveAccessLog from "@/components/devices/LiveAccessLog";
+import DeviceSetupCard from "@/components/devices/DeviceSetupCard";
 import { 
   AlertDialog,
   AlertDialogAction,
