@@ -1,5 +1,8 @@
 project_id = "iyqqpbvnszyrrgerniog"
 
+[functions.terminal-iclock]
+verify_jwt = false
+
 [functions.admin-create-user]
 verify_jwt = true
 
