@@ -1,103 +1,85 @@
 
 
-# Device Integration Redesign: Stock ZKTeco Terminal ↔ Incline Cloud
+# Fix Terminal Integration: Create Missing Tables & Rewrite Functions
 
-## The Core Problem
+## Root Cause Found
 
-Your terminal runs **stock ZKTeco firmware (v1.42.0.2)**. The current codebase assumes a **custom Android APK** will call the `terminal-sync` endpoint — but no such APK exists. The stock firmware uses the **ICLOCK/PUSH protocol**, where the device POSTs attendance data to a configured server URL.
+The 3 edge functions (`terminal-heartbeat`, `terminal-identify`, `terminal-register`) are **deployed and reachable**, but they reference two tables that **do not exist**:
 
-## How Stock ZKTeco Terminals Work
+- `hardware_devices` — used by all 3 functions for device tracking
+- `access_logs` — used by `terminal-identify` and `terminal-register` for event logging
 
-```text
-┌─────────────────┐         PUSH (every 30s)        ┌──────────────────┐
-│  ZKTeco Terminal │ ──── POST /iclock/cdata ──────► │  Incline Cloud   │
-│  (stock firmware)│ ◄─── Response with commands ─── │  (edge function) │
-│  SN: 01MA10      │                                  │  /terminal-sync  │
-└─────────────────┘                                  └──────────────────┘
+The actual existing tables are `access_devices` and `device_access_events`. The functions were written against a schema that was never migrated.
 
-The device:
-1. POSTs to Server URL/iclock/cdata?SN=01MA10&...  (heartbeat + push data)
-2. POSTs attendance records as tab-separated lines
-3. Expects specific response format: "OK" or commands like "C:ID:DATA"
-```
+**Live test result**: Heartbeat returns `500` with `"Could not find the table 'public.hardware_devices' in the schema cache"`.
 
-The terminal's **"App Settings" → "Server URL"** needs your edge function URL. But the current `terminal-sync` edge function expects JSON, not the ICLOCK protocol format.
+## The Fix (2 options — recommend Option A)
 
-## What Needs to Change
+### Option A: Create the missing `hardware_devices` and `access_logs` tables
 
-### 1. New Edge Function: `terminal-iclock` (the ZKTeco protocol handler)
+The functions are well-written and handle the device's callback protocol correctly. Rather than rewriting 3 functions to use `access_devices` (which has required `NOT NULL` constraints on `ip_address`, `branch_id`, `device_name`, `device_type` that the terminal won't send), we create the two tables the functions expect.
 
-A new edge function that speaks the ICLOCK/PUSH protocol natively:
+Also add a compatibility bridge: the heartbeat function already updates `access_devices` as a secondary write, so both tables stay in sync.
 
-- **`GET /iclock/cdata?SN=xxx`** — Device handshake. Returns `OK` + push parameters.
-- **`POST /iclock/cdata?SN=xxx&table=ATTLOG`** — Device pushes attendance events (face scan, card tap). Each line: `PIN\tTimestamp\tVerifyMode\tInOutMode\tWorkCode`. Parse and route through the existing `validate_member_checkin` → `member_check_in` flow.
-- **`GET /iclock/getrequest?SN=xxx`** — Device polls for pending commands. Return roster sync commands (`DATA UPDATE USERINFO`) to push member photos/names to the device.
-- **`POST /iclock/devicecmd?SN=xxx`** — Device confirms command execution.
+### Database Migration
 
-This replaces the need for a custom APK entirely.
+**Table 1: `hardware_devices`**
+- `id` uuid PK
+- `device_sn` text UNIQUE NOT NULL (the device's serial number / deviceKey)
+- `device_key` text
+- `branch_id` uuid FK → branches (nullable, set after registration)
+- `ip_address` text
+- `last_online` timestamptz
+- `last_payload` jsonb
+- `created_at` / `updated_at` timestamptz defaults
+- RLS: disabled (only accessed by service_role from edge functions)
 
-### 2. Roster Push (Cloud → Device)
+**Table 2: `access_logs`**
+- `id` uuid PK
+- `device_sn` text NOT NULL
+- `hardware_device_id` uuid FK → hardware_devices
+- `branch_id` uuid
+- `member_id` uuid
+- `profile_id` uuid
+- `event_type` text NOT NULL (heartbeat, identify, register)
+- `result` text (member, staff, not_found, ignored, accepted)
+- `message` text
+- `captured_at` timestamptz
+- `payload` jsonb
+- `created_at` timestamptz default now()
+- RLS: disabled (service_role only)
 
-Stock terminals accept user enrollment via the ICLOCK protocol:
+### Edge Function Fixes
 
-```text
-C:1:DATA UPDATE USERINFO PIN=member_uuid\tName=John\tPri=0
-C:2:DATA UPDATE BIODATA PIN=member_uuid\tNo=0\tIndex=0\tValid=1\tDuress=0\tType=9\tTmp=<base64_face_template>
-```
+The functions are mostly correct. Two small fixes needed:
 
-When you add a member photo via the web app, the system queues a sync command. On the next device poll (`getrequest`), the command is delivered and the terminal enrolls the face locally.
+1. **`terminal-identify`**: After identifying a **member**, call `member_check_in()` RPC to properly validate membership and record attendance (currently it only inserts access_logs but skips the actual check-in).
 
-### 3. Redesign Device Management UI
+2. **`terminal-heartbeat`**: The `access_devices` bridge update uses `ip_address` as inet type but sends a string — needs a cast guard for the case where IP is null.
 
-The current UI is missing critical "what to type into the terminal" information:
+### UI: Update Device SN
 
-- **Add a "Device Setup Card"** per device that shows:
-  - **Server URL to enter on terminal**: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/terminal-iclock`
-  - **Device SN**: Show the registered SN with a note "This must match the terminal's SN in App Settings"
-  - **Connection Status**: Real-time heartbeat indicator
-  - **Roster Sync Status**: How many members are synced to this device
-- **Replace the generic "Terminal Setup Guide"** with stock-firmware-specific steps:
-  1. On terminal → System Settings → App Settings
-  2. Set Server URL to the displayed URL
-  3. Set Push Interval to 30 seconds
-  4. Enable "Realtime Push"
-  5. Verify connection goes green
+The registered device has SN `D1146D682A96B1C2` but the terminal shows `01MA10`. The `DeviceSetupCard` already shows the SN correctly. We need to either:
+- Update the DB record to match the terminal's actual `deviceKey` (which it sends in callbacks)
+- OR let the heartbeat auto-create a `hardware_devices` record when `01MA10` first pings
 
-### 4. Fix Device SN Mismatch
+The heartbeat function uses `upsert` on `device_sn`, so once the terminal sends its first heartbeat, a new `hardware_devices` record will be auto-created with the correct SN.
 
-The registered device has SN `D1146D682A96B1C2` but the terminal header shows `01MA10`. Need to update the DB record or clarify which SN the device actually reports. Add a "Test Connection" button that sends a test heartbeat and shows whether the SN matches.
+### No terminal-iclock needed
 
-### 5. Member Photo Enrollment Flow
+The previous plan suggested an ICLOCK protocol function. Based on the device photos, this terminal uses a **Callback-based** protocol (Heartbeat URL, Identify Callback URL, Registered Address) — NOT the ICLOCK/PUSH protocol. The 3 existing functions are the correct architecture. The `terminal-iclock` function was never created and should not be.
 
-Currently all 5 members have `biometric_photo_url: null`. The enrollment flow needs:
+## Files to Modify
 
-- **Web Upload**: Admin uploads member photo → stored in `member-photos` bucket → URL saved to `biometric_photo_url` → queued for device sync via ICLOCK `DATA UPDATE BIODATA` command
-- **Terminal Capture**: Device captures face locally → reports enrollment via `ATTLOG` → cloud marks `biometric_enrolled = true`
-
-## Files to Create/Modify
-
-| File | Action |
+| File | Change |
 |------|--------|
-| `supabase/functions/terminal-iclock/index.ts` | **New** — ZKTeco ICLOCK protocol handler |
-| `supabase/config.toml` | Add `[functions.terminal-iclock]` with `verify_jwt = false` |
-| `src/pages/DeviceManagement.tsx` | Redesign setup guide for stock firmware, add per-device setup card |
-| `src/components/devices/AddDeviceDrawer.tsx` | Add protocol type selector (ICLOCK vs Custom APK) |
-| `src/components/devices/DeviceSetupCard.tsx` | **New** — Shows exact terminal configuration values |
+| Migration | Create `hardware_devices` and `access_logs` tables |
+| `supabase/functions/terminal-identify/index.ts` | Add `member_check_in()` RPC call for member identification |
+| `supabase/functions/terminal-heartbeat/index.ts` | Minor null-safety fix on IP address |
 
 ## Execution Order
-
-1. Create `terminal-iclock` edge function (ICLOCK protocol)
-2. Add config.toml entry
-3. Redesign Device Management UI with stock firmware setup guide
-4. Add per-device setup card with copyable Server URL and SN
-5. Wire member photo enrollment to device sync queue
-
-## Important Note
-
-Before building, you need to verify the exact SN format your terminal reports. On the terminal:
-- Go to **App Settings** → look for "Device Serial Number" or "SN"
-- The `01MA10` shown in the top bar may be a device alias, not the SN
-- The actual SN may be `D1146D682A96B1C2` (which you already registered)
-
-The Server URL to enter in the terminal will be: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/terminal-iclock`
+1. Create DB migration for both tables
+2. Fix terminal-identify to call member_check_in
+3. Deploy all 3 functions
+4. Test end-to-end with curl
 
