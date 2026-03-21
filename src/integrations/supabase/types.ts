@@ -82,6 +82,80 @@ export type Database = {
           },
         ]
       }
+      access_logs: {
+        Row: {
+          branch_id: string | null
+          captured_at: string | null
+          created_at: string
+          device_sn: string
+          event_type: string
+          hardware_device_id: string | null
+          id: string
+          member_id: string | null
+          message: string | null
+          payload: Json | null
+          profile_id: string | null
+          result: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          captured_at?: string | null
+          created_at?: string
+          device_sn: string
+          event_type: string
+          hardware_device_id?: string | null
+          id?: string
+          member_id?: string | null
+          message?: string | null
+          payload?: Json | null
+          profile_id?: string | null
+          result?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          captured_at?: string | null
+          created_at?: string
+          device_sn?: string
+          event_type?: string
+          hardware_device_id?: string | null
+          id?: string
+          member_id?: string | null
+          message?: string | null
+          payload?: Json | null
+          profile_id?: string | null
+          result?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_logs_hardware_device_id_fkey"
+            columns: ["hardware_device_id"]
+            isOneToOne: false
+            referencedRelation: "hardware_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_logs_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_logs_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_banners: {
         Row: {
           branch_id: string
@@ -2291,6 +2365,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "follow_up_activities_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hardware_devices: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          device_key: string | null
+          device_sn: string
+          id: string
+          ip_address: string | null
+          last_online: string | null
+          last_payload: Json | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          device_key?: string | null
+          device_sn: string
+          id?: string
+          ip_address?: string | null
+          last_online?: string | null
+          last_payload?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          device_key?: string | null
+          device_sn?: string
+          id?: string
+          ip_address?: string | null
+          last_online?: string | null
+          last_payload?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hardware_devices_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
