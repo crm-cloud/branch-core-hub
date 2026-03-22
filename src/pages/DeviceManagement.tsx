@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
-import { fetchDevices, deleteDevice, getDeviceStats, AccessDevice } from "@/services/deviceService";
+import { fetchDevices, deleteDevice, getDeviceStats, sendDeviceCommand, subscribeToCommandStatus, AccessDevice } from "@/services/deviceService";
 import { getBiometricStats, getMemberSyncAudit, syncBranchMembersToDevices } from "@/services/biometricService";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
@@ -48,6 +48,9 @@ const DeviceManagement = () => {
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<AccessDevice | null>(null);
   const [deletingDevice, setDeletingDevice] = useState<AccessDevice | null>(null);
+  const [relayPendingByDevice, setRelayPendingByDevice] = useState<Record<string, boolean>>({});
+  const relayCleanupByDeviceRef = useRef<Record<string, () => void>>({});
+  const relayTimeoutByDeviceRef = useRef<Record<string, number>>({});
 
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['access-devices', selectedBranchFilter],
@@ -111,8 +114,77 @@ const DeviceManagement = () => {
     },
   });
 
-  const handleRelayAction = () => {
-    toast.info("Remote relay trigger is disabled in callback-webhook mode");
+  const clearRelayWatch = (deviceId: string) => {
+    const cleanup = relayCleanupByDeviceRef.current[deviceId];
+    if (cleanup) {
+      cleanup();
+      delete relayCleanupByDeviceRef.current[deviceId];
+    }
+
+    const timeoutId = relayTimeoutByDeviceRef.current[deviceId];
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      delete relayTimeoutByDeviceRef.current[deviceId];
+    }
+
+    setRelayPendingByDevice((prev) => ({ ...prev, [deviceId]: false }));
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.keys(relayCleanupByDeviceRef.current).forEach((deviceId) => {
+        const cleanup = relayCleanupByDeviceRef.current[deviceId];
+        if (cleanup) cleanup();
+      });
+
+      Object.keys(relayTimeoutByDeviceRef.current).forEach((deviceId) => {
+        const timeoutId = relayTimeoutByDeviceRef.current[deviceId];
+        if (timeoutId) window.clearTimeout(timeoutId);
+      });
+    };
+  }, []);
+
+  const handleRelayAction = async (device: AccessDevice) => {
+    if (!device.is_online) {
+      toast.error("Device is offline. Relay trigger requires an online device.");
+      return;
+    }
+
+    setRelayPendingByDevice((prev) => ({ ...prev, [device.id]: true }));
+
+    try {
+      const command = await sendDeviceCommand(device.id, "relay_open", {
+        duration: device.relay_delay ?? 5,
+        mode: device.relay_mode ?? 1,
+      });
+
+      toast.success("Relay command sent. Waiting for device confirmation...");
+
+      const unsubscribe = subscribeToCommandStatus(command.id, (status) => {
+        const normalized = (status || "").toLowerCase();
+
+        if (["completed", "executed", "success", "done"].includes(normalized)) {
+          toast.success(`Relay executed on ${device.device_name}`);
+          clearRelayWatch(device.id);
+          return;
+        }
+
+        if (["failed", "error", "rejected", "cancelled"].includes(normalized)) {
+          toast.error(`Relay command failed on ${device.device_name}`);
+          clearRelayWatch(device.id);
+        }
+      });
+
+      relayCleanupByDeviceRef.current[device.id] = unsubscribe;
+      relayTimeoutByDeviceRef.current[device.id] = window.setTimeout(() => {
+        toast.info(`Relay command queued for ${device.device_name}. No final confirmation yet.`);
+        clearRelayWatch(device.id);
+      }, 30000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown relay error";
+      toast.error(`Failed to send relay command: ${message}`);
+      clearRelayWatch(device.id);
+    }
   };
 
   const getDeviceTypeIcon = (type: string) => {
@@ -384,12 +456,20 @@ const DeviceManagement = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={handleRelayAction}
-                              disabled={!relaySupported || !device.is_online}
-                              title={relaySupported ? "Remote trigger disabled in callback mode" : "Relay not supported by device"}
+                              onClick={() => handleRelayAction(device)}
+                              disabled={!relaySupported || !device.is_online || !!relayPendingByDevice[device.id]}
+                              title={
+                                !relaySupported
+                                  ? "Relay not supported by device"
+                                  : !device.is_online
+                                    ? "Device is offline"
+                                    : relayPendingByDevice[device.id]
+                                      ? "Relay command in progress"
+                                      : "Trigger relay"
+                              }
                               aria-label="Remote relay trigger"
                             >
-                              <PlayCircle className="h-4 w-4" />
+                              <PlayCircle className={`h-4 w-4 ${relayPendingByDevice[device.id] ? 'animate-pulse' : ''}`} />
                             </Button>
                             <Button
                               variant="outline"
