@@ -257,15 +257,18 @@ const DeviceManagement = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Biometric Enrolled</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Biometric Enrolled (All)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
               <div className="text-2xl font-bold">{biometricStats?.enrollmentRate || 0}%</div>
               <span className="text-sm text-muted-foreground">
-                ({biometricStats?.enrolledMembers || 0}/{biometricStats?.totalMembers || 0})
+                ({biometricStats?.enrolledTotal || 0}/{biometricStats?.totalPeople || 0})
               </span>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Members {biometricStats?.enrolledMembers || 0}/{biometricStats?.totalMembers || 0} • Staff {biometricStats?.enrolledEmployees || 0}/{biometricStats?.totalEmployees || 0} • Trainers {biometricStats?.enrolledTrainers || 0}/{biometricStats?.totalTrainers || 0}
+            </p>
           </CardContent>
         </Card>
       </div>

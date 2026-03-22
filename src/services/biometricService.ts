@@ -270,7 +270,8 @@ export const markSyncComplete = async (
 
   if (error) throw error;
 
-  // If successful, update the person's enrollment status
+  // If successful, update the person's enrollment status.
+  // staff_id can represent either an employee or a trainer record.
   if (success) {
     const { data: syncItem } = await supabase
       .from('biometric_sync_queue')
@@ -284,28 +285,70 @@ export const markSyncComplete = async (
         .update({ biometric_enrolled: true })
         .eq('id', syncItem.member_id);
     } else if (syncItem?.staff_id) {
-      await supabase
+      const { data: updatedEmployees } = await supabase
         .from('employees')
         .update({ biometric_enrolled: true })
+        .eq('id', syncItem.staff_id)
+        .select('id');
+
+      if (!updatedEmployees || updatedEmployees.length === 0) {
+        await supabase
+          .from('trainers')
+        .update({ biometric_enrolled: true })
         .eq('id', syncItem.staff_id);
+      }
     }
   }
 };
 
 export const getBiometricStats = async (branchId?: string) => {
-  // Get member enrollment stats
+  // Members
   let memberQuery = supabase
     .from('members')
-    .select('biometric_enrolled');
+    .select('biometric_enrolled, status');
   
   if (branchId) {
     memberQuery = memberQuery.eq('branch_id', branchId);
   }
 
   const { data: members } = await memberQuery;
-  
-  const enrolledMembers = members?.filter(m => m.biometric_enrolled).length || 0;
-  const totalMembers = members?.length || 0;
+
+  // Employees (staff including manager)
+  let employeeQuery = supabase
+    .from('employees')
+    .select('biometric_enrolled, is_active');
+
+  if (branchId) {
+    employeeQuery = employeeQuery.eq('branch_id', branchId);
+  }
+
+  const { data: employees } = await employeeQuery;
+
+  // Trainers
+  let trainerQuery = supabase
+    .from('trainers')
+    .select('biometric_enrolled, is_active');
+
+  if (branchId) {
+    trainerQuery = trainerQuery.eq('branch_id', branchId);
+  }
+
+  const { data: trainers } = await trainerQuery;
+
+  const activeMembers = (members || []).filter((m) => m.status === 'active');
+  const activeEmployees = (employees || []).filter((e) => e.is_active === true);
+  const activeTrainers = (trainers || []).filter((t) => t.is_active === true);
+
+  const enrolledMembers = activeMembers.filter((m) => m.biometric_enrolled === true).length;
+  const enrolledEmployees = activeEmployees.filter((e) => e.biometric_enrolled === true).length;
+  const enrolledTrainers = activeTrainers.filter((t) => t.biometric_enrolled === true).length;
+
+  const totalMembers = activeMembers.length;
+  const totalEmployees = activeEmployees.length;
+  const totalTrainers = activeTrainers.length;
+
+  const enrolledTotal = enrolledMembers + enrolledEmployees + enrolledTrainers;
+  const totalPeople = totalMembers + totalEmployees + totalTrainers;
 
   // Get pending sync count
   const { count: pendingCount } = await supabase
@@ -314,9 +357,15 @@ export const getBiometricStats = async (branchId?: string) => {
     .eq('status', 'pending');
 
   return {
+    enrolledTotal,
+    totalPeople,
+    enrolledEmployees,
+    enrolledTrainers,
+    totalEmployees,
+    totalTrainers,
     enrolledMembers,
     totalMembers,
-    enrollmentRate: totalMembers > 0 ? Math.round((enrolledMembers / totalMembers) * 100) : 0,
+    enrollmentRate: totalPeople > 0 ? Math.round((enrolledTotal / totalPeople) * 100) : 0,
     pendingSyncs: pendingCount || 0,
   };
 };

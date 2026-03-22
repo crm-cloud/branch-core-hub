@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
       const imageUrl = toText(body.imageUrl) || toText(body.photo_url);
 
       if (personIdentifier && imageUrl) {
-        const lookupQueries = [
+        const memberLookupQueries = [
           supabase.from("members").select("id").eq("id", personIdentifier).maybeSingle(),
           supabase.from("members").select("id").eq("member_code", personIdentifier).maybeSingle(),
           supabase.from("members").select("id").eq("wiegand_code", personIdentifier).maybeSingle(),
@@ -344,9 +344,12 @@ Deno.serve(async (req) => {
         ];
 
         let resolvedMember: { id: string } | null = null;
-        for (const query of lookupQueries) {
+        for (const query of memberLookupQueries) {
           const { data } = await query;
-          if (data) { resolvedMember = data; break; }
+          if (data) {
+            resolvedMember = data;
+            break;
+          }
         }
 
         if (resolvedMember) {
@@ -354,6 +357,49 @@ Deno.serve(async (req) => {
             .from("members")
             .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
             .eq("id", resolvedMember.id);
+        } else {
+          const employeeLookupQueries = [
+            supabase.from("employees").select("id").eq("id", personIdentifier).maybeSingle(),
+            supabase.from("employees").select("id").eq("employee_code", personIdentifier).maybeSingle(),
+            supabase.from("employees").select("id").eq("user_id", personIdentifier).maybeSingle(),
+          ];
+
+          let resolvedEmployee: { id: string } | null = null;
+          for (const query of employeeLookupQueries) {
+            const { data } = await query;
+            if (data) {
+              resolvedEmployee = data;
+              break;
+            }
+          }
+
+          if (resolvedEmployee) {
+            await supabase
+              .from("employees")
+              .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
+              .eq("id", resolvedEmployee.id);
+          } else {
+            const trainerLookupQueries = [
+              supabase.from("trainers").select("id").eq("id", personIdentifier).maybeSingle(),
+              supabase.from("trainers").select("id").eq("user_id", personIdentifier).maybeSingle(),
+            ];
+
+            let resolvedTrainer: { id: string } | null = null;
+            for (const query of trainerLookupQueries) {
+              const { data } = await query;
+              if (data) {
+                resolvedTrainer = data;
+                break;
+              }
+            }
+
+            if (resolvedTrainer) {
+              await supabase
+                .from("trainers")
+                .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
+                .eq("id", resolvedTrainer.id);
+            }
+          }
         }
       }
 
