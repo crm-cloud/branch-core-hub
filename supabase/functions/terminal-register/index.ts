@@ -46,7 +46,11 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const raw = await req.text();
 
   if (raw.startsWith("{") || raw.startsWith("[")) {
-    try { return JSON.parse(raw); } catch { /* fall through */ }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      /* fall through */
+    }
   }
 
   if (ct.includes("form") || raw.includes("=")) {
@@ -60,7 +64,11 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
     return obj;
   }
 
-  try { return JSON.parse(raw); } catch { return {}; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 Deno.serve(async (req) => {
@@ -142,11 +150,7 @@ Deno.serve(async (req) => {
 
     let branchName: string | null = null;
     if (branchId) {
-      const { data: branch } = await supabase
-        .from("branches")
-        .select("name")
-        .eq("id", branchId)
-        .maybeSingle();
+      const { data: branch } = await supabase.from("branches").select("name").eq("id", branchId).maybeSingle();
 
       branchName = branch?.name || null;
     }
@@ -201,7 +205,7 @@ Deno.serve(async (req) => {
         }, {});
       }
 
-      for (const member of (members || [])) {
+      for (const member of members || []) {
         const personName = profileMap[member.user_id] || "Member";
         const imageUrl = member.biometric_photo_url || null;
         const idCode = member.member_code || member.wiegand_code || member.id;
@@ -253,7 +257,7 @@ Deno.serve(async (req) => {
         }, {});
       }
 
-      for (const emp of (employees || [])) {
+      for (const emp of employees || []) {
         const personName = staffProfileMap[emp.user_id] || "Staff";
         const imageUrl = emp.biometric_photo_url || null;
         roster.push({
@@ -285,14 +289,20 @@ Deno.serve(async (req) => {
       const alreadyAdded = new Set(roster.map((r) => r.personId));
       let trainerProfileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (trainerUserIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", trainerUserIds);
-        trainerProfileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
-          acc[p.id] = { name: p.full_name || "Trainer", avatar: p.avatar_url || null };
-          return acc;
-        }, {});
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", trainerUserIds);
+        trainerProfileMap = (profiles || []).reduce(
+          (acc: Record<string, { name: string; avatar: string | null }>, p) => {
+            acc[p.id] = { name: p.full_name || "Trainer", avatar: p.avatar_url || null };
+            return acc;
+          },
+          {},
+        );
       }
 
-      for (const trainer of (trainers || [])) {
+      for (const trainer of trainers || []) {
         const pid = trainer.user_id || trainer.id;
         if (alreadyAdded.has(pid)) continue;
         const info = trainerProfileMap[trainer.user_id] || { name: "Trainer", avatar: null };
@@ -316,17 +326,20 @@ Deno.serve(async (req) => {
         await supabase.from("access_devices").update({ last_sync: nowIso }).eq("id", accessDevice.id);
       }
 
-      return new Response(JSON.stringify({
-        code: 0,
-        msg: "success",
-        branchId,
-        branchName,
-        total: roster.length,
-        members: roster,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          msg: "success",
+          branchId,
+          branchName,
+          total: roster.length,
+          members: roster,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // ──────────────────────────────────────────────
