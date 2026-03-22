@@ -39,12 +39,20 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
     toText(body.uid) ||
     toText(body.pin) ||
     toText(body.id_card) ||
-    toText(body.idCard) ||
-    toText(body.searchScore) // some devices put an identifier-like field here
+    toText(body.idCard)
   )
 }
 
-/** Parse body as JSON first; fall back to form-urlencoded. */
+// Sentinel values sent by stock terminals for unrecognized faces
+const STRANGER_SENTINELS = new Set([
+  'strangerbaby', 'stranger', 'unknown', 'unrecognized', 'no_match', 'nomatch',
+])
+
+const isStranger = (identifier: string | null): boolean => {
+  if (!identifier) return false
+  return STRANGER_SENTINELS.has(identifier.toLowerCase())
+}
+
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const ct = (req.headers.get('content-type') || '').toLowerCase()
   const raw = await req.text()
@@ -81,7 +89,6 @@ Deno.serve(async (req) => {
 
   try {
     const body = await parseBody(req)
-    // Merge query string params
     const url = new URL(req.url)
     for (const [k, v] of url.searchParams.entries()) {
       if (!body[k]) body[k] = v
@@ -96,6 +103,12 @@ Deno.serve(async (req) => {
     )
 
     const nowIso = new Date().toISOString()
+
+    // Strip imgBase64 from stored payload to save DB space (can be huge)
+    const payloadForStorage = { ...body }
+    if (payloadForStorage.imgBase64 && typeof payloadForStorage.imgBase64 === 'string') {
+      payloadForStorage.imgBase64 = `[base64:${(payloadForStorage.imgBase64 as string).length} chars]`
+    }
 
     let hardwareDevice: { id: string; branch_id: string | null } | null = null
     let accessDeviceId: string | null = null
@@ -116,7 +129,7 @@ Deno.serve(async (req) => {
             device_key: toText(body.deviceKey) || toText(body.device_key),
             ip_address: ipAddress,
             last_online: nowIso,
-            last_payload: body,
+            last_payload: payloadForStorage,
             updated_at: nowIso,
           },
           { onConflict: 'device_sn' }
@@ -139,18 +152,38 @@ Deno.serve(async (req) => {
           last_heartbeat: nowIso,
         }
         if (ipAddress) accessUpdate.ip_address = ipAddress
-        await supabase
-          .from('access_devices')
-          .update(accessUpdate)
-          .eq('id', accessDevice.id)
+        await supabase.from('access_devices').update(accessUpdate).eq('id', accessDevice.id)
       }
     }
 
     const fallbackBranchId =
       toText(body.branch_id) || toText(body.branchId) || hardwareDevice?.branch_id || null
 
+    // ──────────────────────────────────────────────
+    // STRANGER DETECTION — skip DB lookups entirely
+    // ──────────────────────────────────────────────
+    if (isStranger(personIdentifier)) {
+      await supabase.from('access_logs').insert({
+        device_sn: deviceSn || 'UNKNOWN',
+        hardware_device_id: hardwareDevice?.id || null,
+        branch_id: fallbackBranchId,
+        event_type: 'identify',
+        result: 'stranger',
+        message: `Stranger detected (${personIdentifier})`,
+        captured_at: nowIso,
+        payload: payloadForStorage,
+      })
+
+      return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // ──────────────────────────────────────────────
+    // NO IDENTIFIER
+    // ──────────────────────────────────────────────
     if (!personIdentifier) {
-      // Log the raw payload for debugging but don't treat as error
       console.log('terminal-identify: no person identifier found in payload keys:', Object.keys(body))
       
       await supabase.from('access_logs').insert({
@@ -161,20 +194,8 @@ Deno.serve(async (req) => {
         result: 'ignored',
         message: 'Missing person identifier',
         captured_at: nowIso,
-        payload: body,
+        payload: payloadForStorage,
       })
-
-      if (accessDeviceId && fallbackBranchId) {
-        await supabase.from('device_access_events').insert({
-          device_id: accessDeviceId,
-          branch_id: fallbackBranchId,
-          event_type: 'identify',
-          access_granted: false,
-          denial_reason: 'missing_identifier',
-          device_message: 'Missing person identifier',
-          processed_at: nowIso,
-        })
-      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -182,7 +203,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 1) Profiles cross-reference
+    // ──────────────────────────────────────────────
+    // PROFILE / MEMBER / STAFF LOOKUPS
+    // ──────────────────────────────────────────────
     let profileId: string | null = null
     {
       const { data: profile } = await supabase
@@ -193,7 +216,7 @@ Deno.serve(async (req) => {
       if (profile) profileId = profile.id
     }
 
-    // 2) Member lookup by multiple identifiers
+    // Member lookup
     let member: { id: string; user_id: string; branch_id: string } | null = null
     {
       const lookups = [
@@ -201,23 +224,18 @@ Deno.serve(async (req) => {
         supabase.from('members').select('id, user_id, branch_id').eq('member_code', personIdentifier).maybeSingle(),
         supabase.from('members').select('id, user_id, branch_id').eq('wiegand_code', personIdentifier).maybeSingle(),
       ]
-
       if (profileId) {
         lookups.push(
           supabase.from('members').select('id, user_id, branch_id').eq('user_id', profileId).maybeSingle()
         )
       }
-
       for (const query of lookups) {
         const { data } = await query
-        if (data) {
-          member = data
-          break
-        }
+        if (data) { member = data; break }
       }
     }
 
-    // 3) Staff lookup by multiple identifiers
+    // Staff lookup
     let staffUserId: string | null = null
     let staffBranchId: string | null = null
     if (!member) {
@@ -230,14 +248,9 @@ Deno.serve(async (req) => {
           supabase.from('employees').select('user_id, branch_id').eq('user_id', profileId).maybeSingle()
         )
       }
-
       for (const query of employeeLookups) {
         const { data } = await query
-        if (data) {
-          staffUserId = data.user_id
-          staffBranchId = data.branch_id
-          break
-        }
+        if (data) { staffUserId = data.user_id; staffBranchId = data.branch_id; break }
       }
 
       if (!staffUserId) {
@@ -249,24 +262,20 @@ Deno.serve(async (req) => {
             supabase.from('trainers').select('user_id, branch_id').eq('user_id', profileId).maybeSingle()
           )
         }
-
         for (const query of trainerLookups) {
           const { data } = await query
-          if (data) {
-            staffUserId = data.user_id
-            staffBranchId = data.branch_id
-            break
-          }
+          if (data) { staffUserId = data.user_id; staffBranchId = data.branch_id; break }
         }
       }
     }
 
+    // ── STAFF MATCH ──
     if (staffUserId) {
       await supabase.from('staff_attendance').insert({
         user_id: staffUserId,
         branch_id: staffBranchId || fallbackBranchId,
         check_in: nowIso,
-        notes: `Terminal identify webhook (${deviceSn || 'UNKNOWN'})`,
+        notes: `Terminal identify (${deviceSn || 'UNKNOWN'})`,
       })
 
       await supabase.from('access_logs').insert({
@@ -278,20 +287,8 @@ Deno.serve(async (req) => {
         result: 'staff',
         message: 'Staff identify success',
         captured_at: nowIso,
-        payload: body,
+        payload: payloadForStorage,
       })
-
-      if (accessDeviceId) {
-        await supabase.from('device_access_events').insert({
-          device_id: accessDeviceId,
-          branch_id: staffBranchId || fallbackBranchId,
-          staff_id: staffUserId,
-          event_type: 'identify',
-          access_granted: true,
-          device_message: 'Staff identify success',
-          processed_at: nowIso,
-        })
-      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -299,10 +296,10 @@ Deno.serve(async (req) => {
       })
     }
 
+    // ── MEMBER MATCH ──
     if (member) {
       const branchForCheckin = member.branch_id || fallbackBranchId
 
-      // Call member_check_in RPC to validate membership and record attendance
       let checkInResult: any = null
       if (branchForCheckin) {
         const { data: rpcResult } = await supabase.rpc('member_check_in', {
@@ -326,21 +323,8 @@ Deno.serve(async (req) => {
         result: accessGranted ? 'member' : 'member_denied',
         message: checkInMessage,
         captured_at: nowIso,
-        payload: body,
+        payload: payloadForStorage,
       })
-
-      if (accessDeviceId && branchForCheckin) {
-        await supabase.from('device_access_events').insert({
-          device_id: accessDeviceId,
-          branch_id: branchForCheckin,
-          member_id: member.id,
-          event_type: 'identify',
-          access_granted: accessGranted,
-          denial_reason: accessGranted ? null : (checkInResult?.reason || 'check_in_failed'),
-          device_message: checkInMessage,
-          processed_at: nowIso,
-        })
-      }
 
       return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
         status: 200,
@@ -348,6 +332,7 @@ Deno.serve(async (req) => {
       })
     }
 
+    // ── NO MATCH ──
     await supabase.from('access_logs').insert({
       device_sn: deviceSn || 'UNKNOWN',
       hardware_device_id: hardwareDevice?.id || null,
@@ -356,20 +341,8 @@ Deno.serve(async (req) => {
       result: 'not_found',
       message: `No staff/member match for identifier ${personIdentifier}`,
       captured_at: nowIso,
-      payload: body,
+      payload: payloadForStorage,
     })
-
-    if (accessDeviceId && fallbackBranchId) {
-      await supabase.from('device_access_events').insert({
-        device_id: accessDeviceId,
-        branch_id: fallbackBranchId,
-        event_type: 'identify',
-        access_granted: false,
-        denial_reason: 'not_found',
-        device_message: `No match for ${personIdentifier}`,
-        processed_at: nowIso,
-      })
-    }
 
     return new Response(JSON.stringify({ code: 0, msg: 'success' }), {
       status: 200,

@@ -275,10 +275,28 @@ const DeviceManagement = () => {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Registered Devices</CardTitle>
-              <CardDescription>
-                {devices.length} device{devices.length !== 1 ? 's' : ''} registered
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Registered Devices</CardTitle>
+                  <CardDescription>
+                    {devices.length} device{devices.length !== 1 ? 's' : ''} registered
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ['access-devices'] });
+                    queryClient.invalidateQueries({ queryKey: ['device-stats'] });
+                    queryClient.invalidateQueries({ queryKey: ['biometric-stats'] });
+                    queryClient.invalidateQueries({ queryKey: ['member-sync-audit'] });
+                    toast.info('Refreshing device data...');
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
