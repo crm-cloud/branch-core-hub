@@ -84,7 +84,7 @@ const DeviceManagement = () => {
 
   const syncMembersMutation = useMutation({
     mutationFn: () => syncBranchMembersToDevices(selectedBranchFilter || undefined),
-    onSuccess: ({ members, devices, queued, audit }) => {
+    onSuccess: ({ members, staff, trainers, people, devices, queued, audit }) => {
       if (queued === 0) {
         if (audit.eligibleForDeviceEnrollment > 0) {
           toast.info(
@@ -96,7 +96,10 @@ const DeviceManagement = () => {
           );
         }
       } else {
-        toast.success(`Queued ${queued} sync item${queued !== 1 ? 's' : ''} for ${members} member${members !== 1 ? 's' : ''} across ${devices} device${devices !== 1 ? 's' : ''}`);
+        toast.success(
+          `Queued ${queued} sync item${queued !== 1 ? 's' : ''} for ${people} profile${people !== 1 ? 's' : ''} ` +
+          `(members ${members}, staff ${staff}, trainers ${trainers}) across ${devices} device${devices !== 1 ? 's' : ''}`
+        );
       }
 
       queryClient.invalidateQueries({ queryKey: ['biometric-stats'] });

@@ -404,6 +404,9 @@ export const getMemberSyncAudit = async (branchId?: string): Promise<MemberSyncA
 
 export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
   members: number;
+  staff: number;
+  trainers: number;
+  people: number;
   devices: number;
   queued: number;
   audit: MemberSyncAudit;
@@ -440,13 +443,59 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
   if (membersError) throw membersError;
 
   const activeMembers = (members || []).filter((member) => !!member.biometric_photo_url);
-  const audit = await getMemberSyncAudit(branchId);
 
-  if (activeMembers.length === 0) {
-    return { members: 0, devices: targetDevices.length, queued: 0, audit };
+  let staffQuery = supabase
+    .from('employees')
+    .select('id, user_id, employee_code, biometric_photo_url')
+    .eq('is_active', true)
+    .not('biometric_photo_url', 'is', null);
+
+  if (branchId) {
+    staffQuery = staffQuery.eq('branch_id', branchId);
   }
 
-  const userIds = activeMembers.map((member) => member.user_id).filter(Boolean);
+  const { data: employees, error: staffError } = await staffQuery;
+  if (staffError) throw staffError;
+
+  const activeEmployees = (employees || []).filter((employee) => !!employee.biometric_photo_url);
+
+  let trainerQuery = supabase
+    .from('trainers')
+    .select('id, user_id, biometric_photo_url')
+    .eq('is_active', true)
+    .not('biometric_photo_url', 'is', null);
+
+  if (branchId) {
+    trainerQuery = trainerQuery.eq('branch_id', branchId);
+  }
+
+  const { data: trainers, error: trainersError } = await trainerQuery;
+  if (trainersError) throw trainersError;
+
+  const activeTrainers = (trainers || []).filter((trainer) => !!trainer.biometric_photo_url);
+
+  const audit = await getMemberSyncAudit(branchId);
+
+  const totalPeople = activeMembers.length + activeEmployees.length + activeTrainers.length;
+
+  if (totalPeople === 0) {
+    return {
+      members: 0,
+      staff: 0,
+      trainers: 0,
+      people: 0,
+      devices: targetDevices.length,
+      queued: 0,
+      audit,
+    };
+  }
+
+  const userIds = [
+    ...activeMembers.map((member) => member.user_id),
+    ...activeEmployees.map((employee) => employee.user_id),
+    ...activeTrainers.map((trainer) => trainer.user_id),
+  ].filter(Boolean);
+
   const profileMap: Record<string, string> = {};
 
   if (userIds.length > 0) {
@@ -462,7 +511,7 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
     });
   }
 
-  const syncItems = activeMembers.flatMap((member) => {
+  const memberSyncItems = activeMembers.flatMap((member) => {
     const personName = profileMap[member.user_id] || member.member_code || 'Member';
 
     return targetDevices.map((deviceId) => ({
@@ -477,11 +526,75 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
     }));
   });
 
-  const { error: upsertError } = await supabase
-    .from('biometric_sync_queue')
-    .upsert(syncItems, { onConflict: 'member_id,device_id' });
+  const staffSyncItems = activeEmployees.flatMap((employee) => {
+    const personName = profileMap[employee.user_id] || employee.employee_code || 'Staff';
 
-  if (upsertError) throw upsertError;
+    return targetDevices.map((deviceId) => ({
+      staff_id: employee.id,
+      device_id: deviceId,
+      sync_type: 'add' as const,
+      photo_url: employee.biometric_photo_url!,
+      person_uuid: employee.id,
+      person_name: personName,
+      status: 'pending' as const,
+      retry_count: 0,
+    }));
+  });
+
+  const trainerSyncItems = activeTrainers.flatMap((trainer) => {
+    const personName = profileMap[trainer.user_id] || 'Trainer';
+
+    return targetDevices.map((deviceId) => ({
+      staff_id: trainer.id,
+      device_id: deviceId,
+      sync_type: 'add' as const,
+      photo_url: trainer.biometric_photo_url!,
+      person_uuid: trainer.id,
+      person_name: personName,
+      status: 'pending' as const,
+      retry_count: 0,
+    }));
+  });
+
+  if (memberSyncItems.length > 0) {
+    const { error: membersUpsertError } = await supabase
+      .from('biometric_sync_queue')
+      .upsert(memberSyncItems, { onConflict: 'member_id,device_id' });
+
+    if (membersUpsertError) throw membersUpsertError;
+  }
+
+  const staffAndTrainerItems = [...staffSyncItems, ...trainerSyncItems];
+  if (staffAndTrainerItems.length > 0) {
+    const { error: staffUpsertError } = await supabase
+      .from('biometric_sync_queue')
+      .upsert(staffAndTrainerItems, { onConflict: 'staff_id,device_id' });
+
+    if (staffUpsertError) throw staffUpsertError;
+  }
+
+  if (activeMembers.length > 0) {
+    await supabase
+      .from('members')
+      .update({ biometric_enrolled: true })
+      .in('id', activeMembers.map((member) => member.id));
+  }
+
+  if (activeEmployees.length > 0) {
+    await supabase
+      .from('employees')
+      .update({ biometric_enrolled: true })
+      .in('id', activeEmployees.map((employee) => employee.id));
+  }
+
+  if (activeTrainers.length > 0) {
+    await supabase
+      .from('trainers')
+      .update({ biometric_enrolled: true })
+      .in('id', activeTrainers.map((trainer) => trainer.id));
+  }
+
+  const queuedTotal = memberSyncItems.length + staffSyncItems.length + trainerSyncItems.length;
 
   await supabase
     .from('access_devices')
@@ -490,8 +603,11 @@ export const syncBranchMembersToDevices = async (branchId?: string): Promise<{
 
   return {
     members: activeMembers.length,
+    staff: activeEmployees.length,
+    trainers: activeTrainers.length,
+    people: totalPeople,
     devices: targetDevices.length,
-    queued: syncItems.length,
+    queued: queuedTotal,
     audit,
   };
 };
