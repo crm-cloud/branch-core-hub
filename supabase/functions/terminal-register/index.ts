@@ -41,17 +41,12 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
   );
 };
 
-/** Parse body as JSON first; fall back to form-urlencoded. */
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const raw = await req.text();
 
   if (raw.startsWith("{") || raw.startsWith("[")) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      /* fall through */
-    }
+    try { return JSON.parse(raw); } catch { /* fall through */ }
   }
 
   if (ct.includes("form") || raw.includes("=")) {
@@ -65,11 +60,7 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
     return obj;
   }
 
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(raw); } catch { return {}; }
 }
 
 Deno.serve(async (req) => {
@@ -89,7 +80,6 @@ Deno.serve(async (req) => {
     if (req.method === "POST") {
       body = await parseBody(req);
     }
-    // Merge query string params
     const url = new URL(req.url);
     for (const [k, v] of url.searchParams.entries()) {
       if (!body[k]) body[k] = v;
@@ -138,13 +128,11 @@ Deno.serve(async (req) => {
 
       accessDevice = linkedAccessDevice || null;
 
-      // Keep both device registries aligned so roster pulls can resolve branch consistently.
       if (accessDevice?.branch_id && !device?.branch_id) {
         await supabase
           .from("hardware_devices")
           .update({ branch_id: accessDevice.branch_id, updated_at: nowIso })
           .eq("id", device.id);
-
         device.branch_id = accessDevice.branch_id;
       }
     }
@@ -152,6 +140,9 @@ Deno.serve(async (req) => {
     const branchId =
       toText(body.branch_id) || toText(body.branchId) || device?.branch_id || accessDevice?.branch_id || null;
 
+    // ──────────────────────────────────────────────
+    // ROSTER PULL — includes members, staff, trainers
+    // ──────────────────────────────────────────────
     if (["pull", "pull_members", "sync", "roster", "get_roster"].includes(action)) {
       if (!branchId) {
         return new Response(JSON.stringify({ code: 0, msg: "success", members: [] }), {
@@ -160,6 +151,9 @@ Deno.serve(async (req) => {
         });
       }
 
+      const roster: any[] = [];
+
+      // 1) MEMBERS — include ALL with hardware_access_enabled, photo or not
       const { data: members } = await supabase
         .from("members")
         .select("id, user_id, member_code, wiegand_code, biometric_photo_url, updated_at")
@@ -168,24 +162,44 @@ Deno.serve(async (req) => {
         .eq("hardware_access_enabled", true)
         .limit(2000);
 
-      const userIds = (members || []).map((m) => m.user_id).filter(Boolean);
+      const memberUserIds = (members || []).map((m) => m.user_id).filter(Boolean);
+
+      // Fetch profiles for names
       let profileMap: Record<string, string> = {};
-
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
-
-        profileMap = (profiles || []).reduce((acc: Record<string, string>, profile) => {
-          acc[profile.id] = profile.full_name || "Member";
+      if (memberUserIds.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", memberUserIds);
+        profileMap = (profiles || []).reduce((acc: Record<string, string>, p) => {
+          acc[p.id] = p.full_name || "Member";
           return acc;
         }, {});
       }
 
-            const roster = (members || []).map((member) => {
-        const idCode = member.member_code || member.wiegand_code || member.id;
+      // Fetch active membership end_date for each member
+      const memberIds = (members || []).map((m) => m.id);
+      let memberExpiryMap: Record<string, string | null> = {};
+      if (memberIds.length > 0) {
+        const { data: memberships } = await supabase
+          .from("memberships")
+          .select("member_id, end_date")
+          .in("member_id", memberIds)
+          .eq("status", "active")
+          .order("end_date", { ascending: false });
+
+        // Take the latest end_date per member
+        for (const ms of (memberships || [])) {
+          if (!memberExpiryMap[ms.member_id]) {
+            memberExpiryMap[ms.member_id] = ms.end_date;
+          }
+        }
+      }
+
+      for (const member of (members || [])) {
         const personName = profileMap[member.user_id] || "Member";
         const imageUrl = member.biometric_photo_url || null;
+        const idCode = member.member_code || member.wiegand_code || member.id;
+        const expiryDate = memberExpiryMap[member.id] || null;
 
-        return {
+        roster.push({
           personId: member.id,
           personUUID: member.id,
           memberId: member.id,
@@ -200,20 +214,98 @@ Deno.serve(async (req) => {
           imageUrl,
           photoUrl: imageUrl,
           hasPhoto: !!imageUrl,
+          expiryDate,
+          role: "member",
           updatedAt: member.updated_at,
-        };
-      });
+        });
+      }
+
+      // 2) STAFF (employees)
+      const { data: employees } = await supabase
+        .from("employees")
+        .select("id, user_id, employee_code, biometric_photo_url")
+        .eq("branch_id", branchId)
+        .eq("is_active", true)
+        .limit(500);
+
+      const staffUserIds = (employees || []).map((e) => e.user_id).filter(Boolean);
+      let staffProfileMap: Record<string, string> = {};
+      if (staffUserIds.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", staffUserIds);
+        staffProfileMap = (profiles || []).reduce((acc: Record<string, string>, p) => {
+          acc[p.id] = p.full_name || "Staff";
+          return acc;
+        }, {});
+      }
+
+      for (const emp of (employees || [])) {
+        const personName = staffProfileMap[emp.user_id] || "Staff";
+        const imageUrl = emp.biometric_photo_url || null;
+        roster.push({
+          personId: emp.user_id || emp.id,
+          personUUID: emp.user_id || emp.id,
+          customId: emp.employee_code || emp.id,
+          name: personName,
+          personName,
+          imageUrl,
+          photoUrl: imageUrl,
+          hasPhoto: !!imageUrl,
+          expiryDate: null, // staff don't expire
+          role: "staff",
+        });
+      }
+
+      // 3) TRAINERS
+      const { data: trainers } = await supabase
+        .from("trainers")
+        .select("id, user_id")
+        .eq("branch_id", branchId)
+        .eq("is_active", true)
+        .limit(200);
+
+      const trainerUserIds = (trainers || []).map((t) => t.user_id).filter(Boolean);
+      // Avoid re-adding staff who are also trainers
+      const alreadyAdded = new Set(roster.map((r) => r.personId));
+      let trainerProfileMap: Record<string, { name: string; avatar: string | null }> = {};
+      if (trainerUserIds.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", trainerUserIds);
+        trainerProfileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
+          acc[p.id] = { name: p.full_name || "Trainer", avatar: p.avatar_url || null };
+          return acc;
+        }, {});
+      }
+
+      for (const trainer of (trainers || [])) {
+        const pid = trainer.user_id || trainer.id;
+        if (alreadyAdded.has(pid)) continue;
+        const info = trainerProfileMap[trainer.user_id] || { name: "Trainer", avatar: null };
+        roster.push({
+          personId: pid,
+          personUUID: pid,
+          customId: trainer.id,
+          name: info.name,
+          personName: info.name,
+          imageUrl: info.avatar,
+          photoUrl: info.avatar,
+          hasPhoto: !!info.avatar,
+          expiryDate: null,
+          role: "trainer",
+        });
+      }
 
       if (accessDevice?.id) {
         await supabase.from("access_devices").update({ last_sync: nowIso }).eq("id", accessDevice.id);
       }
 
-      return new Response(JSON.stringify({ code: 0, msg: "success", members: roster }), {
+      return new Response(JSON.stringify({ code: 0, msg: "success", members: roster, total: roster.length }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // ──────────────────────────────────────────────
+    // FACE REGISTRATION CALLBACK
+    // ──────────────────────────────────────────────
     if (["register", "register_face", "enroll", "upload"].includes(action)) {
       const imageUrl = toText(body.imageUrl) || toText(body.photo_url);
 
@@ -228,10 +320,7 @@ Deno.serve(async (req) => {
         let resolvedMember: { id: string } | null = null;
         for (const query of lookupQueries) {
           const { data } = await query;
-          if (data) {
-            resolvedMember = data;
-            break;
-          }
+          if (data) { resolvedMember = data; break; }
         }
 
         if (resolvedMember) {
@@ -259,6 +348,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Unknown action fallback
     await supabase.from("access_logs").insert({
       device_sn: deviceSn || "UNKNOWN",
       hardware_device_id: device?.id || null,
