@@ -140,9 +140,18 @@ Deno.serve(async (req) => {
     const branchId =
       toText(body.branch_id) || toText(body.branchId) || device?.branch_id || accessDevice?.branch_id || null;
 
-    // ──────────────────────────────────────────────
-    // ROSTER PULL — includes members, staff, trainers
-    // ──────────────────────────────────────────────
+    let branchName: string | null = null;
+    if (branchId) {
+      const { data: branch } = await supabase
+        .from("branches")
+        .select("name")
+        .eq("id", branchId)
+        .maybeSingle();
+
+      branchName = branch?.name || null;
+    }
+
+    // Roster pull includes members, staff, and trainers.
     if (["pull", "pull_members", "sync", "roster", "get_roster"].includes(action)) {
       if (!branchId) {
         return new Response(JSON.stringify({ code: 0, msg: "success", members: [] }), {
@@ -162,9 +171,27 @@ Deno.serve(async (req) => {
         .eq("hardware_access_enabled", true)
         .limit(2000);
 
-      const memberUserIds = (members || []).map((m) => m.user_id).filter(Boolean);
+      const memberIds = (members || []).map((member) => member.id);
+      const membershipInfoMap: Record<string, { endDate: string | null; status: string | null }> = {};
 
-      // Fetch profiles for names
+      if (memberIds.length > 0) {
+        const { data: memberships } = await supabase
+          .from("memberships")
+          .select("member_id, end_date, status")
+          .in("member_id", memberIds)
+          .order("end_date", { ascending: false });
+
+        for (const membership of memberships || []) {
+          if (!(membership.member_id in membershipInfoMap)) {
+            membershipInfoMap[membership.member_id] = {
+              endDate: membership.end_date || null,
+              status: membership.status || null,
+            };
+          }
+        }
+      }
+
+      const memberUserIds = (members || []).map((m) => m.user_id).filter(Boolean);
       let profileMap: Record<string, string> = {};
       if (memberUserIds.length > 0) {
         const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", memberUserIds);
@@ -174,30 +201,13 @@ Deno.serve(async (req) => {
         }, {});
       }
 
-      // Fetch active membership end_date for each member
-      const memberIds = (members || []).map((m) => m.id);
-      let memberExpiryMap: Record<string, string | null> = {};
-      if (memberIds.length > 0) {
-        const { data: memberships } = await supabase
-          .from("memberships")
-          .select("member_id, end_date")
-          .in("member_id", memberIds)
-          .eq("status", "active")
-          .order("end_date", { ascending: false });
-
-        // Take the latest end_date per member
-        for (const ms of (memberships || [])) {
-          if (!memberExpiryMap[ms.member_id]) {
-            memberExpiryMap[ms.member_id] = ms.end_date;
-          }
-        }
-      }
-
       for (const member of (members || [])) {
         const personName = profileMap[member.user_id] || "Member";
         const imageUrl = member.biometric_photo_url || null;
         const idCode = member.member_code || member.wiegand_code || member.id;
-        const expiryDate = memberExpiryMap[member.id] || null;
+        const membershipInfo = membershipInfoMap[member.id] || { endDate: null, status: null };
+        const expiryDate = membershipInfo.endDate;
+        const membershipStatus = membershipInfo.status;
 
         roster.push({
           personId: member.id,
@@ -214,7 +224,12 @@ Deno.serve(async (req) => {
           imageUrl,
           photoUrl: imageUrl,
           hasPhoto: !!imageUrl,
+          branchId,
+          branchName,
           expiryDate,
+          expiry_date: expiryDate,
+          membershipEndDate: expiryDate,
+          membershipStatus,
           role: "member",
           updatedAt: member.updated_at,
         });
@@ -250,6 +265,8 @@ Deno.serve(async (req) => {
           imageUrl,
           photoUrl: imageUrl,
           hasPhoto: !!imageUrl,
+          branchId,
+          branchName,
           expiryDate: null, // staff don't expire
           role: "staff",
         });
@@ -288,6 +305,8 @@ Deno.serve(async (req) => {
           imageUrl: info.avatar,
           photoUrl: info.avatar,
           hasPhoto: !!info.avatar,
+          branchId,
+          branchName,
           expiryDate: null,
           role: "trainer",
         });
@@ -297,7 +316,14 @@ Deno.serve(async (req) => {
         await supabase.from("access_devices").update({ last_sync: nowIso }).eq("id", accessDevice.id);
       }
 
-      return new Response(JSON.stringify({ code: 0, msg: "success", members: roster, total: roster.length }), {
+      return new Response(JSON.stringify({
+        code: 0,
+        msg: "success",
+        branchId,
+        branchName,
+        total: roster.length,
+        members: roster,
+      }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
