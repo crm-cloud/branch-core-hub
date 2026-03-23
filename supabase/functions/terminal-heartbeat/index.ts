@@ -171,6 +171,56 @@ Deno.serve(async (req) => {
       branchName = branch?.name || null;
     }
 
+    // ── HEARTBEAT (dedicated) ──
+    if (["heartbeat", "ping", "health", "status"].includes(action)) {
+      // Update access_devices heartbeat timestamp
+      if (accessDevice?.id) {
+        const ipStr = toText(body.ip) || toText(body.ip_address) || null;
+        const updatePayload: Record<string, unknown> = {
+          last_heartbeat: nowIso,
+          is_online: true,
+        };
+        if (ipStr) {
+          updatePayload.ip_address = ipStr;
+        }
+        await supabase.from("access_devices").update(updatePayload).eq("id", accessDevice.id);
+      }
+
+      // Fetch pending commands for this device
+      let pendingCommands: any[] = [];
+      if (accessDevice?.id) {
+        const { data: cmds } = await supabase
+          .from("device_commands")
+          .select("id, command_type, payload")
+          .eq("device_id", accessDevice.id)
+          .eq("status", "pending")
+          .order("issued_at", { ascending: true })
+          .limit(10);
+        pendingCommands = cmds || [];
+
+        // Mark as delivered
+        if (pendingCommands.length > 0) {
+          await supabase
+            .from("device_commands")
+            .update({ status: "delivered", executed_at: nowIso })
+            .in("id", pendingCommands.map((c: any) => c.id));
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          msg: "success",
+          deviceSn,
+          branchId,
+          branchName,
+          timestamp: nowIso,
+          commands: pendingCommands,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // ── ROSTER PULL ──
     if (["pull", "pull_members", "sync", "roster", "get_roster"].includes(action)) {
       if (!branchId) {

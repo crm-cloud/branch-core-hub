@@ -8,12 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, Wifi, WifiOff, Settings2, Trash2, PlayCircle, Router,
   Fingerprint, CreditCard, RefreshCw, Users, Monitor, Activity,
-  Radio, CheckCircle2, Clock, Zap
+  Radio, CheckCircle2, Clock, Zap, Bug, TestTube, Trash, Copy
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
-import { fetchDevices, deleteDevice, getDeviceStats, sendDeviceCommand, subscribeToCommandStatus, AccessDevice } from "@/services/deviceService";
+import { fetchDevices, deleteDevice, getDeviceStats, sendDeviceCommand, subscribeToCommandStatus, AccessDevice, purgeOldAccessLogs } from "@/services/deviceService";
 import { getBiometricStats, syncBranchMembersToDevices } from "@/services/biometricService";
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from "@/integrations/supabase/client";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
@@ -29,12 +30,14 @@ import { formatDistanceToNow } from "date-fns";
 const isDeviceOnline = (device: AccessDevice): boolean => {
   if (device.last_heartbeat) {
     const heartbeatAge = (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000;
-    return heartbeatAge < 120;
+    return heartbeatAge < 180;
   }
   return device.is_online === true;
 };
 
 const DeviceManagement = () => {
+  const { hasAnyRole } = useAuth();
+  const isAdminOrOwner = hasAnyRole(['owner', 'admin']);
   const queryClient = useQueryClient();
   const { selectedBranch, branches } = useBranchContext();
   const selectedBranchFilter = selectedBranch !== 'all' ? selectedBranch : '';
@@ -43,6 +46,8 @@ const DeviceManagement = () => {
   const [deletingDevice, setDeletingDevice] = useState<AccessDevice | null>(null);
   const [relayPendingByDevice, setRelayPendingByDevice] = useState<Record<string, boolean>>({});
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  const [rosterTestResult, setRosterTestResult] = useState<string | null>(null);
+  const [isPurgingLogs, setIsPurgingLogs] = useState(false);
   const relayCleanupByDeviceRef = useRef<Record<string, () => void>>({});
   const relayTimeoutByDeviceRef = useRef<Record<string, number>>({});
 
@@ -265,6 +270,12 @@ const DeviceManagement = () => {
               <Users className="h-4 w-4" />
               Roster
             </TabsTrigger>
+            {isAdminOrOwner && (
+              <TabsTrigger value="debug" className="gap-1.5">
+                <Bug className="h-4 w-4" />
+                Debug
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Devices Tab */}
@@ -427,6 +438,96 @@ const DeviceManagement = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Debug Tab */}
+          {isAdminOrOwner && (
+            <TabsContent value="debug">
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bug className="h-5 w-5" />
+                    E2E Test Checklist & Debug Tools
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    {[
+                      'Create test member → verify face syncs to queue',
+                      'Process sync queue → verify device acknowledges receipt',
+                      'Remote open door → verify relay clicks',
+                      'Simulate expired membership → verify sync updates device expiry',
+                      'Device offline scenario → verify UI reflects offline status',
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                        <input type="checkbox" className="h-4 w-4 rounded border-border" />
+                        <span className="text-sm">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          setRosterTestResult('Loading...');
+                          const { data, error } = await supabase.functions.invoke('terminal-register', {
+                            body: { action: 'pull_members', debug: 'true' },
+                          });
+                          setRosterTestResult(JSON.stringify(data || error, null, 2));
+                        } catch (err: any) {
+                          setRosterTestResult(err.message);
+                        }
+                      }}
+                    >
+                      <TestTube className="h-3.5 w-3.5 mr-1.5" />
+                      Test Roster Pull
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isPurgingLogs}
+                      onClick={async () => {
+                        setIsPurgingLogs(true);
+                        try {
+                          const count = await purgeOldAccessLogs();
+                          toast.success(`Purged ${count} old log entries`);
+                          queryClient.invalidateQueries({ queryKey: ['access-logs-live'] });
+                        } catch (err: any) {
+                          toast.error(`Purge failed: ${err.message}`);
+                        } finally {
+                          setIsPurgingLogs(false);
+                        }
+                      }}
+                    >
+                      <Trash className="h-3.5 w-3.5 mr-1.5" />
+                      {isPurgingLogs ? 'Purging...' : 'Purge Old Logs'}
+                    </Button>
+                  </div>
+
+                  {rosterTestResult && (
+                    <div className="relative">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rosterTestResult);
+                          toast.success('Copied to clipboard');
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <pre className="text-xs bg-muted rounded-lg p-4 overflow-x-auto max-h-96 whitespace-pre-wrap break-all">
+                        {rosterTestResult}
+                      </pre>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
 
         {/* Drawers */}

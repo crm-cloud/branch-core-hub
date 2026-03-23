@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
           membershipEndDate: membershipInfo.endDate,
           membershipStatus: membershipInfo.status,
           role: "member",
+          department: "Normal User",
           updatedAt: member.updated_at,
         });
       }
@@ -317,6 +318,7 @@ Deno.serve(async (req) => {
           branchName,
           expiryDate: null,
           role: "staff",
+          department: "Employee",
         });
       }
 
@@ -365,6 +367,7 @@ Deno.serve(async (req) => {
           branchName,
           expiryDate: null,
           role: "trainer",
+          department: "Employee",
         });
       }
 

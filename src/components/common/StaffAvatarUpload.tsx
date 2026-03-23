@@ -5,6 +5,7 @@ import { Camera, Loader2, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { queueStaffSync } from '@/services/biometricService';
+import { compressImageFile } from '@/utils/imageCompression';
 
 interface StaffAvatarUploadProps {
   staffId?: string;
@@ -61,13 +62,14 @@ export function StaffAvatarUpload({
     // Upload to storage
     setUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `staff-${Date.now()}.${fileExt}`;
+      // Compress image for device compatibility (max 640x640, under 200KB)
+      const compressedFile = await compressImageFile(file);
+      const fileName = `staff-${Date.now()}.jpg`;
       const filePath = `staff/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from(bucket)
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, compressedFile, { upsert: true });
 
       if (uploadError) throw uploadError;
 
