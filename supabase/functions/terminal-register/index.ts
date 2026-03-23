@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
           membershipEndDate: membershipInfo.endDate,
           membershipStatus: membershipInfo.status,
           role: "member",
+          department: "Normal User",
           updatedAt: member.updated_at,
         });
       }
