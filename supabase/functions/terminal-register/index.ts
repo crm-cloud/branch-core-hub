@@ -367,6 +367,7 @@ Deno.serve(async (req) => {
           branchName,
           expiryDate: null,
           role: "trainer",
+          department: "Employee",
         });
       }
 
