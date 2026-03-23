@@ -5,6 +5,7 @@ import { Camera, Loader2, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { queueMemberSync, syncAvatarToBiometric } from '@/services/biometricService';
+import { compressImageFile } from '@/utils/imageCompression';
 
 interface MemberAvatarUploadProps {
   memberId?: string;
