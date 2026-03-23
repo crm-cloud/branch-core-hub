@@ -46,11 +46,7 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const raw = await req.text();
 
   if (raw.startsWith("{") || raw.startsWith("[")) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      /* fall through */
-    }
+    try { return JSON.parse(raw); } catch { /* fall through */ }
   }
 
   if (ct.includes("form") || raw.includes("=")) {
@@ -64,11 +60,7 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
     return obj;
   }
 
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(raw); } catch { return {}; }
 }
 
 Deno.serve(async (req) => {
@@ -151,11 +143,10 @@ Deno.serve(async (req) => {
     let branchName: string | null = null;
     if (branchId) {
       const { data: branch } = await supabase.from("branches").select("name").eq("id", branchId).maybeSingle();
-
       branchName = branch?.name || null;
     }
 
-    // Roster pull includes members, staff, and trainers.
+    // ── ROSTER PULL ──
     if (["pull", "pull_members", "sync", "roster", "get_roster"].includes(action)) {
       if (!branchId) {
         return new Response(JSON.stringify({ code: 0, msg: "success", members: [] }), {
@@ -195,23 +186,23 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Get profiles for members — also fetch avatar_url as fallback photo
       const memberUserIds = (members || []).map((m) => m.user_id).filter(Boolean);
-      let profileMap: Record<string, string> = {};
+      let profileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (memberUserIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", memberUserIds);
-        profileMap = (profiles || []).reduce((acc: Record<string, string>, p) => {
-          acc[p.id] = p.full_name || "Member";
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", memberUserIds);
+        profileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
+          acc[p.id] = { name: p.full_name || "Member", avatar: p.avatar_url || null };
           return acc;
         }, {});
       }
 
       for (const member of members || []) {
-        const personName = profileMap[member.user_id] || "Member";
-        const imageUrl = member.biometric_photo_url || null;
+        const profileInfo = profileMap[member.user_id] || { name: "Member", avatar: null };
+        // Use biometric_photo_url first, fallback to avatar_url
+        const imageUrl = member.biometric_photo_url || profileInfo.avatar || null;
         const idCode = member.member_code || member.wiegand_code || member.id;
         const membershipInfo = membershipInfoMap[member.id] || { endDate: null, status: null };
-        const expiryDate = membershipInfo.endDate;
-        const membershipStatus = membershipInfo.status;
 
         roster.push({
           personId: member.id,
@@ -222,24 +213,24 @@ Deno.serve(async (req) => {
           wiegandCode: member.wiegand_code || null,
           uid: idCode,
           pin: idCode,
-          name: personName,
-          personName,
-          memberName: personName,
+          name: profileInfo.name,
+          personName: profileInfo.name,
+          memberName: profileInfo.name,
           imageUrl,
           photoUrl: imageUrl,
           hasPhoto: !!imageUrl,
           branchId,
           branchName,
-          expiryDate,
-          expiry_date: expiryDate,
-          membershipEndDate: expiryDate,
-          membershipStatus,
+          expiryDate: membershipInfo.endDate,
+          expiry_date: membershipInfo.endDate,
+          membershipEndDate: membershipInfo.endDate,
+          membershipStatus: membershipInfo.status,
           role: "member",
           updatedAt: member.updated_at,
         });
       }
 
-      // 2) STAFF (employees)
+      // 2) STAFF (employees) — also fetch avatar_url as fallback
       const { data: employees } = await supabase
         .from("employees")
         .select("id, user_id, employee_code, biometric_photo_url")
@@ -248,30 +239,30 @@ Deno.serve(async (req) => {
         .limit(500);
 
       const staffUserIds = (employees || []).map((e) => e.user_id).filter(Boolean);
-      let staffProfileMap: Record<string, string> = {};
+      let staffProfileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (staffUserIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", staffUserIds);
-        staffProfileMap = (profiles || []).reduce((acc: Record<string, string>, p) => {
-          acc[p.id] = p.full_name || "Staff";
+        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", staffUserIds);
+        staffProfileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
+          acc[p.id] = { name: p.full_name || "Staff", avatar: p.avatar_url || null };
           return acc;
         }, {});
       }
 
       for (const emp of employees || []) {
-        const personName = staffProfileMap[emp.user_id] || "Staff";
-        const imageUrl = emp.biometric_photo_url || null;
+        const info = staffProfileMap[emp.user_id] || { name: "Staff", avatar: null };
+        const imageUrl = emp.biometric_photo_url || info.avatar || null;
         roster.push({
           personId: emp.user_id || emp.id,
           personUUID: emp.user_id || emp.id,
           customId: emp.employee_code || emp.id,
-          name: personName,
-          personName,
+          name: info.name,
+          personName: info.name,
           imageUrl,
           photoUrl: imageUrl,
           hasPhoto: !!imageUrl,
           branchId,
           branchName,
-          expiryDate: null, // staff don't expire
+          expiryDate: null,
           role: "staff",
         });
       }
@@ -285,7 +276,6 @@ Deno.serve(async (req) => {
         .limit(200);
 
       const trainerUserIds = (trainers || []).map((t) => t.user_id).filter(Boolean);
-      // Avoid re-adding staff who are also trainers
       const alreadyAdded = new Set(roster.map((r) => r.personId));
       let trainerProfileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (trainerUserIds.length > 0) {
@@ -342,48 +332,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ──────────────────────────────────────────────
-    // FACE REGISTRATION CALLBACK
-    // ──────────────────────────────────────────────
+    // ── FACE REGISTRATION CALLBACK ──
     if (["register", "register_face", "enroll", "upload"].includes(action)) {
       const imageUrl = toText(body.imageUrl) || toText(body.photo_url);
 
       if (personIdentifier && imageUrl) {
+        // Try member
         const memberLookupQueries = [
-          supabase.from("members").select("id").eq("id", personIdentifier).maybeSingle(),
-          supabase.from("members").select("id").eq("member_code", personIdentifier).maybeSingle(),
-          supabase.from("members").select("id").eq("wiegand_code", personIdentifier).maybeSingle(),
-          supabase.from("members").select("id").eq("user_id", personIdentifier).maybeSingle(),
+          supabase.from("members").select("id, user_id").eq("id", personIdentifier).maybeSingle(),
+          supabase.from("members").select("id, user_id").eq("member_code", personIdentifier).maybeSingle(),
+          supabase.from("members").select("id, user_id").eq("wiegand_code", personIdentifier).maybeSingle(),
+          supabase.from("members").select("id, user_id").eq("user_id", personIdentifier).maybeSingle(),
         ];
 
-        let resolvedMember: { id: string } | null = null;
+        let resolvedMember: { id: string; user_id: string } | null = null;
         for (const query of memberLookupQueries) {
           const { data } = await query;
-          if (data) {
-            resolvedMember = data;
-            break;
-          }
+          if (data) { resolvedMember = data; break; }
         }
 
         if (resolvedMember) {
+          // Update member biometric photo
           await supabase
             .from("members")
             .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
             .eq("id", resolvedMember.id);
+          // Also update profile avatar_url (avatar = biometric unification)
+          if (resolvedMember.user_id) {
+            await supabase
+              .from("profiles")
+              .update({ avatar_url: imageUrl })
+              .eq("id", resolvedMember.user_id);
+          }
         } else {
+          // Try employee
           const employeeLookupQueries = [
-            supabase.from("employees").select("id").eq("id", personIdentifier).maybeSingle(),
-            supabase.from("employees").select("id").eq("employee_code", personIdentifier).maybeSingle(),
-            supabase.from("employees").select("id").eq("user_id", personIdentifier).maybeSingle(),
+            supabase.from("employees").select("id, user_id").eq("id", personIdentifier).maybeSingle(),
+            supabase.from("employees").select("id, user_id").eq("employee_code", personIdentifier).maybeSingle(),
+            supabase.from("employees").select("id, user_id").eq("user_id", personIdentifier).maybeSingle(),
           ];
 
-          let resolvedEmployee: { id: string } | null = null;
+          let resolvedEmployee: { id: string; user_id: string } | null = null;
           for (const query of employeeLookupQueries) {
             const { data } = await query;
-            if (data) {
-              resolvedEmployee = data;
-              break;
-            }
+            if (data) { resolvedEmployee = data; break; }
           }
 
           if (resolvedEmployee) {
@@ -391,19 +383,23 @@ Deno.serve(async (req) => {
               .from("employees")
               .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
               .eq("id", resolvedEmployee.id);
+            if (resolvedEmployee.user_id) {
+              await supabase
+                .from("profiles")
+                .update({ avatar_url: imageUrl })
+                .eq("id", resolvedEmployee.user_id);
+            }
           } else {
+            // Try trainer
             const trainerLookupQueries = [
-              supabase.from("trainers").select("id").eq("id", personIdentifier).maybeSingle(),
-              supabase.from("trainers").select("id").eq("user_id", personIdentifier).maybeSingle(),
+              supabase.from("trainers").select("id, user_id").eq("id", personIdentifier).maybeSingle(),
+              supabase.from("trainers").select("id, user_id").eq("user_id", personIdentifier).maybeSingle(),
             ];
 
-            let resolvedTrainer: { id: string } | null = null;
+            let resolvedTrainer: { id: string; user_id: string } | null = null;
             for (const query of trainerLookupQueries) {
               const { data } = await query;
-              if (data) {
-                resolvedTrainer = data;
-                break;
-              }
+              if (data) { resolvedTrainer = data; break; }
             }
 
             if (resolvedTrainer) {
@@ -411,6 +407,12 @@ Deno.serve(async (req) => {
                 .from("trainers")
                 .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
                 .eq("id", resolvedTrainer.id);
+              if (resolvedTrainer.user_id) {
+                await supabase
+                  .from("profiles")
+                  .update({ avatar_url: imageUrl })
+                  .eq("id", resolvedTrainer.user_id);
+              }
             }
           }
         }
