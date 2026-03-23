@@ -41,6 +41,23 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
   );
 };
 
+const hashToNumericId = (value: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const numeric = (hash >>> 0) % 10000000000;
+  return String(numeric).padStart(10, "0");
+};
+
+const buildTerminalCredential = (preferred: string | null, seed: string): string => {
+  if (preferred && /^[0-9]{1,12}$/.test(preferred)) {
+    return preferred;
+  }
+  return hashToNumericId(`${preferred || ""}|${seed}`);
+};
+
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const raw = await req.text();
@@ -213,6 +230,7 @@ Deno.serve(async (req) => {
         // Use biometric_photo_url first, fallback to avatar_url
         const imageUrl = member.biometric_photo_url || profileInfo.avatar || null;
         const idCode = member.member_code || member.wiegand_code || member.id;
+        const terminalCredential = buildTerminalCredential(toText(idCode), `member:${member.id}`);
         const membershipInfo = membershipInfoMap[member.id] || { endDate: null, status: null };
 
         roster.push({
@@ -222,8 +240,8 @@ Deno.serve(async (req) => {
           customId: idCode,
           memberCode: member.member_code || null,
           wiegandCode: member.wiegand_code || null,
-          uid: idCode,
-          pin: idCode,
+          uid: terminalCredential,
+          pin: terminalCredential,
           name: profileInfo.name,
           personName: profileInfo.name,
           memberName: profileInfo.name,
@@ -265,10 +283,14 @@ Deno.serve(async (req) => {
       for (const emp of employees || []) {
         const info = staffProfileMap[emp.user_id] || { name: "Staff", avatar: null };
         const imageUrl = emp.biometric_photo_url || info.avatar || null;
+        const staffCode = emp.employee_code || emp.id;
+        const terminalCredential = buildTerminalCredential(toText(staffCode), `staff:${emp.id}`);
         roster.push({
           personId: emp.user_id || emp.id,
           personUUID: emp.user_id || emp.id,
-          customId: emp.employee_code || emp.id,
+          customId: staffCode,
+          uid: terminalCredential,
+          pin: terminalCredential,
           name: info.name,
           personName: info.name,
           imageUrl,
@@ -310,10 +332,13 @@ Deno.serve(async (req) => {
         const pid = trainer.user_id || trainer.id;
         if (alreadyAdded.has(pid)) continue;
         const info = trainerProfileMap[trainer.user_id] || { name: "Trainer", avatar: null };
+        const terminalCredential = buildTerminalCredential(toText(trainer.id), `trainer:${pid}`);
         roster.push({
           personId: pid,
           personUUID: pid,
           customId: trainer.id,
+          uid: terminalCredential,
+          pin: terminalCredential,
           name: info.name,
           personName: info.name,
           imageUrl: info.avatar,
