@@ -58,13 +58,14 @@ export function MemberAvatarUpload({
 
     setUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${userId || Date.now()}-${Date.now()}.${fileExt}`;
+      // Compress image for device compatibility (max 640x640, under 200KB)
+      const compressedFile = await compressImageFile(file);
+      const fileName = `${userId || Date.now()}-${Date.now()}.jpg`;
       const filePath = `avatars/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, compressedFile, { upsert: true });
 
       if (uploadError) throw uploadError;
 
