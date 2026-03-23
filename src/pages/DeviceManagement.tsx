@@ -26,6 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { formatDistanceToNow } from "date-fns";
 
+const isDeviceOnline = (device: AccessDevice): boolean => {
+  if (device.last_heartbeat) {
+    const heartbeatAge = (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000;
+    return heartbeatAge < 120;
+  }
+  return device.is_online === true;
+};
+
 const DeviceManagement = () => {
   const queryClient = useQueryClient();
   const { selectedBranch, branches } = useBranchContext();
@@ -122,7 +130,7 @@ const DeviceManagement = () => {
   }, []);
 
   const handleRelayAction = async (device: AccessDevice) => {
-    if (!device.is_online) { toast.error("Device is offline."); return; }
+    if (!isDeviceOnline(device)) { toast.error("Device is offline."); return; }
     setRelayPendingByDevice((prev) => ({ ...prev, [device.id]: true }));
     try {
       const command = await sendDeviceCommand(device.id, "relay_open", {
@@ -281,8 +289,7 @@ const DeviceManagement = () => {
               <div className="grid gap-4 md:grid-cols-2">
                 {devices.map((device) => {
                   const caps = (device.config as any)?.capabilities || {};
-                  const heartbeatAge = device.last_heartbeat ? (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000 : Infinity;
-                  const isLive = heartbeatAge < 120;
+                  const isLive = isDeviceOnline(device);
                   const relaySupported = !!caps.relay_turnstile;
                   const isExpanded = expandedDeviceId === device.id;
 
@@ -354,7 +361,7 @@ const DeviceManagement = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handleRelayAction(device)}
-                              disabled={!device.is_online || !!relayPendingByDevice[device.id]}
+                              disabled={!isLive || !!relayPendingByDevice[device.id]}
                             >
                               <PlayCircle className={`h-3.5 w-3.5 mr-1.5 ${relayPendingByDevice[device.id] ? 'animate-pulse' : ''}`} />
                               Relay

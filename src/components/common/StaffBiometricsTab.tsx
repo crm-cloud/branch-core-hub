@@ -13,7 +13,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { queueStaffSync, getSyncStatus } from '@/services/biometricService';
+import { queueStaffSync, queueTrainerSync, getSyncStatus } from '@/services/biometricService';
 
 interface StaffBiometricsTabProps {
   staffId: string;
@@ -39,7 +39,7 @@ export function StaffBiometricsTab({
   // Fetch sync statuses
   const { data: syncStatuses = [], isLoading: syncLoading } = useQuery({
     queryKey: ['biometric-sync-status-staff', staffId],
-    queryFn: () => getSyncStatus(staffId, 'staff'),
+    queryFn: () => getSyncStatus(staffId, staffType === 'trainer' ? 'trainer' : 'staff'),
     enabled: isOpen,
   });
 
@@ -84,7 +84,11 @@ export function StaffBiometricsTab({
         .from('avatars')
         .getPublicUrl(filePath);
 
-      await queueStaffSync(staffId, publicUrl, staffName);
+      if (staffType === 'trainer') {
+        await queueTrainerSync(staffId, publicUrl, staffName);
+      } else {
+        await queueStaffSync(staffId, publicUrl, staffName);
+      }
       
       toast.success('Biometric photo uploaded & sync queued');
       queryClient.invalidateQueries({ queryKey: ['biometric-sync-status-staff', staffId] });

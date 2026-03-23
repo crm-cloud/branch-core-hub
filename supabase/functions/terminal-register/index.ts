@@ -94,6 +94,7 @@ Deno.serve(async (req) => {
     }
 
     const action = (toText(body.action) || toText(body.mode) || "pull_members").toLowerCase();
+    const debugEnabled = ["1", "true", "yes", "on"].includes((toText(body.debug) || "").toLowerCase());
     const deviceSn = readSn(body);
     const personIdentifier = readIdentifier(body);
 
@@ -179,6 +180,7 @@ Deno.serve(async (req) => {
       }
 
       const roster: any[] = [];
+      let completedQueueCount = 0;
 
       // 1) MEMBERS — include ALL with hardware_access_enabled, photo or not
       const { data: members } = await supabase
@@ -346,7 +348,7 @@ Deno.serve(async (req) => {
 
         // Terminal has pulled the latest roster for this device.
         // Mark queued biometric sync rows as completed so UI doesn't stay pending forever.
-        await supabase
+        const { data: updatedQueueRows, error: queueUpdateError } = await supabase
           .from("biometric_sync_queue")
           .update({
             status: "completed",
@@ -354,8 +356,24 @@ Deno.serve(async (req) => {
             error_message: null,
           })
           .in("device_id", targetAccessDeviceIds)
-          .in("status", ["pending", "syncing", "failed"]);
+          .in("status", ["pending", "syncing", "failed"])
+          .select("id");
+
+        if (queueUpdateError) {
+          console.error("terminal-register queue completion error:", queueUpdateError);
+        }
+        completedQueueCount = (updatedQueueRows || []).length;
       }
+
+      const debugPayload = debugEnabled
+        ? {
+            action,
+            deviceSn,
+            branchId,
+            targetAccessDeviceIds,
+            completedQueueCount,
+          }
+        : undefined;
 
       return new Response(
         JSON.stringify({
@@ -365,6 +383,7 @@ Deno.serve(async (req) => {
           branchName,
           total: roster.length,
           members: roster,
+          ...(debugPayload ? { debug: debugPayload } : {}),
         }),
         {
           status: 200,

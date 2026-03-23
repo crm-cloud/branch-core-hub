@@ -11,7 +11,7 @@ import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUpdateTrainer } from '@/hooks/useTrainers';
 import { StaffAvatarUpload } from '@/components/common/StaffAvatarUpload';
-import { queueStaffSync } from '@/services/biometricService';
+import { queueTrainerSync } from '@/services/biometricService';
 import { supabase } from '@/integrations/supabase/client';
 import { StaffBiometricsTab } from '@/components/common/StaffBiometricsTab';
 
@@ -63,7 +63,7 @@ export function EditTrainerDrawer({ open, onOpenChange, trainer }: EditTrainerDr
       }
       // Queue biometric sync
       try {
-        await queueStaffSync(trainer.id, url, trainer.profile_name || 'Trainer');
+        await queueTrainerSync(trainer.id, url, trainer.profile_name || 'Trainer');
       } catch (err) {
         console.warn('Biometric sync queue failed:', err);
       }
