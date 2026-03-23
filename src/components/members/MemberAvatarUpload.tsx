@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Camera, Loader2, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { queueMemberSync } from '@/services/biometricService';
+import { queueMemberSync, syncAvatarToBiometric } from '@/services/biometricService';
 
 interface MemberAvatarUploadProps {
   memberId?: string;
@@ -39,26 +39,22 @@ export function MemberAvatarUpload({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       toast.error('Please select an image file');
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Image must be less than 5MB');
       return;
     }
 
-    // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreviewUrl(e.target?.result as string);
     };
     reader.readAsDataURL(file);
 
-    // Upload to storage
     setUploading(true);
     try {
       const fileExt = file.name.split('.').pop();
@@ -77,6 +73,15 @@ export function MemberAvatarUpload({
 
       onAvatarChange(publicUrl);
       toast.success('Avatar uploaded successfully');
+
+      // Avatar = Biometric unification: sync avatar to biometric_photo_url
+      if (userId) {
+        try {
+          await syncAvatarToBiometric(userId, publicUrl);
+        } catch (err) {
+          console.warn('Avatar-to-biometric sync failed:', err);
+        }
+      }
 
       // Auto-queue biometric sync if memberId is available
       if (memberId) {

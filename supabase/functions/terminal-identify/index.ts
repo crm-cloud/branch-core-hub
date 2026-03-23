@@ -43,7 +43,6 @@ const readIdentifier = (body: Record<string, unknown>): string | null => {
   )
 }
 
-// Sentinel values sent by stock terminals for unrecognized faces
 const STRANGER_SENTINELS = new Set([
   'strangerbaby', 'stranger', 'unknown', 'unrecognized', 'no_match', 'nomatch',
 ])
@@ -104,7 +103,7 @@ Deno.serve(async (req) => {
 
     const nowIso = new Date().toISOString()
 
-    // Strip imgBase64 from stored payload to save DB space (can be huge)
+    // Strip imgBase64 from stored payload to save DB space
     const payloadForStorage = { ...body }
     if (payloadForStorage.imgBase64 && typeof payloadForStorage.imgBase64 === 'string') {
       payloadForStorage.imgBase64 = `[base64:${(payloadForStorage.imgBase64 as string).length} chars]`
@@ -159,9 +158,7 @@ Deno.serve(async (req) => {
     const fallbackBranchId =
       toText(body.branch_id) || toText(body.branchId) || hardwareDevice?.branch_id || null
 
-    // ──────────────────────────────────────────────
-    // STRANGER DETECTION — skip DB lookups entirely
-    // ──────────────────────────────────────────────
+    // ── STRANGER DETECTION ──
     if (isStranger(personIdentifier)) {
       await supabase.from('access_logs').insert({
         device_sn: deviceSn || 'UNKNOWN',
@@ -180,9 +177,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ──────────────────────────────────────────────
-    // NO IDENTIFIER
-    // ──────────────────────────────────────────────
+    // ── NO IDENTIFIER ──
     if (!personIdentifier) {
       console.log('terminal-identify: no person identifier found in payload keys:', Object.keys(body))
       
@@ -203,9 +198,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ──────────────────────────────────────────────
-    // PROFILE / MEMBER / STAFF LOOKUPS
-    // ──────────────────────────────────────────────
+    // ── PROFILE / MEMBER / STAFF LOOKUPS ──
     let profileId: string | null = null
     {
       const { data: profile } = await supabase
@@ -238,28 +231,29 @@ Deno.serve(async (req) => {
     // Staff lookup
     let staffUserId: string | null = null
     let staffBranchId: string | null = null
+    let staffEmployeeId: string | null = null
     if (!member) {
       const employeeLookups = [
-        supabase.from('employees').select('user_id, branch_id').eq('id', personIdentifier).maybeSingle(),
-        supabase.from('employees').select('user_id, branch_id').eq('employee_code', personIdentifier).maybeSingle(),
+        supabase.from('employees').select('id, user_id, branch_id').eq('id', personIdentifier).maybeSingle(),
+        supabase.from('employees').select('id, user_id, branch_id').eq('employee_code', personIdentifier).maybeSingle(),
       ]
       if (profileId) {
         employeeLookups.push(
-          supabase.from('employees').select('user_id, branch_id').eq('user_id', profileId).maybeSingle()
+          supabase.from('employees').select('id, user_id, branch_id').eq('user_id', profileId).maybeSingle()
         )
       }
       for (const query of employeeLookups) {
         const { data } = await query
-        if (data) { staffUserId = data.user_id; staffBranchId = data.branch_id; break }
+        if (data) { staffUserId = data.user_id; staffBranchId = data.branch_id; staffEmployeeId = data.id; break }
       }
 
       if (!staffUserId) {
         const trainerLookups = [
-          supabase.from('trainers').select('user_id, branch_id').eq('id', personIdentifier).maybeSingle(),
+          supabase.from('trainers').select('id, user_id, branch_id').eq('id', personIdentifier).maybeSingle(),
         ]
         if (profileId) {
           trainerLookups.push(
-            supabase.from('trainers').select('user_id, branch_id').eq('user_id', profileId).maybeSingle()
+            supabase.from('trainers').select('id, user_id, branch_id').eq('user_id', profileId).maybeSingle()
           )
         }
         for (const query of trainerLookups) {
@@ -269,23 +263,49 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── STAFF MATCH ──
+    // ── STAFF MATCH — Toggle check-in/check-out ──
     if (staffUserId) {
-      await supabase.from('staff_attendance').insert({
-        user_id: staffUserId,
-        branch_id: staffBranchId || fallbackBranchId,
-        check_in: nowIso,
-        notes: `Terminal identify (${deviceSn || 'UNKNOWN'})`,
-      })
+      const effectiveBranch = staffBranchId || fallbackBranchId
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+
+      // Check for existing open attendance today (check_out IS NULL)
+      const { data: openAttendance } = await supabase
+        .from('staff_attendance')
+        .select('id, check_in')
+        .eq('user_id', staffUserId)
+        .gte('check_in', todayStart.toISOString())
+        .is('check_out', null)
+        .order('check_in', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      let attendanceAction = 'check_in'
+      if (openAttendance) {
+        // Check out — update existing row
+        await supabase
+          .from('staff_attendance')
+          .update({ check_out: nowIso })
+          .eq('id', openAttendance.id)
+        attendanceAction = 'check_out'
+      } else {
+        // Check in — new row
+        await supabase.from('staff_attendance').insert({
+          user_id: staffUserId,
+          branch_id: effectiveBranch,
+          check_in: nowIso,
+          notes: `Terminal identify (${deviceSn || 'UNKNOWN'})`,
+        })
+      }
 
       await supabase.from('access_logs').insert({
         device_sn: deviceSn || 'UNKNOWN',
         hardware_device_id: hardwareDevice?.id || null,
-        branch_id: staffBranchId || fallbackBranchId,
+        branch_id: effectiveBranch,
         profile_id: staffUserId,
         event_type: 'identify',
         result: 'staff',
-        message: 'Staff identify success',
+        message: `Staff ${attendanceAction} success`,
         captured_at: nowIso,
         payload: payloadForStorage,
       })
