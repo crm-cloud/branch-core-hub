@@ -36,7 +36,8 @@ const isDeviceOnline = (device: AccessDevice): boolean => {
 };
 
 const DeviceManagement = () => {
-  const { userRoles } = useAuth();
+  const { hasAnyRole } = useAuth();
+  const isAdminOrOwner = hasAnyRole(['owner', 'admin']);
   const queryClient = useQueryClient();
   const { selectedBranch, branches } = useBranchContext();
   const selectedBranchFilter = selectedBranch !== 'all' ? selectedBranch : '';
