@@ -281,7 +281,7 @@ export const getDeviceStats = async (branchId?: string) => {
   const online = devices.filter((d) => {
     if (d.last_heartbeat) {
       const heartbeatAge = (Date.now() - new Date(d.last_heartbeat).getTime()) / 1000;
-      return heartbeatAge < 120;
+      return heartbeatAge < 180;
     }
     return d.is_online === true;
   }).length;
