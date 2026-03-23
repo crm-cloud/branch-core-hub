@@ -5,6 +5,7 @@ import { Camera, Loader2, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { queueStaffSync } from '@/services/biometricService';
+import { compressImageFile } from '@/utils/imageCompression';
 
 interface StaffAvatarUploadProps {
   staffId?: string;
