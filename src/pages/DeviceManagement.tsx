@@ -12,8 +12,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
-import { fetchDevices, deleteDevice, getDeviceStats, sendDeviceCommand, subscribeToCommandStatus, AccessDevice } from "@/services/deviceService";
+import { fetchDevices, deleteDevice, getDeviceStats, sendDeviceCommand, subscribeToCommandStatus, AccessDevice, purgeOldAccessLogs } from "@/services/deviceService";
 import { getBiometricStats, syncBranchMembersToDevices } from "@/services/biometricService";
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from "@/integrations/supabase/client";
 import AddDeviceDrawer from "@/components/devices/AddDeviceDrawer";
 import EditDeviceDrawer from "@/components/devices/EditDeviceDrawer";
