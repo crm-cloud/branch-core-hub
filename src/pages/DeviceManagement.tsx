@@ -46,6 +46,8 @@ const DeviceManagement = () => {
   const [deletingDevice, setDeletingDevice] = useState<AccessDevice | null>(null);
   const [relayPendingByDevice, setRelayPendingByDevice] = useState<Record<string, boolean>>({});
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  const [rosterTestResult, setRosterTestResult] = useState<string | null>(null);
+  const [isPurgingLogs, setIsPurgingLogs] = useState(false);
   const relayCleanupByDeviceRef = useRef<Record<string, () => void>>({});
   const relayTimeoutByDeviceRef = useRef<Record<string, number>>({});
 
