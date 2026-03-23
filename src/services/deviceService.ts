@@ -154,23 +154,34 @@ export const triggerRelay = async (_deviceId: string): Promise<{ success: boolea
   };
 };
 
-export const fetchAccessEvents = async (
+export interface AccessLogEntry {
+  id: string;
+  device_sn: string;
+  hardware_device_id?: string | null;
+  branch_id?: string | null;
+  member_id?: string | null;
+  profile_id?: string | null;
+  event_type: string;
+  result?: string | null;
+  message?: string | null;
+  captured_at?: string | null;
+  payload?: any;
+  created_at: string;
+}
+
+export const fetchAccessLogs = async (
   branchId?: string,
   limit: number = 50,
   filters?: {
     eventType?: string;
-    accessGranted?: boolean;
+    result?: string;
     startDate?: string;
     endDate?: string;
   }
-): Promise<DeviceAccessEvent[]> => {
+): Promise<AccessLogEntry[]> => {
   let query = supabase
-    .from('device_access_events')
-    .select(`
-      *,
-      device:access_devices(device_name, ip_address),
-      member:members(member_code, user_id)
-    `)
+    .from('access_logs')
+    .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -182,8 +193,8 @@ export const fetchAccessEvents = async (
     query = query.eq('event_type', filters.eventType);
   }
 
-  if (filters?.accessGranted !== undefined) {
-    query = query.eq('access_granted', filters.accessGranted);
+  if (filters?.result) {
+    query = query.eq('result', filters.result);
   }
 
   if (filters?.startDate) {
@@ -195,29 +206,26 @@ export const fetchAccessEvents = async (
   }
 
   const { data, error } = await query;
-  
   if (error) throw error;
-  return (data || []) as DeviceAccessEvent[];
+  return (data || []) as AccessLogEntry[];
 };
 
-export const subscribeToAccessEvents = (
+export const subscribeToAccessLogs = (
   branchId: string | undefined,
-  callback: (event: DeviceAccessEvent) => void
+  callback: (event: AccessLogEntry) => void
 ) => {
-  const channelBuilder = supabase
-    .channel('device_access_events_realtime')
-  
-  const channel = channelBuilder
+  const channel = supabase
+    .channel('access_logs_realtime')
     .on(
       'postgres_changes',
       {
         event: 'INSERT',
         schema: 'public',
-        table: 'device_access_events',
+        table: 'access_logs',
         ...(branchId ? { filter: `branch_id=eq.${branchId}` } : {}),
       },
       (payload) => {
-        callback(payload.new as DeviceAccessEvent);
+        callback(payload.new as AccessLogEntry);
       }
     )
     .subscribe();
@@ -225,6 +233,18 @@ export const subscribeToAccessEvents = (
   return () => {
     supabase.removeChannel(channel);
   };
+};
+
+export const purgeOldAccessLogs = async (): Promise<number> => {
+  const { data, error } = await supabase
+    .from('access_logs')
+    .delete()
+    .in('result', ['stranger', 'not_found'])
+    .lt('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+    .select('id');
+
+  if (error) throw error;
+  return (data || []).length;
 };
 
 export const sendDeviceCommand = async (

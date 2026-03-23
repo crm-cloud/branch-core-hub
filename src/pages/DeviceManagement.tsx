@@ -29,7 +29,7 @@ import { formatDistanceToNow } from "date-fns";
 const isDeviceOnline = (device: AccessDevice): boolean => {
   if (device.last_heartbeat) {
     const heartbeatAge = (Date.now() - new Date(device.last_heartbeat).getTime()) / 1000;
-    return heartbeatAge < 120;
+    return heartbeatAge < 180;
   }
   return device.is_online === true;
 };
