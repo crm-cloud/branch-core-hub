@@ -270,6 +270,14 @@ const DeviceManagement = () => {
               <Users className="h-4 w-4" />
               Roster
             </TabsTrigger>
+            {isAdminOrOwner && (
+              <TabsTrigger value="debug" className="gap-1.5">
+                <Bug className="h-4 w-4" />
+                Debug
+              </TabsTrigger>
+            )}
+              Roster
+            </TabsTrigger>
           </TabsList>
 
           {/* Devices Tab */}
