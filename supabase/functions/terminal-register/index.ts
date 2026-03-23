@@ -46,7 +46,11 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   const raw = await req.text();
 
   if (raw.startsWith("{") || raw.startsWith("[")) {
-    try { return JSON.parse(raw); } catch { /* fall through */ }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      /* fall through */
+    }
   }
 
   if (ct.includes("form") || raw.includes("=")) {
@@ -60,7 +64,11 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
     return obj;
   }
 
-  try { return JSON.parse(raw); } catch { return {}; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
 
 Deno.serve(async (req) => {
@@ -94,6 +102,7 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     let device: { id: string; branch_id: string | null } | null = null;
     let accessDevice: { id: string; branch_id: string | null } | null = null;
+    let targetAccessDeviceIds: string[] = [];
 
     if (deviceSn) {
       const { data } = await supabase
@@ -127,6 +136,9 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       accessDevice = linkedAccessDevice || null;
+      if (accessDevice?.id) {
+        targetAccessDeviceIds = [accessDevice.id];
+      }
 
       if (accessDevice?.branch_id && !device?.branch_id) {
         await supabase
@@ -139,6 +151,17 @@ Deno.serve(async (req) => {
 
     const branchId =
       toText(body.branch_id) || toText(body.branchId) || device?.branch_id || accessDevice?.branch_id || null;
+
+    // Fallback mapping: if we couldn't resolve access_device by serial, use branch devices.
+    if (targetAccessDeviceIds.length === 0 && branchId) {
+      const { data: branchDevices } = await supabase
+        .from("access_devices")
+        .select("id")
+        .eq("branch_id", branchId)
+        .in("device_type", ["face_terminal", "face terminal"]);
+
+      targetAccessDeviceIds = (branchDevices || []).map((d) => d.id);
+    }
 
     let branchName: string | null = null;
     if (branchId) {
@@ -190,7 +213,10 @@ Deno.serve(async (req) => {
       const memberUserIds = (members || []).map((m) => m.user_id).filter(Boolean);
       let profileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (memberUserIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", memberUserIds);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", memberUserIds);
         profileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
           acc[p.id] = { name: p.full_name || "Member", avatar: p.avatar_url || null };
           return acc;
@@ -241,7 +267,10 @@ Deno.serve(async (req) => {
       const staffUserIds = (employees || []).map((e) => e.user_id).filter(Boolean);
       let staffProfileMap: Record<string, { name: string; avatar: string | null }> = {};
       if (staffUserIds.length > 0) {
-        const { data: profiles } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", staffUserIds);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", staffUserIds);
         staffProfileMap = (profiles || []).reduce((acc: Record<string, { name: string; avatar: string | null }>, p) => {
           acc[p.id] = { name: p.full_name || "Staff", avatar: p.avatar_url || null };
           return acc;
@@ -312,8 +341,20 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (accessDevice?.id) {
-        await supabase.from("access_devices").update({ last_sync: nowIso }).eq("id", accessDevice.id);
+      if (targetAccessDeviceIds.length > 0) {
+        await supabase.from("access_devices").update({ last_sync: nowIso }).in("id", targetAccessDeviceIds);
+
+        // Terminal has pulled the latest roster for this device.
+        // Mark queued biometric sync rows as completed so UI doesn't stay pending forever.
+        await supabase
+          .from("biometric_sync_queue")
+          .update({
+            status: "completed",
+            processed_at: nowIso,
+            error_message: null,
+          })
+          .in("device_id", targetAccessDeviceIds)
+          .in("status", ["pending", "syncing", "failed"]);
       }
 
       return new Response(
@@ -348,7 +389,10 @@ Deno.serve(async (req) => {
         let resolvedMember: { id: string; user_id: string } | null = null;
         for (const query of memberLookupQueries) {
           const { data } = await query;
-          if (data) { resolvedMember = data; break; }
+          if (data) {
+            resolvedMember = data;
+            break;
+          }
         }
 
         if (resolvedMember) {
@@ -359,10 +403,7 @@ Deno.serve(async (req) => {
             .eq("id", resolvedMember.id);
           // Also update profile avatar_url (avatar = biometric unification)
           if (resolvedMember.user_id) {
-            await supabase
-              .from("profiles")
-              .update({ avatar_url: imageUrl })
-              .eq("id", resolvedMember.user_id);
+            await supabase.from("profiles").update({ avatar_url: imageUrl }).eq("id", resolvedMember.user_id);
           }
         } else {
           // Try employee
@@ -375,7 +416,10 @@ Deno.serve(async (req) => {
           let resolvedEmployee: { id: string; user_id: string } | null = null;
           for (const query of employeeLookupQueries) {
             const { data } = await query;
-            if (data) { resolvedEmployee = data; break; }
+            if (data) {
+              resolvedEmployee = data;
+              break;
+            }
           }
 
           if (resolvedEmployee) {
@@ -384,10 +428,7 @@ Deno.serve(async (req) => {
               .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
               .eq("id", resolvedEmployee.id);
             if (resolvedEmployee.user_id) {
-              await supabase
-                .from("profiles")
-                .update({ avatar_url: imageUrl })
-                .eq("id", resolvedEmployee.user_id);
+              await supabase.from("profiles").update({ avatar_url: imageUrl }).eq("id", resolvedEmployee.user_id);
             }
           } else {
             // Try trainer
@@ -399,7 +440,10 @@ Deno.serve(async (req) => {
             let resolvedTrainer: { id: string; user_id: string } | null = null;
             for (const query of trainerLookupQueries) {
               const { data } = await query;
-              if (data) { resolvedTrainer = data; break; }
+              if (data) {
+                resolvedTrainer = data;
+                break;
+              }
             }
 
             if (resolvedTrainer) {
@@ -408,10 +452,7 @@ Deno.serve(async (req) => {
                 .update({ biometric_photo_url: imageUrl, biometric_enrolled: true })
                 .eq("id", resolvedTrainer.id);
               if (resolvedTrainer.user_id) {
-                await supabase
-                  .from("profiles")
-                  .update({ avatar_url: imageUrl })
-                  .eq("id", resolvedTrainer.user_id);
+                await supabase.from("profiles").update({ avatar_url: imageUrl }).eq("id", resolvedTrainer.user_id);
               }
             }
           }
