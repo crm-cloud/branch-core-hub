@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, Wifi, WifiOff, Settings2, Trash2, PlayCircle, Router,
   Fingerprint, CreditCard, RefreshCw, Users, Monitor, Activity,
-  Radio, CheckCircle2, Clock, Zap
+  Radio, CheckCircle2, Clock, Zap, Bug, TestTube, Trash, Copy
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBranchContext } from '@/contexts/BranchContext';
