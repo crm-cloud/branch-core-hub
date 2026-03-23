@@ -276,8 +276,7 @@ const DeviceManagement = () => {
                 Debug
               </TabsTrigger>
             )}
-              Roster
-            </TabsTrigger>
+          </TabsList>
           </TabsList>
 
           {/* Devices Tab */}
