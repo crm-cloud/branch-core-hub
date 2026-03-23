@@ -1,117 +1,132 @@
 
 
-# Deep Audit Results & Device Integration Fix Plan
+# Device Integration: Complete Fix & UI Redesign
 
-## Live Audit Findings
+## Critical Issues Found in Live Audit
 
-### What's Working
-- Device `D1146D682A96B1C2` is **online and sending heartbeats** every ~30s
-- `hardware_devices` table is receiving upserts correctly
-- `access_logs` is recording identify events
-- The 3 edge functions are deployed, reachable, and responding with `{"code": 0}`
+### Database State (Live)
+- **6 active members**, all with `hardware_access_enabled=true`, **0 with photos**
+- **2 active staff**, 0 with photos
+- **2 active trainers**, 0 with photos
+- **27,620 access log events**: 16,825 `not_found` + 10,795 `stranger` — **zero successful identifications**
+- **SN mismatch**: `access_devices` has SN `01MA10`, but the device heartbeats as `D1146D682A96B1C2`
 
-### What's Broken
+### Root Causes
 
-**1. Roster Pull Returns Empty — Members Never Sync to Device**
-The `terminal-register` roster pull (`action=pull_members`) returns `{"members": []}` even though 5 active members exist with `hardware_access_enabled = true`. 
+**1. Members never sync to device because of SN mismatch**
 
-**Root cause**: The roster query filters by `biometric_photo_url IS NOT NULL`, but ALL 5 members have `biometric_photo_url = null`. The roster should include members **without photos** too — the device can capture their face locally. Members need at minimum their `personId` (UUID) and `name` so the device can enroll them.
+The `terminal-register` endpoint resolves `branchId` by looking up the device SN in `hardware_devices`. The device sends `D1146D682A96B1C2` which exists in `hardware_devices` with `branch_id`. BUT the `access_devices` table has `01MA10` as SN. These are two different records for the same physical device. The roster pull works, but the `syncBranchMembersToDevices()` client function looks up devices from `access_devices` — and the SN there doesn't match what the terminal actually sends. Result: the device gets roster data from the edge function, but the app's "Sync Members" button targets the wrong device record.
 
-**2. No Membership Expiry in Roster**
-The `terminal-register` roster does not include membership `end_date`. Without this, the device has no way to block expired members. The device APK typically uses an expiry field to auto-deny access after the date passes.
+**2. App-side sync requires photos, but nobody has photos**
 
-**3. Staff/Trainers Not in Roster**
-The roster only returns members. Staff (`TESTSTAFF`, `MANAGER`) and trainers (`Trainer`) are not included. They need terminal access too.
+`syncBranchMembersToDevices()` filters `.not('biometric_photo_url', 'is', null)` — since all 6 members have `null` photos, zero items are synced. The edge function (`terminal-register`) correctly returns members without photos, but the app's sync button effectively does nothing.
 
-**4. Stranger Scans Not Handled Properly**
-The device sends `personId: "STRANGERBABY"` for unrecognized faces (15+ events logged). The `terminal-identify` function treats this as a real identifier and queries the DB for it. It should detect the `STRANGERBABY` sentinel value and log it as a stranger event without querying members/staff.
+**3. Avatar and biometric photo are separate concepts**
 
-**5. No Refresh Button in UI**
-Device list and access logs have no manual refresh button. The user must reload the entire page to see updated heartbeat status.
+Per user preference: avatar = biometric photo (reuse). Currently they're stored separately (`avatar_url` on profiles vs `biometric_photo_url` on members). When a member uploads an avatar, it doesn't populate `biometric_photo_url` and vice versa.
 
-**6. No Access Log Viewer for `access_logs` Table**
-The `LiveAccessLog` component reads from `device_access_events` (legacy table), not the new `access_logs` table where the terminal actually writes data. So the live feed shows nothing.
+**4. No bi-directional sync mechanism**
 
-**7. No Payload Inspector**
-No way to view raw payloads from the device in the UI. This is critical for debugging what the device actually sends.
+The device can pull roster (via `terminal-register`), but the **app cannot push** data to the device. The stock APK only calls out via callbacks — the app cannot reach the device's local API. Sync is one-directional: device pulls from cloud. The "Sync Members" button in the UI queues items to `biometric_sync_queue` but nothing ever reads that queue to push to the device.
 
-### Device Payload Schema (Captured Live)
+**5. Staff attendance via terminal only creates one check-in record**
 
-```text
-Field           Example              Purpose
-─────────────── ──────────────────── ─────────────────────────
-deviceKey       D1146D682A96B1C2     Device serial number
-personId        STRANGERBABY / UUID  Person identifier
-personName      John Doe             Enrolled name
-type            face_2               Recognition type
-direction       0                    Entry/Exit (0=entry)
-time            1774030868292        Unix timestamp (ms)
-ip              10.0.1.211           Device IP
-livenessScore   (number)             Anti-spoofing score
-mask             (string)            Mask detection
-searchScore     (number)             Face match confidence
-imgBase64       /9j/4AAQ...          Captured face image
-path            (string)             Image path on device
-```
+The `terminal-identify` function inserts into `staff_attendance` on every identification, but doesn't check for existing open attendance (no check-out logic). Each face scan creates a duplicate attendance row.
 
-## Fix Plan
+## The Fix
 
-### Step 1: Fix Roster to Include All Personnel (With and Without Photos)
+### Step 1: Fix SN Mismatch (Data)
 
-**File**: `supabase/functions/terminal-register/index.ts`
+Update the `access_devices` record to use the actual device SN `D1146D682A96B1C2` that the terminal reports. Clean up the stale `hardware_devices` entries (`01MA10`, `DUMMY-SN-001`).
 
-- Remove the `biometric_photo_url IS NOT NULL` filter — send members even without photos
-- Add `expiryDate` field from the `memberships` table (latest active membership `end_date`)
-- Add staff and trainers to the roster response alongside members
-- Each person gets: `personId`, `name`, `imageUrl` (nullable), `expiryDate`, `role` (member/staff/trainer)
+### Step 2: Unify Avatar = Biometric Photo
 
-### Step 2: Handle Stranger Detection in Identify
+When a member/staff/trainer uploads or changes their avatar (`avatar_url` on profiles), auto-copy it to `biometric_photo_url` on the corresponding `members`/`employees`/`trainers` row. When the terminal captures a face (via register callback with `imageUrl`), save it to both `biometric_photo_url` AND `avatar_url` on the profile.
+
+**Files**: `terminal-register/index.ts` (register callback section), `MemberAvatarUpload.tsx`, `EditProfileDrawer.tsx`, `StaffBiometricsTab.tsx`
+
+### Step 3: Fix App-Side Sync to Work Without Photos
+
+Remove the `.not('biometric_photo_url', 'is', null)` filter from `syncBranchMembersToDevices()`. Members without photos should still be synced (name + ID) so the device can capture their face locally.
+
+**File**: `src/services/biometricService.ts`
+
+### Step 4: Fix Staff Attendance Duplicate Check-Ins
+
+Update `terminal-identify` to check for existing open `staff_attendance` (where `check_out IS NULL` and `check_in` is today). If found, update `check_out` instead of inserting a new row.
 
 **File**: `supabase/functions/terminal-identify/index.ts`
 
-- Detect `STRANGERBABY` and other sentinel values (`STRANGER`, `stranger`, etc.)
-- Log as `result: 'stranger'` in `access_logs` with the `imgBase64` saved
-- Skip all member/staff lookups for strangers
-- Still return `{"code": 0}` to the device
+### Step 5: Enable Realtime on `hardware_devices`
 
-### Step 3: Fix Live Access Log to Read from `access_logs`
+So the UI can show live connection status updates without manual refresh.
 
-**File**: `src/components/devices/LiveAccessLog.tsx`
+**Migration**: `ALTER PUBLICATION supabase_realtime ADD TABLE public.hardware_devices;`
 
-- Switch from `device_access_events` to `access_logs` table
-- Show: timestamp, device SN, event type, result, person name/ID, message
-- Add realtime subscription on `access_logs` for live updates
-- Add color coding: green for member/staff, red for not_found/stranger, yellow for denied
+### Step 6: Redesign Device Management UI
 
-### Step 4: Add Refresh Button & Payload Inspector to Device Management
+The current UI has functional gaps:
 
-**File**: `src/pages/DeviceManagement.tsx`
+**New layout structure:**
 
-- Add a refresh button to the device list header that invalidates queries
-- Add a "Recent Payloads" section showing the last 10 `access_logs` entries with expandable raw payload view
-- Add a "Test Connection" button per device that calls `terminal-heartbeat` with the device SN via curl
+```text
++-------------------------------------------------------+
+| Device Management                    [Refresh] [+ Add] |
++-------------------------------------------------------+
+| Stats Row: Total | Online | Enrolled | Pending Sync    |
++-------------------------------------------------------+
+| Tab: Devices | Tab: Live Feed | Tab: Roster Status     |
++-------------------------------------------------------+
 
-### Step 5: Add Realtime Publication for `access_logs`
+Devices Tab:
+- Per-device cards (not table) showing:
+  - Name, SN, status indicator (live pulse)
+  - Last heartbeat (relative time)
+  - Enrolled count / roster size
+  - Expand: Setup URLs, quick actions
 
-**Migration**: Enable realtime for `access_logs` table so the LiveAccessLog component can subscribe to live events.
+Live Feed Tab:
+- Current LiveAccessLog component (already good)
 
-### About Edge Function Deployment
-Edge functions deploy **automatically** when code changes are saved — no manual deployment step is needed. The changes to `terminal-register` and `terminal-identify` will be live as soon as the code is updated.
+Roster Status Tab:
+- Personnel list showing sync state per person
+  - Name, role, has photo, enrolled on device, expiry
+  - Action: "Capture on Device" / "Upload Photo"
+  - Bulk sync button
+```
 
-## Files to Modify
+**Key UI additions:**
+- Per-device enrolled member count (query `access_logs` for unique successful identifications)
+- "Test Roster Pull" button that calls `terminal-register` and shows the response
+- SN auto-detection: when `hardware_devices` has a device not in `access_devices`, show a prompt to link them
+- Multi-device support: branch-scoped device cards in a grid
+
+**Files**: `src/pages/DeviceManagement.tsx` (major rewrite), `src/components/devices/DeviceSetupCard.tsx` (enhance), new `src/components/devices/RosterStatusTab.tsx`
+
+### Step 7: Clean Up Access Logs Table
+
+27K+ stranger/not_found events are noise. Add a "Clear Logs" button for admins to purge old events. Add pagination to the live feed.
+
+## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/terminal-register/index.ts` | Include all members (with/without photo), add expiry date, add staff/trainers |
-| `supabase/functions/terminal-identify/index.ts` | Add stranger detection, skip DB lookups for sentinel IDs |
-| `src/components/devices/LiveAccessLog.tsx` | Switch to `access_logs` table, add realtime subscription |
-| `src/pages/DeviceManagement.tsx` | Add refresh button, payload inspector, fix queries |
-| Migration | Enable realtime on `access_logs` |
+| Data fix | Update `access_devices` SN to `D1146D682A96B1C2`, clean stale `hardware_devices` |
+| Migration | Enable realtime on `hardware_devices` |
+| `src/services/biometricService.ts` | Remove photo requirement from sync, add avatar-to-biometric bridge |
+| `supabase/functions/terminal-identify/index.ts` | Add staff check-in/check-out toggle, avatar sync on face capture |
+| `supabase/functions/terminal-register/index.ts` | Save captured face to both `biometric_photo_url` and profile `avatar_url` |
+| `src/components/members/MemberAvatarUpload.tsx` | Auto-update `biometric_photo_url` when avatar changes |
+| `src/pages/DeviceManagement.tsx` | Full UI redesign with tabs, per-device cards, roster status |
+| `src/components/devices/DeviceSetupCard.tsx` | Add enrolled count, test roster button |
+| New: `src/components/devices/RosterStatusTab.tsx` | Personnel sync status view |
 
 ## Execution Order
-1. Fix roster pull (critical — enables member sync to device)
-2. Fix stranger detection in identify
-3. Enable realtime on `access_logs`
-4. Rebuild LiveAccessLog component
-5. Add refresh + payload inspector to Device Management UI
+1. Fix SN mismatch (data update)
+2. Enable realtime on `hardware_devices`
+3. Unify avatar = biometric photo (edge functions + components)
+4. Fix sync to work without photos
+5. Fix staff attendance duplicate check-ins
+6. Redesign Device Management UI
+7. End-to-end test via curl
 
