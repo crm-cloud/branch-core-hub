@@ -277,7 +277,6 @@ const DeviceManagement = () => {
               </TabsTrigger>
             )}
           </TabsList>
-          </TabsList>
 
           {/* Devices Tab */}
           <TabsContent value="devices" className="space-y-4">
