@@ -17,7 +17,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
   const handleOpenDoor = async () => {
     setIsOpening(true);
     try {
-      const result = await remoteOpenDoor(device.deviceKey);
+      const result = await remoteOpenDoor(device.id);
       if (result.success) {
         toast.success(`Door opened on ${device.name}`);
       } else {
