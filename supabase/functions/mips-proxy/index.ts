@@ -68,10 +68,13 @@ Deno.serve(async (req) => {
     }
 
     const token = await getMIPSToken();
-    const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!;
+    const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+    const mipsUrlObj = new URL(MIPS_URL);
+    const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
+    const mipsContext = mipsUrlObj.pathname.replace(/\/+$/, "");
 
-    // Build URL with query params
-    let url = `${MIPS_URL}${endpoint}`;
+    // Build URL: base + context path + endpoint
+    let url = `${mipsBase}${mipsContext}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) searchParams.set(k, v);
