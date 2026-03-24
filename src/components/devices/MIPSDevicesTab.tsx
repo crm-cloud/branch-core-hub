@@ -19,7 +19,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
     try {
       const result = await remoteOpenDoor(device.deviceKey);
       if (result.success) {
-        toast.success(`Door opened on ${device.deviceName}`);
+        toast.success(`Door opened on ${device.name}`);
       } else {
         toast.error(result.message);
       }
@@ -55,7 +55,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
               <Monitor className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-base">{device.deviceName || device.deviceKey}</CardTitle>
+              <CardTitle className="text-base">{device.name || device.deviceKey}</CardTitle>
               <CardDescription className="text-xs font-mono">
                 Key: {device.deviceKey}
               </CardDescription>
