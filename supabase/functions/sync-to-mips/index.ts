@@ -24,7 +24,8 @@ async function getMIPSToken(): Promise<string> {
   });
 
   const json = await res.json();
-  if (json.code !== 200 && json.code !== 0) {
+  const codeVal = Number(json.code);
+  if (codeVal !== 200 && codeVal !== 0) {
     throw new Error(`MIPS auth error: ${json.msg || JSON.stringify(json)}`);
   }
 
