@@ -1744,6 +1744,8 @@ export type Database = {
           hire_date: string
           id: string
           is_active: boolean | null
+          mips_person_id: string | null
+          mips_sync_status: string | null
           position: string | null
           salary: number | null
           salary_type: string | null
@@ -1764,6 +1766,8 @@ export type Database = {
           hire_date: string
           id?: string
           is_active?: boolean | null
+          mips_person_id?: string | null
+          mips_sync_status?: string | null
           position?: string | null
           salary?: number | null
           salary_type?: string | null
@@ -1784,6 +1788,8 @@ export type Database = {
           hire_date?: string
           id?: string
           is_active?: boolean | null
+          mips_person_id?: string | null
+          mips_sync_status?: string | null
           position?: string | null
           salary?: number | null
           salary_type?: string | null
@@ -3466,6 +3472,8 @@ export type Database = {
           joined_at: string
           lead_id: string | null
           member_code: string | null
+          mips_person_id: string | null
+          mips_sync_status: string | null
           notes: string | null
           referred_by: string | null
           source: string | null
@@ -3489,6 +3497,8 @@ export type Database = {
           joined_at?: string
           lead_id?: string | null
           member_code?: string | null
+          mips_person_id?: string | null
+          mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
           source?: string | null
@@ -3512,6 +3522,8 @@ export type Database = {
           joined_at?: string
           lead_id?: string | null
           member_code?: string | null
+          mips_person_id?: string | null
+          mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
           source?: string | null
