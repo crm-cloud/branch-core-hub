@@ -1,103 +1,212 @@
 
 
-# Device Integration: Deep Cleanup & Feature Build
+# MIPS Middleware Integration & Device Management Redesign
 
-## Phase 1: Database Cleanup
+## Architecture Overview
 
-### Tables to DELETE (proposing for your confirmation)
-| Table | Rows | Reason |
-|-------|------|--------|
-| `device_access_events` | 8 | Legacy table — all real events go to `access_logs` (28,977 rows). Only referenced by `fetchAccessEvents()` in `deviceService.ts` which is unused in the UI. |
+```text
+┌─────────────────┐     ┌──────────────────────┐     ┌────────────────┐
+│  Lovable App     │────>│  Supabase Edge Fns    │────>│  MIPS Server   │
+│  (React UI)      │     │  sync-to-mips         │     │  212.38.94.228 │
+│                  │     │  mips-webhook-receiver │<────│  :9000         │
+│  Device Mgmt     │     │  mips-proxy (new)      │     │                │
+│  Registration    │     └──────────────────────┘     └────────────────┘
+└─────────────────┘                                    ┌────────────────┐
+                                                       │  Face Terminal  │
+                                                       │  (TCP to MIPS)  │
+                                                       └────────────────┘
+```
 
-### Tables to KEEP
-| Table | Rows | Purpose |
-|-------|------|---------|
-| `access_devices` | 1 | Primary device registry — UI reads from this |
-| `hardware_devices` | 1 | Edge function auto-upsert table for heartbeat tracking |
-| `access_logs` | 28,977 | All terminal events (identify, heartbeat, register) |
-| `biometric_sync_queue` | 10 | Tracks sync status per person per device |
-| `device_commands` | — | Relay/command queue (used by sendDeviceCommand) |
+The device communicates with MIPS via TCP. MIPS exposes HTTP REST APIs. Our app pushes personnel data to MIPS and receives attendance callbacks from MIPS.
 
-### Edge Functions — All 3 are ACTIVE and NEEDED
-- `terminal-heartbeat` — device heartbeat receiver
-- `terminal-identify` — face scan callback
-- `terminal-register` — roster pull + face registration callback
+## MIPS API Summary (from docs)
 
-No edge functions to delete. These are the only hardware-related functions and they are production-critical.
+- **Auth**: POST `http://212.38.94.228:9000/apiExternal/generateToken` with `identity=system&pStr=123456` (form-urlencoded). Returns JWT token.
+- **Header**: All subsequent calls use `owl-auth-token: {token}` + `ContentType: application/x-www-form-urlencoded`
+- **Devices**: GET `/admin/devices/page?page=1&size=20`
+- **Employees**: GET `/admin/person/employees/page?page=1&size=20`
+- **Pass Records**: GET `/admin/pass/pass_records/page?page=1&size=20`
+- **Person object fields**: `name`, `personNo`, `photoUrl`, `idCard`, `expireTime`, `gender`
 
-### Data Cleanup
-- Purge ~28K noise rows from `access_logs` where `result IN ('stranger', 'not_found')` and `created_at < now() - interval '7 days'` — keeps recent events for debugging but removes historical noise.
-
----
-
-## Phase 2: UI/UX Fixes
-
-### 1. Device Status — Fix Online Threshold
-Current code uses 120 seconds (2 min). Change to **180 seconds (3 min)** per your spec in both `DeviceManagement.tsx` (`isDeviceOnline`) and `deviceService.ts` (`getDeviceStats`).
-
-### 2. Sync Status on Member Profile
-Add a small sync status indicator to `MemberProfileDrawer` (in the Hardware/Access tab) showing the `biometric_sync_queue` status for that member: "Queued", "Synced", or "Failed" with timestamp.
+The Add Employee endpoint is not explicitly documented in the provided doc pages, but follows the MIPS REST convention. We will discover and validate it via the proxy edge function.
 
 ---
 
-## Phase 3: Core Features
+## Phase 1: Database Changes
 
-### 1. Remote Relay (Remote Open Door)
-The `device_commands` table and `sendDeviceCommand()` already exist. The "Relay" button already exists on each device card. The issue is the device (stock APK) doesn't poll for commands — it only pushes callbacks. 
+### New columns on `profiles` table (via existing table)
+No new tables needed. The existing `profiles`, `members`, `employees`, `trainers` tables already have `biometric_photo_url`. We add:
 
-**Solution**: Add a relay command to the `terminal-heartbeat` response. When the device sends a heartbeat, check `device_commands` for pending commands and return them in the response payload. The stock APK may or may not honor this — document this limitation. The button already works for UI queuing.
+- `members.mips_person_id` (text, nullable) -- the MIPS-side person ID
+- `members.mips_sync_status` (text, default 'pending') -- 'pending' / 'synced' / 'failed'
+- `employees.mips_person_id` (text, nullable)
+- `employees.mips_sync_status` (text, default 'pending')
 
-### 2. Photo Compression Utility
-Create a client-side utility (`src/utils/imageCompression.ts`) that:
-- Resizes to max 640x640
-- Compresses to JPEG under 200KB
-- Returns Base64 string
-- Used by `MemberAvatarUpload`, `StaffAvatarUpload`, `EditProfileDrawer` before upload
+### Migration SQL
+```sql
+ALTER TABLE public.members 
+  ADD COLUMN IF NOT EXISTS mips_person_id text,
+  ADD COLUMN IF NOT EXISTS mips_sync_status text DEFAULT 'pending';
 
-### 3. Remote Photo Capture
-Add "Capture via Device" button in Member Profile. This inserts a `device_commands` record with `command_type: 'capture_face'` and `payload: { personId: member.id }`. When the heartbeat response delivers this command, the device captures and POSTs back via `terminal-register` callback.
-
-### 4. Role Mapping in Roster
-Update `terminal-register` roster response to include a `department` field:
-- `role: 'member'` → `department: 'Normal User'`
-- `role: 'staff'` → `department: 'Employee'`  
-- `role: 'trainer'` → `department: 'Employee'`
-- Admin/Manager → `department: 'Administrator'`
-
-### 5. Expiry Dates
-Already implemented — roster includes `expiryDate`, `expiry_date`, `membershipEndDate`. No changes needed.
+ALTER TABLE public.employees 
+  ADD COLUMN IF NOT EXISTS mips_person_id text,
+  ADD COLUMN IF NOT EXISTS mips_sync_status text DEFAULT 'pending';
+```
 
 ---
 
-## Phase 4: Debug Tab
+## Phase 2: Edge Functions
 
-Add a "Debug" tab to Device Management (visible to owner/admin only) with:
-- E2E test checklist (create member → verify sync → test relay → test expiry → test offline)
-- "Test Roster Pull" button that calls `terminal-register` via `supabase.functions.invoke` and shows the response
-- Log purge button (clear old stranger/not_found events)
+### 1. `mips-proxy` (new) -- Authenticated proxy to MIPS REST API
+Since the MIPS server is on a VPS and the browser can't call it directly (CORS), we create a proxy edge function that:
+- Authenticates to MIPS using `generateToken`
+- Caches the token (tokens are JWT, long-lived)
+- Proxies requests to any MIPS endpoint
+- Used by both other edge functions and the frontend (via `supabase.functions.invoke`)
+
+**Secrets needed**: `MIPS_SERVER_URL`, `MIPS_USERNAME`, `MIPS_PASSWORD`
+
+### 2. `sync-to-mips` (new) -- Push personnel to MIPS
+- Called from frontend after member/staff registration or photo upload
+- Fetches person data from Supabase
+- Downloads photo from storage, compresses to base64
+- Calls MIPS API to add/update the employee
+- Updates `mips_sync_status` to 'synced' or 'failed'
+- Updates `mips_person_id` with the MIPS-assigned ID
+
+### 3. `mips-webhook-receiver` (new) -- Receive attendance from MIPS
+- MIPS sends pass records as HTTP POST to this URL
+- Parses the MIPS callback payload (fields: `personNo`, `passType`, `time`, `temperature`, `imgUri`, `deviceName`, `passPersonType`)
+- Looks up member/staff by `mips_person_id` or `personNo`
+- Calls `member_check_in` RPC or inserts `staff_attendance`
+- Inserts into `access_logs`
+- Returns `{"code": 200, "msg": "Successful!"}` immediately
+
+**Webhook URL to configure in MIPS**: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver`
 
 ---
 
-## Files to Modify
+## Phase 3: Device Management UI Redesign
 
-| File | Change |
+Complete rewrite of `src/pages/DeviceManagement.tsx` with 5 tabs:
+
+### Tab 1: Dashboard
+- Stats from MIPS API (device count, online/offline, total persons, total faces)
+- Stats from Supabase (enrolled members, pending sync)
+- Live connection status to MIPS server (green/red indicator)
+
+### Tab 2: Devices (from MIPS)
+- Fetches device list from MIPS via `mips-proxy`
+- Shows: deviceKey, name, personCount, faceCount, IP, online status, last active
+- Actions: Remote Open, Restart, Set Time, Download Staff
+- Maps to our local `access_devices` records
+
+### Tab 3: Personnel Sync
+- Shows all members/staff with sync status columns:
+  - Name, Role, Has Photo, MIPS Synced, MIPS Person ID
+- "Sync to MIPS" button per person or bulk sync
+- "Sync All" button for the entire branch
+- Filter: Synced / Pending / Failed
+
+### Tab 4: Live Feed
+- Existing `LiveAccessLog` component (reads `access_logs`)
+- Now also shows MIPS pass records fetched via proxy
+- Realtime updates from both sources
+
+### Tab 5: Debug (admin only)
+- Test MIPS connection (generate token)
+- View raw MIPS device list
+- View raw MIPS pass records
+- E2E test checklist
+- Log purge utility
+
+### New Components
+- `src/components/devices/MIPSDeviceCard.tsx` -- device card with MIPS data
+- `src/components/devices/PersonnelSyncTab.tsx` -- sync status view
+- `src/components/devices/MIPSDashboard.tsx` -- MIPS stats dashboard
+- `src/components/devices/BiometricCapture.tsx` -- webcam face capture component
+
+---
+
+## Phase 4: Registration Flow with Face Capture
+
+### BiometricCapture Component
+- Requests camera permission via `navigator.mediaDevices.getUserMedia`
+- Shows live video feed with square face overlay guide
+- Capture button snaps photo
+- Auto-crops to square, compresses to JPEG under 300KB using existing `imageCompression.ts`
+- Strips data URL prefix, returns raw base64
+- Used in:
+  - Member registration (`AddMemberDrawer`)
+  - Member profile (`MemberProfileDrawer` hardware tab)
+  - Staff registration (`AddEmployeeDrawer`)
+
+### Registration Workflow
+1. Staff fills in member details + captures face photo
+2. Photo uploaded to Supabase storage (`member-photos` bucket)
+3. `sync-to-mips` edge function called to push to MIPS
+4. MIPS assigns person ID, syncs face to all connected terminals
+5. UI shows sync status: Queued -> Syncing -> Synced
+
+---
+
+## Phase 5: Inbound Webhook (Attendance)
+
+### MIPS Callback Payload (from pass records API)
+```json
+{
+  "personNo": "520520",
+  "personName": "John",
+  "passType": "face_0",
+  "passPersonType": "Employee",
+  "temperature": "36.1",
+  "temperatureState": 1,
+  "maskState": 1,
+  "imgUri": "/u/cms/www/...",
+  "deviceName": "Entry Terminal",
+  "createTime": "2024-10-12 17:06:38"
+}
+```
+
+### Processing Logic
+1. Parse incoming payload
+2. Match `personNo` to `members.mips_person_id` or `employees.mips_person_id`
+3. If member: call `member_check_in` RPC
+4. If staff: toggle check-in/check-out (existing logic)
+5. If stranger: log with `result: 'stranger'`
+6. Insert into `access_logs` with full payload
+7. Return `200` immediately
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| Migration | Drop `device_access_events`, purge old access_logs |
-| `src/pages/DeviceManagement.tsx` | Fix online threshold to 180s, add Debug tab |
-| `src/services/deviceService.ts` | Fix threshold to 180s, remove `device_access_events` references |
-| `supabase/functions/terminal-heartbeat/index.ts` | Return pending commands in heartbeat response |
-| `supabase/functions/terminal-register/index.ts` | Add `department` field for role mapping |
-| New: `src/utils/imageCompression.ts` | Client-side image resize/compress utility |
-| `src/components/members/MemberAvatarUpload.tsx` | Use compression before upload |
-| `src/components/members/MemberProfileDrawer.tsx` | Add sync status indicator, "Capture via Device" button |
-| `src/components/members/HardwareBiometricsTab.tsx` | Simplify — remove manual photo upload confusion |
+| Migration | Add `mips_person_id`, `mips_sync_status` to members/employees |
+| `supabase/functions/mips-proxy/index.ts` | NEW - Authenticated proxy to MIPS |
+| `supabase/functions/sync-to-mips/index.ts` | NEW - Push personnel to MIPS |
+| `supabase/functions/mips-webhook-receiver/index.ts` | NEW - Receive attendance |
+| `src/pages/DeviceManagement.tsx` | REWRITE - 5-tab command center |
+| `src/components/devices/MIPSDashboard.tsx` | NEW - MIPS stats |
+| `src/components/devices/PersonnelSyncTab.tsx` | NEW - Sync status view |
+| `src/components/devices/BiometricCapture.tsx` | NEW - Webcam face capture |
+| `src/services/mipsService.ts` | NEW - Frontend service for MIPS proxy calls |
+| `src/services/deviceService.ts` | UPDATE - Add MIPS integration methods |
 
 ## Execution Order
-1. Database cleanup (drop legacy table, purge noise)
-2. Fix online threshold (quick win)
-3. Add role mapping to roster
-4. Build image compression utility
-5. Heartbeat command delivery
-6. Member profile sync status + capture button
-7. Debug tab with E2E checklist
+1. Add secrets (`MIPS_SERVER_URL`, `MIPS_USERNAME`, `MIPS_PASSWORD`)
+2. Database migration (add MIPS columns)
+3. Create `mips-proxy` edge function and test token generation
+4. Create `sync-to-mips` edge function
+5. Create `mips-webhook-receiver` edge function
+6. Build `BiometricCapture` component
+7. Build `PersonnelSyncTab` component
+8. Redesign `DeviceManagement.tsx` with all 5 tabs
+9. End-to-end test: register person -> sync to MIPS -> verify on MIPS dashboard
+
+## Important Notes
+- The existing `terminal-heartbeat`, `terminal-identify`, `terminal-register` edge functions remain as-is for direct device callbacks. The new MIPS integration is a **parallel path** that works through the middleware server.
+- The MIPS server at `212.38.94.228:9000` is the **authoritative source** for device management. Our app syncs personnel TO it and receives attendance FROM it.
+- The cloud screenshot shows the device config: IP `212.38.94.228`, Port `10011`, Key `D1146D682A96B1C2`, Protocol `TCP`. This confirms the device connects to MIPS via TCP, not directly to our Supabase endpoints.
 
