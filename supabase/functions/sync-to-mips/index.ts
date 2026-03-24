@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
       formData.set(k, String(v));
     }
 
-    const addRes = await fetch(`${MIPS_URL}/admin/person/employees/save`, {
+    const addRes = await fetch(`${mipsBase}${mipsContext}/admin/person/employees/save`, {
       method: "POST",
       headers: {
         "owl-auth-token": token,
