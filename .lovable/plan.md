@@ -1,95 +1,64 @@
 
-Goal: make the MIPS flow truly testable end-to-end and fix the broken sync path before marking anything complete.
 
-What I found
-- The current 500 error is real and reproducible from logs: `sync-to-mips` is getting HTML 404 pages from MIPS, not JSON.
-- The main cause is architectural: both `mips-proxy` and `sync-to-mips` strip the `/MIPS` path from `MIPS_SERVER_URL` and call only `protocol//host`. Your uploaded manuals show the Smart Pass app is served under `/MIPS`, so the current code is likely hitting the wrong endpoint base.
-- `sync-to-mips` is also guessing the add-person endpoint (`/admin/person/employees/save`, then `/api/person/add`) without a verified contract from the docs.
-- The stack-overflow/base64 issue appears already addressed in code.
-- The Dashboard source already polls every 15s and has heartbeat UI/offline notification logic. If you still see old “Local (Supabase)” UI, that is likely stale build/cache or another remaining renderer not yet found in current source.
-- The Debug tab only tests raw reads through the proxy. It does not currently prove end-to-end personnel sync or webhook receipt, so “debug works” = only partially.
+# Fix MIPS Integration: Correct API Endpoints and Payloads
 
-Plan
-1. Audit and lock the correct MIPS API contract
-- Read the uploaded manuals specifically for:
-  - exact API base path (`/MIPS` vs root)
-  - exact add-person endpoint
-  - required request content type
-  - required parameter names for face/base64 upload
-  - expected success response fields
-- Stop guessing endpoints in `sync-to-mips`.
+## Root Cause (from user's curl captures)
 
-2. Refactor MIPS URL handling
-- Centralize URL construction in both `mips-proxy` and `sync-to-mips`.
-- Preserve the configured path from `MIPS_SERVER_URL` instead of stripping to host-only.
-- Only auth token generation should use the documented auth path; all business endpoints should use the verified application base path.
+The current code is calling wrong endpoints with wrong methods and wrong payloads. Here are the actual MIPS API contracts discovered:
 
-3. Fix `sync-to-mips` request payload
-- Build the payload exactly to MIPS spec from the manuals.
-- Match field names for:
-  - person code/id
-  - name
-  - phone/department if required
-  - expiry/access dates
-  - face image base64 field
-- Support the correct content type required by MIPS (`application/json` or form-urlencoded), based on docs rather than fallback guesses.
-- Improve error logging so logs include:
-  - final URL used
-  - content type used
-  - sanitized payload shape
-  - parsed response/error body
+### Personnel Save
+- **Correct**: `POST /admin/person/employees` with JSON body and `siteId: 1` header
+- **Current (broken)**: Tries `/admin/person/employees/save`, `/apiExternal/person/save`, `/apiExternal/employee/save` -- all 404
 
-4. Add real manual sync verification flow
-- Add a dedicated “Manual Sync Test” path in Debug that:
-  - selects one member/employee with photo
-  - invokes `sync-to-mips`
-  - immediately queries MIPS personnel list afterward
-  - shows whether the synced person is actually present in MIPS
-- This makes Debug useful for real E2E verification, not just raw endpoint reads.
+### Open Door
+- **Correct**: `PUT /admin/devices/remote/opendoor` with `{"ids":[22]}` (device numeric IDs)
+- **Current (broken)**: `POST /admin/devices/openDoor` with `{"deviceKey":"..."}` -- wrong method, wrong path, wrong payload
 
-5. Tighten Personnel Sync UX
-- Show clearer statuses:
-  - Pending
-  - Syncing
-  - Synced to MIPS
-  - Failed: endpoint/path issue
-  - Failed: missing photo
-- Surface the last sync error inline so admins don’t need Cloud logs for every failure.
-- Keep bulk sync, but make it skip clearly invalid records and summarize exact failures.
+### Photo Upload
+The curl shows `personPhotoId: [12]` -- photos are uploaded separately to MIPS first, then referenced by ID. Current code sends `imgBase64` inline which MIPS does not accept on this endpoint.
 
-6. Validate Dashboard/Devices/Live Feed tabs
-- Dashboard: keep MIPS as single source of truth; confirm only MIPS stats remain.
-- Devices: verify online/offline comes only from MIPS status.
-- Personnel Sync: verify sync button actually results in MIPS-side person creation.
-- Live Feed: verify webhook records land in `access_logs` and member/staff matching works.
-- Debug: extend it to true sync and webhook checks.
+---
 
-7. Offline monitoring cleanup
-- Keep the 15s poll and heartbeat animation.
-- Verify offline notification is only sent on status transition, not every poll.
-- Expand recipients from only owner/admin if you want managers included too.
+## Plan
 
-8. End-to-end completion criteria
-I would only mark this complete after all of these pass:
-- A manual sync of one member with photo succeeds
-- The same person appears in MIPS personnel data immediately after sync
-- Bulk sync processes remaining valid members/staff
-- Dashboard device count/online count match MIPS
-- A real or simulated face scan reaches `mips-webhook-receiver`
-- Live Feed shows the event
-- Member/staff attendance updates correctly
-- Debug tab proves the above with visible results
+### 1. Fix `sync-to-mips` edge function
+- Change endpoint to `POST /admin/person/employees`
+- Add `siteId: 1` header
+- Match exact payload structure from the curl:
+  - `id: ""` (empty for new), `personNo`, `name`, `phone`, `email`, `gender: 1`
+  - `beginTime`, `expireTime` in `YYYY-MM-DD HH:mm:ss` format
+  - `attendanceFlag: true`, `attendanceRuleId: 1`
+  - Remove `imgBase64` / `department` fields (not in MIPS contract)
+  - For photos: skip for now (requires separate upload API), set `personPhotoId: []`
+- Remove the multi-endpoint retry loop -- we now know the exact endpoint
+- Keep chunked base64 helper for future photo upload support
 
-Files I would update
-- `supabase/functions/sync-to-mips/index.ts`
-- `supabase/functions/mips-proxy/index.ts`
-- `src/components/devices/PersonnelSyncTab.tsx`
-- `src/pages/DeviceManagement.tsx`
-- `src/components/devices/MIPSDashboard.tsx` (only if stale/local stats source is still found)
+### 2. Fix `mips-proxy` edge function
+- Add `siteId: 1` header to all proxied requests
+- Support `PUT` method (currently only handles POST/GET effectively)
+- Already supports PUT in the method passthrough, just need to verify
 
-Expected outcome
-- No more guessed MIPS endpoints
-- No more host-only URL bug
-- Real manual sync testing from inside the app
-- Debug tab becomes genuinely useful
-- Completion based on verified sync between members and device/MIPS, not just UI state
+### 3. Fix `remoteOpenDoor` in mipsService.ts
+- Change endpoint to `/admin/devices/remote/opendoor`
+- Change method to `PUT`
+- Change payload from `{ deviceKey }` to `{ ids: [deviceId] }` where `deviceId` is the numeric MIPS device ID (not the deviceKey string)
+- Update `MIPSDevice` interface to ensure `id` (numeric) is available
+- Update `MIPSDevicesTab.tsx` to pass `device.id` instead of `device.deviceKey`
+
+### 4. Update `restartDevice` in mipsService.ts
+- Likely needs similar fix (PUT method, different endpoint) -- will match pattern from open door
+
+### 5. Update Debug tab in DeviceManagement.tsx
+- Ensure debug buttons use corrected endpoints
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `supabase/functions/sync-to-mips/index.ts` | Single correct endpoint, exact payload, `siteId` header |
+| `supabase/functions/mips-proxy/index.ts` | Add `siteId: 1` header to all requests |
+| `src/services/mipsService.ts` | Fix open door endpoint/method/payload |
+| `src/components/devices/MIPSDevicesTab.tsx` | Pass device `id` (numeric) for door open |
+
