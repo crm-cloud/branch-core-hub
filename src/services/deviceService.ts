@@ -73,28 +73,19 @@ export const fetchDevice = async (deviceId: string): Promise<AccessDevice | null
 export const addDevice = async (device: {
   branch_id: string;
   device_name: string;
-  ip_address: string;
-  mac_address?: string;
+  serial_number?: string;
   device_type?: string;
   model?: string;
-  serial_number?: string;
-  relay_mode?: number;
-  relay_delay?: number;
-  config?: Record<string, unknown>;
 }): Promise<AccessDevice> => {
   const { data, error } = await supabase
     .from('access_devices')
     .insert({
       branch_id: device.branch_id,
       device_name: device.device_name,
-      ip_address: device.ip_address as unknown,
-      mac_address: device.mac_address,
+      ip_address: '0.0.0.0' as unknown,
       device_type: device.device_type || 'face_terminal',
       model: device.model,
       serial_number: device.serial_number,
-      relay_mode: device.relay_mode,
-      relay_delay: device.relay_delay,
-      config: device.config as Json || null,
     })
     .select()
     .single();

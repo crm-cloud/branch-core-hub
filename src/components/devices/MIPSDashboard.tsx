@@ -3,11 +3,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Monitor, Wifi, WifiOff, Users, Fingerprint, Activity, RefreshCw, Server,
+  Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server,
 } from "lucide-react";
 import { testMIPSConnection, fetchMIPSDevices } from "@/services/mipsService";
-import { getDeviceStats } from "@/services/deviceService";
-import { getBiometricStats } from "@/services/biometricService";
 
 interface MIPSDashboardProps {
   branchId?: string;
@@ -26,16 +24,6 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
     queryFn: fetchMIPSDevices,
     enabled: !!mipsConnection?.success,
     staleTime: 30_000,
-  });
-
-  const { data: localStats } = useQuery({
-    queryKey: ["device-stats", branchId],
-    queryFn: () => getDeviceStats(branchId),
-  });
-
-  const { data: biometricStats } = useQuery({
-    queryKey: ["biometric-stats", branchId],
-    queryFn: () => getBiometricStats(branchId),
   });
 
   const mipsOnline = mipsDevices.filter((d) => d.status === 1).length;
@@ -94,7 +82,7 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
                 <Monitor className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">MIPS Devices</p>
+                <p className="text-xs text-muted-foreground">Total Devices</p>
                 <p className="text-2xl font-bold">{mipsTotal}</p>
               </div>
             </div>
@@ -129,7 +117,7 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
                 <Fingerprint className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Faces on Devices</p>
+                <p className="text-xs text-muted-foreground">Faces Enrolled</p>
                 <p className="text-2xl font-bold">{mipsFaces}</p>
               </div>
             </div>
@@ -143,40 +131,13 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
                 <Users className="h-5 w-5 text-orange-500" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Local Enrolled</p>
-                <p className="text-2xl font-bold">
-                  {biometricStats?.enrolledTotal || 0}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    /{biometricStats?.totalPeople || 0}
-                  </span>
-                </p>
+                <p className="text-xs text-muted-foreground">Persons Registered</p>
+                <p className="text-2xl font-bold">{mipsPersons}</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Local vs MIPS comparison */}
-      <Card className="rounded-2xl shadow-lg shadow-muted/20">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 divide-x">
-            <div className="pr-4 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Local (Supabase)</p>
-              <p className="text-lg font-bold">{localStats?.total || 0} devices</p>
-              <p className="text-sm text-muted-foreground">
-                {localStats?.online || 0} online / {localStats?.offline || 0} offline
-              </p>
-            </div>
-            <div className="pl-4 text-center">
-              <p className="text-xs text-muted-foreground mb-1">MIPS Server</p>
-              <p className="text-lg font-bold">{mipsTotal} devices</p>
-              <p className="text-sm text-muted-foreground">
-                {mipsPersons} persons / {mipsFaces} faces
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 };

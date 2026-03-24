@@ -5,11 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { addDevice } from "@/services/deviceService";
-import { Loader2 } from "lucide-react";
+import { Loader2, Fingerprint } from "lucide-react";
 
 interface AddDeviceDrawerProps {
   isOpen: boolean;
@@ -20,29 +19,18 @@ interface AddDeviceDrawerProps {
 
 const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDeviceDrawerProps) => {
   const queryClient = useQueryClient();
-  const normalizeSn = (value: string) => value.trim().toUpperCase();
-  const isValidIp = (value: string) => /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(value);
-  const isValidMac = (value: string) => /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(value);
   const [formData, setFormData] = useState({
     device_name: "",
     serial_number: "",
-    ip_address: "",
-    mac_address: "",
     branch_id: defaultBranchId || "",
-    device_type: "face_terminal",
     model: "",
-    relay_mode: 1,
-    relay_delay: 5,
-    cap_facial: true,
-    cap_wiegand: false,
-    cap_relay: true,
   });
 
   const addMutation = useMutation({
     mutationFn: addDevice,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['access-devices'] });
-      queryClient.invalidateQueries({ queryKey: ['device-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['mips-devices'] });
       toast.success("Device added successfully");
       onClose();
       resetForm();
@@ -56,16 +44,8 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     setFormData({
       device_name: "",
       serial_number: "",
-      ip_address: "",
-      mac_address: "",
       branch_id: defaultBranchId || "",
-      device_type: "face_terminal",
       model: "",
-      relay_mode: 1,
-      relay_delay: 5,
-      cap_facial: true,
-      cap_wiegand: false,
-      cap_relay: true,
     });
   };
 
@@ -76,26 +56,15 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.device_name.trim()) { toast.error("Device name is required"); return; }
-    if (!normalizeSn(formData.serial_number)) { toast.error("Serial Number is required"); return; }
+    if (!formData.serial_number.trim()) { toast.error("Serial Number is required"); return; }
     if (!formData.branch_id) { toast.error("Please select a branch"); return; }
 
-    const ip = formData.ip_address.trim();
-    const mac = formData.mac_address.trim();
-    if (ip && !isValidIp(ip)) { toast.error("Invalid IP address format"); return; }
-    if (mac && !isValidMac(mac)) { toast.error("Invalid MAC address format"); return; }
-
     addMutation.mutate({
-      ...formData,
-      serial_number: normalizeSn(formData.serial_number),
-      ip_address: ip || '0.0.0.0',
-      mac_address: mac || undefined,
-      config: {
-        capabilities: {
-          facial_recognition: formData.cap_facial,
-          wiegand_card_reader: formData.cap_wiegand,
-          relay_turnstile: formData.cap_relay,
-        },
-      },
+      branch_id: formData.branch_id,
+      device_name: formData.device_name.trim(),
+      serial_number: formData.serial_number.trim().toUpperCase(),
+      device_type: "face_terminal",
+      model: formData.model.trim() || undefined,
     });
   };
 
@@ -104,7 +73,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Add Access Device</SheetTitle>
-          <SheetDescription>Register a new face terminal or access control device</SheetDescription>
+          <SheetDescription>Register a device tracked by the MIPS middleware server</SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 mt-6">
@@ -115,19 +84,8 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
 
           <div className="space-y-2">
             <Label htmlFor="serial_number">Device Serial Number (SN) *</Label>
-              <Input id="serial_number" placeholder="e.g., SN-2024-ABCDEF" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: normalizeSn(e.target.value) })} />
-            <p className="text-xs text-muted-foreground">Primary identifier — the device registers with the cloud using this SN</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="ip_address">IP Address <span className="text-xs text-muted-foreground">(optional)</span></Label>
-              <Input id="ip_address" placeholder="Auto-detected from heartbeat" value={formData.ip_address} onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mac_address">MAC Address</Label>
-              <Input id="mac_address" placeholder="AA:BB:CC:DD:EE:FF" value={formData.mac_address} onChange={(e) => setFormData({ ...formData, mac_address: e.target.value })} />
-            </div>
+            <Input id="serial_number" placeholder="e.g., D1146D682A96B1C2" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
+            <p className="text-xs text-muted-foreground">Must match the SN registered on the MIPS server</p>
           </div>
 
           <div className="space-y-2">
@@ -145,46 +103,12 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
             <Input placeholder="e.g., SMDT-X1" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
           </div>
 
-          {/* Hardware Capabilities */}
-          <div className="space-y-3 p-4 border rounded-lg">
-            <Label className="font-medium">Hardware Capabilities</Label>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Checkbox id="cap_facial" checked={formData.cap_facial} onCheckedChange={(v) => setFormData({ ...formData, cap_facial: !!v })} />
-                <Label htmlFor="cap_facial" className="font-normal cursor-pointer">Facial Recognition</Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <Checkbox id="cap_wiegand" checked={formData.cap_wiegand} onCheckedChange={(v) => setFormData({ ...formData, cap_wiegand: !!v })} />
-                <Label htmlFor="cap_wiegand" className="font-normal cursor-pointer">Wiegand Card Reader</Label>
-              </div>
-              <div className="flex items-center gap-3">
-                <Checkbox id="cap_relay" checked={formData.cap_relay} onCheckedChange={(v) => setFormData({ ...formData, cap_relay: !!v })} />
-                <Label htmlFor="cap_relay" className="font-normal cursor-pointer">Relay Turnstile Control</Label>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Relay Mode</Label>
-            <Select value={formData.relay_mode.toString()} onValueChange={(value) => setFormData({ ...formData, relay_mode: parseInt(value) })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Manual Control</SelectItem>
-                <SelectItem value="1">Auto-Close (setRelayIoMode 1)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {formData.relay_mode === 1 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Auto-Close Delay</Label>
-                <span className="text-sm font-medium">{formData.relay_delay} seconds</span>
-              </div>
-              <Slider value={[formData.relay_delay]} onValueChange={([value]) => setFormData({ ...formData, relay_delay: value })} min={1} max={63} step={1} className="w-full" />
-              <p className="text-xs text-muted-foreground">Gate auto-closes after this duration · Uses setRelayIoMode(1, {formData.relay_delay})</p>
-            </div>
-          )}
+          <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+            <Fingerprint className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-sm text-blue-800 dark:text-blue-300">
+              Fingerprints cannot be captured via the web browser. Please register fingerprints directly on the physical gym terminal.
+            </AlertDescription>
+          </Alert>
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
