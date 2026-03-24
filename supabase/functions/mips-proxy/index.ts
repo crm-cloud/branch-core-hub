@@ -12,11 +12,17 @@ let tokenExpiry = 0;
 async function getMIPSToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!;
+  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
 
-  const res = await fetch(`${MIPS_URL}/apiExternal/generateToken`, {
+  // The base URL should be the root server (e.g., http://212.38.94.228:9000)
+  // Extract the base URL without any path like /MIPS
+  const urlObj = new URL(MIPS_URL);
+  const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+  const contextPath = urlObj.pathname.replace(/\/+$/, ""); // e.g., "/MIPS" or ""
+
+  const res = await fetch(`${baseUrl}${contextPath}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
