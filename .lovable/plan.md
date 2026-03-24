@@ -1,45 +1,51 @@
 
 
-# Architecture Refactor: MIPS-Only Integration Cleanup
+# Fix sync-to-mips + Dashboard Cleanup + Live Heartbeat Monitor
 
-## Problem
-The app still has legacy direct-device artifacts: callback URLs (heartbeat/identify/register), device IP/MAC fields, and the `DeviceSetupCard` component. Since MIPS handles all device communication via TCP, these are unnecessary and confusing.
+## Problems Identified
 
-## Changes
+### 1. sync-to-mips 500 Error (Critical)
+Edge function logs reveal two bugs:
+- **Stack overflow**: `btoa(String.fromCharCode(...new Uint8Array(imgBuffer)))` uses the spread operator on potentially large arrays (photos), causing `Maximum call stack size exceeded`. Must chunk the conversion.
+- **HTML response parsed as JSON**: The MIPS `/admin/person/employees/save` endpoint is returning an HTML page (likely a 404 or redirect), meaning the endpoint path is wrong. Need to discover the correct add-person endpoint and handle non-JSON responses gracefully.
 
-### 1. Remove DeviceSetupCard component
-Delete `src/components/devices/DeviceSetupCard.tsx` entirely. It shows heartbeat/identify/register callback URLs that are no longer relevant. Remove any imports/references to it.
+### 2. Dashboard Still Shows Legacy "Local (Supabase)" Card
+The screenshot shows "Local (Supabase) 1 devices / 0 online / 1 offline" alongside "MIPS Server 1 devices". This was supposed to be removed in the last refactor but is still visible. The `MIPSDashboard.tsx` code I just read does NOT contain this card — so it may be rendered elsewhere or cached. Need to verify and remove any remaining legacy comparison UI.
 
-### 2. Simplify AddDeviceDrawer
-Strip down to only: Device Name, Serial Number, Branch, and Model. Remove:
-- IP Address and MAC Address fields
-- Hardware Capabilities checkboxes (facial/wiegand/relay)
-- Relay Mode and Relay Delay controls
-- All IP/MAC validation logic
+### 3. No Live Heartbeat Pulse or Offline Notifications
+The "Online 1/1" stat is static. Requirements:
+- Animated heartbeat pulse that polls MIPS every 15 seconds
+- Push notification to admin/manager when a device goes offline
 
-Add a fingerprint info alert at the bottom: "Fingerprints cannot be captured via the web browser. Please register fingerprints directly on the physical gym terminal."
+---
 
-### 3. Simplify deviceService.ts addDevice
-Remove `ip_address`, `mac_address`, `relay_mode`, `relay_delay`, `config` from the insert payload. Keep only `branch_id`, `device_name`, `serial_number`, `device_type`, `model`.
+## Plan
 
-### 4. Clean up MIPSDashboard
-Remove the "Local (Supabase)" vs "MIPS Server" comparison card and `getDeviceStats`/`getBiometricStats` queries. The dashboard should show MIPS-only stats since MIPS is the single source of truth for devices.
+### Fix 1: sync-to-mips Edge Function
+- Replace `btoa(String.fromCharCode(...new Uint8Array(imgBuffer)))` with a chunked base64 encoder to avoid stack overflow
+- Add response content-type check before `res.json()` — if HTML is returned, log the raw text and throw a descriptive error
+- Try alternate MIPS endpoints: `/admin/person/employees/save`, `/api/person/add`, `/admin/person/employees/add` — or send as JSON with `Content-Type: application/json` instead of form-urlencoded (MIPS may expect JSON for the photo payload)
 
-### 5. Remove legacy edge function references from Debug tab
-Remove the "Test Roster Pull" button that calls `terminal-register`. Keep MIPS-specific debug tools only.
+### Fix 2: Remove Legacy Local Stats
+- Verify no other component renders the "Local (Supabase)" card. If `MIPSDashboard.tsx` is clean (it is), check if there's a cached build or if a `DeviceSetupCard` import still exists somewhere
+- Confirm deletion is complete
 
-### 6. Clean up DeviceManagement.tsx
-Remove import of `purgeOldAccessLogs` from deviceService (keep MIPS-focused utilities). Remove unused imports.
+### Fix 3: Live Heartbeat Monitor in Dashboard
+- Add `refetchInterval: 15000` to the MIPS devices query so it auto-polls every 15 seconds
+- Add an animated heartbeat dot (CSS pulse animation) on the Online stat card that pulses each time the query refreshes
+- Track previous device statuses in a `useRef` — when a device transitions from online to offline, insert a notification into the `notifications` table targeting admin/manager roles
+- Show "Last checked: X seconds ago" timestamp below the connection status
 
-### 7. No secret changes needed
-`MIPS_SERVER_URL`, `MIPS_USERNAME`, `MIPS_PASSWORD` are already configured as edge function secrets and accessed via `Deno.env.get()`. No hardcoded values exist in the frontend or edge functions.
+### Fix 4: Offline Alert Notification
+- When the MIPS connection test or device poll detects a device went offline (was online last poll, now offline), call a Supabase insert into `notifications` table for admin/owner roles with message like "Device {name} went offline"
 
-## Files Modified
-| File | Action |
+---
+
+## Files to Modify
+
+| File | Change |
 |------|--------|
-| `src/components/devices/AddDeviceDrawer.tsx` | Simplify to Name/SN/Branch/Model only + fingerprint note |
-| `src/components/devices/DeviceSetupCard.tsx` | DELETE |
-| `src/components/devices/MIPSDashboard.tsx` | Remove local device stats comparison |
-| `src/pages/DeviceManagement.tsx` | Remove roster pull debug button, clean imports |
-| `src/services/deviceService.ts` | Simplify `addDevice`, remove `DeviceAccessEvent` interface |
+| `supabase/functions/sync-to-mips/index.ts` | Fix base64 chunking, fix endpoint path, handle HTML responses |
+| `src/components/devices/MIPSDashboard.tsx` | Add refetchInterval polling, animated heartbeat, last-checked timestamp, offline detection + notification |
+| `src/services/mipsService.ts` | No changes needed |
 
