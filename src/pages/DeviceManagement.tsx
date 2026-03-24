@@ -15,7 +15,7 @@ import LiveAccessLog from "@/components/devices/LiveAccessLog";
 import MIPSDashboard from "@/components/devices/MIPSDashboard";
 import MIPSDevicesTab from "@/components/devices/MIPSDevicesTab";
 import PersonnelSyncTab from "@/components/devices/PersonnelSyncTab";
-import { testMIPSConnection, fetchMIPSDevices, fetchMIPSEmployees, fetchMIPSPassRecords } from "@/services/mipsService";
+import { testMIPSConnection, fetchMIPSDevices, fetchMIPSEmployees, fetchMIPSPassRecords, manualSyncTest } from "@/services/mipsService";
 
 const DeviceManagement = () => {
   const { hasAnyRole } = useAuth();

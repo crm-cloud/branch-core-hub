@@ -8,7 +8,7 @@ export interface MIPSDevice {
   personCount: number;
   faceCount: number;
   fpCount?: number;
-  status: number; // 1 = online, 0 = offline
+  status: number;
   isOnline: number;
   lastActiveTime: string;
   devicePassType: string;
@@ -61,10 +61,11 @@ async function callMIPSProxy(
   endpoint: string,
   method = "GET",
   params?: Record<string, string>,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  contentType?: "json" | "form"
 ): Promise<MIPSProxyResponse> {
   const { data: result, error } = await supabase.functions.invoke("mips-proxy", {
-    body: { endpoint, method, params, data },
+    body: { endpoint, method, params, data, contentType },
   });
 
   if (error) throw new Error(error.message || "MIPS proxy call failed");
@@ -144,7 +145,7 @@ export async function syncPersonToMIPS(
   personType: "member" | "employee",
   personId: string,
   branchId?: string
-): Promise<{ success: boolean; mips_person_id?: string; error?: string; mips_response?: unknown }> {
+): Promise<{ success: boolean; mips_person_id?: string; error?: string; mips_response?: unknown; endpoint_used?: string }> {
   const { data, error } = await supabase.functions.invoke("sync-to-mips", {
     body: { person_type: personType, person_id: personId, branch_id: branchId },
   });
@@ -156,9 +157,7 @@ export async function syncPersonToMIPS(
 // Remote open door via MIPS
 export async function remoteOpenDoor(deviceKey: string): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/openDoor", "POST", undefined, {
-      deviceKey,
-    });
+    const result = await callMIPSProxy("/admin/devices/openDoor", "POST", undefined, { deviceKey }, "json");
     const isOk = result.success && result.data?.code === 200;
     return {
       success: isOk,
@@ -172,9 +171,7 @@ export async function remoteOpenDoor(deviceKey: string): Promise<{ success: bool
 // Restart device via MIPS
 export async function restartDevice(deviceKey: string): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/restart", "POST", undefined, {
-      deviceKey,
-    });
+    const result = await callMIPSProxy("/admin/devices/restart", "POST", undefined, { deviceKey }, "json");
     const isOk = result.success && result.data?.code === 200;
     return {
       success: isOk,
@@ -183,4 +180,31 @@ export async function restartDevice(deviceKey: string): Promise<{ success: boole
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// Manual sync test — syncs one person and verifies in MIPS roster
+export async function manualSyncTest(
+  personType: "member" | "employee",
+  personId: string,
+  personNo: string,
+  branchId?: string
+): Promise<{ syncResult: any; verifyResult: any; verified: boolean }> {
+  // Step 1: Sync
+  const syncResult = await syncPersonToMIPS(personType, personId, branchId);
+
+  // Step 2: Verify by querying MIPS employees list
+  let verified = false;
+  let verifyResult: any = null;
+  try {
+    const { employees } = await fetchMIPSEmployees(1, 100);
+    const found = employees.find(
+      (e) => e.personNo === personNo || e.name === syncResult.mips_person_id
+    );
+    verified = !!found;
+    verifyResult = found || { message: `Person ${personNo} not found in MIPS roster after sync` };
+  } catch (e) {
+    verifyResult = { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  return { syncResult, verifyResult, verified };
 }
