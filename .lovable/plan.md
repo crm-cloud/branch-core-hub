@@ -1,66 +1,47 @@
 
 
-# Fix MIPS PersonNo Hyphen Issue + Add Permission Assignment & Photo Capture
+# Fix Live Access Feed + Audit Webhook & Photo Capture
 
-## Problem
+## Root Causes Found
 
-The `generate_member_code` DB trigger creates codes like `MAIN-00005` (branch code + hyphen + number). The MIPS device only accepts alphanumeric characters -- no hyphens. This means synced persons with hyphenated codes get rejected or mangled by MIPS, breaking face recognition matching.
+### 1. RLS blocks all reads on `access_logs` (PRIMARY ISSUE)
+RLS is **enabled** on `access_logs` but there are **zero policies**. The webhook receiver writes using `service_role` key (bypasses RLS), so inserts work. But the frontend uses the `anon` key, so `SELECT` returns nothing -- the Live Feed will always show "No access events yet" regardless of data.
 
-Additionally, from the user's curl captures, two new MIPS API endpoints are now known:
-- **Permission assignment**: `POST /admin/person/employees/permission` -- assigns a synced person to specific devices
-- **Remote photo capture**: `POST /admin/person/employees/take_photo` -- triggers the device camera to capture a face photo for a person
+### 2. No webhook traffic has reached the endpoint
+Edge function logs show zero invocations of `mips-webhook-receiver`. This means either:
+- MIPS Smart Pass hasn't been configured to push events to the webhook URL yet, OR
+- The configuration exists but MIPS hasn't triggered any face scans since setup
+
+### 3. Photo capture endpoint looks correct
+The `capturePhoto` function already uses the verified `POST /admin/person/employees/take_photo` with `{"ids":[N],"deviceIds":[N]}` and `contentType: "json"`. This matches the user's curl exactly. No fix needed here.
 
 ## Plan
 
-### 1. Strip hyphens from `personNo` when syncing to MIPS
+### Step 1: Add RLS policies for `access_logs`
+Create a migration adding:
+- **SELECT** policy for authenticated users with `owner`, `admin`, `manager`, or `staff` roles (using `has_any_role`)
+- **INSERT** policy is not needed (webhook uses service_role)
 
-In `sync-to-mips/index.ts`, transform the member/employee code before sending:
-```
-MAIN-00005 → MAIN00005
-MAIN2-00001 → MAIN200001
-```
-
-Simple `.replace(/-/g, "")` on the `personNo` field before building the MIPS payload. This keeps the original `member_code` in the database unchanged (it is used throughout the app UI), but sends a MIPS-compatible version.
-
-Store the hyphen-stripped version as `mips_person_id` in the database so the webhook receiver can match it back.
-
-### 2. Update webhook receiver to match both formats
-
-In `mips-webhook-receiver/index.ts`, the lookup chain already checks `mips_person_id` first, then falls back to `member_code`. Since we'll store the stripped code as `mips_person_id`, webhook matching will work automatically. Add one more fallback: try stripping hyphens from the incoming `personNo` and matching against `member_code` with hyphens re-inserted (unlikely needed but defensive).
-
-### 3. Add device permission assignment after sync
-
-From the curl capture, after creating a person in MIPS, you must assign them to devices via:
-```
-POST /admin/person/employees/permission
-{"dealWithType":1, "ids":["7"], "deviceIds":[22], "passTimes":[], "passDealType":1}
+```sql
+CREATE POLICY "Staff can view access logs"
+ON public.access_logs FOR SELECT
+TO authenticated
+USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[]));
 ```
 
-Update `sync-to-mips/index.ts` to:
-- After successful person save, fetch all online MIPS device IDs
-- Call the permission endpoint to authorize the person on all devices
-- Log the permission result
+### Step 2: Verify realtime is enabled
+Already confirmed: `ALTER PUBLICATION supabase_realtime ADD TABLE public.access_logs` exists in migrations. Good.
 
-### 4. Add remote photo capture support
+### Step 3: Test the webhook receiver
+After adding RLS, invoke the webhook receiver with a simulated MIPS payload to confirm it writes to `access_logs` and appears in the Live Feed. Use a test curl against the edge function.
 
-New function in `mipsService.ts`:
-```typescript
-export async function capturePhoto(personMipsId: number, deviceId: number)
-```
-Calls `POST /admin/person/employees/take_photo` with `{"ids":[personMipsId], "deviceIds":[deviceId]}`.
-
-Add a "Capture Face" button in `PersonnelSyncTab.tsx` for synced persons (those with a `mipsPersonId`), allowing admins to trigger the device to take a photo directly.
-
-### 5. Update `manualSyncTest` verification
-
-When verifying sync, also strip hyphens from the `personNo` being searched in the MIPS roster.
+### Step 4: Guide on MIPS webhook configuration
+The user says they've configured the webhook URL in Smart Pass. After fixing RLS + testing, real face scan events should flow through. If they still don't, we need to verify the MIPS "Webhook" or "Callback URL" configuration in the Smart Pass admin panel.
 
 ## Files to Modify
-
 | File | Change |
 |------|--------|
-| `supabase/functions/sync-to-mips/index.ts` | Strip hyphens from personNo, add permission assignment step |
-| `supabase/functions/mips-webhook-receiver/index.ts` | Add hyphen-stripped fallback matching |
-| `src/services/mipsService.ts` | Add `capturePhoto` + `assignDevicePermission` functions |
-| `src/components/devices/PersonnelSyncTab.tsx` | Add "Capture Face" button for synced persons |
+| New migration | Add SELECT RLS policy on `access_logs` |
+
+No code changes needed -- the `LiveAccessLog` component and `mips-webhook-receiver` function are already correctly implemented. The only blocker is the missing RLS policy.
 
