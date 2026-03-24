@@ -1,51 +1,95 @@
 
+Goal: make the MIPS flow truly testable end-to-end and fix the broken sync path before marking anything complete.
 
-# Fix sync-to-mips + Dashboard Cleanup + Live Heartbeat Monitor
+What I found
+- The current 500 error is real and reproducible from logs: `sync-to-mips` is getting HTML 404 pages from MIPS, not JSON.
+- The main cause is architectural: both `mips-proxy` and `sync-to-mips` strip the `/MIPS` path from `MIPS_SERVER_URL` and call only `protocol//host`. Your uploaded manuals show the Smart Pass app is served under `/MIPS`, so the current code is likely hitting the wrong endpoint base.
+- `sync-to-mips` is also guessing the add-person endpoint (`/admin/person/employees/save`, then `/api/person/add`) without a verified contract from the docs.
+- The stack-overflow/base64 issue appears already addressed in code.
+- The Dashboard source already polls every 15s and has heartbeat UI/offline notification logic. If you still see old “Local (Supabase)” UI, that is likely stale build/cache or another remaining renderer not yet found in current source.
+- The Debug tab only tests raw reads through the proxy. It does not currently prove end-to-end personnel sync or webhook receipt, so “debug works” = only partially.
 
-## Problems Identified
+Plan
+1. Audit and lock the correct MIPS API contract
+- Read the uploaded manuals specifically for:
+  - exact API base path (`/MIPS` vs root)
+  - exact add-person endpoint
+  - required request content type
+  - required parameter names for face/base64 upload
+  - expected success response fields
+- Stop guessing endpoints in `sync-to-mips`.
 
-### 1. sync-to-mips 500 Error (Critical)
-Edge function logs reveal two bugs:
-- **Stack overflow**: `btoa(String.fromCharCode(...new Uint8Array(imgBuffer)))` uses the spread operator on potentially large arrays (photos), causing `Maximum call stack size exceeded`. Must chunk the conversion.
-- **HTML response parsed as JSON**: The MIPS `/admin/person/employees/save` endpoint is returning an HTML page (likely a 404 or redirect), meaning the endpoint path is wrong. Need to discover the correct add-person endpoint and handle non-JSON responses gracefully.
+2. Refactor MIPS URL handling
+- Centralize URL construction in both `mips-proxy` and `sync-to-mips`.
+- Preserve the configured path from `MIPS_SERVER_URL` instead of stripping to host-only.
+- Only auth token generation should use the documented auth path; all business endpoints should use the verified application base path.
 
-### 2. Dashboard Still Shows Legacy "Local (Supabase)" Card
-The screenshot shows "Local (Supabase) 1 devices / 0 online / 1 offline" alongside "MIPS Server 1 devices". This was supposed to be removed in the last refactor but is still visible. The `MIPSDashboard.tsx` code I just read does NOT contain this card — so it may be rendered elsewhere or cached. Need to verify and remove any remaining legacy comparison UI.
+3. Fix `sync-to-mips` request payload
+- Build the payload exactly to MIPS spec from the manuals.
+- Match field names for:
+  - person code/id
+  - name
+  - phone/department if required
+  - expiry/access dates
+  - face image base64 field
+- Support the correct content type required by MIPS (`application/json` or form-urlencoded), based on docs rather than fallback guesses.
+- Improve error logging so logs include:
+  - final URL used
+  - content type used
+  - sanitized payload shape
+  - parsed response/error body
 
-### 3. No Live Heartbeat Pulse or Offline Notifications
-The "Online 1/1" stat is static. Requirements:
-- Animated heartbeat pulse that polls MIPS every 15 seconds
-- Push notification to admin/manager when a device goes offline
+4. Add real manual sync verification flow
+- Add a dedicated “Manual Sync Test” path in Debug that:
+  - selects one member/employee with photo
+  - invokes `sync-to-mips`
+  - immediately queries MIPS personnel list afterward
+  - shows whether the synced person is actually present in MIPS
+- This makes Debug useful for real E2E verification, not just raw endpoint reads.
 
----
+5. Tighten Personnel Sync UX
+- Show clearer statuses:
+  - Pending
+  - Syncing
+  - Synced to MIPS
+  - Failed: endpoint/path issue
+  - Failed: missing photo
+- Surface the last sync error inline so admins don’t need Cloud logs for every failure.
+- Keep bulk sync, but make it skip clearly invalid records and summarize exact failures.
 
-## Plan
+6. Validate Dashboard/Devices/Live Feed tabs
+- Dashboard: keep MIPS as single source of truth; confirm only MIPS stats remain.
+- Devices: verify online/offline comes only from MIPS status.
+- Personnel Sync: verify sync button actually results in MIPS-side person creation.
+- Live Feed: verify webhook records land in `access_logs` and member/staff matching works.
+- Debug: extend it to true sync and webhook checks.
 
-### Fix 1: sync-to-mips Edge Function
-- Replace `btoa(String.fromCharCode(...new Uint8Array(imgBuffer)))` with a chunked base64 encoder to avoid stack overflow
-- Add response content-type check before `res.json()` — if HTML is returned, log the raw text and throw a descriptive error
-- Try alternate MIPS endpoints: `/admin/person/employees/save`, `/api/person/add`, `/admin/person/employees/add` — or send as JSON with `Content-Type: application/json` instead of form-urlencoded (MIPS may expect JSON for the photo payload)
+7. Offline monitoring cleanup
+- Keep the 15s poll and heartbeat animation.
+- Verify offline notification is only sent on status transition, not every poll.
+- Expand recipients from only owner/admin if you want managers included too.
 
-### Fix 2: Remove Legacy Local Stats
-- Verify no other component renders the "Local (Supabase)" card. If `MIPSDashboard.tsx` is clean (it is), check if there's a cached build or if a `DeviceSetupCard` import still exists somewhere
-- Confirm deletion is complete
+8. End-to-end completion criteria
+I would only mark this complete after all of these pass:
+- A manual sync of one member with photo succeeds
+- The same person appears in MIPS personnel data immediately after sync
+- Bulk sync processes remaining valid members/staff
+- Dashboard device count/online count match MIPS
+- A real or simulated face scan reaches `mips-webhook-receiver`
+- Live Feed shows the event
+- Member/staff attendance updates correctly
+- Debug tab proves the above with visible results
 
-### Fix 3: Live Heartbeat Monitor in Dashboard
-- Add `refetchInterval: 15000` to the MIPS devices query so it auto-polls every 15 seconds
-- Add an animated heartbeat dot (CSS pulse animation) on the Online stat card that pulses each time the query refreshes
-- Track previous device statuses in a `useRef` — when a device transitions from online to offline, insert a notification into the `notifications` table targeting admin/manager roles
-- Show "Last checked: X seconds ago" timestamp below the connection status
+Files I would update
+- `supabase/functions/sync-to-mips/index.ts`
+- `supabase/functions/mips-proxy/index.ts`
+- `src/components/devices/PersonnelSyncTab.tsx`
+- `src/pages/DeviceManagement.tsx`
+- `src/components/devices/MIPSDashboard.tsx` (only if stale/local stats source is still found)
 
-### Fix 4: Offline Alert Notification
-- When the MIPS connection test or device poll detects a device went offline (was online last poll, now offline), call a Supabase insert into `notifications` table for admin/owner roles with message like "Device {name} went offline"
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/sync-to-mips/index.ts` | Fix base64 chunking, fix endpoint path, handle HTML responses |
-| `src/components/devices/MIPSDashboard.tsx` | Add refetchInterval polling, animated heartbeat, last-checked timestamp, offline detection + notification |
-| `src/services/mipsService.ts` | No changes needed |
-
+Expected outcome
+- No more guessed MIPS endpoints
+- No more host-only URL bug
+- Real manual sync testing from inside the app
+- Debug tab becomes genuinely useful
+- Completion based on verified sync between members and device/MIPS, not just UI state
