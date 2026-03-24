@@ -61,7 +61,7 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
       for (const [deviceId, prevStatus] of prev.entries()) {
         const currentStatus = currentStatusMap.get(deviceId);
         if (prevStatus === 1 && currentStatus !== undefined && currentStatus !== 1) {
-          const deviceName = mipsDevices.find((d: any) => (d.sn || d.id) === deviceId)?.deviceName || deviceId;
+          const deviceName = mipsDevices.find((d: any) => (d.sn || d.id) === deviceId)?.name || deviceId;
           sendOfflineNotification(deviceName);
         }
       }
