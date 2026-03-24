@@ -2,25 +2,36 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // In-memory token cache
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
+function getMIPSBaseUrl(): string {
+  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+  // Preserve the full URL including any path like /MIPS
+  // The apiExternal endpoints are at the root (host:port), business endpoints use the full base
+  return MIPS_URL;
+}
+
+function getHostUrl(): string {
+  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+  const urlObj = new URL(MIPS_URL);
+  return `${urlObj.protocol}//${urlObj.host}`;
+}
+
 async function getMIPSToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
 
-  // MIPS API endpoints are always at the root (host:port), not under /MIPS
-  const urlObj = new URL(MIPS_URL);
-  const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+  // Token endpoint is always at root host level
+  const hostUrl = getHostUrl();
 
-  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
+  const res = await fetch(`${hostUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
@@ -52,11 +63,12 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { endpoint, method = "GET", params, data } = body as {
+    const { endpoint, method = "GET", params, data, contentType } = body as {
       endpoint: string;
       method?: string;
       params?: Record<string, string>;
       data?: Record<string, unknown>;
+      contentType?: string; // "json" or "form" (default: "form" for backward compat)
     };
 
     if (!endpoint) {
@@ -67,34 +79,40 @@ Deno.serve(async (req) => {
     }
 
     const token = await getMIPSToken();
-    const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-    const mipsUrlObj = new URL(MIPS_URL);
-    const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
+    const hostUrl = getHostUrl();
 
-    // All MIPS API endpoints are at root (host:port/endpoint)
-    let url = `${mipsBase}${endpoint}`;
+    // Business API endpoints are at root host level (same as where token works)
+    let url = `${hostUrl}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) searchParams.set(k, v);
       url += `?${searchParams.toString()}`;
     }
 
+    const useJson = contentType === "json";
+
     const fetchOptions: RequestInit = {
       method: method.toUpperCase(),
       headers: {
         "owl-auth-token": token,
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": useJson ? "application/json" : "application/x-www-form-urlencoded",
       },
     };
 
-    // For POST/PUT with data, encode as form-urlencoded
+    // For POST/PUT with data, encode based on contentType
     if (data && ["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
-      const formData = new URLSearchParams();
-      for (const [k, v] of Object.entries(data)) {
-        formData.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+      if (useJson) {
+        fetchOptions.body = JSON.stringify(data);
+      } else {
+        const formData = new URLSearchParams();
+        for (const [k, v] of Object.entries(data)) {
+          formData.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+        }
+        fetchOptions.body = formData.toString();
       }
-      fetchOptions.body = formData.toString();
     }
+
+    console.log(`MIPS proxy: ${method} ${url} (content-type: ${useJson ? "json" : "form"})`);
 
     const mipsRes = await fetch(url, fetchOptions);
     const responseText = await mipsRes.text();
