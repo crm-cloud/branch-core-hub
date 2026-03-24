@@ -16,13 +16,11 @@ async function getMIPSToken(): Promise<string> {
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
 
-  // The base URL should be the root server (e.g., http://212.38.94.228:9000)
-  // Extract the base URL without any path like /MIPS
+  // MIPS API endpoints are always at the root (host:port), not under /MIPS
   const urlObj = new URL(MIPS_URL);
   const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-  const contextPath = urlObj.pathname.replace(/\/+$/, ""); // e.g., "/MIPS" or ""
 
-  const res = await fetch(`${baseUrl}${contextPath}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
