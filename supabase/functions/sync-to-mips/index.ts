@@ -16,9 +16,8 @@ async function getMIPSToken(): Promise<string> {
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
   const urlObj = new URL(MIPS_URL);
   const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-  const contextPath = urlObj.pathname.replace(/\/+$/, "");
 
-  const res = await fetch(`${baseUrl}${contextPath}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
