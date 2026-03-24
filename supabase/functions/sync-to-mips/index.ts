@@ -16,16 +16,16 @@ async function getMIPSToken(): Promise<string> {
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
   const urlObj = new URL(MIPS_URL);
   const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-  const contextPath = urlObj.pathname.replace(/\/+$/, "");
 
-  const res = await fetch(`${baseUrl}${contextPath}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
   });
 
   const json = await res.json();
-  if (json.code !== 200 && json.code !== 0) {
+  const codeVal = Number(json.code);
+  if (codeVal !== 200 && codeVal !== 0) {
     throw new Error(`MIPS auth error: ${json.msg || JSON.stringify(json)}`);
   }
 
@@ -63,7 +63,6 @@ Deno.serve(async (req) => {
     const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
     const mipsUrlObj = new URL(MIPS_URL);
     const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
-    const mipsContext = mipsUrlObj.pathname.replace(/\/+$/, "");
     const token = await getMIPSToken();
 
     let personData: Record<string, unknown>;
@@ -166,7 +165,7 @@ Deno.serve(async (req) => {
       formData.set(k, String(v));
     }
 
-    const addRes = await fetch(`${mipsBase}${mipsContext}/admin/person/employees/save`, {
+    const addRes = await fetch(`${mipsBase}/admin/person/employees/save`, {
       method: "POST",
       headers: {
         "owl-auth-token": token,

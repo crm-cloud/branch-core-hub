@@ -16,13 +16,11 @@ async function getMIPSToken(): Promise<string> {
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
 
-  // The base URL should be the root server (e.g., http://212.38.94.228:9000)
-  // Extract the base URL without any path like /MIPS
+  // MIPS API endpoints are always at the root (host:port), not under /MIPS
   const urlObj = new URL(MIPS_URL);
   const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-  const contextPath = urlObj.pathname.replace(/\/+$/, ""); // e.g., "/MIPS" or ""
 
-  const res = await fetch(`${baseUrl}${contextPath}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
@@ -34,8 +32,9 @@ async function getMIPSToken(): Promise<string> {
   }
 
   const json = await res.json();
-  if (json.code !== 200 && json.code !== 0) {
-    throw new Error(`MIPS auth error: ${json.msg || JSON.stringify(json)}`);
+  const codeVal = Number(json.code);
+  if (codeVal !== 200 && codeVal !== 0) {
+    throw new Error(`MIPS auth error (code=${json.code}): ${json.msg || JSON.stringify(json)}`);
   }
 
   cachedToken = json.data || json.token || json.result;
@@ -71,10 +70,9 @@ Deno.serve(async (req) => {
     const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
     const mipsUrlObj = new URL(MIPS_URL);
     const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
-    const mipsContext = mipsUrlObj.pathname.replace(/\/+$/, "");
 
-    // Build URL: base + context path + endpoint
-    let url = `${mipsBase}${mipsContext}${endpoint}`;
+    // All MIPS API endpoints are at root (host:port/endpoint)
+    let url = `${mipsBase}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) searchParams.set(k, v);
