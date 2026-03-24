@@ -9,10 +9,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image,
+  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image, Camera,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { syncPersonToMIPS } from "@/services/mipsService";
+import { syncPersonToMIPS, capturePhoto, fetchOnlineDeviceIds } from "@/services/mipsService";
 import { toast } from "sonner";
 
 interface PersonnelSyncTabProps {
@@ -35,13 +35,13 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const [capturingIds, setCapturingIds] = useState<Set<string>>(new Set());
 
   const { data: personnel = [], isLoading } = useQuery({
     queryKey: ["personnel-sync", branchId],
     queryFn: async () => {
       const people: SyncPerson[] = [];
 
-      // Fetch members
       let memberQuery = supabase
         .from("members")
         .select("id, member_code, biometric_photo_url, mips_person_id, mips_sync_status, branch_id, profiles:user_id(full_name, avatar_url)")
@@ -66,7 +66,6 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
         }
       }
 
-      // Fetch employees
       let empQuery = supabase
         .from("employees")
         .select("id, employee_code, biometric_photo_url, mips_person_id, mips_sync_status, branch_id, profiles:user_id(full_name, avatar_url)")
@@ -120,6 +119,43 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
         return next;
       });
       toast.error(`Sync failed: ${error.message}`);
+    },
+  });
+
+  const capturePhotoMutation = useMutation({
+    mutationFn: async (person: SyncPerson) => {
+      if (!person.mipsPersonId) throw new Error("Person not synced to MIPS yet");
+      setCapturingIds((prev) => new Set(prev).add(person.id));
+
+      // Get online devices
+      const deviceIds = await fetchOnlineDeviceIds();
+      if (deviceIds.length === 0) throw new Error("No online devices found");
+
+      // Use the first online device for photo capture
+      const mipsId = Number(person.mipsPersonId);
+      if (isNaN(mipsId)) throw new Error("Invalid MIPS person ID");
+
+      return capturePhoto(mipsId, deviceIds[0]);
+    },
+    onSuccess: (result, person) => {
+      setCapturingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(person.id);
+        return next;
+      });
+      if (result.success) {
+        toast.success(`Photo capture triggered for ${person.name}`);
+      } else {
+        toast.error(`Capture failed: ${result.message}`);
+      }
+    },
+    onError: (error: Error, person) => {
+      setCapturingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(person.id);
+        return next;
+      });
+      toast.error(`Capture failed: ${error.message}`);
     },
   });
 
@@ -267,6 +303,20 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
                 </div>
 
                 {getSyncBadge(person.mipsSyncStatus)}
+
+                {/* Capture Face button — only for synced persons */}
+                {person.mipsSyncStatus === "synced" && person.mipsPersonId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={capturingIds.has(person.id)}
+                    onClick={() => capturePhotoMutation.mutate(person)}
+                    className="shrink-0"
+                    title="Capture face photo from device"
+                  >
+                    <Camera className={`h-3.5 w-3.5 ${capturingIds.has(person.id) ? "animate-pulse" : ""}`} />
+                  </Button>
+                )}
 
                 <Button
                   variant="outline"

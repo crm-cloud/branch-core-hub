@@ -182,6 +182,72 @@ export async function restartDevice(deviceId: number): Promise<{ success: boolea
   }
 }
 
+// Capture face photo via MIPS device camera
+export async function capturePhoto(
+  personMipsId: number,
+  deviceId: number
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const result = await callMIPSProxy(
+      "/admin/person/employees/take_photo",
+      "POST",
+      undefined,
+      { ids: [personMipsId], deviceIds: [deviceId] },
+      "json"
+    );
+    const isOk = result.success && result.data?.code === 200;
+    return {
+      success: isOk,
+      message: isOk
+        ? "Photo capture triggered on device"
+        : (result.data?.message || result.data?.msg || "Failed to capture photo"),
+    };
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Assign device permission for a synced person
+export async function assignDevicePermission(
+  personMipsId: string,
+  deviceIds: number[]
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const result = await callMIPSProxy(
+      "/admin/person/employees/permission",
+      "POST",
+      undefined,
+      { dealWithType: 1, ids: [String(personMipsId)], deviceIds, passTimes: [], passDealType: 1 },
+      "json"
+    );
+    const isOk = result.success && result.data?.code === 200;
+    return {
+      success: isOk,
+      message: isOk
+        ? "Permission assigned successfully"
+        : (result.data?.message || result.data?.msg || "Failed to assign permission"),
+    };
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Fetch online device IDs from MIPS
+export async function fetchOnlineDeviceIds(): Promise<number[]> {
+  const result = await callMIPSProxy("/admin/devices/list/online", "GET");
+  if (!result.success || result.data?.code !== 200) return [];
+  const data = result.data?.data;
+  if (Array.isArray(data)) {
+    return data.map((d: any) => Number(d.id)).filter((id) => !isNaN(id));
+  }
+  return [];
+}
+
+/** Strip hyphens for MIPS search matching */
+function stripHyphens(code: string): string {
+  return code.replace(/-/g, "");
+}
+
 // Manual sync test — syncs one person and verifies in MIPS roster
 export async function manualSyncTest(
   personType: "member" | "employee",
@@ -192,16 +258,17 @@ export async function manualSyncTest(
   // Step 1: Sync
   const syncResult = await syncPersonToMIPS(personType, personId, branchId);
 
-  // Step 2: Verify by querying MIPS employees list
+  // Step 2: Verify by querying MIPS employees list (search with stripped hyphens)
+  const strippedNo = stripHyphens(personNo);
   let verified = false;
   let verifyResult: any = null;
   try {
     const { employees } = await fetchMIPSEmployees(1, 100);
     const found = employees.find(
-      (e) => e.personNo === personNo || e.name === syncResult.mips_person_id
+      (e) => e.personNo === strippedNo || e.personNo === personNo || String(e.id) === String(syncResult.mips_person_id)
     );
     verified = !!found;
-    verifyResult = found || { message: `Person ${personNo} not found in MIPS roster after sync` };
+    verifyResult = found || { message: `Person ${strippedNo} not found in MIPS roster after sync` };
   } catch (e) {
     verifyResult = { error: e instanceof Error ? e.message : String(e) };
   }

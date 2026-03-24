@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/** Try re-inserting hyphens into a stripped code: MAIN00005 → MAIN-00005 */
+function reinsertHyphen(stripped: string): string | null {
+  // Match pattern: letters followed by digits, e.g. MAIN00005 or MAIN200001
+  const match = stripped.match(/^([A-Za-z]+\d*)(\d{5})$/);
+  if (match) return `${match[1]}-${match[2]}`;
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -25,7 +33,6 @@ Deno.serve(async (req) => {
       const formData = await req.formData();
       payload = Object.fromEntries(formData.entries());
     } else {
-      // Try JSON first, then text
       const text = await req.text();
       try {
         payload = JSON.parse(text);
@@ -44,7 +51,6 @@ Deno.serve(async (req) => {
     const scanTime = String(payload.createTime || payload.time || new Date().toISOString());
     const imgUri = String(payload.imgUri || payload.img_uri || "");
 
-    // Determine event type from passType
     const eventType = passType.includes("face") ? "face_scan" : 
                       passType.includes("finger") ? "fingerprint_scan" : 
                       passType.includes("card") ? "card_scan" : "identify";
@@ -56,7 +62,7 @@ Deno.serve(async (req) => {
     let message = `${personName} scanned via ${passType}`;
 
     if (personNo) {
-      // Try to find as member
+      // 1. Try matching by mips_person_id (stored as hyphen-stripped or MIPS numeric id)
       const { data: member } = await supabase
         .from("members")
         .select("id, branch_id, user_id")
@@ -70,7 +76,6 @@ Deno.serve(async (req) => {
         result = "member";
         message = `Member ${personName} checked in via ${passType}`;
 
-        // Trigger check-in
         try {
           const { data: checkinResult } = await supabase.rpc("member_check_in", {
             _member_id: member.id,
@@ -85,7 +90,7 @@ Deno.serve(async (req) => {
           console.warn("Check-in RPC failed:", e);
         }
       } else {
-        // Try as employee
+        // 2. Try as employee by mips_person_id
         const { data: emp } = await supabase
           .from("employees")
           .select("id, branch_id, user_id")
@@ -98,7 +103,6 @@ Deno.serve(async (req) => {
           result = "staff";
           message = `Staff ${personName} scanned via ${passType}`;
 
-          // Toggle staff attendance
           try {
             const today = new Date().toISOString().split("T")[0];
             const { data: existing } = await supabase
@@ -129,7 +133,7 @@ Deno.serve(async (req) => {
             console.warn("Staff attendance failed:", e);
           }
         } else {
-          // Also try matching by member_code
+          // 3. Try matching by member_code directly
           const { data: memberByCode } = await supabase
             .from("members")
             .select("id, branch_id, user_id")
@@ -151,6 +155,34 @@ Deno.serve(async (req) => {
               });
             } catch (e) {
               console.warn("Check-in RPC failed:", e);
+            }
+          } else {
+            // 4. Fallback: try re-inserting hyphen (MAIN00005 → MAIN-00005)
+            const hyphenated = reinsertHyphen(personNo);
+            if (hyphenated) {
+              const { data: memberByHyphen } = await supabase
+                .from("members")
+                .select("id, branch_id, user_id")
+                .eq("member_code", hyphenated)
+                .maybeSingle();
+
+              if (memberByHyphen) {
+                memberId = memberByHyphen.id;
+                branchId = memberByHyphen.branch_id;
+                profileId = memberByHyphen.user_id;
+                result = "member";
+                message = `Member ${personName} checked in via ${passType}`;
+
+                try {
+                  await supabase.rpc("member_check_in", {
+                    _member_id: memberByHyphen.id,
+                    _branch_id: memberByHyphen.branch_id,
+                    _method: "biometric",
+                  });
+                } catch (e) {
+                  console.warn("Check-in RPC failed:", e);
+                }
+              }
             }
           }
         }
@@ -175,7 +207,6 @@ Deno.serve(async (req) => {
       },
     });
 
-    // Return success immediately in MIPS expected format
     return new Response(JSON.stringify({ code: 200, msg: "Successful!" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -183,7 +214,6 @@ Deno.serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("mips-webhook-receiver error:", message);
-    // Still return 200 to prevent MIPS from retrying
     return new Response(JSON.stringify({ code: 200, msg: "Received with errors" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

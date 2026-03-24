@@ -16,7 +16,6 @@ function getHostUrl(): string {
 
 function formatDateTime(dateStr: string | null, fallback: string): string {
   if (!dateStr) return fallback;
-  // Input may be "2025-12-31" or full ISO — normalize to "YYYY-MM-DD HH:mm:ss"
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return fallback;
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -27,6 +26,11 @@ function nowFormatted(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** Strip hyphens from member/employee codes for MIPS compatibility: MAIN-00005 → MAIN00005 */
+function stripHyphens(code: string): string {
+  return code.replace(/-/g, "");
 }
 
 async function getMIPSToken(): Promise<string> {
@@ -60,6 +64,64 @@ async function getMIPSToken(): Promise<string> {
   if (!cachedToken) throw new Error("No token in MIPS auth response");
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
   return cachedToken!;
+}
+
+/** Fetch online device IDs from MIPS for permission assignment */
+async function fetchOnlineDeviceIds(hostUrl: string, token: string): Promise<number[]> {
+  try {
+    const res = await fetch(`${hostUrl}/admin/devices/list/online`, {
+      method: "GET",
+      headers: {
+        "Owl-Auth-Token": token,
+        "Accept": "application/json",
+        "siteId": "1",
+      },
+    });
+    const json = await res.json();
+    if (Number(json.code) === 200 && Array.isArray(json.data)) {
+      return json.data.map((d: any) => Number(d.id)).filter((id: number) => !isNaN(id));
+    }
+    console.warn("Failed to fetch online devices:", JSON.stringify(json).substring(0, 300));
+    return [];
+  } catch (e) {
+    console.warn("Error fetching online devices:", e);
+    return [];
+  }
+}
+
+/** Assign person to devices via MIPS permission endpoint */
+async function assignDevicePermission(
+  hostUrl: string, token: string, mipsPersonId: string, deviceIds: number[]
+): Promise<{ success: boolean; response?: any }> {
+  if (deviceIds.length === 0) {
+    console.log("No online devices to assign permissions to");
+    return { success: true, response: { msg: "No devices available" } };
+  }
+
+  try {
+    const res = await fetch(`${hostUrl}/admin/person/employees/permission`, {
+      method: "POST",
+      headers: {
+        "Owl-Auth-Token": token,
+        "Content-Type": "application/json",
+        "siteId": "1",
+      },
+      body: JSON.stringify({
+        dealWithType: 1,
+        ids: [String(mipsPersonId)],
+        deviceIds,
+        passTimes: [],
+        passDealType: 1,
+      }),
+    });
+    const json = await res.json();
+    const ok = Number(json.code) === 200;
+    console.log(`Permission assignment result: ${ok}, response: ${JSON.stringify(json).substring(0, 300)}`);
+    return { success: ok, response: json };
+  } catch (e) {
+    console.error("Permission assignment error:", e);
+    return { success: false, response: { error: String(e) } };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -142,10 +204,14 @@ Deno.serve(async (req) => {
       email = profile?.email || "";
     }
 
+    // Strip hyphens for MIPS compatibility: MAIN-00005 → MAIN00005
+    const mipsPersonNo = stripHyphens(personNo);
+    console.log(`PersonNo: ${personNo} → MIPS personNo: ${mipsPersonNo}`);
+
     // Build exact MIPS payload matching the verified curl contract
     const mipsPayload = {
-      id: "",                          // empty for new person
-      personNo,
+      id: "",
+      personNo: mipsPersonNo,
       name,
       idCard: "",
       beginTime: nowFormatted(),
@@ -167,15 +233,14 @@ Deno.serve(async (req) => {
       ruleA: "",
       ruleB: "",
       ruleC: "",
-      personPhotoId: [],              // photos require separate upload API
+      personPhotoId: [],
       personPhotoUrl: [],
     };
 
     const hostUrl = getHostUrl();
     const saveUrl = `${hostUrl}/admin/person/employees`;
 
-    console.log(`Saving person to MIPS: ${name} (${personNo}), type=${person_type}`);
-    console.log(`POST ${saveUrl}`);
+    console.log(`Saving person to MIPS: ${name} (${mipsPersonNo}), type=${person_type}`);
 
     const res = await fetch(saveUrl, {
       method: "POST",
@@ -199,9 +264,9 @@ Deno.serve(async (req) => {
 
     const code = Number(responseJson.code);
     const success = code === 200 || code === 0 || res.ok;
-    const mipsPersonId = responseJson?.data?.id || responseJson?.data?.personId || personNo;
+    const mipsPersonId = responseJson?.data?.id || responseJson?.data?.personId || mipsPersonNo;
 
-    // Update sync status in database
+    // Update sync status in database — store hyphen-stripped code as mips_person_id
     await supabase
       .from(tableName)
       .update({
@@ -210,14 +275,26 @@ Deno.serve(async (req) => {
       })
       .eq("id", person_id);
 
+    // Step 2: Assign device permissions after successful sync
+    let permissionResult: any = null;
+    if (success) {
+      console.log("Fetching online devices for permission assignment...");
+      const onlineDeviceIds = await fetchOnlineDeviceIds(hostUrl, token);
+      console.log(`Found ${onlineDeviceIds.length} online devices: [${onlineDeviceIds.join(", ")}]`);
+
+      permissionResult = await assignDevicePermission(hostUrl, token, String(mipsPersonId), onlineDeviceIds);
+      console.log(`Permission assignment: success=${permissionResult.success}`);
+    }
+
     console.log(`Sync result: success=${success}, mipsPersonId=${mipsPersonId}`);
 
     return new Response(JSON.stringify({
       success,
       mips_person_id: mipsPersonId,
       mips_response: responseJson,
+      permission_result: permissionResult,
       endpoint_used: saveUrl,
-      person: { name, personNo },
+      person: { name, personNo: mipsPersonNo, originalCode: personNo },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
