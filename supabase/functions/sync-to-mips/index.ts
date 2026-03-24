@@ -60,7 +60,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!;
+    const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+    const mipsUrlObj = new URL(MIPS_URL);
+    const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
+    const mipsContext = mipsUrlObj.pathname.replace(/\/+$/, "");
     const token = await getMIPSToken();
 
     let personData: Record<string, unknown>;
