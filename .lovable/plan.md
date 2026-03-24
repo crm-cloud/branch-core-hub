@@ -1,64 +1,66 @@
 
 
-# Fix MIPS Integration: Correct API Endpoints and Payloads
+# Fix MIPS PersonNo Hyphen Issue + Add Permission Assignment & Photo Capture
 
-## Root Cause (from user's curl captures)
+## Problem
 
-The current code is calling wrong endpoints with wrong methods and wrong payloads. Here are the actual MIPS API contracts discovered:
+The `generate_member_code` DB trigger creates codes like `MAIN-00005` (branch code + hyphen + number). The MIPS device only accepts alphanumeric characters -- no hyphens. This means synced persons with hyphenated codes get rejected or mangled by MIPS, breaking face recognition matching.
 
-### Personnel Save
-- **Correct**: `POST /admin/person/employees` with JSON body and `siteId: 1` header
-- **Current (broken)**: Tries `/admin/person/employees/save`, `/apiExternal/person/save`, `/apiExternal/employee/save` -- all 404
-
-### Open Door
-- **Correct**: `PUT /admin/devices/remote/opendoor` with `{"ids":[22]}` (device numeric IDs)
-- **Current (broken)**: `POST /admin/devices/openDoor` with `{"deviceKey":"..."}` -- wrong method, wrong path, wrong payload
-
-### Photo Upload
-The curl shows `personPhotoId: [12]` -- photos are uploaded separately to MIPS first, then referenced by ID. Current code sends `imgBase64` inline which MIPS does not accept on this endpoint.
-
----
+Additionally, from the user's curl captures, two new MIPS API endpoints are now known:
+- **Permission assignment**: `POST /admin/person/employees/permission` -- assigns a synced person to specific devices
+- **Remote photo capture**: `POST /admin/person/employees/take_photo` -- triggers the device camera to capture a face photo for a person
 
 ## Plan
 
-### 1. Fix `sync-to-mips` edge function
-- Change endpoint to `POST /admin/person/employees`
-- Add `siteId: 1` header
-- Match exact payload structure from the curl:
-  - `id: ""` (empty for new), `personNo`, `name`, `phone`, `email`, `gender: 1`
-  - `beginTime`, `expireTime` in `YYYY-MM-DD HH:mm:ss` format
-  - `attendanceFlag: true`, `attendanceRuleId: 1`
-  - Remove `imgBase64` / `department` fields (not in MIPS contract)
-  - For photos: skip for now (requires separate upload API), set `personPhotoId: []`
-- Remove the multi-endpoint retry loop -- we now know the exact endpoint
-- Keep chunked base64 helper for future photo upload support
+### 1. Strip hyphens from `personNo` when syncing to MIPS
 
-### 2. Fix `mips-proxy` edge function
-- Add `siteId: 1` header to all proxied requests
-- Support `PUT` method (currently only handles POST/GET effectively)
-- Already supports PUT in the method passthrough, just need to verify
+In `sync-to-mips/index.ts`, transform the member/employee code before sending:
+```
+MAIN-00005 → MAIN00005
+MAIN2-00001 → MAIN200001
+```
 
-### 3. Fix `remoteOpenDoor` in mipsService.ts
-- Change endpoint to `/admin/devices/remote/opendoor`
-- Change method to `PUT`
-- Change payload from `{ deviceKey }` to `{ ids: [deviceId] }` where `deviceId` is the numeric MIPS device ID (not the deviceKey string)
-- Update `MIPSDevice` interface to ensure `id` (numeric) is available
-- Update `MIPSDevicesTab.tsx` to pass `device.id` instead of `device.deviceKey`
+Simple `.replace(/-/g, "")` on the `personNo` field before building the MIPS payload. This keeps the original `member_code` in the database unchanged (it is used throughout the app UI), but sends a MIPS-compatible version.
 
-### 4. Update `restartDevice` in mipsService.ts
-- Likely needs similar fix (PUT method, different endpoint) -- will match pattern from open door
+Store the hyphen-stripped version as `mips_person_id` in the database so the webhook receiver can match it back.
 
-### 5. Update Debug tab in DeviceManagement.tsx
-- Ensure debug buttons use corrected endpoints
+### 2. Update webhook receiver to match both formats
 
----
+In `mips-webhook-receiver/index.ts`, the lookup chain already checks `mips_person_id` first, then falls back to `member_code`. Since we'll store the stripped code as `mips_person_id`, webhook matching will work automatically. Add one more fallback: try stripping hyphens from the incoming `personNo` and matching against `member_code` with hyphens re-inserted (unlikely needed but defensive).
+
+### 3. Add device permission assignment after sync
+
+From the curl capture, after creating a person in MIPS, you must assign them to devices via:
+```
+POST /admin/person/employees/permission
+{"dealWithType":1, "ids":["7"], "deviceIds":[22], "passTimes":[], "passDealType":1}
+```
+
+Update `sync-to-mips/index.ts` to:
+- After successful person save, fetch all online MIPS device IDs
+- Call the permission endpoint to authorize the person on all devices
+- Log the permission result
+
+### 4. Add remote photo capture support
+
+New function in `mipsService.ts`:
+```typescript
+export async function capturePhoto(personMipsId: number, deviceId: number)
+```
+Calls `POST /admin/person/employees/take_photo` with `{"ids":[personMipsId], "deviceIds":[deviceId]}`.
+
+Add a "Capture Face" button in `PersonnelSyncTab.tsx` for synced persons (those with a `mipsPersonId`), allowing admins to trigger the device to take a photo directly.
+
+### 5. Update `manualSyncTest` verification
+
+When verifying sync, also strip hyphens from the `personNo` being searched in the MIPS roster.
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/sync-to-mips/index.ts` | Single correct endpoint, exact payload, `siteId` header |
-| `supabase/functions/mips-proxy/index.ts` | Add `siteId: 1` header to all requests |
-| `src/services/mipsService.ts` | Fix open door endpoint/method/payload |
-| `src/components/devices/MIPSDevicesTab.tsx` | Pass device `id` (numeric) for door open |
+| `supabase/functions/sync-to-mips/index.ts` | Strip hyphens from personNo, add permission assignment step |
+| `supabase/functions/mips-webhook-receiver/index.ts` | Add hyphen-stripped fallback matching |
+| `src/services/mipsService.ts` | Add `capturePhoto` + `assignDevicePermission` functions |
+| `src/components/devices/PersonnelSyncTab.tsx` | Add "Capture Face" button for synced persons |
 
