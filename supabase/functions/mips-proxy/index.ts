@@ -69,10 +69,9 @@ Deno.serve(async (req) => {
     const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
     const mipsUrlObj = new URL(MIPS_URL);
     const mipsBase = `${mipsUrlObj.protocol}//${mipsUrlObj.host}`;
-    const mipsContext = mipsUrlObj.pathname.replace(/\/+$/, "");
 
-    // Build URL: base + context path + endpoint
-    let url = `${mipsBase}${mipsContext}${endpoint}`;
+    // All MIPS API endpoints are at root (host:port/endpoint)
+    let url = `${mipsBase}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) searchParams.set(k, v);
