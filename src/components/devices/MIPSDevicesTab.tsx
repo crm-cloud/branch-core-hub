@@ -33,7 +33,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
   const handleRestart = async () => {
     setIsRestarting(true);
     try {
-      const result = await restartDevice(device.deviceKey);
+      const result = await restartDevice(device.id);
       if (result.success) {
         toast.success(result.message);
       } else {

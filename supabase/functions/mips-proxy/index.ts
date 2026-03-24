@@ -1,20 +1,10 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// In-memory token cache
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
-
-function getMIPSBaseUrl(): string {
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-  // Preserve the full URL including any path like /MIPS
-  // The apiExternal endpoints are at the root (host:port), business endpoints use the full base
-  return MIPS_URL;
-}
 
 function getHostUrl(): string {
   const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
@@ -27,8 +17,6 @@ async function getMIPSToken(): Promise<string> {
 
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
-
-  // Token endpoint is always at root host level
   const hostUrl = getHostUrl();
 
   const res = await fetch(`${hostUrl}/apiExternal/generateToken`, {
@@ -50,8 +38,6 @@ async function getMIPSToken(): Promise<string> {
 
   cachedToken = json.data || json.token || json.result;
   if (!cachedToken) throw new Error(`No token in MIPS response: ${JSON.stringify(json)}`);
-  
-  // Cache for 23 hours (tokens typically last 24h)
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
   return cachedToken!;
 }
@@ -68,7 +54,7 @@ Deno.serve(async (req) => {
       method?: string;
       params?: Record<string, string>;
       data?: Record<string, unknown>;
-      contentType?: string; // "json" or "form" (default: "form" for backward compat)
+      contentType?: string;
     };
 
     if (!endpoint) {
@@ -81,7 +67,6 @@ Deno.serve(async (req) => {
     const token = await getMIPSToken();
     const hostUrl = getHostUrl();
 
-    // Business API endpoints are at root host level (same as where token works)
     let url = `${hostUrl}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
@@ -90,17 +75,18 @@ Deno.serve(async (req) => {
     }
 
     const useJson = contentType === "json";
+    const upperMethod = method.toUpperCase();
 
     const fetchOptions: RequestInit = {
-      method: method.toUpperCase(),
+      method: upperMethod,
       headers: {
-        "owl-auth-token": token,
+        "Owl-Auth-Token": token,
         "Content-Type": useJson ? "application/json" : "application/x-www-form-urlencoded",
+        "siteId": "1",
       },
     };
 
-    // For POST/PUT with data, encode based on contentType
-    if (data && ["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
+    if (data && ["POST", "PUT", "PATCH"].includes(upperMethod)) {
       if (useJson) {
         fetchOptions.body = JSON.stringify(data);
       } else {
@@ -112,7 +98,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`MIPS proxy: ${method} ${url} (content-type: ${useJson ? "json" : "form"})`);
+    console.log(`MIPS proxy: ${upperMethod} ${url} (content-type: ${useJson ? "json" : "form"})`);
 
     const mipsRes = await fetch(url, fetchOptions);
     const responseText = await mipsRes.text();

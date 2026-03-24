@@ -8,22 +8,25 @@ const corsHeaders = {
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-// Chunked base64 encoder to avoid stack overflow on large buffers
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 8192;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
-
 function getHostUrl(): string {
   const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
   const urlObj = new URL(MIPS_URL);
   return `${urlObj.protocol}//${urlObj.host}`;
+}
+
+function formatDateTime(dateStr: string | null, fallback: string): string {
+  if (!dateStr) return fallback;
+  // Input may be "2025-12-31" or full ISO — normalize to "YYYY-MM-DD HH:mm:ss"
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return fallback;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function nowFormatted(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 async function getMIPSToken(): Promise<string> {
@@ -59,95 +62,6 @@ async function getMIPSToken(): Promise<string> {
   return cachedToken!;
 }
 
-// Try multiple MIPS save endpoints with JSON content type
-async function savePerson(token: string, personData: Record<string, unknown>): Promise<{ success: boolean; json: any; endpoint: string }> {
-  const hostUrl = getHostUrl();
-  
-  // MIPS Spring Boot endpoints to try — the correct one depends on the MIPS version
-  const endpoints = [
-    "/admin/person/employees/save",
-    "/apiExternal/person/save",
-    "/apiExternal/employee/save",
-  ];
-
-  for (const endpoint of endpoints) {
-    const url = `${hostUrl}${endpoint}`;
-    console.log(`Trying MIPS save: POST ${url}`);
-    
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "owl-auth-token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(personData),
-      });
-
-      const responseText = await res.text();
-      
-      // Check if we got HTML (404 page) — try next endpoint
-      if (responseText.trimStart().startsWith("<!") || responseText.trimStart().startsWith("<html")) {
-        console.warn(`Endpoint ${endpoint} returned HTML (status ${res.status}), trying next...`);
-        continue;
-      }
-
-      try {
-        const json = JSON.parse(responseText);
-        console.log(`Endpoint ${endpoint} responded with JSON:`, JSON.stringify(json));
-        const code = Number(json.code);
-        return { 
-          success: code === 200 || code === 0 || res.ok, 
-          json, 
-          endpoint 
-        };
-      } catch {
-        console.warn(`Endpoint ${endpoint} returned non-JSON non-HTML:`, responseText.substring(0, 200));
-        continue;
-      }
-    } catch (fetchErr) {
-      console.warn(`Endpoint ${endpoint} fetch error:`, fetchErr);
-      continue;
-    }
-  }
-
-  // If all JSON endpoints fail, try form-urlencoded on the first endpoint as last resort
-  const lastResortUrl = `${hostUrl}/admin/person/employees/save`;
-  console.log(`All JSON endpoints failed. Trying form-urlencoded: POST ${lastResortUrl}`);
-  
-  const formData = new URLSearchParams();
-  for (const [k, v] of Object.entries(personData)) {
-    if (k === "imgBase64") {
-      formData.set("imgBase64", String(v));
-    } else {
-      formData.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
-    }
-  }
-
-  const res = await fetch(lastResortUrl, {
-    method: "POST",
-    headers: {
-      "owl-auth-token": token,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: formData.toString(),
-  });
-
-  const responseText = await res.text();
-  
-  if (responseText.trimStart().startsWith("<!") || responseText.trimStart().startsWith("<html")) {
-    throw new Error(`All MIPS save endpoints returned 404/HTML. Tried: ${endpoints.join(", ")} (JSON) and ${lastResortUrl} (form). The MIPS server may need a different API path configuration.`);
-  }
-
-  try {
-    const json = JSON.parse(responseText);
-    const code = Number(json.code);
-    return { success: code === 200 || code === 0, json, endpoint: lastResortUrl + " (form)" };
-  } catch {
-    throw new Error(`MIPS save returned unparseable response: ${responseText.substring(0, 300)}`);
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -176,12 +90,12 @@ Deno.serve(async (req) => {
     const token = await getMIPSToken();
     console.log("MIPS token acquired successfully");
 
-    let personData: Record<string, unknown>;
-    let photoUrl: string | null = null;
+    let name = "Unknown";
+    let personNo = "";
+    let phone = "";
+    let email = "";
+    let expireTime = "2030-12-31 00:00:00";
     let tableName: string;
-    let personNo: string;
-    let name: string;
-    let expireTime: string | null = null;
 
     if (person_type === "member") {
       tableName = "members";
@@ -196,7 +110,8 @@ Deno.serve(async (req) => {
       const profile = member.profiles as any;
       name = profile?.full_name || "Unknown";
       personNo = member.member_code || person_id.substring(0, 8);
-      photoUrl = member.biometric_photo_url || profile?.avatar_url;
+      phone = profile?.phone || "";
+      email = profile?.email || "";
 
       const { data: membership } = await supabase
         .from("memberships")
@@ -208,16 +123,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (membership?.end_date) {
-        expireTime = membership.end_date + " 23:59:59";
+        expireTime = formatDateTime(membership.end_date + "T23:59:59", expireTime);
       }
-
-      personData = {
-        name,
-        personNo,
-        phone: profile?.phone || "",
-        department: "Member",
-        expireTime: expireTime || "2030-12-31 23:59:59",
-      };
     } else {
       tableName = "employees";
       const { data: emp, error } = await supabase
@@ -231,67 +138,86 @@ Deno.serve(async (req) => {
       const profile = emp.profiles as any;
       name = profile?.full_name || "Unknown";
       personNo = emp.employee_code || person_id.substring(0, 8);
-      photoUrl = emp.biometric_photo_url || profile?.avatar_url;
-
-      personData = {
-        name,
-        personNo,
-        phone: profile?.phone || "",
-        department: "Staff",
-        expireTime: "2030-12-31 23:59:59",
-      };
+      phone = profile?.phone || "";
+      email = profile?.email || "";
     }
 
-    // Download and convert photo to base64
-    if (photoUrl) {
-      try {
-        let imageUrl = photoUrl;
-        if (photoUrl.startsWith("member-photos/") || photoUrl.startsWith("avatars/")) {
-          const bucketName = photoUrl.startsWith("member-photos/") ? "member-photos" : "avatars";
-          const { data: urlData } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(photoUrl.replace(/^(member-photos|avatars)\//, ""));
-          imageUrl = urlData.publicUrl;
-        }
+    // Build exact MIPS payload matching the verified curl contract
+    const mipsPayload = {
+      id: "",                          // empty for new person
+      personNo,
+      name,
+      idCard: "",
+      beginTime: nowFormatted(),
+      expireTime,
+      groupId: "",
+      gender: 1,
+      phone,
+      email,
+      birthday: "",
+      entryDate: nowFormatted().split(" ")[0] + " 00:00:00",
+      attendanceFlag: true,
+      attendanceRuleId: 1,
+      temperatureAlarm: false,
+      noticeEmailList: "",
+      vaccination: 1,
+      vaccinationTime: "",
+      secondContact: "",
+      remark: person_type === "member" ? "Gym Member" : "Staff",
+      ruleA: "",
+      ruleB: "",
+      ruleC: "",
+      personPhotoId: [],              // photos require separate upload API
+      personPhotoUrl: [],
+    };
 
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          const imgBuffer = await imgRes.arrayBuffer();
-          const base64 = arrayBufferToBase64(imgBuffer);
-          personData.imgBase64 = base64;
-          console.log(`Photo converted to base64: ${Math.round(imgBuffer.byteLength / 1024)}KB`);
-        } else {
-          await imgRes.text();
-          console.warn("Photo fetch failed:", imgRes.status);
-        }
-      } catch (e) {
-        console.warn("Failed to fetch photo:", e);
-      }
+    const hostUrl = getHostUrl();
+    const saveUrl = `${hostUrl}/admin/person/employees`;
+
+    console.log(`Saving person to MIPS: ${name} (${personNo}), type=${person_type}`);
+    console.log(`POST ${saveUrl}`);
+
+    const res = await fetch(saveUrl, {
+      method: "POST",
+      headers: {
+        "Owl-Auth-Token": token,
+        "Content-Type": "application/json",
+        "siteId": "1",
+      },
+      body: JSON.stringify(mipsPayload),
+    });
+
+    const responseText = await res.text();
+    console.log(`MIPS response status: ${res.status}, body: ${responseText.substring(0, 500)}`);
+
+    let responseJson: any;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      throw new Error(`MIPS returned non-JSON (status ${res.status}): ${responseText.substring(0, 300)}`);
     }
 
-    // Save person to MIPS
-    console.log(`Saving person to MIPS: ${name} (${personNo}), type=${person_type}, hasPhoto=${!!personData.imgBase64}`);
-    const result = await savePerson(token, personData);
-
-    const mipsPersonId = result.json?.data?.id || result.json?.data?.personId || personNo;
+    const code = Number(responseJson.code);
+    const success = code === 200 || code === 0 || res.ok;
+    const mipsPersonId = responseJson?.data?.id || responseJson?.data?.personId || personNo;
 
     // Update sync status in database
     await supabase
       .from(tableName)
       .update({
-        mips_sync_status: result.success ? "synced" : "failed",
-        mips_person_id: result.success ? String(mipsPersonId) : null,
+        mips_sync_status: success ? "synced" : "failed",
+        mips_person_id: success ? String(mipsPersonId) : null,
       })
       .eq("id", person_id);
 
-    console.log(`Sync result: success=${result.success}, endpoint=${result.endpoint}, mipsPersonId=${mipsPersonId}`);
+    console.log(`Sync result: success=${success}, mipsPersonId=${mipsPersonId}`);
 
     return new Response(JSON.stringify({
-      success: result.success,
+      success,
       mips_person_id: mipsPersonId,
-      mips_response: result.json,
-      endpoint_used: result.endpoint,
-      person: { name, personNo, department: personData.department },
+      mips_response: responseJson,
+      endpoint_used: saveUrl,
+      person: { name, personNo },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

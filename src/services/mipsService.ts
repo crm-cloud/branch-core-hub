@@ -154,28 +154,28 @@ export async function syncPersonToMIPS(
   return data;
 }
 
-// Remote open door via MIPS
-export async function remoteOpenDoor(deviceKey: string): Promise<{ success: boolean; message: string }> {
+// Remote open door via MIPS — uses PUT /admin/devices/remote/opendoor with numeric device ids
+export async function remoteOpenDoor(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/openDoor", "POST", undefined, { deviceKey }, "json");
+    const result = await callMIPSProxy("/admin/devices/remote/opendoor", "PUT", undefined, { ids: [deviceId] }, "json");
     const isOk = result.success && result.data?.code === 200;
     return {
       success: isOk,
-      message: isOk ? "Door opened successfully" : (result.data?.message || "Failed to open door"),
+      message: isOk ? "Door opened successfully" : (result.data?.message || result.data?.msg || "Failed to open door"),
     };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
-// Restart device via MIPS
-export async function restartDevice(deviceKey: string): Promise<{ success: boolean; message: string }> {
+// Restart device via MIPS — uses PUT /admin/devices/remote/restart with numeric device ids
+export async function restartDevice(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/restart", "POST", undefined, { deviceKey }, "json");
+    const result = await callMIPSProxy("/admin/devices/remote/restart", "PUT", undefined, { ids: [deviceId] }, "json");
     const isOk = result.success && result.data?.code === 200;
     return {
       success: isOk,
-      message: isOk ? "Device restarting..." : (result.data?.message || "Failed to restart device"),
+      message: isOk ? "Device restarting..." : (result.data?.message || result.data?.msg || "Failed to restart device"),
     };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
