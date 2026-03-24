@@ -1,35 +1,105 @@
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server,
+  Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server, Heart,
 } from "lucide-react";
 import { testMIPSConnection, fetchMIPSDevices } from "@/services/mipsService";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
 
 interface MIPSDashboardProps {
   branchId?: string;
 }
 
 const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
+  const [lastChecked, setLastChecked] = useState<Date>(new Date());
+  const [heartbeatPulse, setHeartbeatPulse] = useState(false);
+  const prevOnlineRef = useRef<number | null>(null);
+  const prevDeviceStatusRef = useRef<Map<string, number>>(new Map());
+
   const { data: mipsConnection, isLoading: isTestingConnection, refetch: retestConnection } = useQuery({
     queryKey: ["mips-connection-test"],
     queryFn: testMIPSConnection,
-    staleTime: 60_000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
     retry: false,
   });
 
-  const { data: mipsDevices = [] } = useQuery({
+  const { data: mipsDevices = [], dataUpdatedAt } = useQuery({
     queryKey: ["mips-devices"],
     queryFn: fetchMIPSDevices,
     enabled: !!mipsConnection?.success,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   });
 
-  const mipsOnline = mipsDevices.filter((d) => d.status === 1).length;
+  // Heartbeat pulse animation on data refresh
+  useEffect(() => {
+    if (dataUpdatedAt) {
+      setLastChecked(new Date(dataUpdatedAt));
+      setHeartbeatPulse(true);
+      const timer = setTimeout(() => setHeartbeatPulse(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [dataUpdatedAt]);
+
+  // Offline detection + notification
+  useEffect(() => {
+    if (mipsDevices.length === 0) return;
+
+    const currentStatusMap = new Map<string, number>();
+    mipsDevices.forEach((d: any) => {
+      currentStatusMap.set(d.sn || d.id, d.status);
+    });
+
+    const prev = prevDeviceStatusRef.current;
+    if (prev.size > 0) {
+      // Check for devices that went offline (was 1, now not 1)
+      for (const [deviceId, prevStatus] of prev.entries()) {
+        const currentStatus = currentStatusMap.get(deviceId);
+        if (prevStatus === 1 && currentStatus !== undefined && currentStatus !== 1) {
+          const deviceName = mipsDevices.find((d: any) => (d.sn || d.id) === deviceId)?.name || deviceId;
+          sendOfflineNotification(deviceName);
+        }
+      }
+    }
+
+    prevDeviceStatusRef.current = currentStatusMap;
+    prevOnlineRef.current = mipsDevices.filter((d: any) => d.status === 1).length;
+  }, [mipsDevices]);
+
+  const sendOfflineNotification = async (deviceName: string) => {
+    try {
+      // Get admin/owner user IDs to notify
+      const { data: adminUsers } = await supabase
+        .from("user_roles" as any)
+        .select("user_id")
+        .in("role", ["owner", "admin"]);
+
+      if (adminUsers && adminUsers.length > 0) {
+        const notifications = (adminUsers as any[]).map((u: any) => ({
+          user_id: u.user_id,
+          title: "Device Offline Alert",
+          message: `Device "${deviceName}" has gone offline. Please check the hardware connection.`,
+          type: "warning" as const,
+          category: "device",
+          is_read: false,
+        }));
+
+        await supabase.from("notifications").insert(notifications);
+      }
+    } catch (e) {
+      console.warn("Failed to send offline notification:", e);
+    }
+  };
+
+  const mipsOnline = mipsDevices.filter((d: any) => d.status === 1).length;
   const mipsTotal = mipsDevices.length;
-  const mipsFaces = mipsDevices.reduce((sum, d) => sum + (d.faceCount || 0), 0);
-  const mipsPersons = mipsDevices.reduce((sum, d) => sum + (d.personCount || 0), 0);
+  const mipsFaces = mipsDevices.reduce((sum: number, d: any) => sum + (d.faceCount || 0), 0);
+  const mipsPersons = mipsDevices.reduce((sum: number, d: any) => sum + (d.personCount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -70,6 +140,12 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
               </Button>
             </div>
           </div>
+          {/* Last checked timestamp */}
+          <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
+            <Heart className={`h-3 w-3 transition-transform ${heartbeatPulse ? "scale-150 text-red-300" : "scale-100"}`} />
+            <span>Last checked: {formatDistanceToNow(lastChecked, { addSuffix: true })}</span>
+            <span className="text-white/30">• Auto-refresh every 15s</span>
+          </div>
         </CardContent>
       </Card>
 
@@ -89,12 +165,16 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl shadow-lg shadow-muted/20">
+        <Card className="rounded-2xl shadow-lg shadow-muted/20 relative overflow-hidden">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-full bg-green-500/10">
+              <div className="p-2.5 rounded-full bg-green-500/10 relative">
                 {mipsOnline > 0 ? (
-                  <Wifi className="h-5 w-5 text-green-500" />
+                  <>
+                    <Wifi className="h-5 w-5 text-green-500" />
+                    {/* Animated heartbeat ring */}
+                    <span className="absolute inset-0 rounded-full border-2 border-green-400 animate-ping opacity-30" />
+                  </>
                 ) : (
                   <WifiOff className="h-5 w-5 text-destructive" />
                 )}

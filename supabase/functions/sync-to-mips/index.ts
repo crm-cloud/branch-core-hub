@@ -8,6 +8,18 @@ const corsHeaders = {
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
+// Chunked base64 encoder to avoid stack overflow on large buffers
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 async function getMIPSToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
@@ -23,7 +35,15 @@ async function getMIPSToken(): Promise<string> {
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
   });
 
-  const json = await res.json();
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    console.error("MIPS auth returned non-JSON:", text.substring(0, 500));
+    throw new Error("MIPS auth endpoint returned non-JSON response (possibly HTML redirect)");
+  }
+
   const codeVal = Number(json.code);
   if (codeVal !== 200 && codeVal !== 0) {
     throw new Error(`MIPS auth error: ${json.msg || JSON.stringify(json)}`);
@@ -87,7 +107,6 @@ Deno.serve(async (req) => {
       personNo = member.member_code || person_id.substring(0, 8);
       photoUrl = member.biometric_photo_url || profile?.avatar_url;
 
-      // Get membership end date for expiry
       const { data: membership } = await supabase
         .from("memberships")
         .select("end_date")
@@ -123,7 +142,6 @@ Deno.serve(async (req) => {
       personNo = emp.employee_code || person_id.substring(0, 8);
       photoUrl = emp.biometric_photo_url || profile?.avatar_url;
 
-      // Map role: trainer -> Employee, manager -> Administrator
       const dept = emp.department?.toLowerCase().includes("manager") ? "Administrator" : "Employee";
 
       personData = {
@@ -135,11 +153,10 @@ Deno.serve(async (req) => {
       };
     }
 
-    // Download and convert photo to base64 if available
+    // Download and convert photo to base64 using chunked encoder
     if (photoUrl) {
       try {
         let imageUrl = photoUrl;
-        // If it's a Supabase storage path, get public URL
         if (photoUrl.startsWith("member-photos/") || photoUrl.startsWith("avatars/")) {
           const { data: urlData } = supabase.storage
             .from(photoUrl.startsWith("member-photos/") ? "member-photos" : "avatars")
@@ -150,37 +167,61 @@ Deno.serve(async (req) => {
         const imgRes = await fetch(imageUrl);
         if (imgRes.ok) {
           const imgBuffer = await imgRes.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+          const base64 = arrayBufferToBase64(imgBuffer);
           (personData as any).imgBase64 = base64;
+          console.log(`Photo converted to base64: ${Math.round(imgBuffer.byteLength / 1024)}KB`);
+        } else {
+          await imgRes.text(); // consume body
+          console.warn("Photo fetch failed:", imgRes.status);
         }
       } catch (e) {
         console.warn("Failed to fetch photo for MIPS sync:", e);
       }
     }
 
-    // Try to add person to MIPS
-    // The MIPS API typically uses /admin/person/employees/save or similar
-    const formData = new URLSearchParams();
-    for (const [k, v] of Object.entries(personData)) {
-      formData.set(k, String(v));
-    }
-
+    // Send as JSON to MIPS API (more reliable for base64 payloads)
     const addRes = await fetch(`${mipsBase}/admin/person/employees/save`, {
       method: "POST",
       headers: {
         "owl-auth-token": token,
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
       },
-      body: formData.toString(),
+      body: JSON.stringify(personData),
     });
 
-    const addJson = await addRes.json();
+    // Safely parse response — handle HTML error pages
+    const responseText = await addRes.text();
+    let addJson: any;
+    try {
+      addJson = JSON.parse(responseText);
+    } catch {
+      console.error("MIPS add-person returned non-JSON:", responseText.substring(0, 500));
+      // Try alternate endpoint
+      console.log("Trying alternate endpoint /api/person/add ...");
+      const altRes = await fetch(`${mipsBase}/api/person/add`, {
+        method: "POST",
+        headers: {
+          "owl-auth-token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(personData),
+      });
+      const altText = await altRes.text();
+      try {
+        addJson = JSON.parse(altText);
+        console.log("Alternate endpoint succeeded:", JSON.stringify(addJson));
+      } catch {
+        console.error("Alternate endpoint also returned non-JSON:", altText.substring(0, 500));
+        throw new Error(`MIPS API returned HTML instead of JSON. Status: ${addRes.status}. First endpoint: /admin/person/employees/save returned HTML. Alternate: /api/person/add also failed. The server may need a different endpoint path.`);
+      }
+    }
+
     console.log("MIPS add person response:", JSON.stringify(addJson));
 
     const success = addJson.code === 200 || addJson.code === 0 || addRes.ok;
     const mipsPersonId = addJson.data?.id || addJson.data?.personId || personNo;
 
-    // Update sync status in our database
+    // Update sync status
     await supabase
       .from(tableName)
       .update({
