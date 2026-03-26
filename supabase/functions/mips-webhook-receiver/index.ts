@@ -14,6 +14,25 @@ function reinsertHyphen(stripped: string): string | null {
   return null;
 }
 
+function normalizePersonCodeCandidates(rawCode: string): string[] {
+  const trimmed = rawCode.trim();
+  if (!trimmed) return [];
+
+  const candidates = new Set<string>();
+  candidates.add(trimmed);
+
+  const legacyHyphen = reinsertHyphen(trimmed);
+  if (legacyHyphen) candidates.add(legacyHyphen);
+
+  // MIPS may remove hyphens from employee codes, while CRM keeps EMP-xxxxx format.
+  const upper = trimmed.toUpperCase();
+  if (!trimmed.includes("-") && upper.startsWith("EMP") && trimmed.length > 3) {
+    candidates.add(`EMP-${trimmed.slice(3)}`);
+  }
+
+  return Array.from(candidates);
+}
+
 function mapFaceType(type: string): { result: string; description: string } {
   switch (type) {
     case "face_0":
@@ -91,61 +110,53 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
 }
 
 async function findPersonByCode(supabase: any, personCode: string) {
-  const { data: member } = await supabase
-    .from("members")
-    .select("id, branch_id, user_id")
-    .eq("member_code", personCode)
-    .maybeSingle();
-  if (member) return { ...member, type: "member" };
+  const candidates = normalizePersonCodeCandidates(personCode);
 
-  const hyphenated = reinsertHyphen(personCode);
-  if (hyphenated) {
-    const { data: memberH } = await supabase
+  for (const candidate of candidates) {
+    const { data: member } = await supabase
       .from("members")
       .select("id, branch_id, user_id")
-      .eq("member_code", hyphenated)
+      .eq("member_code", candidate)
       .maybeSingle();
-    if (memberH) return { ...memberH, type: "member" };
+    if (member) return { ...member, type: "member" };
   }
 
-  const { data: emp } = await supabase
-    .from("employees")
-    .select("id, branch_id, user_id")
-    .eq("employee_code", personCode)
-    .maybeSingle();
-  if (emp) return { ...emp, type: "employee" };
-
-  if (hyphenated) {
-    const { data: empH } = await supabase
+  for (const candidate of candidates) {
+    const { data: emp } = await supabase
       .from("employees")
       .select("id, branch_id, user_id")
-      .eq("employee_code", hyphenated)
+      .eq("employee_code", candidate)
       .maybeSingle();
-    if (empH) return { ...empH, type: "employee" };
+    if (emp) return { ...emp, type: "employee" };
   }
 
-  // Additional fallback for device identifiers that are alphanumeric and may be
-  // stored in mips_person_id instead of employee_code/member_code.
-  const { data: memberByMipsCode } = await supabase
-    .from("members")
-    .select("id, branch_id, user_id")
-    .eq("mips_person_id", personCode)
-    .maybeSingle();
-  if (memberByMipsCode) return { ...memberByMipsCode, type: "member" };
+  // Additional fallback for identifiers that are stored as mips_person_id.
+  for (const candidate of candidates) {
+    const { data: memberByMipsCode } = await supabase
+      .from("members")
+      .select("id, branch_id, user_id")
+      .eq("mips_person_id", candidate)
+      .maybeSingle();
+    if (memberByMipsCode) return { ...memberByMipsCode, type: "member" };
+  }
 
-  const { data: empByMipsCode } = await supabase
-    .from("employees")
-    .select("id, branch_id, user_id")
-    .eq("mips_person_id", personCode)
-    .maybeSingle();
-  if (empByMipsCode) return { ...empByMipsCode, type: "employee" };
+  for (const candidate of candidates) {
+    const { data: empByMipsCode } = await supabase
+      .from("employees")
+      .select("id, branch_id, user_id")
+      .eq("mips_person_id", candidate)
+      .maybeSingle();
+    if (empByMipsCode) return { ...empByMipsCode, type: "employee" };
+  }
 
-  const { data: trainerByMipsCode } = await supabase
-    .from("trainers")
-    .select("id, branch_id, user_id")
-    .eq("mips_person_id", personCode)
-    .maybeSingle();
-  if (trainerByMipsCode) return { ...trainerByMipsCode, type: "trainer" };
+  for (const candidate of candidates) {
+    const { data: trainerByMipsCode } = await supabase
+      .from("trainers")
+      .select("id, branch_id, user_id")
+      .eq("mips_person_id", candidate)
+      .maybeSingle();
+    if (trainerByMipsCode) return { ...trainerByMipsCode, type: "trainer" };
+  }
 
   return null;
 }
@@ -352,7 +363,7 @@ Deno.serve(async (req) => {
     const deviceName = String(payload.deviceName || payload.device_name || payload.deviceKey || "unknown");
     const deviceKey = String(payload.deviceKey || payload.deviceSn || deviceName);
 
-    const rawTime = payload.createTime || payload.time;
+    const rawTime = payload.createTime || payload.time || payload.timestamp || payload.eventTime;
     const scanTime = normalizeScanTime(rawTime);
 
     const imgUri = String(payload.imgUri || payload.img_uri || payload.imgBase64 || "");
