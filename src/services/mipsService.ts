@@ -229,26 +229,6 @@ export async function fetchOnlineDeviceIds(): Promise<number[]> {
   }
 }
 
-// Capture face photo via device camera
-export async function capturePhoto(
-  personMipsId: number,
-  deviceId: number
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const result = await callMIPSProxy("/through/device/capturePhoto", "POST", undefined, {
-      personId: personMipsId,
-      deviceId: deviceId,
-    });
-    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
-    return {
-      success: isOk,
-      message: isOk ? "Photo capture triggered on device" : (result.data?.msg || "Failed to capture photo"),
-    };
-  } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
 // Remote open door by branch — finds the active device for a branch and opens it
 export async function remoteOpenDoorByBranch(branchId: string): Promise<{ success: boolean; message: string }> {
   try {

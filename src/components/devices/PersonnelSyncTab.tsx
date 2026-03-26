@@ -463,11 +463,6 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
                     <Button variant="ghost" size="icon" className="h-8 w-8" disabled={uploadingIds.has(person.id)} onClick={() => { setUploadTargetPerson(person); fileInputRef.current?.click(); }} title="Upload face photo">
                       <ImagePlus className={`h-3.5 w-3.5 ${uploadingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
-                    {person.mipsSyncStatus === "synced" && person.mipsPersonId && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled={capturingIds.has(person.id)} onClick={() => capturePhotoMutation.mutate(person)} title="Capture face from device camera">
-                        <Camera className={`h-3.5 w-3.5 ${capturingIds.has(person.id) ? "animate-pulse" : ""}`} />
-                      </Button>
-                    )}
                     <Button variant="outline" size="sm" disabled={syncingIds.has(person.id)} onClick={() => syncMutation.mutate(person)} className="shrink-0" title="Sync to MIPS">
                       <Upload className={`h-3.5 w-3.5 ${syncingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
