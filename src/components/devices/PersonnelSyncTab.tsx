@@ -34,6 +34,7 @@ interface SyncPerson {
   mipsSyncStatus: string | null;
   mipsPersonId: string | null;
   verifiedOnDevice?: boolean | null;
+  branchId?: string;
 }
 
 const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
