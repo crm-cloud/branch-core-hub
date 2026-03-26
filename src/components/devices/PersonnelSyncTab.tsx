@@ -227,27 +227,6 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
     },
   });
 
-  const capturePhotoMutation = useMutation({
-    mutationFn: async (person: SyncPerson) => {
-      if (!person.mipsPersonId) throw new Error("Person not synced to MIPS yet");
-      setCapturingIds((prev) => new Set(prev).add(person.id));
-      const deviceIds = await fetchOnlineDeviceIds();
-      if (deviceIds.length === 0) throw new Error("No online devices found");
-      const mipsId = Number(person.mipsPersonId);
-      if (isNaN(mipsId)) throw new Error("Invalid MIPS person ID");
-      return capturePhoto(mipsId, deviceIds[0]);
-    },
-    onSuccess: (result, person) => {
-      setCapturingIds((prev) => { const n = new Set(prev); n.delete(person.id); return n; });
-      if (result.success) toast.success(`Photo capture triggered for ${person.name}`);
-      else toast.error(`Capture failed: ${result.message}`);
-    },
-    onError: (error: Error, person) => {
-      setCapturingIds((prev) => { const n = new Set(prev); n.delete(person.id); return n; });
-      toast.error(`Capture failed: ${error.message}`);
-    },
-  });
-
   const handlePhotoUpload = async (file: File, person: SyncPerson) => {
     setUploadingIds((prev) => new Set(prev).add(person.id));
     try {
