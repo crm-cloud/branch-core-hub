@@ -1,91 +1,81 @@
 
 
-# Complete MIPS Integration Rewrite — Cloud-Only Architecture
+# Robust MIPS Verification & Re-sync Workflow
 
-## Problem Summary
+## Problem
 
-The entire MIPS integration is broken. The edge functions use endpoints from a different API (`/apiExternal/generateToken`, `Owl-Auth-Token`, `/admin/devices/page`, etc.) but the actual server at `http://212.38.94.228:9000` runs **RuoYi-Vue v3** with completely different endpoints. Every call fails with `"No endpoint"`.
+The CRM marks members as "synced" after getting a success response from `POST /personInfo/person`, but there's no verification that the person actually exists on the MIPS server or was dispatched to the device. Members can show "Synced" in the UI while being absent from the device roster.
 
-Additionally, three edge functions (`terminal-heartbeat`, `terminal-register`, `terminal-identify`) were built for direct LAN device communication, which is impossible because the device is behind CGNAT.
+Additionally, the Personnel Sync tab has UX issues:
+- Bulk sync requires `hasPhoto` (causes 0/0 results)
+- Individual sync disabled without photo (but data-only sync should work)
+- No way to verify device-side presence
+- No way to upload a photo from the app for sync
 
-## Verified API Reference (from previous curl testing)
+## Solution
 
-```text
-Server: http://212.38.94.228:9000
-Auth:   POST /login  →  {"username":"admin","password":"admin123"}
-Header: Authorization: Bearer <token>, TENANT-ID: 1
+### 1. Add `verifyPersonOnMIPS()` to `mipsService.ts`
 
-DEVICES
-  GET  /through/device/list              → list all devices
-  GET  /through/device/openDoor/{id}     → remote open door
-  POST /through/device/syncPerson        → dispatch person to device
+New function that calls `GET /personInfo/person/list` and searches by `personNo` (hyphen-stripped). Returns `{ exists: boolean, hasPhoto: boolean, mipsId: number | null, personData: object }`.
 
-PERSONS
-  GET  /personInfo/person/list           → list persons
-  POST /personInfo/person                → create/update person
-  DEL  /personInfo/person/{id}           → delete person
+### 2. Add "Verify & Re-sync" workflow to `sync-to-mips` edge function
 
-Device D1146D682A96B1C2 = MIPS deviceId 13
-```
+Add an optional `verify_only` mode to the edge function request body. When `verify_only: true`, it:
+- Fetches the MIPS person list
+- Searches for the member by stripped `personNo`
+- Returns `{ verified: boolean, mips_person: {...} }` without creating/updating
+- If not found, returns `{ verified: false }` so the UI can offer re-sync
 
-## What Gets Removed
+### 3. Rewrite `PersonnelSyncTab.tsx`
 
-| Edge Function | Reason |
+**Data layer changes:**
+- Remove `hasPhoto` from bulk sync filter — allow data-only sync
+- Add a `verifiedOnDevice` field to `SyncPerson` (populated on-demand, not on load)
+
+**New per-person actions (3 buttons):**
+- **Verify** — calls `verifyPersonOnMIPS(code)`, shows green check or red X with toast
+- **Sync** — enabled always (not gated on `hasPhoto`), syncs person data + photo if available  
+- **Capture** — triggers device camera capture (existing, only for synced persons)
+
+**New bulk actions:**
+- "Verify All Synced" — checks every "synced" member against MIPS roster, marks mismatches
+- "Sync All Pending" — syncs all pending/failed (remove `hasPhoto` gate)
+- "Re-sync Stale" — re-syncs members marked synced but not verified on device
+
+**Display improvements:**
+- Show both codes: `MAIN-00005` → `MAIN00005` (CRM → MIPS)
+- Show verification status: verified/unverified/mismatch badge
+- Show photo status separately from sync status
+
+### 4. Improve Debug tab in `DeviceManagement.tsx`
+
+Add these debug tools:
+- **Verify Single Member** — pick a member, check if present in MIPS person list
+- **Test Open Door** — one-click for device 13
+- **Compare CRM vs MIPS** — shows side-by-side count (CRM synced count vs MIPS person count)
+- **Test Single Sync** — syncs a specific member and verifies afterward
+
+### 5. Photo upload from app in Personnel Sync
+
+Add an inline photo upload button per person:
+- Uses existing `compressImageForDevice` utility
+- Uploads to Supabase Storage `member-photos` bucket
+- Updates `biometric_photo_url` on the member record
+- Auto-triggers sync after upload
+
+## Files to Modify
+
+| File | Change |
 |---|---|
-| `terminal-heartbeat` | LAN-only architecture, device behind CGNAT, never receives calls |
-| `terminal-register` | Same — built for direct device-to-server communication that can't work |
-| `terminal-identify` | Same — duplicate of webhook receiver but for LAN mode |
+| `src/services/mipsService.ts` | Add `verifyPersonOnMIPS()`, `verifyAllSynced()`, `compareCRMvsMIPS()` |
+| `supabase/functions/sync-to-mips/index.ts` | Add `verify_only` mode |
+| `src/components/devices/PersonnelSyncTab.tsx` | Full rewrite with verify/re-sync/upload workflow |
+| `src/pages/DeviceManagement.tsx` | Enhanced debug tools |
 
-These three functions total ~1,600 lines of dead code. They reference `hardware_devices` table (which is separate from `access_devices`) and are never called by the MIPS middleware.
+## Technical Details
 
-## What Gets Rewritten
-
-### 1. `mips-proxy/index.ts` — Complete rewrite
-- **Auth**: `POST /login` with JSON body → `Authorization: Bearer <token>` + `TENANT-ID: 1`
-- **Proxy**: Pass `endpoint`, `method`, `data` through with correct headers
-- Remove `Owl-Auth-Token`, `siteId`, form-urlencoded auth
-
-### 2. `sync-to-mips/index.ts` — Complete rewrite
-- **Create person**: `POST /personInfo/person` with correct field mapping
-- **Photo**: Fetch from storage, base64 encode, include in person payload
-- **Dispatch**: After person creation, call `POST /through/device/syncPerson` targeting device ID 13
-- Remove all old MIPS endpoint references
-
-### 3. `mips-webhook-receiver/index.ts` — Keep & fix
-- Already correctly returns `{"result":1,"code":"000"}`
-- Already handles member/staff lookup and attendance logging
-- Only change: ensure it handles RuoYi callback field names if they differ
-
-### 4. `src/services/mipsService.ts` — Update endpoints
-- Change all `callMIPSProxy` endpoint paths to match RuoYi API
-- `/admin/devices/page` → `/through/device/list`
-- `/admin/devices/remote/opendoor` → `/through/device/openDoor/{id}`
-- `/admin/person/employees/page` → `/personInfo/person/list`
-- `/admin/person/employees/permission` → `/through/device/syncPerson`
-
-### 5. `src/components/devices/MIPSDevicesTab.tsx` — Minor update
-- Adapt to new response shape from `/through/device/list`
-
-## API Documentation (generated output)
-
-A markdown document will be created at `.lovable/mips-api-reference.md` documenting every endpoint, auth flow, request/response shapes, and the CRM-to-MIPS field mapping.
-
-## Implementation Steps
-
-1. **Rewrite `mips-proxy`** with RuoYi auth + correct header/endpoint passthrough
-2. **Rewrite `sync-to-mips`** with person creation + photo + dispatch flow
-3. **Update `mipsService.ts`** endpoint paths and response parsing
-4. **Update `MIPSDevicesTab.tsx`** for new device list response shape
-5. **Delete `terminal-heartbeat`, `terminal-register`, `terminal-identify`** edge functions
-6. **Remove config.toml entries** for deleted functions
-7. **Create API reference document**
-8. **End-to-end curl testing** against live server before and after each change
-
-## Verification Plan
-
-After each edge function rewrite, curl test it:
-1. `mips-proxy` → test `/through/device/list` returns device list
-2. `sync-to-mips` → test person creation with a test member
-3. Dashboard → verify "Connected" status and device list renders
-4. Personnel Sync → verify sync + dispatch flow works end-to-end
+- `verifyPersonOnMIPS(personNo)` calls `callMIPSProxy("/personInfo/person/list", "GET", { personNo: strippedCode })` — RuoYi supports filtering by `personNo` query param
+- Verification is on-demand (button click), not on page load, to avoid hammering the MIPS server
+- The bulk verify fetches the full person list once (`pageSize=200`) and cross-references locally
+- Photo upload uses existing `compressImageFile()` → upload to `member-photos/{memberId}.jpg` → update DB → trigger sync
 
