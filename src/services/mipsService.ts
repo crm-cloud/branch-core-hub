@@ -248,6 +248,24 @@ function stripHyphens(code: string): string {
   return code.replace(/-/g, "");
 }
 
+/** Dispatch a synced person to the target device via Personnel Issue */
+export async function dispatchToDevice(
+  personMipsId: string,
+  targetDeviceSN = "D1146D682A96B1C2"
+): Promise<{ success: boolean; message: string }> {
+  try {
+    // First find the target device's numeric MIPS ID
+    const devices = await fetchMIPSDevices();
+    const target = devices.find((d) => d.deviceKey === targetDeviceSN);
+    if (!target) {
+      return { success: false, message: `Device ${targetDeviceSN} not found or offline` };
+    }
+    return await assignDevicePermission(personMipsId, [target.id]);
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Manual sync test — syncs one person and verifies in MIPS roster
 export async function manualSyncTest(
   personType: "member" | "employee",

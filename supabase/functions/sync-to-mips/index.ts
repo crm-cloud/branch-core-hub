@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const TARGET_DEVICE_SN = "D1146D682A96B1C2";
+
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
@@ -28,7 +30,6 @@ function nowFormatted(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-/** Strip hyphens from member/employee codes for MIPS compatibility: MAIN-00005 → MAIN00005 */
 function stripHyphens(code: string): string {
   return code.replace(/-/g, "");
 }
@@ -48,9 +49,7 @@ async function getMIPSToken(): Promise<string> {
 
   const text = await res.text();
   let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
+  try { json = JSON.parse(text); } catch {
     console.error("MIPS auth returned non-JSON:", text.substring(0, 500));
     throw new Error("MIPS auth endpoint returned non-JSON response");
   }
@@ -66,8 +65,57 @@ async function getMIPSToken(): Promise<string> {
   return cachedToken!;
 }
 
-/** Fetch online device IDs from MIPS for permission assignment */
-async function fetchOnlineDeviceIds(hostUrl: string, token: string): Promise<number[]> {
+/** Fetch photo from Supabase Storage, return base64 string if under 400KB */
+async function fetchPhotoAsBase64(photoUrl: string): Promise<string | null> {
+  if (!photoUrl) return null;
+
+  try {
+    // Make the URL absolute if it's a relative storage path
+    let url = photoUrl;
+    if (!url.startsWith("http")) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      url = `${supabaseUrl}/storage/v1/object/public/${url}`;
+    }
+
+    console.log(`Fetching photo from: ${url}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`Photo fetch failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
+
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    // Check size — must be under 400KB
+    if (bytes.length > 400 * 1024) {
+      console.warn(`Photo too large (${Math.round(bytes.length / 1024)}KB > 400KB), skipping. Compress client-side first.`);
+      return null;
+    }
+
+    // Convert to base64
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      binary += String.fromCharCode(...chunk);
+    }
+    const base64 = btoa(binary);
+
+    // Determine mime type from content-type header or default to jpeg
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const dataUri = `data:${contentType};base64,${base64}`;
+
+    console.log(`Photo fetched: ${Math.round(bytes.length / 1024)}KB, base64 length: ${dataUri.length}`);
+    return dataUri;
+  } catch (e) {
+    console.warn("Photo fetch error:", e);
+    return null;
+  }
+}
+
+/** Fetch online devices and find the target device by SN */
+async function findTargetDeviceId(hostUrl: string, token: string, targetSN: string): Promise<number | null> {
   try {
     const res = await fetch(`${hostUrl}/admin/devices/list/online`, {
       method: "GET",
@@ -79,26 +127,34 @@ async function fetchOnlineDeviceIds(hostUrl: string, token: string): Promise<num
     });
     const json = await res.json();
     if (Number(json.code) === 200 && Array.isArray(json.data)) {
-      return json.data.map((d: any) => Number(d.id)).filter((id: number) => !isNaN(id));
+      const target = json.data.find((d: any) => d.deviceKey === targetSN);
+      if (target) {
+        console.log(`Found target device ${targetSN} with MIPS id: ${target.id}`);
+        return Number(target.id);
+      }
+      // Fallback: return all online device IDs
+      console.warn(`Target device ${targetSN} not found among ${json.data.length} online devices`);
+      const allIds = json.data.map((d: any) => Number(d.id)).filter((id: number) => !isNaN(id));
+      return allIds.length > 0 ? allIds[0] : null;
     }
-    console.warn("Failed to fetch online devices:", JSON.stringify(json).substring(0, 300));
-    return [];
+    return null;
   } catch (e) {
-    console.warn("Error fetching online devices:", e);
-    return [];
+    console.warn("Error finding target device:", e);
+    return null;
   }
 }
 
-/** Assign person to devices via MIPS permission endpoint */
-async function assignDevicePermission(
+/** Dispatch person to device via Personnel Issue (permission endpoint) */
+async function dispatchToDevice(
   hostUrl: string, token: string, mipsPersonId: string, deviceIds: number[]
 ): Promise<{ success: boolean; response?: any }> {
   if (deviceIds.length === 0) {
-    console.log("No online devices to assign permissions to");
-    return { success: true, response: { msg: "No devices available" } };
+    console.log("No device IDs to dispatch to");
+    return { success: false, response: { msg: "No devices available" } };
   }
 
   try {
+    console.log(`Dispatching person ${mipsPersonId} to devices: [${deviceIds.join(", ")}]`);
     const res = await fetch(`${hostUrl}/admin/person/employees/permission`, {
       method: "POST",
       headers: {
@@ -116,10 +172,10 @@ async function assignDevicePermission(
     });
     const json = await res.json();
     const ok = Number(json.code) === 200;
-    console.log(`Permission assignment result: ${ok}, response: ${JSON.stringify(json).substring(0, 300)}`);
+    console.log(`Dispatch result: success=${ok}, response: ${JSON.stringify(json).substring(0, 300)}`);
     return { success: ok, response: json };
   } catch (e) {
-    console.error("Permission assignment error:", e);
+    console.error("Dispatch error:", e);
     return { success: false, response: { error: String(e) } };
   }
 }
@@ -156,6 +212,7 @@ Deno.serve(async (req) => {
     let personNo = "";
     let phone = "";
     let email = "";
+    let photoUrl = "";
     let expireTime = "2030-12-31 00:00:00";
     let tableName: string;
 
@@ -174,6 +231,9 @@ Deno.serve(async (req) => {
       personNo = member.member_code || person_id.substring(0, 8);
       phone = profile?.phone || "";
       email = profile?.email || "";
+
+      // Try biometric photo first, then avatar
+      photoUrl = member.biometric_photo_url || profile?.avatar_url || "";
 
       const { data: membership } = await supabase
         .from("memberships")
@@ -202,13 +262,19 @@ Deno.serve(async (req) => {
       personNo = emp.employee_code || person_id.substring(0, 8);
       phone = profile?.phone || "";
       email = profile?.email || "";
+      photoUrl = profile?.avatar_url || "";
     }
 
-    // Strip hyphens for MIPS compatibility: MAIN-00005 → MAIN00005
+    // Strip hyphens for MIPS compatibility
     const mipsPersonNo = stripHyphens(personNo);
     console.log(`PersonNo: ${personNo} → MIPS personNo: ${mipsPersonNo}`);
 
-    // Build exact MIPS payload matching the verified curl contract
+    // Step 1: Fetch and encode photo
+    const photoBase64 = await fetchPhotoAsBase64(photoUrl);
+    const hasPhoto = !!photoBase64;
+    console.log(`Photo available: ${hasPhoto}${hasPhoto ? "" : " (no photo URL or fetch failed)"}`);
+
+    // Build MIPS payload with photo if available
     const mipsPayload = {
       id: "",
       personNo: mipsPersonNo,
@@ -234,13 +300,13 @@ Deno.serve(async (req) => {
       ruleB: "",
       ruleC: "",
       personPhotoId: [],
-      personPhotoUrl: [],
+      personPhotoUrl: hasPhoto ? [photoBase64] : [],
     };
 
     const hostUrl = getHostUrl();
     const saveUrl = `${hostUrl}/admin/person/employees`;
 
-    console.log(`Saving person to MIPS: ${name} (${mipsPersonNo}), type=${person_type}`);
+    console.log(`Saving person to MIPS: ${name} (${mipsPersonNo}), type=${person_type}, hasPhoto=${hasPhoto}`);
 
     const res = await fetch(saveUrl, {
       method: "POST",
@@ -256,9 +322,7 @@ Deno.serve(async (req) => {
     console.log(`MIPS response status: ${res.status}, body: ${responseText.substring(0, 500)}`);
 
     let responseJson: any;
-    try {
-      responseJson = JSON.parse(responseText);
-    } catch {
+    try { responseJson = JSON.parse(responseText); } catch {
       throw new Error(`MIPS returned non-JSON (status ${res.status}): ${responseText.substring(0, 300)}`);
     }
 
@@ -266,7 +330,7 @@ Deno.serve(async (req) => {
     const success = code === 200 || code === 0 || res.ok;
     const mipsPersonId = responseJson?.data?.id || responseJson?.data?.personId || mipsPersonNo;
 
-    // Update sync status in database — store hyphen-stripped code as mips_person_id
+    // Update sync status in database
     await supabase
       .from(tableName)
       .update({
@@ -275,24 +339,29 @@ Deno.serve(async (req) => {
       })
       .eq("id", person_id);
 
-    // Step 2: Assign device permissions after successful sync
-    let permissionResult: any = null;
+    // Step 2: Auto-dispatch to target device after successful sync
+    let dispatchResult: any = null;
     if (success) {
-      console.log("Fetching online devices for permission assignment...");
-      const onlineDeviceIds = await fetchOnlineDeviceIds(hostUrl, token);
-      console.log(`Found ${onlineDeviceIds.length} online devices: [${onlineDeviceIds.join(", ")}]`);
+      console.log(`Auto-dispatching to target device SN: ${TARGET_DEVICE_SN}...`);
+      const targetDeviceId = await findTargetDeviceId(hostUrl, token, TARGET_DEVICE_SN);
 
-      permissionResult = await assignDevicePermission(hostUrl, token, String(mipsPersonId), onlineDeviceIds);
-      console.log(`Permission assignment: success=${permissionResult.success}`);
+      if (targetDeviceId) {
+        dispatchResult = await dispatchToDevice(hostUrl, token, String(mipsPersonId), [targetDeviceId]);
+        console.log(`Dispatch to ${TARGET_DEVICE_SN}: success=${dispatchResult.success}`);
+      } else {
+        console.warn(`Target device ${TARGET_DEVICE_SN} is offline or not found. Dispatch skipped.`);
+        dispatchResult = { success: false, response: { msg: `Device ${TARGET_DEVICE_SN} offline` } };
+      }
     }
 
-    console.log(`Sync result: success=${success}, mipsPersonId=${mipsPersonId}`);
+    console.log(`Sync result: success=${success}, mipsPersonId=${mipsPersonId}, hasPhoto=${hasPhoto}`);
 
     return new Response(JSON.stringify({
       success,
       mips_person_id: mipsPersonId,
       mips_response: responseJson,
-      permission_result: permissionResult,
+      photo_included: hasPhoto,
+      dispatch_result: dispatchResult,
       endpoint_used: saveUrl,
       person: { name, personNo: mipsPersonNo, originalCode: personNo },
     }), {
