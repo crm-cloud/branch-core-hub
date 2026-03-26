@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import MIPSConnectionCard from "./MIPSConnectionCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +13,10 @@ import { formatDistanceToNow } from "date-fns";
 
 interface MIPSDashboardProps {
   branchId?: string;
+  branchName?: string;
 }
 
-const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
+const MIPSDashboard = ({ branchId, branchName }: MIPSDashboardProps) => {
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const prevDeviceStatusRef = useRef<Map<string, number>>(new Map());
@@ -208,6 +210,8 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
           </CardContent>
         </Card>
       </div>
+
+      <MIPSConnectionCard branchId={branchId} branchName={branchName} />
     </div>
   );
 };
