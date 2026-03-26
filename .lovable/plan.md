@@ -1,87 +1,112 @@
 
 
-# Advanced IoT Fleet Integration (MIPS v3)
+# Fix Device Command Center — Branch Selector, Per-Branch MIPS Config, Restart, Trainer Sync, Remove Capture
 
-## Current State Summary
+## Audit Findings
 
-The system currently has a hardcoded `TARGET_DEVICE_ID = 13` in `sync-to-mips`. The `access_devices` table exists with `serial_number` and `branch_id` but has no `mips_device_id` column to map to MIPS numeric device IDs. Photo upload uses `/common/uploadHeadPhoto` (multipart) but does not enforce JPG conversion or 400KB compression. The remote capture endpoint `/through/device/capturePhoto` is guessed — the manual shows "Click to Open Camera to Take a Photo" as a UI action, not necessarily an API endpoint. The webhook receiver already returns `{"result":1,"code":"000"}` correctly.
+### Bug 1: Branch selector not working
+`DeviceManagement.tsx` computes `branchFilter` but child components `MIPSDevicesTab` and `MIPSDashboard` receive `branchId` as a prop yet **never use it** — they call the MIPS API directly with no branch filtering. Only `PersonnelSyncTab` uses `branchId` in its DB queries.
 
-## Key Findings from Manual & API Docs
+### Bug 2: Restart endpoint is wrong
+Code calls `GET /through/device/restart/{id}` but the user's curl shows the real endpoint is `GET /through/device/reboot/{id}`.
 
-1. **Photo rules** (from manual page 12): "Only support .jpg format", "Each portrait file size should not exceed 400k"
-2. **Remote open door**: `GET /through/device/openDoor/{deviceId}` — already implemented in `mipsService.ts`
-3. **Remote photo capture**: The manual mentions "Click to Open Camera to Take a Photo" on the employee edit page — this is a UI-level action. The API endpoint needs curl-testing to confirm. Most likely it's `POST /through/device/capturePhoto` or similar.
-4. **Personnel dispatch**: Uses `POST /through/device/syncPerson` with `deviceIds` as an array — already supports multi-device by passing multiple IDs
-5. **Webhook ImgReg**: The device sends face scan callbacks to the webhook URL. For registration callbacks, the payload includes `imgUri` which can be saved.
+### Bug 3: Trainer sync fails with edge error
+The edge function generates trainer code as `${branchCode}-T${id.substring(0,4)}` (e.g., `MAIN-TXXXX`), then strips hyphens → `MAINTTXXXX`. Meanwhile the UI generates `TRN-${id.substring(0,4)}` → `TRN-XXXX`. This **mismatch** means the UI code and edge function refer to different `personSn` values. Additionally, when the trainer has no `biometric_photo_url` or avatar, the sync still attempts photo upload, which may cause the edge error.
+
+### Bug 4: Capture Photo button calls unsupported endpoint
+`POST /through/device/capturePhoto` returns "Request method 'POST' is not supported". This API does not exist on this MIPS version. Remove the button entirely.
+
+### Bug 5: MIPS server config is hardcoded in secrets
+`MIPS_SERVER_URL`, `MIPS_USERNAME`, `MIPS_PASSWORD` are global secrets. User wants per-branch MIPS server configuration via the UI (Add Access Device drawer should collect server URL, port, username, password).
 
 ## Implementation Plan
 
-### 1. Multi-Device Dispatch (sync-to-mips)
+### 1. Migration: Create `mips_connections` table (per-branch config)
 
-**Problem**: Hardcoded `TARGET_DEVICE_ID = 13`.
+```sql
+CREATE TABLE public.mips_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id uuid NOT NULL REFERENCES public.branches(id) ON DELETE CASCADE,
+  server_url text NOT NULL,        -- e.g. http://212.38.94.228:9000
+  username text NOT NULL,
+  password text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(branch_id)
+);
+ALTER TABLE public.mips_connections ENABLE ROW LEVEL SECURITY;
+-- RLS: only owner/admin can manage
+CREATE POLICY "Admins manage MIPS connections" ON public.mips_connections
+  FOR ALL TO authenticated
+  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin']::app_role[]))
+  WITH CHECK (public.has_any_role(auth.uid(), ARRAY['owner','admin']::app_role[]));
+```
 
-**Fix in `supabase/functions/sync-to-mips/index.ts`**:
-- Remove `const TARGET_DEVICE_ID = 13`
-- After upsert+photo, query `access_devices` table for all active devices in the person's branch (or all if no branch filter)
-- For each device, look up its MIPS device ID: either store `mips_device_id` on `access_devices` table, or fetch MIPS device list and match by `serial_number` → `deviceKey`
-- Dispatch to ALL matched device IDs in a single `syncPerson` call (the API supports `deviceIds: [13, 14, 15]`)
+### 2. Fix restart endpoint in `mipsService.ts`
 
-**Migration**: Add `mips_device_id` integer column to `access_devices` to cache the MIPS numeric ID per device.
+Change `/through/device/restart/{id}` → `/through/device/reboot/{id}` to match the real API.
 
-### 2. Photo Sync Fix — JPG Conversion + 400KB Compression
+### 3. Remove Capture Photo feature
 
-**Fix in `supabase/functions/sync-to-mips/index.ts` `uploadPhoto()` function**:
-- After fetching the image bytes, check content-type
-- If PNG/WebP, convert to JPEG (in Deno, use canvas or sharp-like lib — or simply ensure the upload always uses `image/jpeg` content-type and `.jpg` extension since MIPS only accepts JPG)
-- If size > 400KB, reject or attempt to re-fetch a smaller version
-- The existing code already checks `> 500KB` — tighten to `400KB` per manual spec
-- Always use `image/jpeg` content-type and `.jpg` filename extension regardless of source format
+- Remove `capturePhoto()` function from `mipsService.ts`
+- Remove the Camera button and `capturePhotoMutation` from `PersonnelSyncTab.tsx`
+- Remove ImgReg handler from `mips-webhook-receiver` (keep it but make it a no-op comment for future use)
 
-### 3. Remote Capture — Device Camera Photo
+### 4. Fix trainer code generation consistency
 
-**Add to `mipsService.ts`**: The `capturePhoto` function already exists but calls `/through/device/capturePhoto`. This endpoint needs verification via curl. The manual references a "take photo" UI action on the employee edit page.
+Standardize trainer code format across UI and edge function:
+- Edge function (`sync-to-mips`): generate code as `TRN${id.substring(0,4).toUpperCase()}` (no hyphens, matching the UI's stripped format)
+- UI (`PersonnelSyncTab`): keep `TRN-${id.substring(0,4)}` for display, strip hyphens when sending to MIPS
 
-**Alternative approach**: Based on the manual's "Register Person Data Upload URL" callback config (page 9), when the device captures a registration photo, it sends a callback (`ImgReg` event) to the configured URL. The flow would be:
-1. Trigger capture via MIPS API (needs curl testing for exact endpoint)
-2. Device takes photo and sends callback to `mips-webhook-receiver`
-3. Webhook receives the `imgUri` / base64 image data
-4. Save image to Supabase Storage `member-photos` bucket
-5. Update the member's `biometric_photo_url`
+The real fix: both must produce the same `personSn` after stripping. Use `TRN${shortId}` as the canonical MIPS code. Update edge function line 442-444 to use this format instead of `${prefix}-T${...}`.
 
-**Fix in `mips-webhook-receiver`**: Add handler for `ImgReg` / registration callback events — save the photo to storage and update CRM.
+### 5. Add MIPS Connection Settings UI
 
-### 4. Entry Override — Remote Open Door
+Update `AddDeviceDrawer.tsx` to include a "MIPS Server Connection" section per branch:
+- Server URL (with port)
+- Username
+- Password
+- Test Connection button
 
-**Add to `AttendanceDashboard.tsx`**:
-- Add an "Override Entry" button (visible to admin/manager roles)
-- When clicked, fetch the member's branch → find the active `access_device` for that branch → get its `mips_device_id` → call `remoteOpenDoor(mipsDeviceId)`
-- The `remoteOpenDoor` function already exists in `mipsService.ts` using `GET /through/device/openDoor/{deviceId}`
+This data goes into the new `mips_connections` table. The Add Device drawer gets a section for configuring the branch's MIPS connection if one doesn't exist yet.
 
-### 5. Trainer deptId Fix
+Alternatively, add a dedicated "MIPS Connection" card in the Device Command Center Dashboard tab where admins can configure the connection per branch.
 
-**Already fixed** in the previous iteration: trainers use `deptId: 101` (Staff department). This is correct per the mapping.
+### 6. Update edge functions to use per-branch config
 
-### 6. Webhook Response Fix
+Update `sync-to-mips` and `mips-proxy` to:
+- Accept an optional `branch_id` parameter
+- Look up `mips_connections` for that branch
+- Fall back to environment secrets (`MIPS_SERVER_URL`, etc.) if no per-branch config exists
+- This ensures backward compatibility while enabling per-branch servers
 
-**Already correct**: The webhook returns `{"result":1,"code":"000"}` on both success and error paths (lines 256-266 of `mips-webhook-receiver/index.ts`).
+### 7. Fix branch filtering for Devices tab
+
+The `MIPSDevicesTab` currently shows all MIPS devices regardless of branch. Since MIPS devices are server-level (one MIPS server per branch), when a branch is selected:
+- Look up the `mips_connections` for that branch
+- Only show devices from that specific MIPS server
+- When "All Branches" is selected, show devices from all configured servers (or the default)
+
+For now (single server), filter by matching `access_devices.branch_id` in the DB and cross-reference with MIPS device list by `serial_number`.
 
 ## Files to Modify
 
 | File | Change |
 |---|---|
-| Migration SQL | Add `mips_device_id` (integer) to `access_devices` |
-| `supabase/functions/sync-to-mips/index.ts` | Remove hardcoded device ID, query access_devices for multi-device dispatch, tighten photo to 400KB + force JPG |
-| `supabase/functions/mips-webhook-receiver/index.ts` | Add `ImgReg` callback handler to save captured photos |
-| `src/services/mipsService.ts` | Add `remoteOpenDoorByBranch()` helper |
-| `src/pages/AttendanceDashboard.tsx` | Add "Override Entry" button calling remote open door |
-| `src/components/devices/PersonnelSyncTab.tsx` | Show "(Main Branch)" label when "All Branches" is active |
-| `.lovable/mips-api-reference.md` | Update with multi-device dispatch and photo rules |
+| Migration SQL | Create `mips_connections` table |
+| `src/services/mipsService.ts` | Fix restart → reboot, remove capturePhoto, add per-branch proxy support |
+| `src/components/devices/PersonnelSyncTab.tsx` | Remove Capture Photo button and mutation |
+| `supabase/functions/sync-to-mips/index.ts` | Fix trainer code format, use per-branch MIPS config |
+| `supabase/functions/mips-proxy/index.ts` | Accept branch_id, look up mips_connections |
+| `src/components/devices/AddDeviceDrawer.tsx` | Add MIPS connection config fields |
+| `src/components/devices/MIPSDevicesTab.tsx` | Use branch filtering |
+| `src/pages/DeviceManagement.tsx` | Pass branch context properly |
 
 ## Testing Strategy
 
-Before implementing, curl-test:
-1. `POST /through/device/syncPerson` with `deviceIds: [13]` array — confirm multi-device dispatch format
-2. Test photo upload with forced `.jpg` extension and `image/jpeg` content-type
-3. Test capture photo endpoint (`/through/device/capturePhoto` or similar) — discover exact API
-4. `GET /through/device/openDoor/13` — confirm remote door open works
+Before code changes, curl-verify:
+1. `GET /through/device/reboot/13` — confirm this is the correct restart endpoint
+2. Confirm `mips_connections` table is created and accessible
+3. Test sync with corrected trainer code format
 
