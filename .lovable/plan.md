@@ -1,47 +1,66 @@
 
 
-# Fix Live Access Feed + Audit Webhook & Photo Capture
+# Incline Gym 2.0: Cloud-Only MIPS Integration
 
-## Root Causes Found
+## Architecture Confirmation
 
-### 1. RLS blocks all reads on `access_logs` (PRIMARY ISSUE)
-RLS is **enabled** on `access_logs` but there are **zero policies**. The webhook receiver writes using `service_role` key (bypasses RLS), so inserts work. But the frontend uses the `anon` key, so `SELECT` returns nothing -- the Live Feed will always show "No access events yet" regardless of data.
+All communication goes through MIPS middleware at `http://212.38.94.228:9000`. No LAN/device-direct calls.
 
-### 2. No webhook traffic has reached the endpoint
-Edge function logs show zero invocations of `mips-webhook-receiver`. This means either:
-- MIPS Smart Pass hasn't been configured to push events to the webhook URL yet, OR
-- The configuration exists but MIPS hasn't triggered any face scans since setup
+```text
+PUSH (Server → Device):
+  Supabase Edge Function → MIPS :9000 API (JWT auth) → MIPS TCP tunnel → Device
 
-### 3. Photo capture endpoint looks correct
-The `capturePhoto` function already uses the verified `POST /admin/person/employees/take_photo` with `{"ids":[N],"deviceIds":[N]}` and `contentType: "json"`. This matches the user's curl exactly. No fix needed here.
-
-## Plan
-
-### Step 1: Add RLS policies for `access_logs`
-Create a migration adding:
-- **SELECT** policy for authenticated users with `owner`, `admin`, `manager`, or `staff` roles (using `has_any_role`)
-- **INSERT** policy is not needed (webhook uses service_role)
-
-```sql
-CREATE POLICY "Staff can view access logs"
-ON public.access_logs FOR SELECT
-TO authenticated
-USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[]));
+PULL (Device → Server):
+  Device → MIPS middleware → Webhook POST → mips-webhook-receiver → CRM Database
 ```
 
-### Step 2: Verify realtime is enabled
-Already confirmed: `ALTER PUBLICATION supabase_realtime ADD TABLE public.access_logs` exists in migrations. Good.
+## Three Tasks
 
-### Step 3: Test the webhook receiver
-After adding RLS, invoke the webhook receiver with a simulated MIPS payload to confirm it writes to `access_logs` and appears in the Live Feed. Use a test curl against the edge function.
+### Task 1: Fix sync-to-mips — Add Photo Upload + Personnel Dispatch
 
-### Step 4: Guide on MIPS webhook configuration
-The user says they've configured the webhook URL in Smart Pass. After fixing RLS + testing, real face scan events should flow through. If they still don't, we need to verify the MIPS "Webhook" or "Callback URL" configuration in the Smart Pass admin panel.
+**Current problem**: `personPhotoUrl: []` and `personPhotoId: []` are sent as empty arrays. The device receives person data but no face, so recognition fails.
+
+**Fix**: After creating the employee record in MIPS, we need to:
+1. Fetch the member's avatar/biometric photo from Supabase Storage
+2. Download it, verify it's JPG and under 400KB (resize if needed using canvas-free server-side approach)
+3. Convert to base64 and include in the `personPhotoUrl` field of the MIPS payload (MIPS accepts base64 photo data in the employee save endpoint)
+4. After successful save, immediately call the **Personnel Issue** endpoint (`POST /admin/person/employees/permission`) targeting device SN `D1146D682A96B1C2` to push data to the physical turnstile
+
+**Changes to `supabase/functions/sync-to-mips/index.ts`**:
+- Add photo fetch from Supabase Storage (try `biometric_photo_url` first, then `avatar_url`)
+- Download the image, convert to base64
+- Include base64 photo in the MIPS payload (`personPhotoUrl` array)
+- After successful person creation, call the permission/dispatch endpoint targeting the specific device by querying online devices and filtering for the target SN
+
+### Task 2: Fix Webhook Response Format
+
+**Current problem**: Returns `{"code": 200, "msg": "Successful!"}` but the hardware expects `{"result":1,"code":"000"}`. Wrong format causes retries and potential flooding.
+
+**Changes to `supabase/functions/mips-webhook-receiver/index.ts`**:
+- Change success response from `{"code": 200, "msg": "Successful!"}` to `{"result":1,"code":"000"}`
+- Change error response similarly to `{"result":1,"code":"000"}` (always acknowledge to prevent retries)
+- Also handle the LAN callback field names (`personId` instead of `personNo`, `type` field for face_0/face_1/face_2, `deviceKey` for device SN, `searchScore`/`livenessScore`)
+- Map `type: "face_0"` → authorized, `"face_1"` → outside passtime, `"face_2"` → stranger
+
+### Task 3: Dashboard Device Status via MIPS API
+
+**Current state**: The dashboard already polls MIPS via `fetchMIPSDevices()` which calls `/admin/devices/page`. This is correct and cloud-only. No LAN polling exists in production code.
+
+**Minor enhancement**: Ensure the device list shows the `deviceKey` (SN) so operators can identify `D1146D682A96B1C2`. Update `MIPSDevicesTab` to display device SN prominently.
 
 ## Files to Modify
-| File | Change |
-|------|--------|
-| New migration | Add SELECT RLS policy on `access_logs` |
 
-No code changes needed -- the `LiveAccessLog` component and `mips-webhook-receiver` function are already correctly implemented. The only blocker is the missing RLS policy.
+| File | Change |
+|---|---|
+| `supabase/functions/sync-to-mips/index.ts` | Add photo fetch/base64 encoding, include in payload, add post-sync device dispatch |
+| `supabase/functions/mips-webhook-receiver/index.ts` | Fix response to `{"result":1,"code":"000"}`, handle LAN callback field names |
+| `src/components/devices/MIPSDevicesTab.tsx` | Show device SN (deviceKey) in device cards |
+| `src/services/mipsService.ts` | Add `dispatchToDevice(personMipsId, deviceSN)` helper |
+
+## Implementation Notes
+
+- Photo handling in the edge function will use `fetch()` to download from Supabase Storage public URL, read as `ArrayBuffer`, convert to base64 using `btoa`/`Uint8Array`
+- The MIPS `personPhotoUrl` field accepts base64-encoded image data (common pattern for this Chinese middleware family)
+- If photo is larger than 400KB, we'll skip it and log a warning (compression should happen client-side before upload via the existing `compressImageForDevice` utility)
+- The dispatch step uses the existing `assignDevicePermission` function but ensures the specific device with SN `D1146D682A96B1C2` is targeted
 
