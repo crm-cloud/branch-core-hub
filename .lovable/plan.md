@@ -1,121 +1,83 @@
 
 
-# Complete MIPS Sync Fix — Photo Upload, PersonId Lookup, Validity Dates, Attendance
+# Fix MIPS Sync: Trainers, Admins, Photo Upload, Validity, Attendance
 
-## Audit Findings (from live curl testing)
+## Problems Found
 
-### Bug 1: `personId = NaN` on dispatch
-MIPS `POST /personInfo/person` returns `{"msg":"操作成功","code":200}` with **no `data` field**. Our code reads `createJson.data.personId` → `null` → `parseInt(null)` → `NaN`. Dispatch sends `personId: NaN`.
+### 1. Trainers completely skipped
+The `trainers` table has no `mips_sync_status` or `mips_person_id` columns. `PersonnelSyncTab` only queries `members` and `employees` — trainers are invisible.
 
-**Fix**: After creating a person, do a `GET /personInfo/person/list?personSn=<code>` to fetch the actual `personId`.
+### 2. Admins skipped
+Admin/owner users who exist only in `user_roles` (not in the `employees` table) are never synced. They need device access too.
 
-### Bug 2: Duplicate `personSn` → error 500
-When syncing an already-existing person (e.g., MAIN00005), MIPS returns `code:500, "person ID already exists"`. Our code treats this as failure.
+### 3. Photo upload endpoint is WRONG
+Current code tries `/personInfo/person/importPhoto` — this fails. The real endpoint from the user's curl capture is:
+```
+POST /common/uploadHeadPhoto
+Content-Type: multipart/form-data
+Body: file=<jpeg>
+```
+The response returns a `fileName` path (e.g. `/userfiles/headPhoto/2026-03/image.jpeg`), then you PUT that path into the person's `photoUri` field.
 
-**Fix**: First check if person exists. If yes, use `PUT /personInfo/person` (with `personId`). If no, use `POST`.
+### 4. Validity dates wrong for staff
+Currently ALL person types get `validTimeBegin`/`validTimeEnd`. But only **members** need expiry dates (from membership). Staff/trainers/admins should have permanent access (far-future end date like `2099-12-31 23:59:59`) until deactivated.
 
-### Bug 3: Photos not uploading via JSON
-`personPhotoUrl` as data URI base64 in the JSON body does NOT save the photo. Live proof: all 8 API-created persons have `photoUri: null` despite photos being sent. Only RAJAT (manually uploaded via MIPS web UI) has a photo.
+### 5. Webhook receiver uses wrong columns
+The `handleStaffCheckin` function uses `employee_id` and `date` columns, but the `staff_attendance` table actually has `user_id` and `check_in`/`check_out` (no `employee_id` or `date`). Staff attendance via webhook is broken.
 
-MIPS requires **multipart/form-data** file upload for photos. The `mips-proxy` only supports JSON forwarding.
-
-**Fix**: Add a `multipart_photo` mode to `mips-proxy` that uploads a JPEG file via multipart form POST to the correct photo endpoint. The edge function will fetch the image from Supabase Storage, then forward it as a multipart upload.
-
-### Bug 4: No validity dates
-`validTimeBegin` and `validTimeEnd` are null for all persons. These control device access windows (membership start/end).
-
-**Fix**: Map `memberships.start_date` → `validTimeBegin` and `memberships.end_date` → `validTimeEnd` in the PUT payload.
-
-### Bug 5: Attendance webhook matching
-The webhook receiver matches by `mips_person_id`, but since `personId` was stored as `null` (bug 1), no members can be matched from device callbacks. Also, the device sends `personNo` which is `personSn` (e.g., `MAIN00005`), not `personId`.
-
-**Fix**: After fixing bug 1, store the real `personId`. Also update webhook to try matching by `personSn` → member_code lookup.
+Also, `findPersonByCode` for staff only checks `employees` table — trainers are missed. And trainers have no `mips_person_id` column to match on.
 
 ## Implementation Plan
 
-### 1. Rewrite `supabase/functions/sync-to-mips/index.ts`
+### Step 1: Add `mips_sync_status` and `mips_person_id` to `trainers` table
+Migration to add these two columns so trainers can be tracked for MIPS sync.
 
-The complete sync flow becomes:
-```
-1. Fetch member/employee data from DB
-2. Strip hyphens from code
-3. GET /personInfo/person/list?personSn=<stripped> to check existence
-4. If exists → PUT /personInfo/person (with personId) to update
-   If not → POST /personInfo/person to create
-5. GET again to fetch the personId (since create returns no ID)
-6. Set validTimeBegin/validTimeEnd from membership dates
-7. Upload photo via multipart POST (separate endpoint)
-8. Dispatch to device via POST /through/device/syncPerson
-9. Store personId in CRM database
-```
+### Step 2: Rewrite `sync-to-mips/index.ts`
+- Add `person_type: "trainer"` support — query `trainers` table
+- For members: map `validTimeBegin`/`validTimeEnd` from membership dates
+- For employees/trainers: set `validTimeEnd = "2099-12-31 23:59:59"` (permanent until deactivated)
+- Fix photo upload: use `POST /common/uploadHeadPhoto` (multipart) to get the file path, then include `photoUri` in the PUT payload
+- Generate a trainer code if none exists (use branch code + trainer ID prefix)
 
-Key changes:
-- Upsert logic (check → create or update)
-- Look up `personId` after create
-- Map `validTimeBegin`/`validTimeEnd` from membership
-- Map `deptId: 100` for members, `101` for staff
-- Remove false `personPhotoUrl` from JSON payload
-- Photo upload as separate step
+### Step 3: Rewrite `PersonnelSyncTab.tsx`
+- Add trainers query alongside members and employees
+- Show type badge: Member / Staff / Trainer
+- Trainers use `type: "trainer"` when calling sync
 
-### 2. Add multipart photo proxy to `supabase/functions/mips-proxy/index.ts`
+### Step 4: Fix `mips-webhook-receiver/index.ts`
+- Fix `handleStaffCheckin`: use `user_id` (not `employee_id`), `check_in`/`check_out` (not `date`)
+- Add trainer lookup in `findPersonByMipsId` and `findPersonByCode` — check `trainers` table too
+- When a trainer is identified, treat same as staff for attendance (insert into `staff_attendance` using `user_id`)
 
-Add a new mode when request contains `photo_upload: true`:
-- Accepts `{ photo_upload: true, person_sn: "MAIN00005", photo_url: "https://..." }`
-- Fetches the photo from the URL
-- Builds multipart/form-data with the file named `{personSn}.jpg`
-- POSTs to the correct MIPS photo upload endpoint
-- Need to discover the exact endpoint (try `/personInfo/person/importPhoto` as multipart)
+### Step 5: Update `mipsService.ts`
+- Add trainer support in verification functions
 
-### 3. Fix `src/services/mipsService.ts`
+### Step 6: Update `.lovable/mips-api-reference.md`
+- Document the real photo upload endpoint: `POST /common/uploadHeadPhoto`
+- Document the two-step photo flow: upload → get path → PUT photoUri on person
 
-- Update `verifyPersonOnMIPS` to correctly read `personId` field (not `id`)
-- Add `fetchPersonBySn()` helper
-- Fix `MIPSEmployee` interface to match actual MIPS response shape (`personId`, `personSn`, `photoUri`, `validTimeBegin`, `validTimeEnd`, `havePhoto`)
-
-### 4. Fix `mips-webhook-receiver` attendance matching
-
-- Primary match: `mips_person_id` (numeric personId stored after fix)
-- Fallback: `personSn` → strip/reinsert hyphen → match `member_code`
-- The webhook already handles this but `mips_person_id` values are currently null; they will be correct after the sync fix
-
-### 5. Update `.lovable/mips-api-reference.md`
-
-Document the actual MIPS response shapes discovered via curl:
-- Person create returns NO `data` field
-- Photo must be uploaded separately (multipart)
-- `validTimeBegin`/`validTimeEnd` control access windows
-- `deptId: 100` = Member, `101` = Employee
-- Full person fields discovered
-
-## Files to Modify
+## Files Modified
 
 | File | Change |
 |---|---|
-| `supabase/functions/sync-to-mips/index.ts` | Full rewrite: upsert logic, personId lookup, validity dates, separate photo upload |
-| `supabase/functions/mips-proxy/index.ts` | Add multipart photo upload mode |
-| `src/services/mipsService.ts` | Fix interfaces, add `fetchPersonBySn()` |
-| `.lovable/mips-api-reference.md` | Update with real response shapes |
+| Migration SQL | Add `mips_sync_status`, `mips_person_id` to `trainers` |
+| `supabase/functions/sync-to-mips/index.ts` | Add trainer support, fix photo upload endpoint, fix validity dates |
+| `supabase/functions/mips-webhook-receiver/index.ts` | Fix staff_attendance columns, add trainer lookup |
+| `src/components/devices/PersonnelSyncTab.tsx` | Add trainers to personnel list |
+| `src/services/mipsService.ts` | Minor: trainer support in verify |
+| `.lovable/mips-api-reference.md` | Document real photo upload flow |
 
-## Testing Strategy
+## Photo Upload Flow (from user's curl)
+```
+1. POST /common/uploadHeadPhoto  (multipart, field: "file")
+   → Response: { "code": 200, "fileName": "/userfiles/headPhoto/2026-03/photo.jpeg" }
 
-Before deploying, curl test each step:
-1. Check if a person exists by `personSn`
-2. Create new person → verify in list
-3. Update existing person via PUT → verify
-4. Test multipart photo upload endpoint discovery
-5. Dispatch to device 13 with correct `personId`
-6. Verify photo appears in MIPS person detail
-
-## Attendance Flow (how it works end-to-end)
-
-```text
-Device face scan → MIPS middleware → POST to mips-webhook-receiver
-  → Match personNo to member/employee via mips_person_id or member_code
-  → If member: call member_check_in RPC (validates membership, records attendance)
-  → If employee: insert/update staff_attendance (check-in/out toggle)
-  → Log to access_logs table
-  → Return {"result":1,"code":"000"} ACK
+2. PUT /personInfo/person  (JSON)
+   → Body: { "personId": 17, "photoUri": "/userfiles/headPhoto/2026-03/photo.jpeg", ... }
 ```
 
-This flow is already implemented correctly in the webhook receiver. The only issue was that `mips_person_id` was stored as null (bug 1), so matching failed. Once sync stores the real `personId`, attendance will work automatically for members, staff, trainers, managers, and admins.
+## Validity Rules
+- **Members**: `validTimeBegin` = membership start, `validTimeEnd` = membership end
+- **Employees/Trainers/Admins**: `validTimeBegin` = today, `validTimeEnd` = `2099-12-31 23:59:59` (permanent)
+- When deactivated (`is_active = false`), the person should be removed from device or validity set to past date
 
