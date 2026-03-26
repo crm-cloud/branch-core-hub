@@ -326,8 +326,26 @@ Deno.serve(async (req) => {
       person_no?: string;
     };
 
-    const token = await getRuoYiToken();
-    const baseUrl = getBaseUrl();
+    // Look up per-branch MIPS connection (fall back to env vars)
+    let mipsBaseUrl: string | undefined;
+    let mipsUsername: string | undefined;
+    let mipsPassword: string | undefined;
+    if (branch_id) {
+      const { data: conn } = await supabase
+        .from("mips_connections")
+        .select("server_url, username, password")
+        .eq("branch_id", branch_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (conn) {
+        mipsBaseUrl = conn.server_url;
+        mipsUsername = conn.username;
+        mipsPassword = conn.password;
+      }
+    }
+
+    const baseUrl = getBaseUrl(mipsBaseUrl);
+    const token = await getRuoYiToken(mipsBaseUrl, mipsUsername, mipsPassword);
 
     // ── Verify-only mode ──
     if (verify_only && person_no) {
