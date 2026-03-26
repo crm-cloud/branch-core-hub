@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { addDevice } from "@/services/deviceService";
-import { Loader2, Fingerprint } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, Fingerprint, Server, CheckCircle, XCircle } from "lucide-react";
 
 interface AddDeviceDrawerProps {
   isOpen: boolean;
@@ -26,17 +29,87 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     model: "",
   });
 
+  const [mipsConfig, setMipsConfig] = useState({
+    server_url: "",
+    username: "",
+    password: "",
+  });
+
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  // Load existing MIPS connection for selected branch
+  const { data: existingConnection } = useQuery({
+    queryKey: ["mips-connection", formData.branch_id],
+    queryFn: async () => {
+      if (!formData.branch_id) return null;
+      const { data } = await supabase
+        .from("mips_connections")
+        .select("*")
+        .eq("branch_id", formData.branch_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!formData.branch_id,
+  });
+
+  useEffect(() => {
+    if (existingConnection) {
+      setMipsConfig({
+        server_url: existingConnection.server_url || "",
+        username: existingConnection.username || "",
+        password: existingConnection.password || "",
+      });
+    } else {
+      setMipsConfig({ server_url: "", username: "", password: "" });
+    }
+    setTestResult(null);
+  }, [existingConnection, formData.branch_id]);
+
   const addMutation = useMutation({
     mutationFn: addDevice,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['access-devices'] });
-      queryClient.invalidateQueries({ queryKey: ['mips-devices'] });
+      queryClient.invalidateQueries({ queryKey: ["access-devices"] });
+      queryClient.invalidateQueries({ queryKey: ["mips-devices"] });
       toast.success("Device added successfully");
       onClose();
       resetForm();
     },
     onError: (error: Error) => {
       toast.error(`Failed to add device: ${error.message}`);
+    },
+  });
+
+  const saveMipsConnection = useMutation({
+    mutationFn: async () => {
+      if (!formData.branch_id || !mipsConfig.server_url) return;
+      const payload = {
+        branch_id: formData.branch_id,
+        server_url: mipsConfig.server_url.replace(/\/+$/, ""),
+        username: mipsConfig.username,
+        password: mipsConfig.password,
+        is_active: true,
+      };
+
+      if (existingConnection) {
+        const { error } = await supabase
+          .from("mips_connections")
+          .update(payload)
+          .eq("id", existingConnection.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("mips_connections")
+          .insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mips-connection"] });
+      toast.success("MIPS server connection saved");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to save MIPS connection: ${error.message}`);
     },
   });
 
@@ -47,17 +120,57 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
       branch_id: defaultBranchId || "",
       model: "",
     });
+    setMipsConfig({ server_url: "", username: "", password: "" });
+    setTestResult(null);
   };
 
   useEffect(() => {
     setFormData((prev) => ({ ...prev, branch_id: defaultBranchId || "" }));
   }, [defaultBranchId]);
 
+  const handleTestConnection = async () => {
+    if (!mipsConfig.server_url) {
+      toast.error("Enter a server URL first");
+      return;
+    }
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const url = mipsConfig.server_url.replace(/\/+$/, "");
+      const loginRes = await supabase.functions.invoke("mips-proxy", {
+        body: {
+          endpoint: "/through/device/list",
+          method: "GET",
+          branch_id: formData.branch_id || undefined,
+        },
+      });
+      if (loginRes.error) {
+        setTestResult({ success: false, message: loginRes.error.message });
+      } else {
+        const d = loginRes.data as any;
+        const ok = d?.success && (d?.data?.code === 200 || d?.data?.code === 0);
+        setTestResult({
+          success: ok,
+          message: ok ? `Connected! Found ${d?.data?.total || 0} device(s)` : (d?.data?.msg || d?.error || "Connection failed"),
+        });
+      }
+    } catch (e) {
+      setTestResult({ success: false, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.device_name.trim()) { toast.error("Device name is required"); return; }
     if (!formData.serial_number.trim()) { toast.error("Serial Number is required"); return; }
     if (!formData.branch_id) { toast.error("Please select a branch"); return; }
+
+    // Save MIPS connection if configured
+    if (mipsConfig.server_url && mipsConfig.username) {
+      saveMipsConnection.mutate();
+    }
 
     addMutation.mutate({
       branch_id: formData.branch_id,
@@ -73,7 +186,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Add Access Device</SheetTitle>
-          <SheetDescription>Register a device tracked by the MIPS middleware server</SheetDescription>
+          <SheetDescription>Register a device and configure its MIPS server connection</SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 mt-6">
@@ -102,6 +215,82 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
             <Label>Model</Label>
             <Input placeholder="e.g., SMDT-X1" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
           </div>
+
+          <Separator />
+
+          {/* MIPS Server Connection */}
+          <Card className="rounded-xl border-dashed">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Server className="h-4 w-4 text-primary" />
+                MIPS Server Connection
+                {existingConnection && (
+                  <span className="text-[10px] text-muted-foreground font-normal">(configured)</span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Server URL (with port) *</Label>
+                <Input
+                  placeholder="http://212.38.94.228:9000"
+                  value={mipsConfig.server_url}
+                  onChange={(e) => setMipsConfig({ ...mipsConfig, server_url: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Username *</Label>
+                  <Input
+                    placeholder="admin"
+                    value={mipsConfig.username}
+                    onChange={(e) => setMipsConfig({ ...mipsConfig, username: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Password *</Label>
+                  <Input
+                    type="password"
+                    placeholder="••••••"
+                    value={mipsConfig.password}
+                    onChange={(e) => setMipsConfig({ ...mipsConfig, password: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={isTesting || !mipsConfig.server_url}
+                >
+                  {isTesting ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Server className="h-3.5 w-3.5 mr-1.5" />}
+                  Test Connection
+                </Button>
+                {mipsConfig.server_url && mipsConfig.username && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => saveMipsConnection.mutate()}
+                    disabled={saveMipsConnection.isPending}
+                  >
+                    {saveMipsConnection.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+                    Save Connection
+                  </Button>
+                )}
+              </div>
+
+              {testResult && (
+                <div className={`flex items-center gap-2 text-xs p-2 rounded-lg ${testResult.success ? "bg-green-500/10 text-green-700" : "bg-destructive/10 text-destructive"}`}>
+                  {testResult.success ? <CheckCircle className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                  {testResult.message}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
             <Fingerprint className="h-4 w-4 text-blue-600" />
