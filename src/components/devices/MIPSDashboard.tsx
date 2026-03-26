@@ -13,6 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 
 interface MIPSDashboardProps {
   branchId?: string;
+  branchName?: string;
 }
 
 const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
