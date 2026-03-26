@@ -5,13 +5,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const TARGET_DEVICE_SN = "D1146D682A96B1C2";
+const TARGET_DEVICE_ID = 13; // Device D1146D682A96B1C2 = MIPS deviceId 13
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
 function getBaseUrl(): string {
   return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+}
+
+function stripHyphens(code: string): string {
+  return code.replace(/-/g, "");
 }
 
 function formatDateTime(dateStr: string | null, fallback: string): string {
@@ -28,39 +32,42 @@ function nowFormatted(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function stripHyphens(code: string): string {
-  return code.replace(/-/g, "");
-}
-
-async function getMIPSToken(): Promise<string> {
+async function getRuoYiToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
-  const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
-  const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
+  const username = Deno.env.get("MIPS_USERNAME")!;
+  const password = Deno.env.get("MIPS_PASSWORD")!;
   const baseUrl = getBaseUrl();
 
-  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
   });
 
   const text = await res.text();
   let json: any;
   try { json = JSON.parse(text); } catch {
-    console.error("MIPS auth returned non-JSON:", text.substring(0, 500));
-    throw new Error("MIPS auth endpoint returned non-JSON response");
+    throw new Error(`RuoYi login returned non-JSON: ${text.substring(0, 300)}`);
   }
 
-  const codeVal = Number(json.code);
-  if (codeVal !== 200 && codeVal !== 0) {
-    throw new Error(`MIPS auth error: ${json.msg || JSON.stringify(json)}`);
+  if (json.code !== 200 && json.code !== 0) {
+    throw new Error(`RuoYi login failed (code=${json.code}): ${json.msg || JSON.stringify(json)}`);
   }
 
-  cachedToken = json.data || json.token || json.result;
-  if (!cachedToken) throw new Error("No token in MIPS auth response");
+  cachedToken = json.token || json.data?.token;
+  if (!cachedToken) throw new Error("No token in RuoYi login response");
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
   return cachedToken!;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return {
+    "Authorization": `Bearer ${token}`,
+    "TENANT-ID": "1",
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  };
 }
 
 /** Fetch photo from Supabase Storage, return base64 string if under 400KB */
@@ -68,7 +75,6 @@ async function fetchPhotoAsBase64(photoUrl: string): Promise<string | null> {
   if (!photoUrl) return null;
 
   try {
-    // Make the URL absolute if it's a relative storage path
     let url = photoUrl;
     if (!url.startsWith("http")) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -85,13 +91,11 @@ async function fetchPhotoAsBase64(photoUrl: string): Promise<string | null> {
     const buffer = await res.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // Check size — must be under 400KB
     if (bytes.length > 400 * 1024) {
-      console.warn(`Photo too large (${Math.round(bytes.length / 1024)}KB > 400KB), skipping. Compress client-side first.`);
+      console.warn(`Photo too large (${Math.round(bytes.length / 1024)}KB > 400KB), skipping.`);
       return null;
     }
 
-    // Convert to base64
     let binary = "";
     const chunkSize = 8192;
     for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -99,82 +103,14 @@ async function fetchPhotoAsBase64(photoUrl: string): Promise<string | null> {
       binary += String.fromCharCode(...chunk);
     }
     const base64 = btoa(binary);
-
-    // Determine mime type from content-type header or default to jpeg
     const contentType = res.headers.get("content-type") || "image/jpeg";
     const dataUri = `data:${contentType};base64,${base64}`;
 
-    console.log(`Photo fetched: ${Math.round(bytes.length / 1024)}KB, base64 length: ${dataUri.length}`);
+    console.log(`Photo fetched: ${Math.round(bytes.length / 1024)}KB`);
     return dataUri;
   } catch (e) {
     console.warn("Photo fetch error:", e);
     return null;
-  }
-}
-
-/** Fetch online devices and find the target device by SN */
-async function findTargetDeviceId(baseUrl: string, token: string, targetSN: string): Promise<number | null> {
-  try {
-    const res = await fetch(`${baseUrl}/admin/devices/list/online`, {
-      method: "GET",
-      headers: {
-        "Owl-Auth-Token": token,
-        "Accept": "application/json",
-        "siteId": "1",
-      },
-    });
-    const json = await res.json();
-    if (Number(json.code) === 200 && Array.isArray(json.data)) {
-      const target = json.data.find((d: any) => d.deviceKey === targetSN);
-      if (target) {
-        console.log(`Found target device ${targetSN} with MIPS id: ${target.id}`);
-        return Number(target.id);
-      }
-      // Fallback: return all online device IDs
-      console.warn(`Target device ${targetSN} not found among ${json.data.length} online devices`);
-      const allIds = json.data.map((d: any) => Number(d.id)).filter((id: number) => !isNaN(id));
-      return allIds.length > 0 ? allIds[0] : null;
-    }
-    return null;
-  } catch (e) {
-    console.warn("Error finding target device:", e);
-    return null;
-  }
-}
-
-/** Dispatch person to device via Personnel Issue (permission endpoint) */
-async function dispatchToDevice(
-  baseUrl: string, token: string, mipsPersonId: string, deviceIds: number[]
-): Promise<{ success: boolean; response?: any }> {
-  if (deviceIds.length === 0) {
-    console.log("No device IDs to dispatch to");
-    return { success: false, response: { msg: "No devices available" } };
-  }
-
-  try {
-    console.log(`Dispatching person ${mipsPersonId} to devices: [${deviceIds.join(", ")}]`);
-    const res = await fetch(`${baseUrl}/admin/person/employees/permission`, {
-      method: "POST",
-      headers: {
-        "Owl-Auth-Token": token,
-        "Content-Type": "application/json",
-        "siteId": "1",
-      },
-      body: JSON.stringify({
-        dealWithType: 1,
-        ids: [String(mipsPersonId)],
-        deviceIds,
-        passTimes: [],
-        passDealType: 1,
-      }),
-    });
-    const json = await res.json();
-    const ok = Number(json.code) === 200;
-    console.log(`Dispatch result: success=${ok}, response: ${JSON.stringify(json).substring(0, 300)}`);
-    return { success: ok, response: json };
-  } catch (e) {
-    console.error("Dispatch error:", e);
-    return { success: false, response: { error: String(e) } };
   }
 }
 
@@ -203,8 +139,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const token = await getMIPSToken();
-    console.log("MIPS token acquired successfully");
+    const token = await getRuoYiToken();
+    const baseUrl = getBaseUrl();
+    console.log("RuoYi token acquired successfully");
 
     let name = "Unknown";
     let personNo = "";
@@ -229,8 +166,6 @@ Deno.serve(async (req) => {
       personNo = member.member_code || person_id.substring(0, 8);
       phone = profile?.phone || "";
       email = profile?.email || "";
-
-      // Try biometric photo first, then avatar
       photoUrl = member.biometric_photo_url || profile?.avatar_url || "";
 
       const { data: membership } = await supabase
@@ -263,70 +198,45 @@ Deno.serve(async (req) => {
       photoUrl = profile?.avatar_url || "";
     }
 
-    // Strip hyphens for MIPS compatibility
     const mipsPersonNo = stripHyphens(personNo);
     console.log(`PersonNo: ${personNo} → MIPS personNo: ${mipsPersonNo}`);
 
     // Step 1: Fetch and encode photo
     const photoBase64 = await fetchPhotoAsBase64(photoUrl);
     const hasPhoto = !!photoBase64;
-    console.log(`Photo available: ${hasPhoto}${hasPhoto ? "" : " (no photo URL or fetch failed)"}`);
+    console.log(`Photo available: ${hasPhoto}`);
 
-    // Build MIPS payload with photo if available
-    const mipsPayload = {
-      id: "",
+    // Step 2: Create/update person via RuoYi API
+    const personPayload: Record<string, unknown> = {
       personNo: mipsPersonNo,
       name,
-      idCard: "",
-      beginTime: nowFormatted(),
-      expireTime,
-      groupId: "",
-      gender: 1,
       phone,
-      email,
-      birthday: "",
-      entryDate: nowFormatted().split(" ")[0] + " 00:00:00",
-      attendanceFlag: true,
-      attendanceRuleId: 1,
-      temperatureAlarm: false,
-      noticeEmailList: "",
-      vaccination: 1,
-      vaccinationTime: "",
-      secondContact: "",
       remark: person_type === "member" ? "Gym Member" : "Staff",
-      ruleA: "",
-      ruleB: "",
-      ruleC: "",
-      personPhotoId: [],
-      personPhotoUrl: hasPhoto ? [photoBase64] : [],
     };
 
-    const baseUrl = getBaseUrl();
-    const saveUrl = `${baseUrl}/admin/person/employees`;
-
-    console.log(`Saving person to MIPS: ${name} (${mipsPersonNo}), type=${person_type}, hasPhoto=${hasPhoto}`);
-
-    const res = await fetch(saveUrl, {
-      method: "POST",
-      headers: {
-        "Owl-Auth-Token": token,
-        "Content-Type": "application/json",
-        "siteId": "1",
-      },
-      body: JSON.stringify(mipsPayload),
-    });
-
-    const responseText = await res.text();
-    console.log(`MIPS response status: ${res.status}, body: ${responseText.substring(0, 500)}`);
-
-    let responseJson: any;
-    try { responseJson = JSON.parse(responseText); } catch {
-      throw new Error(`MIPS returned non-JSON (status ${res.status}): ${responseText.substring(0, 300)}`);
+    // Include photo if available
+    if (hasPhoto) {
+      personPayload.personPhotoUrl = photoBase64;
     }
 
-    const code = Number(responseJson.code);
-    const success = code === 200 || code === 0 || res.ok;
-    const mipsPersonId = responseJson?.data?.id || responseJson?.data?.personId || mipsPersonNo;
+    console.log(`Creating person in MIPS: ${name} (${mipsPersonNo})`);
+
+    const createRes = await fetch(`${baseUrl}/personInfo/person`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(personPayload),
+    });
+
+    const createText = await createRes.text();
+    console.log(`Person create response: ${createText.substring(0, 500)}`);
+
+    let createJson: any;
+    try { createJson = JSON.parse(createText); } catch {
+      throw new Error(`MIPS returned non-JSON: ${createText.substring(0, 300)}`);
+    }
+
+    const success = createJson.code === 200 || createJson.code === 0 || createRes.ok;
+    const mipsPersonId = createJson?.data?.id || createJson?.data?.personId || mipsPersonNo;
 
     // Update sync status in database
     await supabase
@@ -337,30 +247,39 @@ Deno.serve(async (req) => {
       })
       .eq("id", person_id);
 
-    // Step 2: Auto-dispatch to target device after successful sync
+    // Step 3: Dispatch to target device
     let dispatchResult: any = null;
     if (success) {
-      console.log(`Auto-dispatching to target device SN: ${TARGET_DEVICE_SN}...`);
-      const targetDeviceId = await findTargetDeviceId(baseUrl, token, TARGET_DEVICE_SN);
+      console.log(`Dispatching person to device ID ${TARGET_DEVICE_ID}...`);
+      try {
+        const dispatchRes = await fetch(`${baseUrl}/through/device/syncPerson`, {
+          method: "POST",
+          headers: authHeaders(token),
+          body: JSON.stringify({
+            personId: String(mipsPersonId),
+            deviceIds: [TARGET_DEVICE_ID],
+          }),
+        });
 
-      if (targetDeviceId) {
-        dispatchResult = await dispatchToDevice(baseUrl, token, String(mipsPersonId), [targetDeviceId]);
-        console.log(`Dispatch to ${TARGET_DEVICE_SN}: success=${dispatchResult.success}`);
-      } else {
-        console.warn(`Target device ${TARGET_DEVICE_SN} is offline or not found. Dispatch skipped.`);
-        dispatchResult = { success: false, response: { msg: `Device ${TARGET_DEVICE_SN} offline` } };
+        const dispatchText = await dispatchRes.text();
+        console.log(`Dispatch response: ${dispatchText.substring(0, 300)}`);
+
+        try { dispatchResult = JSON.parse(dispatchText); } catch {
+          dispatchResult = { raw: dispatchText };
+        }
+      } catch (e) {
+        console.error("Dispatch error:", e);
+        dispatchResult = { error: String(e) };
       }
     }
-
-    console.log(`Sync result: success=${success}, mipsPersonId=${mipsPersonId}, hasPhoto=${hasPhoto}`);
 
     return new Response(JSON.stringify({
       success,
       mips_person_id: mipsPersonId,
-      mips_response: responseJson,
+      mips_response: createJson,
       photo_included: hasPhoto,
       dispatch_result: dispatchResult,
-      endpoint_used: saveUrl,
+      endpoint_used: `${baseUrl}/personInfo/person`,
       person: { name, personNo: mipsPersonNo, originalCode: personNo },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

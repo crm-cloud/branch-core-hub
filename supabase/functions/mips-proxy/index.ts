@@ -10,32 +10,35 @@ function getBaseUrl(): string {
   return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
 }
 
-async function getMIPSToken(): Promise<string> {
+async function getRuoYiToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
-  const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
-  const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
+  const username = Deno.env.get("MIPS_USERNAME")!;
+  const password = Deno.env.get("MIPS_PASSWORD")!;
   const baseUrl = getBaseUrl();
 
-  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
+  console.log(`RuoYi auth: POST ${baseUrl}/login`);
+
+  const res = await fetch(`${baseUrl}/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`MIPS auth failed (${res.status}): ${text}`);
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`RuoYi login returned non-JSON: ${text.substring(0, 300)}`);
   }
 
-  const json = await res.json();
-  const codeVal = Number(json.code);
-  if (codeVal !== 200 && codeVal !== 0) {
-    throw new Error(`MIPS auth error (code=${json.code}): ${json.msg || JSON.stringify(json)}`);
+  if (json.code !== 200 && json.code !== 0) {
+    throw new Error(`RuoYi login failed (code=${json.code}): ${json.msg || JSON.stringify(json)}`);
   }
 
-  cachedToken = json.data || json.token || json.result;
-  if (!cachedToken) throw new Error(`No token in MIPS response: ${JSON.stringify(json)}`);
+  cachedToken = json.token || json.data?.token;
+  if (!cachedToken) throw new Error(`No token in RuoYi login response: ${JSON.stringify(json)}`);
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
   return cachedToken!;
 }
@@ -47,12 +50,11 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { endpoint, method = "GET", params, data, contentType } = body as {
+    const { endpoint, method = "GET", params, data } = body as {
       endpoint: string;
       method?: string;
       params?: Record<string, string>;
       data?: Record<string, unknown>;
-      contentType?: string;
     };
 
     if (!endpoint) {
@@ -62,7 +64,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const token = await getMIPSToken();
+    const token = await getRuoYiToken();
     const baseUrl = getBaseUrl();
 
     let url = `${baseUrl}${endpoint}`;
@@ -72,31 +74,23 @@ Deno.serve(async (req) => {
       url += `?${searchParams.toString()}`;
     }
 
-    const useJson = contentType === "json";
     const upperMethod = method.toUpperCase();
 
     const fetchOptions: RequestInit = {
       method: upperMethod,
       headers: {
-        "Owl-Auth-Token": token,
-        "Content-Type": useJson ? "application/json" : "application/x-www-form-urlencoded",
-        "siteId": "1",
+        "Authorization": `Bearer ${token}`,
+        "TENANT-ID": "1",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
       },
     };
 
-    if (data && ["POST", "PUT", "PATCH"].includes(upperMethod)) {
-      if (useJson) {
-        fetchOptions.body = JSON.stringify(data);
-      } else {
-        const formData = new URLSearchParams();
-        for (const [k, v] of Object.entries(data)) {
-          formData.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
-        }
-        fetchOptions.body = formData.toString();
-      }
+    if (data && ["POST", "PUT", "PATCH", "DELETE"].includes(upperMethod)) {
+      fetchOptions.body = JSON.stringify(data);
     }
 
-    console.log(`MIPS proxy: ${upperMethod} ${url} (content-type: ${useJson ? "json" : "form"})`);
+    console.log(`MIPS proxy: ${upperMethod} ${url}`);
 
     const mipsRes = await fetch(url, fetchOptions);
     const responseText = await mipsRes.text();

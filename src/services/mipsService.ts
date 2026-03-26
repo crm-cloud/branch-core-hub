@@ -1,17 +1,21 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// RuoYi-Vue v3 device shape from /through/device/list
 export interface MIPSDevice {
   id: number;
   deviceKey: string;
+  deviceName: string;
   name: string;
   ip: string;
   personCount: number;
   faceCount: number;
-  fpCount?: number;
+  onlineFlag: number;
   status: number;
-  isOnline: number;
   lastActiveTime: string;
-  devicePassType: string;
+  // keep compatibility aliases
+  fpCount?: number;
+  devicePassType?: string;
+  isOnline?: number;
 }
 
 export interface MIPSPassRecord {
@@ -43,15 +47,12 @@ interface MIPSProxyResponse {
   success: boolean;
   status: number;
   data: {
-    code: number;
-    message?: string;
+    code?: number;
     msg?: string;
-    data?: {
-      content?: unknown[];
-      totalElements?: number;
-      totalPages?: number;
-      [key: string]: unknown;
-    };
+    message?: string;
+    data?: unknown;
+    rows?: unknown[];
+    total?: number;
     [key: string]: unknown;
   };
   error?: string;
@@ -61,25 +62,24 @@ async function callMIPSProxy(
   endpoint: string,
   method = "GET",
   params?: Record<string, string>,
-  data?: Record<string, unknown>,
-  contentType?: "json" | "form"
+  data?: Record<string, unknown>
 ): Promise<MIPSProxyResponse> {
   const { data: result, error } = await supabase.functions.invoke("mips-proxy", {
-    body: { endpoint, method, params, data, contentType },
+    body: { endpoint, method, params, data },
   });
 
   if (error) throw new Error(error.message || "MIPS proxy call failed");
   return result as MIPSProxyResponse;
 }
 
-// Test connection by generating a token
+// Test connection by fetching device list
 export async function testMIPSConnection(): Promise<{ success: boolean; message: string; raw?: unknown }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/page", "GET", { page: "1", size: "1" });
-    const isOk = result.success && result.data?.code === 200;
+    const result = await callMIPSProxy("/through/device/list");
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
-      message: isOk ? "Connected to MIPS server successfully" : `Connection issue: ${result.data?.message || JSON.stringify(result.data)}`,
+      message: isOk ? "Connected to MIPS server successfully" : `Connection issue: ${result.data?.msg || JSON.stringify(result.data)}`,
       raw: result.data,
     };
   } catch (e) {
@@ -89,17 +89,28 @@ export async function testMIPSConnection(): Promise<{ success: boolean; message:
 
 // Fetch devices from MIPS
 export async function fetchMIPSDevices(): Promise<MIPSDevice[]> {
-  const result = await callMIPSProxy("/admin/devices/page", "GET", {
-    page: "1",
-    size: "100",
-  });
+  const result = await callMIPSProxy("/through/device/list");
 
-  if (!result.success || result.data?.code !== 200) {
-    throw new Error(result.data?.message || "Failed to fetch MIPS devices");
+  if (!result.success && result.data?.code !== 200 && result.data?.code !== 0) {
+    throw new Error(result.data?.msg || "Failed to fetch MIPS devices");
   }
 
-  const content = result.data?.data?.content || [];
-  return Array.isArray(content) ? content as MIPSDevice[] : [];
+  // RuoYi uses `rows` array or `data` for list responses
+  const rows = result.data?.rows || result.data?.data;
+  if (!Array.isArray(rows)) return [];
+
+  return rows.map((d: any) => ({
+    id: d.id || d.deviceId,
+    deviceKey: d.deviceKey || d.sn || d.serialNumber || "",
+    deviceName: d.deviceName || d.name || "",
+    name: d.deviceName || d.name || d.deviceKey || "",
+    ip: d.ip || d.ipAddress || "",
+    personCount: d.personCount ?? d.personNum ?? 0,
+    faceCount: d.faceCount ?? d.faceNum ?? 0,
+    onlineFlag: d.onlineFlag ?? d.status ?? 0,
+    status: d.onlineFlag ?? d.status ?? 0,
+    lastActiveTime: d.lastActiveTime || d.updateTime || "",
+  }));
 }
 
 // Fetch pass records from MIPS
@@ -107,37 +118,29 @@ export async function fetchMIPSPassRecords(page = 1, size = 20): Promise<{
   records: MIPSPassRecord[];
   total: number;
 }> {
-  const result = await callMIPSProxy("/admin/pass/pass_records/page", "GET", {
-    page: String(page),
-    size: String(size),
+  const result = await callMIPSProxy("/through/record/list", "GET", {
+    pageNum: String(page),
+    pageSize: String(size),
   });
 
-  if (!result.success || result.data?.code !== 200) {
-    throw new Error(result.data?.message || "Failed to fetch MIPS pass records");
-  }
-
-  const content = result.data?.data?.content || [];
-  const total = result.data?.data?.totalElements || 0;
-  return { records: Array.isArray(content) ? content as MIPSPassRecord[] : [], total: total as number };
+  const rows = result.data?.rows || result.data?.data;
+  const total = (result.data?.total as number) || 0;
+  return { records: Array.isArray(rows) ? rows as MIPSPassRecord[] : [], total };
 }
 
-// Fetch employees from MIPS
+// Fetch persons from MIPS
 export async function fetchMIPSEmployees(page = 1, size = 50): Promise<{
   employees: MIPSEmployee[];
   total: number;
 }> {
-  const result = await callMIPSProxy("/admin/person/employees/page", "GET", {
-    page: String(page),
-    size: String(size),
+  const result = await callMIPSProxy("/personInfo/person/list", "GET", {
+    pageNum: String(page),
+    pageSize: String(size),
   });
 
-  if (!result.success || result.data?.code !== 200) {
-    throw new Error(result.data?.message || "Failed to fetch MIPS employees");
-  }
-
-  const content = result.data?.data?.content || [];
-  const total = result.data?.data?.totalElements || 0;
-  return { employees: Array.isArray(content) ? content as MIPSEmployee[] : [], total: total as number };
+  const rows = result.data?.rows || result.data?.data;
+  const total = (result.data?.total as number) || 0;
+  return { employees: Array.isArray(rows) ? rows as MIPSEmployee[] : [], total };
 }
 
 // Sync a person to MIPS
@@ -154,113 +157,49 @@ export async function syncPersonToMIPS(
   return data;
 }
 
-// Remote open door via MIPS — uses PUT /admin/devices/remote/opendoor with numeric device ids
+// Remote open door — GET /through/device/openDoor/{id}
 export async function remoteOpenDoor(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/remote/opendoor", "PUT", undefined, { ids: [deviceId] }, "json");
-    const isOk = result.success && result.data?.code === 200;
+    const result = await callMIPSProxy(`/through/device/openDoor/${deviceId}`, "GET");
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
-      message: isOk ? "Door opened successfully" : (result.data?.message || result.data?.msg || "Failed to open door"),
+      message: isOk ? "Door opened successfully" : (result.data?.msg || "Failed to open door"),
     };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
-// Restart device via MIPS — uses PUT /admin/devices/remote/restart with numeric device ids
+// Restart device
 export async function restartDevice(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy("/admin/devices/remote/restart", "PUT", undefined, { ids: [deviceId] }, "json");
-    const isOk = result.success && result.data?.code === 200;
+    const result = await callMIPSProxy(`/through/device/restart/${deviceId}`, "GET");
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
-      message: isOk ? "Device restarting..." : (result.data?.message || result.data?.msg || "Failed to restart device"),
+      message: isOk ? "Device restarting..." : (result.data?.msg || "Failed to restart device"),
     };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
-// Capture face photo via MIPS device camera
-export async function capturePhoto(
-  personMipsId: number,
-  deviceId: number
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const result = await callMIPSProxy(
-      "/admin/person/employees/take_photo",
-      "POST",
-      undefined,
-      { ids: [personMipsId], deviceIds: [deviceId] },
-      "json"
-    );
-    const isOk = result.success && result.data?.code === 200;
-    return {
-      success: isOk,
-      message: isOk
-        ? "Photo capture triggered on device"
-        : (result.data?.message || result.data?.msg || "Failed to capture photo"),
-    };
-  } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// Assign device permission for a synced person
-export async function assignDevicePermission(
-  personMipsId: string,
-  deviceIds: number[]
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const result = await callMIPSProxy(
-      "/admin/person/employees/permission",
-      "POST",
-      undefined,
-      { dealWithType: 1, ids: [String(personMipsId)], deviceIds, passTimes: [], passDealType: 1 },
-      "json"
-    );
-    const isOk = result.success && result.data?.code === 200;
-    return {
-      success: isOk,
-      message: isOk
-        ? "Permission assigned successfully"
-        : (result.data?.message || result.data?.msg || "Failed to assign permission"),
-    };
-  } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// Fetch online device IDs from MIPS
-export async function fetchOnlineDeviceIds(): Promise<number[]> {
-  const result = await callMIPSProxy("/admin/devices/list/online", "GET");
-  if (!result.success || result.data?.code !== 200) return [];
-  const data = result.data?.data;
-  if (Array.isArray(data)) {
-    return data.map((d: any) => Number(d.id)).filter((id) => !isNaN(id));
-  }
-  return [];
-}
-
-/** Strip hyphens for MIPS search matching */
-function stripHyphens(code: string): string {
-  return code.replace(/-/g, "");
-}
-
-/** Dispatch a synced person to the target device via Personnel Issue */
+// Dispatch a synced person to device via syncPerson
 export async function dispatchToDevice(
   personMipsId: string,
-  targetDeviceSN = "D1146D682A96B1C2"
+  targetDeviceId = 13
 ): Promise<{ success: boolean; message: string }> {
   try {
-    // First find the target device's numeric MIPS ID
-    const devices = await fetchMIPSDevices();
-    const target = devices.find((d) => d.deviceKey === targetDeviceSN);
-    if (!target) {
-      return { success: false, message: `Device ${targetDeviceSN} not found or offline` };
-    }
-    return await assignDevicePermission(personMipsId, [target.id]);
+    const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
+      personId: personMipsId,
+      deviceIds: [targetDeviceId],
+    });
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
+    return {
+      success: isOk,
+      message: isOk ? "Person dispatched to device" : (result.data?.msg || "Failed to dispatch"),
+    };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
@@ -273,11 +212,9 @@ export async function manualSyncTest(
   personNo: string,
   branchId?: string
 ): Promise<{ syncResult: any; verifyResult: any; verified: boolean }> {
-  // Step 1: Sync
   const syncResult = await syncPersonToMIPS(personType, personId, branchId);
 
-  // Step 2: Verify by querying MIPS employees list (search with stripped hyphens)
-  const strippedNo = stripHyphens(personNo);
+  const strippedNo = personNo.replace(/-/g, "");
   let verified = false;
   let verifyResult: any = null;
   try {
