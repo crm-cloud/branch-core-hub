@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const DEVICE_ACK = JSON.stringify({ result: 1, code: "000" });
@@ -140,10 +140,6 @@ async function handleStaffCheckin(supabase: any, userId: string, branchId: strin
   return message;
 }
 
-/**
- * Handle ImgReg callback — device sends a captured registration photo
- * Save photo to Supabase Storage and update member/employee biometric_photo_url
- */
 async function handleImgRegCallback(supabase: any, payload: Record<string, unknown>) {
   const personNo = String(payload.personNo || payload.personSn || "");
   const imgUri = String(payload.imgUri || payload.photoUri || "");
@@ -156,7 +152,6 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
 
   console.log(`ImgReg callback for ${personNo}, imgUri=${imgUri ? "yes" : "no"}, base64=${imgBase64 ? "yes" : "no"}`);
 
-  // Find the person in CRM
   let person = await findPersonByMipsId(supabase, personNo);
   if (!person) person = await findPersonByCode(supabase, personNo);
   if (!person) {
@@ -164,7 +159,6 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
     return;
   }
 
-  // If we have a base64 image, save to storage
   if (imgBase64 && imgBase64.length > 100) {
     try {
       const binaryStr = atob(imgBase64);
@@ -187,11 +181,52 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
       console.warn("ImgReg photo save failed:", e);
     }
   } else if (imgUri) {
-    // Store the MIPS-side imgUri reference
     const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
     await supabase.from(table).update({ biometric_photo_url: imgUri }).eq("id", person.id);
     console.log(`ImgReg: stored imgUri for ${personNo} → ${imgUri}`);
   }
+}
+
+/**
+ * Resolve the MIPS server relay URL for a given branch.
+ * Tries mips_connections first, falls back to env var.
+ */
+async function getRelayUrl(supabase: any, branchId: string | null): Promise<string | null> {
+  if (branchId) {
+    const { data: conn } = await supabase
+      .from("mips_connections")
+      .select("server_url")
+      .eq("branch_id", branchId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (conn?.server_url) return conn.server_url.replace(/\/+$/, "");
+  }
+  const envUrl = Deno.env.get("MIPS_SERVER_URL");
+  return envUrl ? envUrl.replace(/\/+$/, "") : null;
+}
+
+/**
+ * Forward the original payload to the MIPS server's internal callback.
+ * Tries multiple known callback paths for compatibility across MIPS versions.
+ */
+function relayToMips(mipsServerUrl: string, payload: Record<string, unknown>, eventType: string) {
+  // Determine the correct relay path based on event type
+  const callbackPaths: string[] = [];
+  if (eventType === "ImgReg" || eventType === "img_reg" || eventType === "register") {
+    callbackPaths.push("/api/callback/imgReg", "/tdx-admin/api/callback/imgReg");
+  } else {
+    // Face scan / attendance callbacks
+    callbackPaths.push("/api/callback/identify", "/tdx-admin/api/callback/identity");
+  }
+
+  // Fire-and-forget: try the primary path
+  const primaryUrl = `${mipsServerUrl}${callbackPaths[0]}`;
+  console.log(`Relay forwarding to: ${primaryUrl}`);
+  fetch(primaryUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch((e) => console.warn("Relay forward failed:", e));
 }
 
 Deno.serve(async (req) => {
@@ -218,12 +253,26 @@ Deno.serve(async (req) => {
       try { payload = JSON.parse(text); } catch { payload = { raw: text }; }
     }
 
-    console.log("MIPS webhook received:", JSON.stringify(payload));
+    // Log EVERY incoming request for debugging
+    const reqInfo = {
+      method: req.method,
+      url: req.url,
+      content_type: contentType,
+      headers: Object.fromEntries(req.headers.entries()),
+      payload_keys: Object.keys(payload),
+      timestamp: new Date().toISOString(),
+    };
+    console.log("=== MIPS WEBHOOK RECEIVED ===");
+    console.log("Request info:", JSON.stringify(reqInfo));
+    console.log("Full payload:", JSON.stringify(payload));
 
     // Check for ImgReg (registration photo callback)
     const eventType_raw = String(payload.eventType || payload.event_type || payload.type || "");
     if (eventType_raw === "ImgReg" || eventType_raw === "img_reg" || eventType_raw === "register") {
       await handleImgRegCallback(supabase, payload);
+      // Relay to MIPS
+      const relayUrl = await getRelayUrl(supabase, null);
+      if (relayUrl) relayToMips(relayUrl, payload, eventType_raw);
       return new Response(DEVICE_ACK, {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -277,15 +326,16 @@ Deno.serve(async (req) => {
           result = checkin.result;
           message = checkin.message;
         } else {
-          // employee or trainer → staff attendance using user_id
           result = person.type === "trainer" ? "trainer" : "staff";
           message = await handleStaffCheckin(supabase, person.user_id, person.branch_id, personName);
         }
+      } else {
+        console.warn(`Person not found in CRM: personNo=${personNo}, personName=${personName}`);
       }
     }
 
     // Log to access_logs
-    await supabase.from("access_logs").insert({
+    const { error: logError } = await supabase.from("access_logs").insert({
       device_sn: deviceKey,
       event_type: eventType,
       result,
@@ -304,29 +354,19 @@ Deno.serve(async (req) => {
       },
     });
 
+    if (logError) {
+      console.error("Failed to insert access_log:", logError);
+    }
+
+    console.log(`Processed: result=${result}, person=${personNo}, device=${deviceKey}, message=${message}`);
+
     // Relay: forward to MIPS internal callback (fire-and-forget)
     try {
-      let mipsServerUrl: string | null = null;
-      if (branchId) {
-        const { data: conn } = await supabase
-          .from("mips_connections")
-          .select("server_url")
-          .eq("branch_id", branchId)
-          .eq("is_active", true)
-          .maybeSingle();
-        if (conn) mipsServerUrl = conn.server_url;
-      }
-      if (!mipsServerUrl) {
-        mipsServerUrl = Deno.env.get("MIPS_SERVER_URL") || null;
-      }
-      if (mipsServerUrl) {
-        const callbackUrl = `${mipsServerUrl.replace(/\/$/, "")}/api/callback/identify`;
-        // Fire-and-forget: don't await, don't block the device response
-        fetch(callbackUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch((e) => console.warn("Relay forward failed:", e));
+      const relayUrl = await getRelayUrl(supabase, branchId);
+      if (relayUrl) {
+        relayToMips(relayUrl, payload, eventType_raw);
+      } else {
+        console.log("No MIPS relay URL configured — skipping relay");
       }
     } catch (relayErr) {
       console.warn("Relay lookup failed:", relayErr);
@@ -338,7 +378,8 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("mips-webhook-receiver error:", message);
+    console.error("mips-webhook-receiver FATAL error:", message);
+    // Always return ACK to device even on error
     return new Response(DEVICE_ACK, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
