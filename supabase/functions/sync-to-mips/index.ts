@@ -297,11 +297,14 @@ Deno.serve(async (req) => {
     if (success) {
       console.log(`Dispatching person to device ID ${TARGET_DEVICE_ID}...`);
       try {
+        // Use integer personId for dispatch (MIPS requires numeric ID)
+        const numericPersonId = parseInt(String(mipsPersonId), 10);
+        console.log(`Dispatching personId=${numericPersonId} to device ${TARGET_DEVICE_ID}`);
         const dispatchRes = await fetch(`${baseUrl}/through/device/syncPerson`, {
           method: "POST",
           headers: authHeaders(token),
           body: JSON.stringify({
-            personId: String(mipsPersonId),
+            personId: numericPersonId,
             deviceIds: [TARGET_DEVICE_ID],
           }),
         });
