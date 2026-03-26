@@ -155,7 +155,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     toast.info(`Verifying ${synced.length} synced members against MIPS...`);
     try {
       const allMIPS = await fetchAllMIPSPersons();
-      const mipsNos = new Set(allMIPS.map((e) => e.personNo));
+      const mipsNos = new Set(allMIPS.map((e) => e.personSn));
       const newMap: Record<string, boolean> = {};
       let verified = 0, missing = 0;
       for (const p of synced) {

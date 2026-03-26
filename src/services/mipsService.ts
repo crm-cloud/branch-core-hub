@@ -12,10 +12,32 @@ export interface MIPSDevice {
   onlineFlag: number;
   status: number;
   lastActiveTime: string;
-  // keep compatibility aliases
   fpCount?: number;
   devicePassType?: string;
   isOnline?: number;
+}
+
+// Actual MIPS person shape (from /personInfo/person/list)
+export interface MIPSPerson {
+  personId: number;
+  personSn: string;
+  personType: number;
+  deptId: number;
+  deptName: string;
+  name: string;
+  mobile: string;
+  email: string;
+  gender: string;
+  photoUri: string | null;
+  havePhoto: string | null;
+  validTimeBegin: string | null;
+  validTimeEnd: string | null;
+  attendance: string;
+  holiday: string;
+  status: string;
+  birthday: string | null;
+  createTime: string;
+  updateTime: string | null;
 }
 
 export interface MIPSPassRecord {
@@ -32,16 +54,8 @@ export interface MIPSPassRecord {
   createTime: string;
 }
 
-export interface MIPSEmployee {
-  id: number;
-  name: string;
-  personNo: string;
-  gender: number;
-  phone: string;
-  photoUrl: string;
-  departmentName: string;
-  expireTime: string;
-}
+// Keep backward compat alias
+export type MIPSEmployee = MIPSPerson;
 
 interface MIPSProxyResponse {
   success: boolean;
@@ -67,7 +81,6 @@ async function callMIPSProxy(
   const { data: result, error } = await supabase.functions.invoke("mips-proxy", {
     body: { endpoint, method, params, data },
   });
-
   if (error) throw new Error(error.message || "MIPS proxy call failed");
   return result as MIPSProxyResponse;
 }
@@ -90,15 +103,11 @@ export async function testMIPSConnection(): Promise<{ success: boolean; message:
 // Fetch devices from MIPS
 export async function fetchMIPSDevices(): Promise<MIPSDevice[]> {
   const result = await callMIPSProxy("/through/device/list");
-
   if (!result.success && result.data?.code !== 200 && result.data?.code !== 0) {
     throw new Error(result.data?.msg || "Failed to fetch MIPS devices");
   }
-
-  // RuoYi uses `rows` array or `data` for list responses
   const rows = result.data?.rows || result.data?.data;
   if (!Array.isArray(rows)) return [];
-
   return rows.map((d: any) => ({
     id: d.id || d.deviceId,
     deviceKey: d.deviceKey || d.sn || d.serialNumber || "",
@@ -122,7 +131,6 @@ export async function fetchMIPSPassRecords(page = 1, size = 20): Promise<{
     pageNum: String(page),
     pageSize: String(size),
   });
-
   const rows = result.data?.rows || result.data?.data;
   const total = (result.data?.total as number) || 0;
   return { records: Array.isArray(rows) ? rows as MIPSPassRecord[] : [], total };
@@ -130,17 +138,16 @@ export async function fetchMIPSPassRecords(page = 1, size = 20): Promise<{
 
 // Fetch persons from MIPS
 export async function fetchMIPSEmployees(page = 1, size = 50): Promise<{
-  employees: MIPSEmployee[];
+  employees: MIPSPerson[];
   total: number;
 }> {
   const result = await callMIPSProxy("/personInfo/person/list", "GET", {
     pageNum: String(page),
     pageSize: String(size),
   });
-
   const rows = result.data?.rows || result.data?.data;
   const total = (result.data?.total as number) || 0;
-  return { employees: Array.isArray(rows) ? rows as MIPSEmployee[] : [], total };
+  return { employees: Array.isArray(rows) ? rows as MIPSPerson[] : [], total };
 }
 
 // Sync a person to MIPS
@@ -148,16 +155,15 @@ export async function syncPersonToMIPS(
   personType: "member" | "employee",
   personId: string,
   branchId?: string
-): Promise<{ success: boolean; mips_person_id?: string; error?: string; mips_response?: unknown; endpoint_used?: string }> {
+): Promise<{ success: boolean; mips_person_id?: number; error?: string; action?: string; photo_result?: any; mips_response?: unknown }> {
   const { data, error } = await supabase.functions.invoke("sync-to-mips", {
     body: { person_type: personType, person_id: personId, branch_id: branchId },
   });
-
   if (error) throw new Error(error.message || "Sync failed");
   return data;
 }
 
-// Remote open door — GET /through/device/openDoor/{id}
+// Remote open door
 export async function remoteOpenDoor(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
     const result = await callMIPSProxy(`/through/device/openDoor/${deviceId}`, "GET");
@@ -185,14 +191,17 @@ export async function restartDevice(deviceId: number): Promise<{ success: boolea
   }
 }
 
-// Dispatch a synced person to device via syncPerson
+// Dispatch a person to device
 export async function dispatchToDevice(
-  personMipsId: string,
+  personMipsId: string | number,
   targetDeviceId = 13
 ): Promise<{ success: boolean; message: string }> {
   try {
+    const numId = typeof personMipsId === "string" ? parseInt(personMipsId, 10) : personMipsId;
+    if (isNaN(numId)) return { success: false, message: "Invalid MIPS person ID" };
+
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
-      personId: personMipsId,
+      personId: numId,
       deviceIds: [targetDeviceId],
       deviceNumType: "4",
     });
@@ -241,12 +250,15 @@ export async function capturePhoto(
 
 // Assign device permission for a synced person
 export async function assignDevicePermission(
-  personMipsId: string,
+  personMipsId: string | number,
   deviceIds: number[]
 ): Promise<{ success: boolean; message: string }> {
   try {
+    const numId = typeof personMipsId === "string" ? parseInt(personMipsId, 10) : personMipsId;
+    if (isNaN(numId)) return { success: false, message: "Invalid MIPS person ID" };
+
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
-      personId: personMipsId,
+      personId: numId,
       deviceIds,
       deviceNumType: "4",
     });
@@ -261,8 +273,8 @@ export async function assignDevicePermission(
 }
 
 // Fetch all persons from MIPS (for bulk verification)
-export async function fetchAllMIPSPersons(pageSize = 200): Promise<MIPSEmployee[]> {
-  const all: MIPSEmployee[] = [];
+export async function fetchAllMIPSPersons(pageSize = 200): Promise<MIPSPerson[]> {
+  const all: MIPSPerson[] = [];
   let page = 1;
   let hasMore = true;
   while (hasMore) {
@@ -270,17 +282,19 @@ export async function fetchAllMIPSPersons(pageSize = 200): Promise<MIPSEmployee[
     all.push(...employees);
     hasMore = all.length < total;
     page++;
-    if (page > 10) break; // safety cap
+    if (page > 10) break;
   }
   return all;
 }
 
-// Verify a single person exists on MIPS by personNo (hyphen-stripped)
+// Verify a single person exists on MIPS by personSn (hyphen-stripped)
 export async function verifyPersonOnMIPS(personNo: string): Promise<{
   exists: boolean;
   hasPhoto: boolean;
   mipsId: number | null;
-  personData: MIPSEmployee | null;
+  personData: MIPSPerson | null;
+  validTimeBegin: string | null;
+  validTimeEnd: string | null;
 }> {
   const stripped = personNo.replace(/-/g, "");
   const result = await callMIPSProxy("/personInfo/person/list", "GET", {
@@ -291,15 +305,17 @@ export async function verifyPersonOnMIPS(personNo: string): Promise<{
 
   const rows = result.data?.rows || result.data?.data;
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { exists: false, hasPhoto: false, mipsId: null, personData: null };
+    return { exists: false, hasPhoto: false, mipsId: null, personData: null, validTimeBegin: null, validTimeEnd: null };
   }
 
   const person = rows.find((r: any) => r.personSn === stripped) || rows[0];
   return {
     exists: true,
-    hasPhoto: !!(person as any).photoUrl || !!(person as any).personPhotoUrl,
-    mipsId: (person as any).id || null,
-    personData: person as MIPSEmployee,
+    hasPhoto: !!(person as any).photoUri || !!(person as any).havePhoto,
+    mipsId: (person as any).personId || null,
+    personData: person as MIPSPerson,
+    validTimeBegin: (person as any).validTimeBegin || null,
+    validTimeEnd: (person as any).validTimeEnd || null,
   };
 }
 
@@ -314,11 +330,7 @@ export async function compareCRMvsMIPS(crmSyncedCount: number): Promise<{
     pageSize: "1",
   });
   const mipsTotal = (result.data?.total as number) || 0;
-  return {
-    crmSynced: crmSyncedCount,
-    mipsTotal,
-    match: crmSyncedCount === mipsTotal,
-  };
+  return { crmSynced: crmSyncedCount, mipsTotal, match: crmSyncedCount === mipsTotal };
 }
 
 // Manual sync test — syncs one person and verifies in MIPS roster
@@ -330,16 +342,14 @@ export async function manualSyncTest(
 ): Promise<{ syncResult: any; verifyResult: any; verified: boolean }> {
   const syncResult = await syncPersonToMIPS(personType, personId, branchId);
 
-  const strippedNo = personNo.replace(/-/g, "");
   let verified = false;
   let verifyResult: any = null;
   try {
-    const { employees } = await fetchMIPSEmployees(1, 100);
-    const found = employees.find(
-      (e) => e.personNo === strippedNo || e.personNo === personNo || String(e.id) === String(syncResult.mips_person_id)
-    );
-    verified = !!found;
-    verifyResult = found || { message: `Person ${strippedNo} not found in MIPS roster after sync` };
+    const verification = await verifyPersonOnMIPS(personNo);
+    verified = verification.exists;
+    verifyResult = verification.exists
+      ? { personId: verification.mipsId, hasPhoto: verification.hasPhoto, validTimeBegin: verification.validTimeBegin, validTimeEnd: verification.validTimeEnd }
+      : { message: `Person ${personNo} not found in MIPS roster after sync` };
   } catch (e) {
     verifyResult = { error: e instanceof Error ? e.message : String(e) };
   }
