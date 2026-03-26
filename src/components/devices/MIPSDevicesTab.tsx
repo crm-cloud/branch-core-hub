@@ -56,8 +56,11 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
             </div>
             <div>
               <CardTitle className="text-base">{device.name || device.deviceKey}</CardTitle>
-              <CardDescription className="text-xs font-mono">
-                Key: {device.deviceKey}
+              <CardDescription className="text-xs font-mono flex items-center gap-1.5">
+                SN: <span className="font-semibold text-foreground">{device.deviceKey}</span>
+                {device.deviceKey === "D1146D682A96B1C2" && (
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary text-primary">Primary</Badge>
+                )}
               </CardDescription>
             </div>
           </div>
