@@ -87,9 +87,9 @@ async function callMIPSProxy(
 }
 
 // Test connection by fetching device list
-export async function testMIPSConnection(): Promise<{ success: boolean; message: string; raw?: unknown }> {
+export async function testMIPSConnection(branchId?: string): Promise<{ success: boolean; message: string; raw?: unknown }> {
   try {
-    const result = await callMIPSProxy("/through/device/list");
+    const result = await callMIPSProxy("/through/device/list", "GET", undefined, undefined, branchId);
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
@@ -102,8 +102,8 @@ export async function testMIPSConnection(): Promise<{ success: boolean; message:
 }
 
 // Fetch devices from MIPS
-export async function fetchMIPSDevices(): Promise<MIPSDevice[]> {
-  const result = await callMIPSProxy("/through/device/list");
+export async function fetchMIPSDevices(branchId?: string): Promise<MIPSDevice[]> {
+  const result = await callMIPSProxy("/through/device/list", "GET", undefined, undefined, branchId);
   if (!result.success && result.data?.code !== 200 && result.data?.code !== 0) {
     throw new Error(result.data?.msg || "Failed to fetch MIPS devices");
   }
