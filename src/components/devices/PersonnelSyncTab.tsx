@@ -27,18 +27,19 @@ interface SyncPerson {
   id: string;
   name: string;
   code: string;
-  type: "member" | "employee";
+  type: "member" | "employee" | "trainer";
   hasPhoto: boolean;
   avatarUrl: string | null;
   mipsSyncStatus: string | null;
   mipsPersonId: string | null;
-  verifiedOnDevice?: boolean | null; // null = not checked, true/false = verified/missing
+  verifiedOnDevice?: boolean | null;
 }
 
 const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [verifyingIds, setVerifyingIds] = useState<Set<string>>(new Set());
   const [capturingIds, setCapturingIds] = useState<Set<string>>(new Set());
@@ -52,13 +53,12 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     queryFn: async () => {
       const people: SyncPerson[] = [];
 
+      // Fetch members
       let memberQuery = supabase
         .from("members")
         .select("id, member_code, biometric_photo_url, mips_person_id, mips_sync_status, branch_id, profiles:user_id(full_name, avatar_url)")
         .order("created_at", { ascending: false });
-
       if (branchId) memberQuery = memberQuery.eq("branch_id", branchId);
-
       const { data: members } = await memberQuery;
       if (members) {
         for (const m of members) {
@@ -76,13 +76,12 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
         }
       }
 
+      // Fetch employees
       let empQuery = supabase
         .from("employees")
         .select("id, employee_code, biometric_photo_url, mips_person_id, mips_sync_status, branch_id, profiles:user_id(full_name, avatar_url)")
         .order("created_at", { ascending: false });
-
       if (branchId) empQuery = empQuery.eq("branch_id", branchId);
-
       const { data: employees } = await empQuery;
       if (employees) {
         for (const e of employees) {
@@ -100,11 +99,34 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
         }
       }
 
+      // Fetch trainers
+      let trainerQuery = supabase
+        .from("trainers")
+        .select("id, biometric_photo_url, mips_person_id, mips_sync_status, branch_id, is_active, profiles:user_id(full_name, avatar_url)")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+      if (branchId) trainerQuery = trainerQuery.eq("branch_id", branchId);
+      const { data: trainers } = await trainerQuery;
+      if (trainers) {
+        for (const t of trainers) {
+          const profile = (t as any).profiles as any;
+          people.push({
+            id: t.id,
+            name: profile?.full_name || "Unknown",
+            code: `TRN-${t.id.substring(0, 4).toUpperCase()}`,
+            type: "trainer",
+            hasPhoto: !!(t.biometric_photo_url || profile?.avatar_url),
+            avatarUrl: profile?.avatar_url || null,
+            mipsSyncStatus: t.mips_sync_status || "pending",
+            mipsPersonId: t.mips_person_id || null,
+          });
+        }
+      }
+
       return people;
     },
   });
 
-  // Single sync — no longer gated on hasPhoto
   const syncMutation = useMutation({
     mutationFn: async (person: SyncPerson) => {
       setSyncingIds((prev) => new Set(prev).add(person.id));
@@ -114,7 +136,6 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
       setSyncingIds((prev) => { const n = new Set(prev); n.delete(person.id); return n; });
       if (result.success) {
         toast.success(`${person.name} synced to MIPS`);
-        // Clear stale verification
         setVerificationMap((prev) => { const n = { ...prev }; delete n[person.id]; return n; });
       } else {
         toast.error(`Sync failed: ${result.error || "Unknown error"}`);
@@ -127,7 +148,6 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     },
   });
 
-  // Verify single person on MIPS
   const handleVerify = async (person: SyncPerson) => {
     setVerifyingIds((prev) => new Set(prev).add(person.id));
     try {
@@ -145,14 +165,13 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     }
   };
 
-  // Bulk verify all "synced" members
   const handleBulkVerify = async () => {
     const synced = personnel.filter((p) => p.mipsSyncStatus === "synced");
     if (synced.length === 0) {
-      toast.info("No synced members to verify");
+      toast.info("No synced personnel to verify");
       return;
     }
-    toast.info(`Verifying ${synced.length} synced members against MIPS...`);
+    toast.info(`Verifying ${synced.length} synced personnel against MIPS...`);
     try {
       const allMIPS = await fetchAllMIPSPersons();
       const mipsNos = new Set(allMIPS.map((e) => e.personSn));
@@ -171,7 +190,6 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     }
   };
 
-  // Bulk sync — removed hasPhoto requirement
   const bulkSyncMutation = useMutation({
     mutationFn: async (mode: "pending" | "stale" | "all") => {
       let targets: SyncPerson[];
@@ -182,9 +200,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
       } else {
         targets = filtered;
       }
-      if (targets.length === 0) {
-        return { total: 0, success: 0 };
-      }
+      if (targets.length === 0) return { total: 0, success: 0 };
       let successCount = 0;
       for (const person of targets) {
         try {
@@ -197,11 +213,8 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
       return { total: targets.length, success: successCount };
     },
     onSuccess: ({ total, success }) => {
-      if (total === 0) {
-        toast.info("No members to sync in this category");
-      } else {
-        toast.success(`Bulk sync complete: ${success}/${total} synced`);
-      }
+      if (total === 0) toast.info("No personnel to sync in this category");
+      else toast.success(`Bulk sync complete: ${success}/${total} synced`);
       queryClient.invalidateQueries({ queryKey: ["personnel-sync"] });
       setVerificationMap({});
     },
@@ -231,29 +244,25 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     },
   });
 
-  // Photo upload handler
   const handlePhotoUpload = async (file: File, person: SyncPerson) => {
     setUploadingIds((prev) => new Set(prev).add(person.id));
     try {
-      // Compress if needed (limit ~400KB)
       const filePath = `${person.id}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from("member-photos")
         .upload(filePath, file, { upsert: true, contentType: "image/jpeg" });
-
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage
         .from("member-photos")
         .getPublicUrl(filePath);
 
-      const table = person.type === "member" ? "members" : "employees";
+      const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
       await supabase.from(table).update({ biometric_photo_url: urlData.publicUrl }).eq("id", person.id);
 
       toast.success(`Photo uploaded for ${person.name}, triggering sync...`);
       queryClient.invalidateQueries({ queryKey: ["personnel-sync"] });
 
-      // Auto-sync after upload
       const result = await syncPersonToMIPS(person.type, person.id, branchId);
       if (result.success) toast.success(`${person.name} synced with new photo`);
       else toast.error(`Sync after upload failed: ${result.error}`);
@@ -272,7 +281,9 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
       p.code.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus =
       statusFilter === "all" || p.mipsSyncStatus === statusFilter;
-    return matchSearch && matchStatus;
+    const matchType =
+      typeFilter === "all" || p.type === typeFilter;
+    return matchSearch && matchStatus && matchType;
   });
 
   const stats = {
@@ -281,6 +292,9 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     pending: personnel.filter((p) => p.mipsSyncStatus === "pending").length,
     failed: personnel.filter((p) => p.mipsSyncStatus === "failed").length,
     noPhoto: personnel.filter((p) => !p.hasPhoto).length,
+    members: personnel.filter((p) => p.type === "member").length,
+    staff: personnel.filter((p) => p.type === "employee").length,
+    trainers: personnel.filter((p) => p.type === "trainer").length,
   };
 
   const staleCount = Object.values(verificationMap).filter((v) => v === false).length;
@@ -296,6 +310,19 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
     }
   };
 
+  const getTypeBadge = (type: string) => {
+    switch (type) {
+      case "member":
+        return <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 border-blue-500/20">Member</Badge>;
+      case "employee":
+        return <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 border-purple-500/20">Staff</Badge>;
+      case "trainer":
+        return <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/20">Trainer</Badge>;
+      default:
+        return null;
+    }
+  };
+
   const getVerifyBadge = (personId: string) => {
     const status = verificationMap[personId];
     if (status === undefined) return null;
@@ -307,7 +334,6 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
 
   return (
     <div className="space-y-4">
-      {/* Hidden file input for photo uploads */}
       <input
         ref={fileInputRef}
         type="file"
@@ -315,9 +341,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file && uploadTargetPerson) {
-            handlePhotoUpload(file, uploadTargetPerson);
-          }
+          if (file && uploadTargetPerson) handlePhotoUpload(file, uploadTargetPerson);
           e.target.value = "";
         }}
       />
@@ -325,16 +349,18 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
       {/* Stats bar */}
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline" className="gap-1">Total: {stats.total}</Badge>
+        <Badge variant="outline" className="gap-1 bg-blue-500/10 text-blue-700 border-blue-500/20">Members: {stats.members}</Badge>
+        <Badge variant="outline" className="gap-1 bg-purple-500/10 text-purple-700 border-purple-500/20">Staff: {stats.staff}</Badge>
+        <Badge variant="outline" className="gap-1 bg-amber-500/10 text-amber-700 border-amber-500/20">Trainers: {stats.trainers}</Badge>
         <Badge variant="outline" className="gap-1 bg-green-500/10 text-green-700 border-green-500/20">Synced: {stats.synced}</Badge>
         <Badge variant="outline" className="gap-1 bg-orange-500/10 text-orange-700 border-orange-500/20">Pending: {stats.pending}</Badge>
         <Badge variant="outline" className="gap-1 bg-destructive/10 text-destructive border-destructive/20">Failed: {stats.failed}</Badge>
-        <Badge variant="outline" className="gap-1 bg-muted">No Photo: {stats.noPhoto}</Badge>
         {staleCount > 0 && (
           <Badge variant="outline" className="gap-1 bg-red-500/10 text-red-700 border-red-500/20">Stale: {staleCount}</Badge>
         )}
       </div>
 
-      {/* Filters + Actions */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -356,44 +382,36 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
             <SelectItem value="failed">Failed</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="member">Members</SelectItem>
+            <SelectItem value="employee">Staff</SelectItem>
+            <SelectItem value="trainer">Trainers</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Bulk action buttons */}
+      {/* Bulk actions */}
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="default"
-          size="sm"
-          onClick={() => bulkSyncMutation.mutate("pending")}
-          disabled={bulkSyncMutation.isPending}
-        >
+        <Button variant="default" size="sm" onClick={() => bulkSyncMutation.mutate("pending")} disabled={bulkSyncMutation.isPending}>
           <Upload className={`h-4 w-4 mr-1.5 ${bulkSyncMutation.isPending ? "animate-pulse" : ""}`} />
           Sync All Pending
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBulkVerify}
-        >
+        <Button variant="outline" size="sm" onClick={handleBulkVerify}>
           <ShieldCheck className="h-4 w-4 mr-1.5" />
           Verify All Synced
         </Button>
         {staleCount > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => bulkSyncMutation.mutate("stale")}
-            disabled={bulkSyncMutation.isPending}
-          >
+          <Button variant="destructive" size="sm" onClick={() => bulkSyncMutation.mutate("stale")} disabled={bulkSyncMutation.isPending}>
             <RotateCw className={`h-4 w-4 mr-1.5 ${bulkSyncMutation.isPending ? "animate-pulse" : ""}`} />
             Re-sync {staleCount} Stale
           </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => bulkSyncMutation.mutate("all")}
-          disabled={bulkSyncMutation.isPending}
-        >
+        <Button variant="outline" size="sm" onClick={() => bulkSyncMutation.mutate("all")} disabled={bulkSyncMutation.isPending}>
           <RefreshCw className="h-4 w-4 mr-1.5" />
           Re-sync All
         </Button>
@@ -429,9 +447,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{person.name}</span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {person.type === "member" ? "Member" : "Staff"}
-                      </Badge>
+                      {getTypeBadge(person.type)}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
                       <span className="font-mono">{person.code}</span>
@@ -447,64 +463,24 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
                     </div>
                   </div>
 
-                  {/* Status badges */}
                   <div className="flex items-center gap-1 shrink-0">
                     {getSyncBadge(person.mipsSyncStatus)}
                     {getVerifyBadge(person.id)}
                   </div>
 
-                  {/* Action buttons */}
                   <div className="flex items-center gap-1 shrink-0">
-                    {/* Verify */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={verifyingIds.has(person.id)}
-                      onClick={() => handleVerify(person)}
-                      title="Verify on MIPS device"
-                    >
+                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={verifyingIds.has(person.id)} onClick={() => handleVerify(person)} title="Verify on MIPS device">
                       <ShieldCheck className={`h-3.5 w-3.5 ${verifyingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
-
-                    {/* Upload photo */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={uploadingIds.has(person.id)}
-                      onClick={() => {
-                        setUploadTargetPerson(person);
-                        fileInputRef.current?.click();
-                      }}
-                      title="Upload face photo"
-                    >
+                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={uploadingIds.has(person.id)} onClick={() => { setUploadTargetPerson(person); fileInputRef.current?.click(); }} title="Upload face photo">
                       <ImagePlus className={`h-3.5 w-3.5 ${uploadingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
-
-                    {/* Capture from device */}
                     {person.mipsSyncStatus === "synced" && person.mipsPersonId && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={capturingIds.has(person.id)}
-                        onClick={() => capturePhotoMutation.mutate(person)}
-                        title="Capture face from device camera"
-                      >
+                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled={capturingIds.has(person.id)} onClick={() => capturePhotoMutation.mutate(person)} title="Capture face from device camera">
                         <Camera className={`h-3.5 w-3.5 ${capturingIds.has(person.id) ? "animate-pulse" : ""}`} />
                       </Button>
                     )}
-
-                    {/* Sync */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={syncingIds.has(person.id)}
-                      onClick={() => syncMutation.mutate(person)}
-                      className="shrink-0"
-                      title="Sync to MIPS"
-                    >
+                    <Button variant="outline" size="sm" disabled={syncingIds.has(person.id)} onClick={() => syncMutation.mutate(person)} className="shrink-0" title="Sync to MIPS">
                       <Upload className={`h-3.5 w-3.5 ${syncingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
                   </div>

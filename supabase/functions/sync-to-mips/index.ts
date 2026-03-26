@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const TARGET_DEVICE_ID = 13;
+const PERMANENT_END = "2099-12-31 23:59:59";
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
@@ -18,10 +19,10 @@ function stripHyphens(code: string): string {
   return code.replace(/-/g, "");
 }
 
-function formatDate(dateStr: string | null, fallbackDate: string): string {
-  if (!dateStr) return fallbackDate;
+function formatDate(dateStr: string | null, fallback: string): string {
+  if (!dateStr) return fallback;
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return fallbackDate;
+  if (isNaN(d.getTime())) return fallback;
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
@@ -60,7 +61,6 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
-/** Lookup person by personSn, returns full person object or null */
 async function lookupPerson(baseUrl: string, token: string, personSn: string): Promise<any | null> {
   const res = await fetch(
     `${baseUrl}/personInfo/person/list?personSn=${personSn}&pageNum=1&pageSize=5`,
@@ -74,31 +74,33 @@ async function lookupPerson(baseUrl: string, token: string, personSn: string): P
   return rows.find((r: any) => r.personSn === personSn) || null;
 }
 
-/** Create or update person — returns personId (looked up after create since POST returns no ID) */
 async function upsertPerson(
   baseUrl: string,
   token: string,
   payload: Record<string, unknown>,
-  existingPersonId: number | null
+  existingPerson: any | null
 ): Promise<{ success: boolean; personId: number | null; response: any }> {
-  const isUpdate = existingPersonId !== null;
+  const isUpdate = existingPerson !== null;
   const method = isUpdate ? "PUT" : "POST";
-  
+
+  // For PUT, merge with full existing object (required by MIPS for photoUri to persist)
+  let body: Record<string, unknown>;
   if (isUpdate) {
-    payload.personId = existingPersonId;
+    body = { ...existingPerson, ...payload, personId: existingPerson.personId };
+  } else {
+    body = { ...payload };
   }
 
-  // Remove photo fields — photos must be uploaded separately via multipart
-  delete payload.personPhotoUrl;
-  delete payload.photoUrl;
-  delete payload.photoUri;
+  // Never send photo via JSON — must be uploaded separately
+  delete body.personPhotoUrl;
+  delete body.photoUrl;
 
-  console.log(`${method} /personInfo/person — personSn=${payload.personSn}, isUpdate=${isUpdate}`);
+  console.log(`${method} /personInfo/person — personSn=${body.personSn}, isUpdate=${isUpdate}`);
 
   const res = await fetch(`${baseUrl}/personInfo/person`, {
     method,
     headers: authHeaders(token),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   const text = await res.text();
@@ -109,32 +111,33 @@ async function upsertPerson(
     return { success: false, personId: null, response: { raw: text } };
   }
 
-  // MIPS wraps errors in HTTP 200 — only check json.code
   const success = json.code === 200 || json.code === 0;
   if (!success) {
-    return { success: false, personId: existingPersonId, response: json };
+    return { success: false, personId: isUpdate ? existingPerson.personId : null, response: json };
   }
 
-  // POST returns no personId — must look up afterward
   if (!isUpdate) {
-    const found = await lookupPerson(baseUrl, token, String(payload.personSn));
+    const found = await lookupPerson(baseUrl, token, String(body.personSn));
     return { success: true, personId: found?.personId || null, response: json };
   }
 
-  return { success: true, personId: existingPersonId, response: json };
+  return { success: true, personId: existingPerson.personId, response: json };
 }
 
-/** Upload photo via multipart/form-data to MIPS */
+/**
+ * Two-step photo upload:
+ * 1. POST /common/uploadHeadPhoto (multipart) → get fileName
+ * 2. PUT /personInfo/person with full person object + photoUri = fileName
+ */
 async function uploadPhoto(
   baseUrl: string,
   token: string,
-  personId: number,
+  personSn: string,
   photoUrl: string
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; fileName?: string }> {
   if (!photoUrl) return { success: false, message: "No photo URL" };
 
   try {
-    // Resolve relative URLs
     let url = photoUrl;
     if (!url.startsWith("http")) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -154,21 +157,21 @@ async function uploadPhoto(
 
     console.log(`Photo fetched: ${Math.round(photoBytes.length / 1024)}KB`);
 
-    // Build multipart/form-data
+    // Step 1: Upload to /common/uploadHeadPhoto
     const boundary = `----FormBoundary${Date.now()}`;
     const contentType = photoRes.headers.get("content-type") || "image/jpeg";
     const ext = contentType.includes("png") ? "png" : "jpg";
+    const fileName = `${personSn}.${ext}`;
 
     const preamble = [
       `--${boundary}`,
-      `Content-Disposition: form-data; name="file"; filename="person_${personId}.${ext}"`,
+      `Content-Disposition: form-data; name="file"; filename="${fileName}"`,
       `Content-Type: ${contentType}`,
       "",
       "",
     ].join("\r\n");
 
     const postamble = `\r\n--${boundary}--\r\n`;
-
     const preambleBytes = new TextEncoder().encode(preamble);
     const postambleBytes = new TextEncoder().encode(postamble);
 
@@ -177,11 +180,7 @@ async function uploadPhoto(
     body.set(photoBytes, preambleBytes.length);
     body.set(postambleBytes, preambleBytes.length + photoBytes.length);
 
-    // Try POST /personInfo/person/importPhoto with personId as query param
-    const uploadUrl = `${baseUrl}/personInfo/person/importPhoto?personId=${personId}`;
-    console.log(`Uploading photo to: ${uploadUrl}`);
-
-    const uploadRes = await fetch(uploadUrl, {
+    const uploadRes = await fetch(`${baseUrl}/common/uploadHeadPhoto`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
@@ -192,79 +191,44 @@ async function uploadPhoto(
     });
 
     const uploadText = await uploadRes.text();
-    console.log(`Photo upload response: ${uploadText.substring(0, 300)}`);
+    console.log(`Upload response: ${uploadText.substring(0, 300)}`);
 
     let uploadJson: any;
     try { uploadJson = JSON.parse(uploadText); } catch {
-      // If importPhoto doesn't work, try PUT with base64 in personPhotoUrl
-      return await uploadPhotoViaBase64(baseUrl, token, personId, photoBytes, contentType);
+      return { success: false, message: `Upload non-JSON: ${uploadText.substring(0, 100)}` };
     }
 
-    if (uploadJson.code === 200 || uploadJson.code === 0) {
-      return { success: true, message: "Photo uploaded via multipart" };
+    if (uploadJson.code !== 200 && uploadJson.code !== 0) {
+      return { success: false, message: uploadJson.msg || "Upload failed" };
     }
 
-    // Fallback: try base64 approach via PUT
-    return await uploadPhotoViaBase64(baseUrl, token, personId, photoBytes, contentType);
+    const filePath = uploadJson.fileName || uploadJson.url;
+    if (!filePath) {
+      return { success: false, message: "Upload succeeded but no fileName returned" };
+    }
+
+    console.log(`Photo uploaded: ${filePath}`);
+
+    // Step 2: PUT the full person record with photoUri set
+    const existing = await lookupPerson(baseUrl, token, personSn);
+    if (existing) {
+      existing.photoUri = filePath;
+      const putRes = await fetch(`${baseUrl}/personInfo/person`, {
+        method: "PUT",
+        headers: authHeaders(token),
+        body: JSON.stringify(existing),
+      });
+      const putText = await putRes.text();
+      console.log(`Photo PUT response: ${putText.substring(0, 200)}`);
+    }
+
+    return { success: true, message: "Photo uploaded and assigned", fileName: filePath };
   } catch (e) {
     console.warn("Photo upload error:", e);
     return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
-/** Fallback: try updating person with base64 photo in various field names */
-async function uploadPhotoViaBase64(
-  baseUrl: string,
-  token: string,
-  personId: number,
-  photoBytes: Uint8Array,
-  contentType: string
-): Promise<{ success: boolean; message: string }> {
-  // Convert to base64
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < photoBytes.length; i += chunkSize) {
-    const chunk = photoBytes.subarray(i, Math.min(i + chunkSize, photoBytes.length));
-    binary += String.fromCharCode(...chunk);
-  }
-  const base64 = btoa(binary);
-
-  // Try different field names that RuoYi might accept
-  const attempts = [
-    { personPhotoUrl: `data:${contentType};base64,${base64}` },
-    { photoUri: `data:${contentType};base64,${base64}` },
-    { personPhotoUrl: base64 },  // raw base64 without data URI prefix
-  ];
-
-  for (const photoField of attempts) {
-    const res = await fetch(`${baseUrl}/personInfo/person`, {
-      method: "PUT",
-      headers: authHeaders(token),
-      body: JSON.stringify({ personId, ...photoField }),
-    });
-    const text = await res.text();
-    let json: any;
-    try { json = JSON.parse(text); } catch { continue; }
-    if (json.code === 200 || json.code === 0) {
-      // Verify photo was actually saved
-      const person = await fetch(`${baseUrl}/personInfo/person/${personId}`, {
-        method: "GET",
-        headers: authHeaders(token),
-      });
-      const pText = await person.text();
-      try {
-        const pJson = JSON.parse(pText);
-        if (pJson.data?.photoUri || pJson.data?.havePhoto) {
-          return { success: true, message: "Photo uploaded via base64 PUT" };
-        }
-      } catch {}
-    }
-  }
-
-  return { success: false, message: "All photo upload methods failed — photo must be uploaded via MIPS web UI" };
-}
-
-/** Dispatch person to device */
 async function dispatchToDevice(
   baseUrl: string,
   token: string,
@@ -299,7 +263,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const { person_type, person_id, branch_id, verify_only, person_no } = body as {
-      person_type: "member" | "employee";
+      person_type: "member" | "employee" | "trainer";
       person_id: string;
       branch_id?: string;
       verify_only?: boolean;
@@ -331,19 +295,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Step 1: Fetch CRM data
+    // Step 1: Fetch CRM data based on person type
     let name = "Unknown";
     let personNo = "";
     let phone = "";
     let email = "";
     let photoUrl = "";
-    let validTimeBegin = "2024-01-01 00:00:00";
-    let validTimeEnd = "2030-12-31 23:59:59";
+    let validTimeBegin = formatDate(new Date().toISOString(), "2024-01-01 00:00:00");
+    let validTimeEnd = PERMANENT_END;
     let tableName: string;
-    let deptId = 100; // 100=Member, 101=Staff
+    let deptId = 100;
 
     if (person_type === "member") {
       tableName = "members";
+      deptId = 100;
       const { data: member, error } = await supabase
         .from("members")
         .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
@@ -358,7 +323,7 @@ Deno.serve(async (req) => {
       email = profile?.email || "";
       photoUrl = member.biometric_photo_url || profile?.avatar_url || "";
 
-      // Get membership dates for access validity
+      // Members get validity from membership dates
       const { data: membership } = await supabase
         .from("memberships")
         .select("start_date, end_date")
@@ -372,9 +337,9 @@ Deno.serve(async (req) => {
         validTimeBegin = formatDate(membership.start_date + "T00:00:00", validTimeBegin);
         validTimeEnd = formatDate(membership.end_date + "T23:59:59", validTimeEnd);
       }
-    } else {
+    } else if (person_type === "employee") {
       tableName = "employees";
-      deptId = 101; // Staff department
+      deptId = 101;
       const { data: emp, error } = await supabase
         .from("employees")
         .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
@@ -387,7 +352,52 @@ Deno.serve(async (req) => {
       personNo = emp.employee_code || person_id.substring(0, 8);
       phone = profile?.phone || "";
       email = profile?.email || "";
-      photoUrl = profile?.avatar_url || "";
+      photoUrl = emp.biometric_photo_url || profile?.avatar_url || "";
+      // Staff get permanent access
+      validTimeEnd = PERMANENT_END;
+    } else if (person_type === "trainer") {
+      tableName = "trainers";
+      deptId = 101; // Same dept as staff
+      const { data: trainer, error } = await supabase
+        .from("trainers")
+        .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
+        .eq("id", person_id)
+        .single();
+      if (error || !trainer) throw new Error(`Trainer not found: ${error?.message}`);
+
+      const profile = trainer.profiles as any;
+      name = profile?.full_name || "Unknown";
+      phone = profile?.phone || "";
+      email = profile?.email || "";
+      photoUrl = trainer.biometric_photo_url || profile?.avatar_url || "";
+      // Trainers get permanent access
+      validTimeEnd = PERMANENT_END;
+
+      // Generate trainer code from branch code
+      if (branch_id) {
+        const { data: branch } = await supabase
+          .from("branches")
+          .select("code")
+          .eq("id", branch_id)
+          .single();
+        const prefix = branch?.code || "GYM";
+        personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
+      } else if (trainer.branch_id) {
+        const { data: branch } = await supabase
+          .from("branches")
+          .select("code")
+          .eq("id", trainer.branch_id)
+          .single();
+        const prefix = branch?.code || "GYM";
+        personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
+      } else {
+        personNo = `TRN-${person_id.substring(0, 5).toUpperCase()}`;
+      }
+    } else {
+      return new Response(JSON.stringify({ error: `Unknown person_type: ${person_type}` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const mipsPersonSn = stripHyphens(personNo);
@@ -395,8 +405,7 @@ Deno.serve(async (req) => {
 
     // Step 2: Check if person already exists in MIPS
     const existing = await lookupPerson(baseUrl, token, mipsPersonSn);
-    const existingPersonId = existing?.personId || null;
-    console.log(`MIPS lookup: ${existing ? `found personId=${existingPersonId}` : "not found"}`);
+    console.log(`MIPS lookup: ${existing ? `found personId=${existing.personId}` : "not found"}`);
 
     // Step 3: Create or update person
     const personPayload: Record<string, unknown> = {
@@ -411,11 +420,11 @@ Deno.serve(async (req) => {
       holiday: "1",
       validTimeBegin,
       validTimeEnd,
-      remark: person_type === "member" ? "Gym Member" : "Staff",
+      remark: person_type === "member" ? "Gym Member" : person_type === "trainer" ? "Trainer" : "Staff",
     };
 
     const { success, personId, response: mipsResponse } = await upsertPerson(
-      baseUrl, token, personPayload, existingPersonId
+      baseUrl, token, personPayload, existing
     );
 
     if (!success) {
@@ -451,10 +460,10 @@ Deno.serve(async (req) => {
 
     console.log(`MIPS person ${existing ? "updated" : "created"}: personId=${personId}`);
 
-    // Step 4: Upload photo (separate step)
-    let photoResult = { success: false, message: "No photo available" };
+    // Step 4: Upload photo (two-step: upload file → PUT photoUri on person)
+    let photoResult = { success: false, message: "No photo available" } as any;
     if (photoUrl) {
-      photoResult = await uploadPhoto(baseUrl, token, personId, photoUrl);
+      photoResult = await uploadPhoto(baseUrl, token, mipsPersonSn, photoUrl);
       console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
     }
 

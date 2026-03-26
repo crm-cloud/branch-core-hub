@@ -5,17 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// The device expects exactly this response to stop retrying
 const DEVICE_ACK = JSON.stringify({ result: 1, code: "000" });
 
-/** Try re-inserting hyphens into a stripped code: MAIN00005 → MAIN-00005 */
 function reinsertHyphen(stripped: string): string | null {
   const match = stripped.match(/^([A-Za-z]+)(\d{5})$/);
   if (match) return `${match[1]}-${match[2]}`;
   return null;
 }
 
-/** Map device face type to human-readable result */
 function mapFaceType(type: string): { result: string; description: string } {
   switch (type) {
     case "face_0": return { result: "member", description: "Authorized face scan" };
@@ -26,7 +23,7 @@ function mapFaceType(type: string): { result: string; description: string } {
 }
 
 async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
-  // Try member first
+  // Try member
   const { data: member } = await supabase
     .from("members")
     .select("id, branch_id, user_id")
@@ -42,6 +39,14 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
     .maybeSingle();
   if (emp) return { ...emp, type: "employee" };
 
+  // Try trainer
+  const { data: trainer } = await supabase
+    .from("trainers")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_id", mipsPersonId)
+    .maybeSingle();
+  if (trainer) return { ...trainer, type: "trainer" };
+
   return null;
 }
 
@@ -54,7 +59,7 @@ async function findPersonByCode(supabase: any, personCode: string) {
     .maybeSingle();
   if (member) return { ...member, type: "member" };
 
-  // Try with hyphen re-inserted (MAIN00005 → MAIN-00005)
+  // Try with hyphen re-inserted
   const hyphenated = reinsertHyphen(personCode);
   if (hyphenated) {
     const { data: memberH } = await supabase
@@ -106,16 +111,24 @@ async function handleMemberCheckin(supabase: any, memberId: string, branchId: st
   return { result, message };
 }
 
-async function handleStaffCheckin(supabase: any, empId: string, branchId: string, personName: string) {
+/**
+ * Staff/trainer attendance: uses staff_attendance table
+ * Columns: user_id, branch_id, check_in, check_out
+ * Toggle: if open check-in exists → check out, else → check in
+ */
+async function handleStaffCheckin(supabase: any, userId: string, branchId: string, personName: string) {
   let message = `Staff ${personName} checked in`;
 
   try {
-    const today = new Date().toISOString().split("T")[0];
+    // Find open check-in (no check_out) for today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
     const { data: existing } = await supabase
       .from("staff_attendance")
       .select("id, check_out")
-      .eq("employee_id", empId)
-      .eq("date", today)
+      .eq("user_id", userId)
+      .gte("check_in", todayStart.toISOString())
       .is("check_out", null)
       .maybeSingle();
 
@@ -127,11 +140,9 @@ async function handleStaffCheckin(supabase: any, empId: string, branchId: string
       message = `Staff ${personName} checked out`;
     } else {
       await supabase.from("staff_attendance").insert({
-        employee_id: empId,
+        user_id: userId,
         branch_id: branchId,
-        date: today,
         check_in: new Date().toISOString(),
-        source: "biometric",
       });
     }
   } catch (e) {
@@ -167,7 +178,6 @@ Deno.serve(async (req) => {
 
     console.log("MIPS webhook received:", JSON.stringify(payload));
 
-    // Extract fields — support both MIPS middleware and direct device callback formats
     const personNo = String(payload.personNo || payload.personSn || payload.personId || payload.person_no || "");
     const personName = String(payload.personName || payload.name || "Unknown");
     const passType = String(payload.passType || payload.pass_type || payload.type || "face");
@@ -179,7 +189,6 @@ Deno.serve(async (req) => {
     const searchScore = payload.searchScore ? parseFloat(String(payload.searchScore)) : null;
     const livenessScore = payload.livenessScore ? parseFloat(String(payload.livenessScore)) : null;
 
-    // Determine event type
     let eventType: string;
     let faceTypeInfo: { result: string; description: string } | null = null;
 
@@ -201,7 +210,7 @@ Deno.serve(async (req) => {
     const isStranger = passType === "face_2" || personNo === "STRANGERBABY" || !personNo;
 
     if (personNo && !isStranger) {
-      // Strategy: try mips_person_id first, then by personSn/member_code
+      // Match: try mips_person_id first, then by code
       let person = await findPersonByMipsId(supabase, personNo);
       if (!person) {
         person = await findPersonByCode(supabase, personNo);
@@ -217,8 +226,9 @@ Deno.serve(async (req) => {
           result = checkin.result;
           message = checkin.message;
         } else {
-          result = "staff";
-          message = await handleStaffCheckin(supabase, person.id, person.branch_id, personName);
+          // employee or trainer → staff attendance using user_id
+          result = person.type === "trainer" ? "trainer" : "staff";
+          message = await handleStaffCheckin(supabase, person.user_id, person.branch_id, personName);
         }
       }
     }
