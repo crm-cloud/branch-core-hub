@@ -181,7 +181,7 @@ export async function remoteOpenDoor(deviceId: number): Promise<{ success: boole
 // Restart device
 export async function restartDevice(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy(`/through/device/restart/${deviceId}`, "GET");
+    const result = await callMIPSProxy(`/through/device/reboot/${deviceId}`, "GET");
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
