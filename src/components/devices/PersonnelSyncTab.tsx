@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 interface PersonnelSyncTabProps {
   branchId?: string;
+  mainBranchId?: string;
 }
 
 interface SyncPerson {
