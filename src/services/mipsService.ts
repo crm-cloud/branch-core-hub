@@ -152,7 +152,7 @@ export async function fetchMIPSEmployees(page = 1, size = 50): Promise<{
 
 // Sync a person to MIPS
 export async function syncPersonToMIPS(
-  personType: "member" | "employee",
+  personType: "member" | "employee" | "trainer",
   personId: string,
   branchId?: string
 ): Promise<{ success: boolean; mips_person_id?: number; error?: string; action?: string; photo_result?: any; mips_response?: unknown }> {
