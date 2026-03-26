@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server, Heart,
 } from "lucide-react";
-import { testMIPSConnection, fetchMIPSDevices } from "@/services/mipsService";
+import { testMIPSConnection, fetchMIPSDevices, type MIPSDevice } from "@/services/mipsService";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 
@@ -20,16 +20,16 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
   const prevDeviceStatusRef = useRef<Map<string, number>>(new Map());
 
   const { data: mipsConnection, isLoading: isTestingConnection, refetch: retestConnection } = useQuery({
-    queryKey: ["mips-connection-test"],
-    queryFn: testMIPSConnection,
+    queryKey: ["mips-connection-test", branchId || "all"],
+    queryFn: () => testMIPSConnection(branchId),
     staleTime: 10_000,
     refetchInterval: 15_000,
     retry: false,
   });
 
-  const { data: mipsDevices = [], dataUpdatedAt } = useQuery({
-    queryKey: ["mips-devices"],
-    queryFn: fetchMIPSDevices,
+  const { data: mipsDevices = [] as MIPSDevice[], dataUpdatedAt } = useQuery<MIPSDevice[]>({
+    queryKey: ["mips-devices", branchId || "all"],
+    queryFn: () => fetchMIPSDevices(branchId),
     enabled: !!mipsConnection?.success,
     staleTime: 10_000,
     refetchInterval: 15_000,
