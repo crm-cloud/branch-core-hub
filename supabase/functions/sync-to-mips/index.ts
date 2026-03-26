@@ -388,8 +388,9 @@ Deno.serve(async (req) => {
         .from("members")
         .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
         .eq("id", person_id)
-        .single();
-      if (error || !member) throw new Error(`Member not found: ${error?.message}`);
+        .maybeSingle();
+      if (error) throw new Error(`Member query error: ${error.message}`);
+      if (!member) throw new Error(`Member not found with id: ${person_id}`);
 
       const profile = member.profiles as any;
       name = profile?.full_name || "Unknown";
@@ -420,8 +421,9 @@ Deno.serve(async (req) => {
         .from("employees")
         .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
         .eq("id", person_id)
-        .single();
-      if (error || !emp) throw new Error(`Employee not found: ${error?.message}`);
+        .maybeSingle();
+      if (error) throw new Error(`Employee query error: ${error.message}`);
+      if (!emp) throw new Error(`Employee not found with id: ${person_id}`);
 
       const profile = emp.profiles as any;
       name = profile?.full_name || "Unknown";
@@ -436,16 +438,27 @@ Deno.serve(async (req) => {
       deptId = 101;
       const { data: trainer, error } = await supabase
         .from("trainers")
-        .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
+        .select("id, branch_id, biometric_photo_url, is_active, user_id, mips_sync_status, mips_person_id")
         .eq("id", person_id)
-        .single();
-      if (error || !trainer) throw new Error(`Trainer not found: ${error?.message}`);
+        .maybeSingle();
+      if (error) throw new Error(`Trainer query error: ${error.message}`);
+      if (!trainer) throw new Error(`Trainer not found with id: ${person_id}`);
 
-      const profile = trainer.profiles as any;
+      // Fetch profile separately to avoid join coercion errors when user_id is null
+      let profile: any = null;
+      if (trainer.user_id) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("full_name, phone, avatar_url, email")
+          .eq("id", trainer.user_id)
+          .maybeSingle();
+        profile = profileData;
+      }
+
       name = profile?.full_name || "Unknown";
       phone = profile?.phone || "";
       email = profile?.email || "";
-      photoUrl = trainer.biometric_photo_url || profile?.avatar_url || "";
+      photoUrl = (trainer as any).biometric_photo_url || profile?.avatar_url || "";
       effectiveBranchId = effectiveBranchId || trainer.branch_id;
       validTimeEnd = PERMANENT_END;
 
@@ -519,10 +532,18 @@ Deno.serve(async (req) => {
     console.log(`MIPS person ${existing ? "updated" : "created"}: personId=${personId}`);
 
     // Step 4: Upload photo (two-step: upload file → PUT photoUri on person)
+    // Photo upload is non-blocking — sync succeeds even if photo fails
     let photoResult = { success: false, message: "No photo available" } as any;
     if (photoUrl) {
-      photoResult = await uploadPhoto(baseUrl, token, mipsPersonSn, photoUrl);
-      console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
+      try {
+        photoResult = await uploadPhoto(baseUrl, token, mipsPersonSn, photoUrl);
+        console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
+      } catch (photoErr) {
+        console.warn("Photo upload failed (non-fatal):", photoErr);
+        photoResult = { success: false, message: `Photo upload error: ${photoErr instanceof Error ? photoErr.message : String(photoErr)}` };
+      }
+    } else {
+      console.log("No photo URL provided, skipping photo upload");
     }
 
     // Step 5: Dispatch to ALL active devices (multi-device)

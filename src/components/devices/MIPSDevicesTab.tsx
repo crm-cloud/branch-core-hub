@@ -10,7 +10,13 @@ import { fetchMIPSDevices, remoteOpenDoor, restartDevice, type MIPSDevice } from
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
+interface MIPSDeviceCardProps {
+  device: MIPSDevice;
+  branchName?: string;
+  branchId?: string;
+}
+
+const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) => {
   const isOnline = device.onlineFlag === 1 || device.status === 1;
   const [isOpening, setIsOpening] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
@@ -18,7 +24,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
   const handleOpenDoor = async () => {
     setIsOpening(true);
     try {
-      const result = await remoteOpenDoor(device.id);
+      const result = await remoteOpenDoor(device.id, branchId);
       if (result.success) {
         toast.success(`Door opened on ${device.name}`);
       } else {
@@ -34,7 +40,7 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
   const handleRestart = async () => {
     setIsRestarting(true);
     try {
-      const result = await restartDevice(device.id);
+      const result = await restartDevice(device.id, branchId);
       if (result.success) {
         toast.success(result.message);
       } else {
@@ -62,11 +68,18 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
               </CardDescription>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className={`h-3 w-3 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-destructive"}`} />
-            <Badge variant={isOnline ? "default" : "destructive"} className="text-xs">
-              {isOnline ? "Online" : "Offline"}
-            </Badge>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-2">
+              <div className={`h-3 w-3 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-destructive"}`} />
+              <Badge variant={isOnline ? "default" : "destructive"} className="text-xs">
+                {isOnline ? "Online" : "Offline"}
+              </Badge>
+            </div>
+            {branchName && (
+              <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-700 border-violet-500/20">
+                {branchName}
+              </Badge>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -118,7 +131,7 @@ interface MIPSDevicesTabProps {
 }
 
 const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
-  // Get local access_devices to filter by branch
+  // Get local access_devices to map branch info
   const { data: localDevices } = useQuery({
     queryKey: ["access-devices-sns", branchId],
     queryFn: async () => {
@@ -129,9 +142,19 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
     },
   });
 
-  const { data: devices = [], isLoading, refetch } = useQuery({
-    queryKey: ["mips-devices"],
-    queryFn: fetchMIPSDevices,
+  // Fetch branch names for labeling
+  const { data: branchesList } = useQuery({
+    queryKey: ["branches-list-names"],
+    queryFn: async () => {
+      const { data } = await supabase.from("branches").select("id, name");
+      return data || [];
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: devices = [], isLoading, refetch } = useQuery<MIPSDevice[]>({
+    queryKey: ["mips-devices", branchId || "all"],
+    queryFn: () => fetchMIPSDevices(branchId),
     staleTime: 30_000,
   });
 
@@ -142,6 +165,17 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
         return localSNs.has(d.deviceKey?.toUpperCase());
       })
     : devices;
+
+  // Build a map from SN -> branch name
+  const snToBranch = new Map<string, string>();
+  if (localDevices && branchesList) {
+    const branchMap = new Map(branchesList.map((b) => [b.id, b.name]));
+    for (const ld of localDevices) {
+      if (ld.serial_number && ld.branch_id) {
+        snToBranch.set(ld.serial_number.toUpperCase(), branchMap.get(ld.branch_id) || "");
+      }
+    }
+  }
 
   if (isLoading) {
     return (
@@ -168,7 +202,12 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {filteredDevices.map((device) => (
-        <MIPSDeviceCard key={device.id || device.deviceKey} device={device} />
+        <MIPSDeviceCard
+          key={device.id || device.deviceKey}
+          device={device}
+          branchId={branchId}
+          branchName={snToBranch.get(device.deviceKey?.toUpperCase()) || undefined}
+        />
       ))}
     </div>
   );
