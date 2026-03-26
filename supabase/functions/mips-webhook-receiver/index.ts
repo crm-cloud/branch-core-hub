@@ -23,7 +23,6 @@ function mapFaceType(type: string): { result: string; description: string } {
 }
 
 async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
-  // Try member
   const { data: member } = await supabase
     .from("members")
     .select("id, branch_id, user_id")
@@ -31,7 +30,6 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
     .maybeSingle();
   if (member) return { ...member, type: "member" };
 
-  // Try employee
   const { data: emp } = await supabase
     .from("employees")
     .select("id, branch_id, user_id")
@@ -39,7 +37,6 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
     .maybeSingle();
   if (emp) return { ...emp, type: "employee" };
 
-  // Try trainer
   const { data: trainer } = await supabase
     .from("trainers")
     .select("id, branch_id, user_id")
@@ -51,7 +48,6 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
 }
 
 async function findPersonByCode(supabase: any, personCode: string) {
-  // Try direct member_code match
   const { data: member } = await supabase
     .from("members")
     .select("id, branch_id, user_id")
@@ -59,7 +55,6 @@ async function findPersonByCode(supabase: any, personCode: string) {
     .maybeSingle();
   if (member) return { ...member, type: "member" };
 
-  // Try with hyphen re-inserted
   const hyphenated = reinsertHyphen(personCode);
   if (hyphenated) {
     const { data: memberH } = await supabase
@@ -70,7 +65,6 @@ async function findPersonByCode(supabase: any, personCode: string) {
     if (memberH) return { ...memberH, type: "member" };
   }
 
-  // Try employee_code
   const { data: emp } = await supabase
     .from("employees")
     .select("id, branch_id, user_id")
@@ -111,16 +105,10 @@ async function handleMemberCheckin(supabase: any, memberId: string, branchId: st
   return { result, message };
 }
 
-/**
- * Staff/trainer attendance: uses staff_attendance table
- * Columns: user_id, branch_id, check_in, check_out
- * Toggle: if open check-in exists → check out, else → check in
- */
 async function handleStaffCheckin(supabase: any, userId: string, branchId: string, personName: string) {
   let message = `Staff ${personName} checked in`;
 
   try {
-    // Find open check-in (no check_out) for today
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -152,6 +140,60 @@ async function handleStaffCheckin(supabase: any, userId: string, branchId: strin
   return message;
 }
 
+/**
+ * Handle ImgReg callback — device sends a captured registration photo
+ * Save photo to Supabase Storage and update member/employee biometric_photo_url
+ */
+async function handleImgRegCallback(supabase: any, payload: Record<string, unknown>) {
+  const personNo = String(payload.personNo || payload.personSn || "");
+  const imgUri = String(payload.imgUri || payload.photoUri || "");
+  const imgBase64 = String(payload.imgBase64 || payload.base64 || "");
+
+  if (!personNo) {
+    console.warn("ImgReg callback missing personNo");
+    return;
+  }
+
+  console.log(`ImgReg callback for ${personNo}, imgUri=${imgUri ? "yes" : "no"}, base64=${imgBase64 ? "yes" : "no"}`);
+
+  // Find the person in CRM
+  let person = await findPersonByMipsId(supabase, personNo);
+  if (!person) person = await findPersonByCode(supabase, personNo);
+  if (!person) {
+    console.warn(`ImgReg: person ${personNo} not found in CRM`);
+    return;
+  }
+
+  // If we have a base64 image, save to storage
+  if (imgBase64 && imgBase64.length > 100) {
+    try {
+      const binaryStr = atob(imgBase64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+      const filePath = `${person.id}_capture.jpg`;
+      await supabase.storage
+        .from("member-photos")
+        .upload(filePath, bytes, { upsert: true, contentType: "image/jpeg" });
+
+      const { data: urlData } = supabase.storage
+        .from("member-photos")
+        .getPublicUrl(filePath);
+
+      const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
+      await supabase.from(table).update({ biometric_photo_url: urlData.publicUrl }).eq("id", person.id);
+      console.log(`ImgReg: saved captured photo for ${personNo} → ${urlData.publicUrl}`);
+    } catch (e) {
+      console.warn("ImgReg photo save failed:", e);
+    }
+  } else if (imgUri) {
+    // Store the MIPS-side imgUri reference
+    const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
+    await supabase.from(table).update({ biometric_photo_url: imgUri }).eq("id", person.id);
+    console.log(`ImgReg: stored imgUri for ${personNo} → ${imgUri}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -177,6 +219,16 @@ Deno.serve(async (req) => {
     }
 
     console.log("MIPS webhook received:", JSON.stringify(payload));
+
+    // Check for ImgReg (registration photo callback)
+    const eventType_raw = String(payload.eventType || payload.event_type || payload.type || "");
+    if (eventType_raw === "ImgReg" || eventType_raw === "img_reg" || eventType_raw === "register") {
+      await handleImgRegCallback(supabase, payload);
+      return new Response(DEVICE_ACK, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const personNo = String(payload.personNo || payload.personSn || payload.personId || payload.person_no || "");
     const personName = String(payload.personName || payload.name || "Unknown");
@@ -210,7 +262,6 @@ Deno.serve(async (req) => {
     const isStranger = passType === "face_2" || personNo === "STRANGERBABY" || !personNo;
 
     if (personNo && !isStranger) {
-      // Match: try mips_person_id first, then by code
       let person = await findPersonByMipsId(supabase, personNo);
       if (!person) {
         person = await findPersonByCode(supabase, personNo);
