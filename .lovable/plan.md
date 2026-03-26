@@ -1,83 +1,87 @@
 
 
-# Fix MIPS Sync: Trainers, Admins, Photo Upload, Validity, Attendance
+# Advanced IoT Fleet Integration (MIPS v3)
 
-## Problems Found
+## Current State Summary
 
-### 1. Trainers completely skipped
-The `trainers` table has no `mips_sync_status` or `mips_person_id` columns. `PersonnelSyncTab` only queries `members` and `employees` — trainers are invisible.
+The system currently has a hardcoded `TARGET_DEVICE_ID = 13` in `sync-to-mips`. The `access_devices` table exists with `serial_number` and `branch_id` but has no `mips_device_id` column to map to MIPS numeric device IDs. Photo upload uses `/common/uploadHeadPhoto` (multipart) but does not enforce JPG conversion or 400KB compression. The remote capture endpoint `/through/device/capturePhoto` is guessed — the manual shows "Click to Open Camera to Take a Photo" as a UI action, not necessarily an API endpoint. The webhook receiver already returns `{"result":1,"code":"000"}` correctly.
 
-### 2. Admins skipped
-Admin/owner users who exist only in `user_roles` (not in the `employees` table) are never synced. They need device access too.
+## Key Findings from Manual & API Docs
 
-### 3. Photo upload endpoint is WRONG
-Current code tries `/personInfo/person/importPhoto` — this fails. The real endpoint from the user's curl capture is:
-```
-POST /common/uploadHeadPhoto
-Content-Type: multipart/form-data
-Body: file=<jpeg>
-```
-The response returns a `fileName` path (e.g. `/userfiles/headPhoto/2026-03/image.jpeg`), then you PUT that path into the person's `photoUri` field.
-
-### 4. Validity dates wrong for staff
-Currently ALL person types get `validTimeBegin`/`validTimeEnd`. But only **members** need expiry dates (from membership). Staff/trainers/admins should have permanent access (far-future end date like `2099-12-31 23:59:59`) until deactivated.
-
-### 5. Webhook receiver uses wrong columns
-The `handleStaffCheckin` function uses `employee_id` and `date` columns, but the `staff_attendance` table actually has `user_id` and `check_in`/`check_out` (no `employee_id` or `date`). Staff attendance via webhook is broken.
-
-Also, `findPersonByCode` for staff only checks `employees` table — trainers are missed. And trainers have no `mips_person_id` column to match on.
+1. **Photo rules** (from manual page 12): "Only support .jpg format", "Each portrait file size should not exceed 400k"
+2. **Remote open door**: `GET /through/device/openDoor/{deviceId}` — already implemented in `mipsService.ts`
+3. **Remote photo capture**: The manual mentions "Click to Open Camera to Take a Photo" on the employee edit page — this is a UI-level action. The API endpoint needs curl-testing to confirm. Most likely it's `POST /through/device/capturePhoto` or similar.
+4. **Personnel dispatch**: Uses `POST /through/device/syncPerson` with `deviceIds` as an array — already supports multi-device by passing multiple IDs
+5. **Webhook ImgReg**: The device sends face scan callbacks to the webhook URL. For registration callbacks, the payload includes `imgUri` which can be saved.
 
 ## Implementation Plan
 
-### Step 1: Add `mips_sync_status` and `mips_person_id` to `trainers` table
-Migration to add these two columns so trainers can be tracked for MIPS sync.
+### 1. Multi-Device Dispatch (sync-to-mips)
 
-### Step 2: Rewrite `sync-to-mips/index.ts`
-- Add `person_type: "trainer"` support — query `trainers` table
-- For members: map `validTimeBegin`/`validTimeEnd` from membership dates
-- For employees/trainers: set `validTimeEnd = "2099-12-31 23:59:59"` (permanent until deactivated)
-- Fix photo upload: use `POST /common/uploadHeadPhoto` (multipart) to get the file path, then include `photoUri` in the PUT payload
-- Generate a trainer code if none exists (use branch code + trainer ID prefix)
+**Problem**: Hardcoded `TARGET_DEVICE_ID = 13`.
 
-### Step 3: Rewrite `PersonnelSyncTab.tsx`
-- Add trainers query alongside members and employees
-- Show type badge: Member / Staff / Trainer
-- Trainers use `type: "trainer"` when calling sync
+**Fix in `supabase/functions/sync-to-mips/index.ts`**:
+- Remove `const TARGET_DEVICE_ID = 13`
+- After upsert+photo, query `access_devices` table for all active devices in the person's branch (or all if no branch filter)
+- For each device, look up its MIPS device ID: either store `mips_device_id` on `access_devices` table, or fetch MIPS device list and match by `serial_number` → `deviceKey`
+- Dispatch to ALL matched device IDs in a single `syncPerson` call (the API supports `deviceIds: [13, 14, 15]`)
 
-### Step 4: Fix `mips-webhook-receiver/index.ts`
-- Fix `handleStaffCheckin`: use `user_id` (not `employee_id`), `check_in`/`check_out` (not `date`)
-- Add trainer lookup in `findPersonByMipsId` and `findPersonByCode` — check `trainers` table too
-- When a trainer is identified, treat same as staff for attendance (insert into `staff_attendance` using `user_id`)
+**Migration**: Add `mips_device_id` integer column to `access_devices` to cache the MIPS numeric ID per device.
 
-### Step 5: Update `mipsService.ts`
-- Add trainer support in verification functions
+### 2. Photo Sync Fix — JPG Conversion + 400KB Compression
 
-### Step 6: Update `.lovable/mips-api-reference.md`
-- Document the real photo upload endpoint: `POST /common/uploadHeadPhoto`
-- Document the two-step photo flow: upload → get path → PUT photoUri on person
+**Fix in `supabase/functions/sync-to-mips/index.ts` `uploadPhoto()` function**:
+- After fetching the image bytes, check content-type
+- If PNG/WebP, convert to JPEG (in Deno, use canvas or sharp-like lib — or simply ensure the upload always uses `image/jpeg` content-type and `.jpg` extension since MIPS only accepts JPG)
+- If size > 400KB, reject or attempt to re-fetch a smaller version
+- The existing code already checks `> 500KB` — tighten to `400KB` per manual spec
+- Always use `image/jpeg` content-type and `.jpg` filename extension regardless of source format
 
-## Files Modified
+### 3. Remote Capture — Device Camera Photo
+
+**Add to `mipsService.ts`**: The `capturePhoto` function already exists but calls `/through/device/capturePhoto`. This endpoint needs verification via curl. The manual references a "take photo" UI action on the employee edit page.
+
+**Alternative approach**: Based on the manual's "Register Person Data Upload URL" callback config (page 9), when the device captures a registration photo, it sends a callback (`ImgReg` event) to the configured URL. The flow would be:
+1. Trigger capture via MIPS API (needs curl testing for exact endpoint)
+2. Device takes photo and sends callback to `mips-webhook-receiver`
+3. Webhook receives the `imgUri` / base64 image data
+4. Save image to Supabase Storage `member-photos` bucket
+5. Update the member's `biometric_photo_url`
+
+**Fix in `mips-webhook-receiver`**: Add handler for `ImgReg` / registration callback events — save the photo to storage and update CRM.
+
+### 4. Entry Override — Remote Open Door
+
+**Add to `AttendanceDashboard.tsx`**:
+- Add an "Override Entry" button (visible to admin/manager roles)
+- When clicked, fetch the member's branch → find the active `access_device` for that branch → get its `mips_device_id` → call `remoteOpenDoor(mipsDeviceId)`
+- The `remoteOpenDoor` function already exists in `mipsService.ts` using `GET /through/device/openDoor/{deviceId}`
+
+### 5. Trainer deptId Fix
+
+**Already fixed** in the previous iteration: trainers use `deptId: 101` (Staff department). This is correct per the mapping.
+
+### 6. Webhook Response Fix
+
+**Already correct**: The webhook returns `{"result":1,"code":"000"}` on both success and error paths (lines 256-266 of `mips-webhook-receiver/index.ts`).
+
+## Files to Modify
 
 | File | Change |
 |---|---|
-| Migration SQL | Add `mips_sync_status`, `mips_person_id` to `trainers` |
-| `supabase/functions/sync-to-mips/index.ts` | Add trainer support, fix photo upload endpoint, fix validity dates |
-| `supabase/functions/mips-webhook-receiver/index.ts` | Fix staff_attendance columns, add trainer lookup |
-| `src/components/devices/PersonnelSyncTab.tsx` | Add trainers to personnel list |
-| `src/services/mipsService.ts` | Minor: trainer support in verify |
-| `.lovable/mips-api-reference.md` | Document real photo upload flow |
+| Migration SQL | Add `mips_device_id` (integer) to `access_devices` |
+| `supabase/functions/sync-to-mips/index.ts` | Remove hardcoded device ID, query access_devices for multi-device dispatch, tighten photo to 400KB + force JPG |
+| `supabase/functions/mips-webhook-receiver/index.ts` | Add `ImgReg` callback handler to save captured photos |
+| `src/services/mipsService.ts` | Add `remoteOpenDoorByBranch()` helper |
+| `src/pages/AttendanceDashboard.tsx` | Add "Override Entry" button calling remote open door |
+| `src/components/devices/PersonnelSyncTab.tsx` | Show "(Main Branch)" label when "All Branches" is active |
+| `.lovable/mips-api-reference.md` | Update with multi-device dispatch and photo rules |
 
-## Photo Upload Flow (from user's curl)
-```
-1. POST /common/uploadHeadPhoto  (multipart, field: "file")
-   → Response: { "code": 200, "fileName": "/userfiles/headPhoto/2026-03/photo.jpeg" }
+## Testing Strategy
 
-2. PUT /personInfo/person  (JSON)
-   → Body: { "personId": 17, "photoUri": "/userfiles/headPhoto/2026-03/photo.jpeg", ... }
-```
-
-## Validity Rules
-- **Members**: `validTimeBegin` = membership start, `validTimeEnd` = membership end
-- **Employees/Trainers/Admins**: `validTimeBegin` = today, `validTimeEnd` = `2099-12-31 23:59:59` (permanent)
-- When deactivated (`is_active = false`), the person should be removed from device or validity set to past date
+Before implementing, curl-test:
+1. `POST /through/device/syncPerson` with `deviceIds: [13]` array — confirm multi-device dispatch format
+2. Test photo upload with forced `.jpg` extension and `image/jpeg` content-type
+3. Test capture photo endpoint (`/through/device/capturePhoto` or similar) — discover exact API
+4. `GET /through/device/openDoor/13` — confirm remote door open works
 
