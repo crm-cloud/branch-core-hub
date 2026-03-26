@@ -194,6 +194,7 @@ export async function dispatchToDevice(
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
       personId: personMipsId,
       deviceIds: [targetDeviceId],
+      deviceNumType: "4",
     });
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
@@ -247,6 +248,7 @@ export async function assignDevicePermission(
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
       personId: personMipsId,
       deviceIds,
+      deviceNumType: "4",
     });
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
@@ -282,7 +284,7 @@ export async function verifyPersonOnMIPS(personNo: string): Promise<{
 }> {
   const stripped = personNo.replace(/-/g, "");
   const result = await callMIPSProxy("/personInfo/person/list", "GET", {
-    personNo: stripped,
+    personSn: stripped,
     pageNum: "1",
     pageSize: "10",
   });
@@ -292,7 +294,7 @@ export async function verifyPersonOnMIPS(personNo: string): Promise<{
     return { exists: false, hasPhoto: false, mipsId: null, personData: null };
   }
 
-  const person = rows.find((r: any) => r.personNo === stripped) || rows[0];
+  const person = rows.find((r: any) => r.personSn === stripped) || rows[0];
   return {
     exists: true,
     hasPhoto: !!(person as any).photoUrl || !!(person as any).personPhotoUrl,

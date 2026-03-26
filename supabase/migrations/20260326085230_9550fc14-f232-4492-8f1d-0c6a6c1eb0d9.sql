@@ -1,0 +1,1 @@
+UPDATE public.members SET mips_sync_status = 'pending', mips_person_id = NULL WHERE mips_sync_status = 'synced';
