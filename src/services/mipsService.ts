@@ -194,6 +194,7 @@ export async function dispatchToDevice(
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
       personId: personMipsId,
       deviceIds: [targetDeviceId],
+      deviceNumType: "4",
     });
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
