@@ -84,7 +84,10 @@ const DeviceManagement = () => {
           </TabsList>
 
           <TabsContent value="dashboard">
-            <MIPSDashboard branchId={branchFilter || undefined} />
+            <MIPSDashboard
+              branchId={branchFilter || undefined}
+              branchName={branchFilter ? branches.find(b => b.id === branchFilter)?.name : undefined}
+            />
           </TabsContent>
 
           <TabsContent value="devices">

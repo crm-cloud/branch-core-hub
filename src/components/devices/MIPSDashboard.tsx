@@ -210,6 +210,8 @@ const MIPSDashboard = ({ branchId, branchName }: MIPSDashboardProps) => {
           </CardContent>
         </Card>
       </div>
+
+      <MIPSConnectionCard branchId={branchId} branchName={branchName} />
     </div>
   );
 };
