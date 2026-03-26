@@ -532,10 +532,18 @@ Deno.serve(async (req) => {
     console.log(`MIPS person ${existing ? "updated" : "created"}: personId=${personId}`);
 
     // Step 4: Upload photo (two-step: upload file → PUT photoUri on person)
+    // Photo upload is non-blocking — sync succeeds even if photo fails
     let photoResult = { success: false, message: "No photo available" } as any;
     if (photoUrl) {
-      photoResult = await uploadPhoto(baseUrl, token, mipsPersonSn, photoUrl);
-      console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
+      try {
+        photoResult = await uploadPhoto(baseUrl, token, mipsPersonSn, photoUrl);
+        console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
+      } catch (photoErr) {
+        console.warn("Photo upload failed (non-fatal):", photoErr);
+        photoResult = { success: false, message: `Photo upload error: ${photoErr instanceof Error ? photoErr.message : String(photoErr)}` };
+      }
+    } else {
+      console.log("No photo URL provided, skipping photo upload");
     }
 
     // Step 5: Dispatch to ALL active devices (multi-device)
