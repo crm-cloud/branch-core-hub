@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Monitor, Wifi, WifiOff, DoorOpen, RotateCcw, Clock,
+  Monitor, DoorOpen, RotateCcw,
 } from "lucide-react";
 import { fetchMIPSDevices, remoteOpenDoor, restartDevice, type MIPSDevice } from "@/services/mipsService";
 import { toast } from "sonner";
 
 const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
-  const isOnline = device.status === 1;
+  const isOnline = device.onlineFlag === 1 || device.status === 1;
   const [isOpening, setIsOpening] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 

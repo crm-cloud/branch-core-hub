@@ -1,12 +1,12 @@
 project_id = "iyqqpbvnszyrrgerniog"
 
-[functions.terminal-heartbeat]
+[functions.mips-proxy]
 verify_jwt = false
 
-[functions.terminal-identify]
-verify_jwt = false
+[functions.sync-to-mips]
+verify_jwt = true
 
-[functions.terminal-register]
+[functions.mips-webhook-receiver]
 verify_jwt = false
 
 [functions.admin-create-user]

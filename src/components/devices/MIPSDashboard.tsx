@@ -17,7 +17,6 @@ interface MIPSDashboardProps {
 const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
-  const prevOnlineRef = useRef<number | null>(null);
   const prevDeviceStatusRef = useRef<Map<string, number>>(new Map());
 
   const { data: mipsConnection, isLoading: isTestingConnection, refetch: retestConnection } = useQuery({
@@ -36,7 +35,6 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
     refetchInterval: 15_000,
   });
 
-  // Heartbeat pulse animation on data refresh
   useEffect(() => {
     if (dataUpdatedAt) {
       setLastChecked(new Date(dataUpdatedAt));
@@ -46,34 +44,30 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
     }
   }, [dataUpdatedAt]);
 
-  // Offline detection + notification
   useEffect(() => {
     if (mipsDevices.length === 0) return;
 
     const currentStatusMap = new Map<string, number>();
-    mipsDevices.forEach((d: any) => {
-      currentStatusMap.set(d.sn || d.id, d.status);
+    mipsDevices.forEach((d) => {
+      currentStatusMap.set(d.deviceKey || String(d.id), d.onlineFlag ?? d.status);
     });
 
     const prev = prevDeviceStatusRef.current;
     if (prev.size > 0) {
-      // Check for devices that went offline (was 1, now not 1)
       for (const [deviceId, prevStatus] of prev.entries()) {
         const currentStatus = currentStatusMap.get(deviceId);
         if (prevStatus === 1 && currentStatus !== undefined && currentStatus !== 1) {
-          const deviceName = mipsDevices.find((d: any) => (d.sn || d.id) === deviceId)?.name || deviceId;
+          const deviceName = mipsDevices.find((d) => (d.deviceKey || String(d.id)) === deviceId)?.name || deviceId;
           sendOfflineNotification(deviceName);
         }
       }
     }
 
     prevDeviceStatusRef.current = currentStatusMap;
-    prevOnlineRef.current = mipsDevices.filter((d: any) => d.status === 1).length;
   }, [mipsDevices]);
 
   const sendOfflineNotification = async (deviceName: string) => {
     try {
-      // Get admin/owner user IDs to notify
       const { data: adminUsers } = await supabase
         .from("user_roles" as any)
         .select("user_id")
@@ -96,14 +90,13 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
     }
   };
 
-  const mipsOnline = mipsDevices.filter((d: any) => d.status === 1).length;
+  const mipsOnline = mipsDevices.filter((d) => (d.onlineFlag === 1 || d.status === 1)).length;
   const mipsTotal = mipsDevices.length;
-  const mipsFaces = mipsDevices.reduce((sum: number, d: any) => sum + (d.faceCount || 0), 0);
-  const mipsPersons = mipsDevices.reduce((sum: number, d: any) => sum + (d.personCount || 0), 0);
+  const mipsFaces = mipsDevices.reduce((sum, d) => sum + (d.faceCount || 0), 0);
+  const mipsPersons = mipsDevices.reduce((sum, d) => sum + (d.personCount || 0), 0);
 
   return (
     <div className="space-y-6">
-      {/* MIPS Connection Status */}
       <Card className="rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-xl">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
@@ -113,7 +106,7 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
               </div>
               <div>
                 <h3 className="text-lg font-bold">MIPS Middleware Server</h3>
-                <p className="text-sm text-white/70">Smart Pass Integration Hub</p>
+                <p className="text-sm text-white/70">Smart Pass v3 • RuoYi Cloud Integration</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -140,7 +133,6 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
               </Button>
             </div>
           </div>
-          {/* Last checked timestamp */}
           <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
             <Heart className={`h-3 w-3 transition-transform ${heartbeatPulse ? "scale-150 text-red-300" : "scale-100"}`} />
             <span>Last checked: {formatDistanceToNow(lastChecked, { addSuffix: true })}</span>
@@ -149,7 +141,6 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
         </CardContent>
       </Card>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="rounded-2xl shadow-lg shadow-muted/20">
           <CardContent className="p-4">
@@ -172,7 +163,6 @@ const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
                 {mipsOnline > 0 ? (
                   <>
                     <Wifi className="h-5 w-5 text-green-500" />
-                    {/* Animated heartbeat ring */}
                     <span className="absolute inset-0 rounded-full border-2 border-green-400 animate-ping opacity-30" />
                   </>
                 ) : (
