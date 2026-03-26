@@ -205,6 +205,59 @@ export async function dispatchToDevice(
   }
 }
 
+// Fetch online device IDs
+export async function fetchOnlineDeviceIds(): Promise<number[]> {
+  try {
+    const devices = await fetchMIPSDevices();
+    return devices
+      .filter((d) => d.onlineFlag === 1 || d.status === 1)
+      .map((d) => d.id)
+      .filter((id) => !isNaN(id));
+  } catch {
+    return [];
+  }
+}
+
+// Capture face photo via device camera
+export async function capturePhoto(
+  personMipsId: number,
+  deviceId: number
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const result = await callMIPSProxy("/through/device/capturePhoto", "POST", undefined, {
+      personId: personMipsId,
+      deviceId: deviceId,
+    });
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
+    return {
+      success: isOk,
+      message: isOk ? "Photo capture triggered on device" : (result.data?.msg || "Failed to capture photo"),
+    };
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Assign device permission for a synced person
+export async function assignDevicePermission(
+  personMipsId: string,
+  deviceIds: number[]
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
+      personId: personMipsId,
+      deviceIds,
+    });
+    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
+    return {
+      success: isOk,
+      message: isOk ? "Permission assigned successfully" : (result.data?.msg || "Failed to assign permission"),
+    };
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Manual sync test — syncs one person and verifies in MIPS roster
 export async function manualSyncTest(
   personType: "member" | "employee",
