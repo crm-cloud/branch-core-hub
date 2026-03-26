@@ -27,16 +27,17 @@ function formatDate(dateStr: string | null, fallback: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-async function getRuoYiToken(): Promise<string> {
+async function getRuoYiToken(baseUrl?: string, username?: string, password?: string): Promise<string> {
+  const url = baseUrl || getBaseUrl();
+  const user = username || Deno.env.get("MIPS_USERNAME")!;
+  const pass = password || Deno.env.get("MIPS_PASSWORD")!;
+  const cacheKey = `${url}:${user}`;
+  
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-  const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/login`, {
+  const res = await fetch(`${url}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "TENANT-ID": "1" },
-    body: JSON.stringify({
-      username: Deno.env.get("MIPS_USERNAME")!,
-      password: Deno.env.get("MIPS_PASSWORD")!,
-    }),
+    body: JSON.stringify({ username: user, password: pass }),
   });
   const text = await res.text();
   let json: any;
