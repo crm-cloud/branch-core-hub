@@ -113,32 +113,89 @@ const DeviceManagement = () => {
           {isAdminOrOwner && (
             <TabsContent value="debug">
               <div className="space-y-4">
-                {/* Webhook URL Guidance */}
-                <Card className="rounded-2xl border-violet-500/20 bg-violet-500/5">
+                {/* Webhook URL Guidance — field-by-field */}
+                <Card className="rounded-2xl border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-indigo-500/5">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Server className="h-5 w-5 text-violet-600" />
-                      MIPS Webhook Configuration
+                      MIPS Device Callback Configuration
                     </CardTitle>
                     <CardDescription>
-                      This URL must be entered in your <strong>MIPS middleware admin panel</strong>, not in this app.
+                      Enter these URLs in your <strong>MIPS Admin Panel → Device Management → Configure → Server Configuration</strong> tab.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2 bg-muted rounded-lg p-3">
-                      <code className="text-xs font-mono flex-1 break-all">
-                        https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
-                      </code>
-                      <Button variant="outline" size="icon" className="shrink-0 h-8 w-8" onClick={() => {
-                        navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
-                        toast.success("Webhook URL copied");
-                      }}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
+                  <CardContent className="space-y-4">
+                    {/* Recognition Record Upload URL */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-700 text-[10px] font-bold">1</span>
+                        Recognition Record Upload URL <span className="text-destructive">*</span>
+                      </label>
+                      <p className="text-[11px] text-muted-foreground">Face scan events — this is the <strong>critical</strong> URL for attendance</p>
+                      <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                        <code className="text-xs font-mono flex-1 break-all">
+                          https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
+                        </code>
+                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" onClick={() => {
+                          navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
+                          toast.success("Recognition URL copied");
+                        }}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>📍 <strong>Where to enter:</strong> MIPS Admin Panel → System Configuration → Device Settings → Register Person Data Upload URL / Callback URL</p>
-                      <p>📡 The hardware will automatically POST face-scan events to this endpoint when a person scans at the terminal.</p>
+
+                    {/* Register Person Data Upload URL */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">2</span>
+                        Register Person Data Upload URL
+                      </label>
+                      <p className="text-[11px] text-muted-foreground">Captured registration photos from the device</p>
+                      <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                        <code className="text-xs font-mono flex-1 break-all">
+                          https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
+                        </code>
+                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" onClick={() => {
+                          navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
+                          toast.success("Register URL copied");
+                        }}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Device Heartbeat Upload URL */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px] font-bold">3</span>
+                        Device Heartbeat Upload URL
+                      </label>
+                      <p className="text-[11px] text-muted-foreground">Keep default — not required for attendance</p>
+                      <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                        <code className="text-xs font-mono flex-1 break-all text-muted-foreground">
+                          http://212.38.94.228:9000/api/callback/heartbeat
+                        </code>
+                      </div>
+                    </div>
+
+                    {/* Relay diagram */}
+                    <div className="rounded-xl border bg-background p-3 space-y-2">
+                      <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                        <Activity className="h-3.5 w-3.5 text-violet-600" /> Data Flow (Relay Mode)
+                      </h4>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                        <span className="px-2 py-1 rounded bg-violet-100 text-violet-700 font-medium">Device</span>
+                        <span>→</span>
+                        <span className="px-2 py-1 rounded bg-green-100 text-green-700 font-medium">Our Webhook</span>
+                        <span className="text-[10px]">(log + attendance)</span>
+                        <span>→</span>
+                        <span className="px-2 py-1 rounded bg-blue-100 text-blue-700 font-medium">MIPS Server</span>
+                        <span className="text-[10px]">(auto-forwarded)</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Our system processes attendance first, then relays the data to MIPS so both systems stay in sync.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
