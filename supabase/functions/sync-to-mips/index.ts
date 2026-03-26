@@ -10,10 +10,8 @@ const TARGET_DEVICE_SN = "D1146D682A96B1C2";
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getHostUrl(): string {
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-  const urlObj = new URL(MIPS_URL);
-  return `${urlObj.protocol}//${urlObj.host}`;
+function getBaseUrl(): string {
+  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
 }
 
 function formatDateTime(dateStr: string | null, fallback: string): string {

@@ -6,10 +6,8 @@ const corsHeaders = {
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getHostUrl(): string {
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-  const urlObj = new URL(MIPS_URL);
-  return `${urlObj.protocol}//${urlObj.host}`;
+function getBaseUrl(): string {
+  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
 }
 
 async function getMIPSToken(): Promise<string> {
