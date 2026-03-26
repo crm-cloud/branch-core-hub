@@ -9,12 +9,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image, Camera,
+  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image,
   ShieldCheck, ShieldX, RotateCw, ImagePlus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  syncPersonToMIPS, capturePhoto, fetchOnlineDeviceIds,
+  syncPersonToMIPS, fetchOnlineDeviceIds,
   verifyPersonOnMIPS, fetchAllMIPSPersons,
 } from "@/services/mipsService";
 import { toast } from "sonner";
