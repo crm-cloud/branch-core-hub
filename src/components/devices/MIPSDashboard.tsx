@@ -16,7 +16,7 @@ interface MIPSDashboardProps {
   branchName?: string;
 }
 
-const MIPSDashboard = ({ branchId }: MIPSDashboardProps) => {
+const MIPSDashboard = ({ branchId, branchName }: MIPSDashboardProps) => {
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [heartbeatPulse, setHeartbeatPulse] = useState(false);
   const prevDeviceStatusRef = useRef<Map<string, number>>(new Map());
