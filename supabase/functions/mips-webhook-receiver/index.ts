@@ -27,6 +27,44 @@ function mapFaceType(type: string): { result: string; description: string } {
   }
 }
 
+function normalizeScanTime(rawTime: unknown): string {
+  if (rawTime === null || rawTime === undefined || rawTime === "") {
+    return new Date().toISOString();
+  }
+
+  const asNumber = Number(rawTime);
+  if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
+    const abs = Math.abs(asNumber);
+
+    // Common device epoch formats:
+    // seconds (10 digits), milliseconds (13), microseconds (16), nanoseconds (19)
+    let ms = asNumber;
+    if (abs >= 1e18) {
+      ms = asNumber / 1e6;
+    } else if (abs >= 1e15) {
+      ms = asNumber / 1e3;
+    } else if (abs >= 1e12) {
+      ms = asNumber;
+    } else {
+      ms = asNumber * 1e3;
+    }
+
+    const dateObj = new Date(ms);
+    if (!Number.isNaN(dateObj.getTime())) {
+      return dateObj.toISOString();
+    }
+  }
+
+  if (typeof rawTime === "string") {
+    const parsed = new Date(rawTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+}
+
 async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
   const { data: member } = await supabase
     .from("members")
@@ -85,6 +123,29 @@ async function findPersonByCode(supabase: any, personCode: string) {
       .maybeSingle();
     if (empH) return { ...empH, type: "employee" };
   }
+
+  // Additional fallback for device identifiers that are alphanumeric and may be
+  // stored in mips_person_id instead of employee_code/member_code.
+  const { data: memberByMipsCode } = await supabase
+    .from("members")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_id", personCode)
+    .maybeSingle();
+  if (memberByMipsCode) return { ...memberByMipsCode, type: "member" };
+
+  const { data: empByMipsCode } = await supabase
+    .from("employees")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_id", personCode)
+    .maybeSingle();
+  if (empByMipsCode) return { ...empByMipsCode, type: "employee" };
+
+  const { data: trainerByMipsCode } = await supabase
+    .from("trainers")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_id", personCode)
+    .maybeSingle();
+  if (trainerByMipsCode) return { ...trainerByMipsCode, type: "trainer" };
 
   return null;
 }
@@ -291,18 +352,8 @@ Deno.serve(async (req) => {
     const deviceName = String(payload.deviceName || payload.device_name || payload.deviceKey || "unknown");
     const deviceKey = String(payload.deviceKey || payload.deviceSn || deviceName);
 
-    // --- FIX START: Parse Unix Milliseconds correctly ---
     const rawTime = payload.createTime || payload.time;
-    let scanTime: string;
-    if (rawTime && !isNaN(Number(rawTime))) {
-      const ts = Number(rawTime);
-      // If 13 digits, it's milliseconds. Otherwise, seconds.
-      const dateObj = ts > 99999999999 ? new Date(ts) : new Date(ts * 1000);
-      scanTime = isNaN(dateObj.getTime()) ? new Date().toISOString() : dateObj.toISOString();
-    } else {
-      scanTime = typeof rawTime === "string" ? rawTime : new Date().toISOString();
-    }
-    // --- FIX END ---
+    const scanTime = normalizeScanTime(rawTime);
 
     const imgUri = String(payload.imgUri || payload.img_uri || payload.imgBase64 || "");
     const searchScore = payload.searchScore ? parseFloat(String(payload.searchScore)) : null;
