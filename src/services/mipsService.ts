@@ -258,6 +258,67 @@ export async function assignDevicePermission(
   }
 }
 
+// Fetch all persons from MIPS (for bulk verification)
+export async function fetchAllMIPSPersons(pageSize = 200): Promise<MIPSEmployee[]> {
+  const all: MIPSEmployee[] = [];
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const { employees, total } = await fetchMIPSEmployees(page, pageSize);
+    all.push(...employees);
+    hasMore = all.length < total;
+    page++;
+    if (page > 10) break; // safety cap
+  }
+  return all;
+}
+
+// Verify a single person exists on MIPS by personNo (hyphen-stripped)
+export async function verifyPersonOnMIPS(personNo: string): Promise<{
+  exists: boolean;
+  hasPhoto: boolean;
+  mipsId: number | null;
+  personData: MIPSEmployee | null;
+}> {
+  const stripped = personNo.replace(/-/g, "");
+  const result = await callMIPSProxy("/personInfo/person/list", "GET", {
+    personNo: stripped,
+    pageNum: "1",
+    pageSize: "10",
+  });
+
+  const rows = result.data?.rows || result.data?.data;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { exists: false, hasPhoto: false, mipsId: null, personData: null };
+  }
+
+  const person = rows.find((r: any) => r.personNo === stripped) || rows[0];
+  return {
+    exists: true,
+    hasPhoto: !!(person as any).photoUrl || !!(person as any).personPhotoUrl,
+    mipsId: (person as any).id || null,
+    personData: person as MIPSEmployee,
+  };
+}
+
+// Compare CRM synced count vs MIPS person count
+export async function compareCRMvsMIPS(crmSyncedCount: number): Promise<{
+  crmSynced: number;
+  mipsTotal: number;
+  match: boolean;
+}> {
+  const result = await callMIPSProxy("/personInfo/person/list", "GET", {
+    pageNum: "1",
+    pageSize: "1",
+  });
+  const mipsTotal = (result.data?.total as number) || 0;
+  return {
+    crmSynced: crmSyncedCount,
+    mipsTotal,
+    match: crmSyncedCount === mipsTotal,
+  };
+}
+
 // Manual sync test — syncs one person and verifies in MIPS roster
 export async function manualSyncTest(
   personType: "member" | "employee",
