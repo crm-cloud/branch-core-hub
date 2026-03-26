@@ -236,20 +236,28 @@ Deno.serve(async (req) => {
     const hasPhoto = !!photoBase64;
     console.log(`Photo available: ${hasPhoto}`);
 
-    // Step 2: Create/update person via RuoYi API
+    // Step 2: Create/update person via RuoYi API (correct field names for RuoYi-Vue v3)
     const personPayload: Record<string, unknown> = {
-      personNo: mipsPersonNo,
+      personSn: mipsPersonNo,       // was: personNo — MIPS uses personSn
+      personType: 1,                // REQUIRED — 1=employee/member type
+      deptId: 100,                  // REQUIRED — default department
       name,
-      phone,
+      mobile: phone,                // was: phone — MIPS uses mobile
+      email,
+      gender: "M",                  // default
+      attendance: "1",              // enable attendance
+      holiday: "1",                 // enable holiday tracking
       remark: person_type === "member" ? "Gym Member" : "Staff",
     };
 
-    // Include photo if available
-    if (hasPhoto) {
+    // Include photo if available (strip data URI prefix for raw base64)
+    if (hasPhoto && photoBase64) {
+      // Try both: MIPS may need raw base64 or data URI
       personPayload.personPhotoUrl = photoBase64;
     }
 
-    console.log(`Creating person in MIPS: ${name} (${mipsPersonNo})`);
+    console.log(`Creating person in MIPS: ${name} (personSn=${mipsPersonNo})`);
+    console.log(`Payload fields: ${Object.keys(personPayload).join(', ')}`);
 
     const createRes = await fetch(`${baseUrl}/personInfo/person`, {
       method: "POST",
@@ -265,8 +273,15 @@ Deno.serve(async (req) => {
       throw new Error(`MIPS returned non-JSON: ${createText.substring(0, 300)}`);
     }
 
-    const success = createJson.code === 200 || createJson.code === 0 || createRes.ok;
-    const mipsPersonId = createJson?.data?.id || createJson?.data?.personId || mipsPersonNo;
+    // FIXED: Do NOT use createRes.ok — MIPS wraps errors in HTTP 200
+    const success = createJson.code === 200 || createJson.code === 0;
+    const mipsPersonId = createJson?.data?.personId || createJson?.data?.id || null;
+
+    if (!success) {
+      console.error(`MIPS person create FAILED: code=${createJson.code}, msg=${createJson.msg || createJson.message}`);
+    } else {
+      console.log(`MIPS person created successfully, personId=${mipsPersonId}`);
+    }
 
     // Update sync status in database
     await supabase
