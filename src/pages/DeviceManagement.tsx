@@ -208,14 +208,14 @@ const DeviceManagement = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {/* Quick Actions */}
+                {/* Quick Actions */}
                     <div>
                       <h4 className="text-sm font-semibold mb-3">Quick Actions</h4>
                       <div className="flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" onClick={async () => {
                           try {
                             setDebugResult("Testing MIPS connection...");
-                            const result = await testMIPSConnection();
+                            const result = await testMIPSConnection(branchFilter || undefined);
                             setDebugResult(JSON.stringify(result, null, 2));
                           } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
                         }}>
@@ -224,12 +224,16 @@ const DeviceManagement = () => {
 
                         <Button variant="outline" size="sm" onClick={async () => {
                           try {
-                            setDebugResult("Opening door on device 13...");
-                            const result = await remoteOpenDoor(13);
+                            setDebugResult("Fetching online devices...");
+                            const devices = await fetchMIPSDevices(branchFilter || undefined);
+                            const online = devices.filter(d => d.onlineFlag === 1 || d.status === 1);
+                            if (online.length === 0) { setDebugResult("No online devices found"); return; }
+                            setDebugResult(`Opening door on device ${online[0].id} (${online[0].name})...`);
+                            const result = await remoteOpenDoor(online[0].id, branchFilter || undefined);
                             setDebugResult(JSON.stringify(result, null, 2));
                           } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
                         }}>
-                          <DoorOpen className="h-3.5 w-3.5 mr-1.5" /> Open Door (Dev 13)
+                          <DoorOpen className="h-3.5 w-3.5 mr-1.5" /> Open Door (Auto)
                         </Button>
 
                         <Button variant="outline" size="sm" onClick={async () => {
@@ -244,6 +248,31 @@ const DeviceManagement = () => {
                           } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
                         }}>
                           <GitCompare className="h-3.5 w-3.5 mr-1.5" /> CRM vs MIPS Count
+                        </Button>
+
+                        <Button variant="secondary" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Sending test webhook payload...");
+                            const testPayload = {
+                              personNo: "TEST00001",
+                              personName: "Webhook Test",
+                              passType: "face_0",
+                              deviceKey: "TEST-DEVICE",
+                              deviceName: "Test Device",
+                              createTime: new Date().toISOString(),
+                              searchScore: "0.99",
+                              livenessScore: "0.99",
+                              _test: true,
+                            };
+                            const { data, error } = await supabase.functions.invoke("mips-webhook-receiver", {
+                              body: testPayload,
+                            });
+                            setDebugResult(
+                              `✅ Webhook responded!\n\nPayload sent:\n${JSON.stringify(testPayload, null, 2)}\n\nResponse:\n${JSON.stringify(data, null, 2)}${error ? `\n\nError: ${error.message}` : ""}`
+                            );
+                          } catch (err: any) { setDebugResult(`❌ Webhook test failed: ${err.message}`); }
+                        }}>
+                          <Activity className="h-3.5 w-3.5 mr-1.5" /> Test Webhook
                         </Button>
                       </div>
                     </div>
