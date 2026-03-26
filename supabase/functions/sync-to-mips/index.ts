@@ -10,10 +10,8 @@ const TARGET_DEVICE_SN = "D1146D682A96B1C2";
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getHostUrl(): string {
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-  const urlObj = new URL(MIPS_URL);
-  return `${urlObj.protocol}//${urlObj.host}`;
+function getBaseUrl(): string {
+  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
 }
 
 function formatDateTime(dateStr: string | null, fallback: string): string {
@@ -39,9 +37,9 @@ async function getMIPSToken(): Promise<string> {
 
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
-  const hostUrl = getHostUrl();
+  const baseUrl = getBaseUrl();
 
-  const res = await fetch(`${hostUrl}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
@@ -115,9 +113,9 @@ async function fetchPhotoAsBase64(photoUrl: string): Promise<string | null> {
 }
 
 /** Fetch online devices and find the target device by SN */
-async function findTargetDeviceId(hostUrl: string, token: string, targetSN: string): Promise<number | null> {
+async function findTargetDeviceId(baseUrl: string, token: string, targetSN: string): Promise<number | null> {
   try {
-    const res = await fetch(`${hostUrl}/admin/devices/list/online`, {
+    const res = await fetch(`${baseUrl}/admin/devices/list/online`, {
       method: "GET",
       headers: {
         "Owl-Auth-Token": token,
@@ -146,7 +144,7 @@ async function findTargetDeviceId(hostUrl: string, token: string, targetSN: stri
 
 /** Dispatch person to device via Personnel Issue (permission endpoint) */
 async function dispatchToDevice(
-  hostUrl: string, token: string, mipsPersonId: string, deviceIds: number[]
+  baseUrl: string, token: string, mipsPersonId: string, deviceIds: number[]
 ): Promise<{ success: boolean; response?: any }> {
   if (deviceIds.length === 0) {
     console.log("No device IDs to dispatch to");
@@ -155,7 +153,7 @@ async function dispatchToDevice(
 
   try {
     console.log(`Dispatching person ${mipsPersonId} to devices: [${deviceIds.join(", ")}]`);
-    const res = await fetch(`${hostUrl}/admin/person/employees/permission`, {
+    const res = await fetch(`${baseUrl}/admin/person/employees/permission`, {
       method: "POST",
       headers: {
         "Owl-Auth-Token": token,
@@ -303,8 +301,8 @@ Deno.serve(async (req) => {
       personPhotoUrl: hasPhoto ? [photoBase64] : [],
     };
 
-    const hostUrl = getHostUrl();
-    const saveUrl = `${hostUrl}/admin/person/employees`;
+    const baseUrl = getBaseUrl();
+    const saveUrl = `${baseUrl}/admin/person/employees`;
 
     console.log(`Saving person to MIPS: ${name} (${mipsPersonNo}), type=${person_type}, hasPhoto=${hasPhoto}`);
 
@@ -343,10 +341,10 @@ Deno.serve(async (req) => {
     let dispatchResult: any = null;
     if (success) {
       console.log(`Auto-dispatching to target device SN: ${TARGET_DEVICE_SN}...`);
-      const targetDeviceId = await findTargetDeviceId(hostUrl, token, TARGET_DEVICE_SN);
+      const targetDeviceId = await findTargetDeviceId(baseUrl, token, TARGET_DEVICE_SN);
 
       if (targetDeviceId) {
-        dispatchResult = await dispatchToDevice(hostUrl, token, String(mipsPersonId), [targetDeviceId]);
+        dispatchResult = await dispatchToDevice(baseUrl, token, String(mipsPersonId), [targetDeviceId]);
         console.log(`Dispatch to ${TARGET_DEVICE_SN}: success=${dispatchResult.success}`);
       } else {
         console.warn(`Target device ${TARGET_DEVICE_SN} is offline or not found. Dispatch skipped.`);

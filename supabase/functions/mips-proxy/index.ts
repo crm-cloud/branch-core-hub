@@ -6,10 +6,8 @@ const corsHeaders = {
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getHostUrl(): string {
-  const MIPS_URL = Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
-  const urlObj = new URL(MIPS_URL);
-  return `${urlObj.protocol}//${urlObj.host}`;
+function getBaseUrl(): string {
+  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
 }
 
 async function getMIPSToken(): Promise<string> {
@@ -17,9 +15,9 @@ async function getMIPSToken(): Promise<string> {
 
   const MIPS_USER = Deno.env.get("MIPS_USERNAME")!;
   const MIPS_PASS = Deno.env.get("MIPS_PASSWORD")!;
-  const hostUrl = getHostUrl();
+  const baseUrl = getBaseUrl();
 
-  const res = await fetch(`${hostUrl}/apiExternal/generateToken`, {
+  const res = await fetch(`${baseUrl}/apiExternal/generateToken`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ identity: MIPS_USER, pStr: MIPS_PASS }),
@@ -65,9 +63,9 @@ Deno.serve(async (req) => {
     }
 
     const token = await getMIPSToken();
-    const hostUrl = getHostUrl();
+    const baseUrl = getBaseUrl();
 
-    let url = `${hostUrl}${endpoint}`;
+    let url = `${baseUrl}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) searchParams.set(k, v);
