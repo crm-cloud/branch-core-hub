@@ -112,150 +112,177 @@ const DeviceManagement = () => {
 
           {isAdminOrOwner && (
             <TabsContent value="debug">
-              <Card className="rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Bug className="h-5 w-5" />
-                    Debug & Testing Tools
-                  </CardTitle>
-                  <CardDescription>
-                    Webhook URL: <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
-                      https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
-                    </code>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Quick Actions */}
-                  <div>
-                    <h4 className="text-sm font-semibold mb-3">Quick Actions</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Testing MIPS connection...");
-                          const result = await testMIPSConnection();
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+              <div className="space-y-4">
+                {/* Webhook URL Guidance */}
+                <Card className="rounded-2xl border-violet-500/20 bg-violet-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Server className="h-5 w-5 text-violet-600" />
+                      MIPS Webhook Configuration
+                    </CardTitle>
+                    <CardDescription>
+                      This URL must be entered in your <strong>MIPS middleware admin panel</strong>, not in this app.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2 bg-muted rounded-lg p-3">
+                      <code className="text-xs font-mono flex-1 break-all">
+                        https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
+                      </code>
+                      <Button variant="outline" size="icon" className="shrink-0 h-8 w-8" onClick={() => {
+                        navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
+                        toast.success("Webhook URL copied");
                       }}>
-                        <Server className="h-3.5 w-3.5 mr-1.5" /> Test Connection
-                      </Button>
-
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Opening door on device 13...");
-                          const result = await remoteOpenDoor(13);
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <DoorOpen className="h-3.5 w-3.5 mr-1.5" /> Open Door (Dev 13)
-                      </Button>
-
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Comparing CRM vs MIPS...");
-                          const { count } = await supabase
-                            .from("members")
-                            .select("id", { count: "exact", head: true })
-                            .eq("mips_sync_status", "synced");
-                          const result = await compareCRMvsMIPS(count || 0);
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <GitCompare className="h-3.5 w-3.5 mr-1.5" /> CRM vs MIPS Count
+                        <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                  </div>
-
-                  {/* Verify Single Member */}
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Verify Member on MIPS</h4>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter member code (e.g. MAIN-00001)"
-                        value={debugMemberCode}
-                        onChange={(e) => setDebugMemberCode(e.target.value)}
-                        className="max-w-xs"
-                      />
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        if (!debugMemberCode) { toast.error("Enter a member code"); return; }
-                        try {
-                          setDebugResult(`Verifying ${debugMemberCode} on MIPS...`);
-                          const result = await verifyPersonOnMIPS(debugMemberCode);
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Verify
-                      </Button>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>📍 <strong>Where to enter:</strong> MIPS Admin Panel → System Configuration → Device Settings → Register Person Data Upload URL / Callback URL</p>
+                      <p>📡 The hardware will automatically POST face-scan events to this endpoint when a person scans at the terminal.</p>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Raw API calls */}
-                  <div>
-                    <h4 className="text-sm font-semibold mb-3">Raw API Calls</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Fetching MIPS devices...");
-                          const devices = await fetchMIPSDevices();
-                          setDebugResult(JSON.stringify(devices, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <Monitor className="h-3.5 w-3.5 mr-1.5" /> Raw Devices
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Fetching MIPS persons...");
-                          const result = await fetchMIPSEmployees(1, 50);
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <Users className="h-3.5 w-3.5 mr-1.5" /> Raw Persons
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        try {
-                          setDebugResult("Fetching MIPS pass records...");
-                          const result = await fetchMIPSPassRecords();
-                          setDebugResult(JSON.stringify(result, null, 2));
-                        } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
-                      }}>
-                        <Activity className="h-3.5 w-3.5 mr-1.5" /> Raw Pass Records
-                      </Button>
-                    </div>
-                  </div>
+                <Card className="rounded-2xl">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Bug className="h-5 w-5" />
+                      Debug & Testing Tools
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Quick Actions */}
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Quick Actions</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Testing MIPS connection...");
+                            const result = await testMIPSConnection();
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <Server className="h-3.5 w-3.5 mr-1.5" /> Test Connection
+                        </Button>
 
-                  {/* E2E Checklist */}
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">E2E Test Checklist</h4>
-                    <div className="space-y-2">
-                      {[
-                        "Test Connection → verify 'Connected' status",
-                        "Sync member → verify appears in Raw Persons list",
-                        "Verify member → confirm member code exists on MIPS",
-                        "Remote open door → verify device relay clicks",
-                        "Face scan → verify event in Live Feed",
-                        "CRM vs MIPS → counts should match",
-                      ].map((item, i) => (
-                        <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/50 border">
-                          <input type="checkbox" className="h-4 w-4 rounded border-border" />
-                          <span className="text-sm">{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Opening door on device 13...");
+                            const result = await remoteOpenDoor(13);
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <DoorOpen className="h-3.5 w-3.5 mr-1.5" /> Open Door (Dev 13)
+                        </Button>
 
-                  {/* Debug output */}
-                  {debugResult && (
-                    <div className="relative">
-                      <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6"
-                        onClick={() => { navigator.clipboard.writeText(debugResult); toast.success("Copied"); }}>
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <pre className="text-xs bg-muted rounded-lg p-4 overflow-x-auto max-h-96 whitespace-pre-wrap break-all">
-                        {debugResult}
-                      </pre>
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Comparing CRM vs MIPS...");
+                            const { count } = await supabase
+                              .from("members")
+                              .select("id", { count: "exact", head: true })
+                              .eq("mips_sync_status", "synced");
+                            const result = await compareCRMvsMIPS(count || 0);
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <GitCompare className="h-3.5 w-3.5 mr-1.5" /> CRM vs MIPS Count
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+
+                    {/* Verify Single Member */}
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2">Verify Member on MIPS</h4>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter member code (e.g. MAIN-00001)"
+                          value={debugMemberCode}
+                          onChange={(e) => setDebugMemberCode(e.target.value)}
+                          className="max-w-xs"
+                        />
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          if (!debugMemberCode) { toast.error("Enter a member code"); return; }
+                          try {
+                            setDebugResult(`Verifying ${debugMemberCode} on MIPS...`);
+                            const result = await verifyPersonOnMIPS(debugMemberCode);
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Verify
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Raw API calls */}
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Raw API Calls</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Fetching MIPS devices...");
+                            const devices = await fetchMIPSDevices();
+                            setDebugResult(JSON.stringify(devices, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <Monitor className="h-3.5 w-3.5 mr-1.5" /> Raw Devices
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Fetching MIPS persons...");
+                            const result = await fetchMIPSEmployees(1, 50);
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <Users className="h-3.5 w-3.5 mr-1.5" /> Raw Persons
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            setDebugResult("Fetching MIPS pass records...");
+                            const result = await fetchMIPSPassRecords();
+                            setDebugResult(JSON.stringify(result, null, 2));
+                          } catch (err: any) { setDebugResult(`Error: ${err.message}`); }
+                        }}>
+                          <Activity className="h-3.5 w-3.5 mr-1.5" /> Raw Pass Records
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* E2E Checklist */}
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2">E2E Test Checklist</h4>
+                      <div className="space-y-2">
+                        {[
+                          "Test Connection → verify 'Connected' status",
+                          "Sync member → verify appears in Raw Persons list",
+                          "Verify member → confirm member code exists on MIPS",
+                          "Remote open door → verify device relay clicks",
+                          "Face scan → verify event in Live Feed",
+                          "CRM vs MIPS → counts should match",
+                        ].map((item, i) => (
+                          <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/50 border">
+                            <input type="checkbox" className="h-4 w-4 rounded border-border" />
+                            <span className="text-sm">{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Debug output */}
+                    {debugResult && (
+                      <div className="relative">
+                        <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6"
+                          onClick={() => { navigator.clipboard.writeText(debugResult); toast.success("Copied"); }}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <pre className="text-xs bg-muted rounded-lg p-4 overflow-x-auto max-h-96 whitespace-pre-wrap break-all">
+                          {debugResult}
+                        </pre>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           )}
         </Tabs>
