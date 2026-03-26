@@ -11,8 +11,8 @@ const MAX_PHOTO_BYTES = 400 * 1024; // 400KB per MIPS manual
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getBaseUrl(): string {
-  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+function getBaseUrl(overrideUrl?: string): string {
+  return (overrideUrl || Deno.env.get("MIPS_SERVER_URL")!).replace(/\/+$/, "");
 }
 
 function stripHyphens(code: string): string {
