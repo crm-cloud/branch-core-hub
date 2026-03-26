@@ -1,114 +1,121 @@
 
 
-# Fix MIPS Person Sync — Wrong Field Names & Missing Required Fields
+# Complete MIPS Sync Fix — Photo Upload, PersonId Lookup, Validity Dates, Attendance
 
-## Root Cause (from curl testing & server logs)
+## Audit Findings (from live curl testing)
 
-I fetched the existing person (RAJAT LEKHARI) from MIPS and compared it against what our code sends. **Every field name is wrong and a required field is missing.**
+### Bug 1: `personId = NaN` on dispatch
+MIPS `POST /personInfo/person` returns `{"msg":"操作成功","code":200}` with **no `data` field**. Our code reads `createJson.data.personId` → `null` → `parseInt(null)` → `NaN`. Dispatch sends `personId: NaN`.
 
-### Existing MIPS person (confirmed via curl):
-```json
-{
-  "personId": 1,
-  "personSn": "1000",
-  "personType": 1,
-  "deptId": 100,
-  "name": "RAJAT LEKHARI",
-  "mobile": "9887601200",
-  "email": "rajat.lekhari@hotmail.com",
-  "gender": "M",
-  "attendance": "1",
-  "holiday": "1"
-}
+**Fix**: After creating a person, do a `GET /personInfo/person/list?personSn=<code>` to fetch the actual `personId`.
+
+### Bug 2: Duplicate `personSn` → error 500
+When syncing an already-existing person (e.g., MAIN00005), MIPS returns `code:500, "person ID already exists"`. Our code treats this as failure.
+
+**Fix**: First check if person exists. If yes, use `PUT /personInfo/person` (with `personId`). If no, use `POST`.
+
+### Bug 3: Photos not uploading via JSON
+`personPhotoUrl` as data URI base64 in the JSON body does NOT save the photo. Live proof: all 8 API-created persons have `photoUri: null` despite photos being sent. Only RAJAT (manually uploaded via MIPS web UI) has a photo.
+
+MIPS requires **multipart/form-data** file upload for photos. The `mips-proxy` only supports JSON forwarding.
+
+**Fix**: Add a `multipart_photo` mode to `mips-proxy` that uploads a JPEG file via multipart form POST to the correct photo endpoint. The edge function will fetch the image from Supabase Storage, then forward it as a multipart upload.
+
+### Bug 4: No validity dates
+`validTimeBegin` and `validTimeEnd` are null for all persons. These control device access windows (membership start/end).
+
+**Fix**: Map `memberships.start_date` → `validTimeBegin` and `memberships.end_date` → `validTimeEnd` in the PUT payload.
+
+### Bug 5: Attendance webhook matching
+The webhook receiver matches by `mips_person_id`, but since `personId` was stored as `null` (bug 1), no members can be matched from device callbacks. Also, the device sends `personNo` which is `personSn` (e.g., `MAIN00005`), not `personId`.
+
+**Fix**: After fixing bug 1, store the real `personId`. Also update webhook to try matching by `personSn` → member_code lookup.
+
+## Implementation Plan
+
+### 1. Rewrite `supabase/functions/sync-to-mips/index.ts`
+
+The complete sync flow becomes:
+```
+1. Fetch member/employee data from DB
+2. Strip hyphens from code
+3. GET /personInfo/person/list?personSn=<stripped> to check existence
+4. If exists → PUT /personInfo/person (with personId) to update
+   If not → POST /personInfo/person to create
+5. GET again to fetch the personId (since create returns no ID)
+6. Set validTimeBegin/validTimeEnd from membership dates
+7. Upload photo via multipart POST (separate endpoint)
+8. Dispatch to device via POST /through/device/syncPerson
+9. Store personId in CRM database
 ```
 
-### What our code sends:
-```json
-{
-  "personNo": "MAIN00001",     // WRONG — should be "personSn"
-  "name": "Jessica Lekhari",   // OK
-  "phone": "1234567890",       // WRONG — should be "mobile"
-  "remark": "Gym Member"       // OK but not enough
-}
-```
+Key changes:
+- Upsert logic (check → create or update)
+- Look up `personId` after create
+- Map `validTimeBegin`/`validTimeEnd` from membership
+- Map `deptId: 100` for members, `101` for staff
+- Remove false `personPhotoUrl` from JSON payload
+- Photo upload as separate step
 
-### Missing required fields causing the NPE:
-- **`personType`** (Integer) — `SysPerson.getPersonType()` is null → NPE. Must be `1`.
-- **`deptId`** (Integer) — department, must be `100` (the "Member" department).
+### 2. Add multipart photo proxy to `supabase/functions/mips-proxy/index.ts`
 
-### False success detection (line 268):
-```typescript
-const success = createJson.code === 200 || createJson.code === 0 || createRes.ok;
-//                                                                   ^^^^^^^^^^
-// HTTP 200 even when MIPS returns {"code":500,"msg":"NPE..."} → success = true!
-```
-This is why the CRM marks everyone "synced" despite MIPS returning errors.
+Add a new mode when request contains `photo_upload: true`:
+- Accepts `{ photo_upload: true, person_sn: "MAIN00005", photo_url: "https://..." }`
+- Fetches the photo from the URL
+- Builds multipart/form-data with the file named `{personSn}.jpg`
+- POSTs to the correct MIPS photo upload endpoint
+- Need to discover the exact endpoint (try `/personInfo/person/importPhoto` as multipart)
 
-### Dispatch error:
-Server log shows `{"deviceIds":[13],"params":{"dataScope":""},"tenantId":1}` — the `personId` is missing from logged params. The dispatch needs the MIPS-internal `personId` (integer like `1`), not the personSn string.
+### 3. Fix `src/services/mipsService.ts`
 
-## Fix Plan
+- Update `verifyPersonOnMIPS` to correctly read `personId` field (not `id`)
+- Add `fetchPersonBySn()` helper
+- Fix `MIPSEmployee` interface to match actual MIPS response shape (`personId`, `personSn`, `photoUri`, `validTimeBegin`, `validTimeEnd`, `havePhoto`)
 
-### 1. Fix `supabase/functions/sync-to-mips/index.ts`
+### 4. Fix `mips-webhook-receiver` attendance matching
 
-**Person create payload** — use correct RuoYi field names:
-```typescript
-const personPayload = {
-  personSn: mipsPersonNo,    // was: personNo
-  personType: 1,             // REQUIRED - was: missing
-  deptId: 100,               // REQUIRED - was: missing  
-  name,
-  mobile: phone,             // was: phone
-  email,
-  gender: "M",               // default
-  attendance: "1",
-  holiday: "1",
-  remark: person_type === "member" ? "Gym Member" : "Staff",
-};
-```
+- Primary match: `mips_person_id` (numeric personId stored after fix)
+- Fallback: `personSn` → strip/reinsert hyphen → match `member_code`
+- The webhook already handles this but `mips_person_id` values are currently null; they will be correct after the sync fix
 
-**Photo field** — keep `personPhotoUrl` but also test if it needs to be raw base64 without data URI prefix.
+### 5. Update `.lovable/mips-api-reference.md`
 
-**Success detection** — remove `createRes.ok`:
-```typescript
-const success = createJson.code === 200 || createJson.code === 0;
-// Do NOT use createRes.ok — MIPS wraps errors in HTTP 200
-```
+Document the actual MIPS response shapes discovered via curl:
+- Person create returns NO `data` field
+- Photo must be uploaded separately (multipart)
+- `validTimeBegin`/`validTimeEnd` control access windows
+- `deptId: 100` = Member, `101` = Employee
+- Full person fields discovered
 
-**Dispatch payload** — use integer personId from create response:
-```typescript
-body: JSON.stringify({
-  personId: createJson?.data?.personId || createJson?.data?.id,
-  deviceIds: [TARGET_DEVICE_ID],
-})
-```
-
-**Verify mode** — search by `personSn` not `personNo`:
-```
-?personSn=${stripped}&pageNum=1&pageSize=10
-```
-And match on `r.personSn === stripped`.
-
-### 2. Fix `src/services/mipsService.ts`
-
-Update `verifyPersonOnMIPS()` to match on `personSn` field instead of `personNo`.
-
-### 3. Fix `src/components/devices/PersonnelSyncTab.tsx`
-
-No structural changes needed — just ensure the sync status reflects actual MIPS success (which the edge function fix handles).
-
-## Testing Strategy
-
-After deploying the fix, I will:
-1. Curl test person creation with the correct payload via `mips-proxy`
-2. Verify the person appears in MIPS person list
-3. Test dispatch to device 13
-4. Confirm the full sync flow works end-to-end
-
-## Files Modified
+## Files to Modify
 
 | File | Change |
 |---|---|
-| `supabase/functions/sync-to-mips/index.ts` | Fix field names, add required fields, fix success detection |
-| `src/services/mipsService.ts` | Fix verify to use `personSn` |
+| `supabase/functions/sync-to-mips/index.ts` | Full rewrite: upsert logic, personId lookup, validity dates, separate photo upload |
+| `supabase/functions/mips-proxy/index.ts` | Add multipart photo upload mode |
+| `src/services/mipsService.ts` | Fix interfaces, add `fetchPersonBySn()` |
+| `.lovable/mips-api-reference.md` | Update with real response shapes |
+
+## Testing Strategy
+
+Before deploying, curl test each step:
+1. Check if a person exists by `personSn`
+2. Create new person → verify in list
+3. Update existing person via PUT → verify
+4. Test multipart photo upload endpoint discovery
+5. Dispatch to device 13 with correct `personId`
+6. Verify photo appears in MIPS person detail
+
+## Attendance Flow (how it works end-to-end)
+
+```text
+Device face scan → MIPS middleware → POST to mips-webhook-receiver
+  → Match personNo to member/employee via mips_person_id or member_code
+  → If member: call member_check_in RPC (validates membership, records attendance)
+  → If employee: insert/update staff_attendance (check-in/out toggle)
+  → Log to access_logs table
+  → Return {"result":1,"code":"000"} ACK
+```
+
+This flow is already implemented correctly in the webhook receiver. The only issue was that `mips_person_id` was stored as null (bug 1), so matching failed. Once sync stores the real `personId`, attendance will work automatically for members, staff, trainers, managers, and admins.
 
