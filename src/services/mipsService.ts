@@ -124,28 +124,28 @@ export async function fetchMIPSDevices(branchId?: string): Promise<MIPSDevice[]>
 }
 
 // Fetch pass records from MIPS
-export async function fetchMIPSPassRecords(page = 1, size = 20): Promise<{
+export async function fetchMIPSPassRecords(page = 1, size = 20, branchId?: string): Promise<{
   records: MIPSPassRecord[];
   total: number;
 }> {
   const result = await callMIPSProxy("/through/record/list", "GET", {
     pageNum: String(page),
     pageSize: String(size),
-  });
+  }, undefined, branchId);
   const rows = result.data?.rows || result.data?.data;
   const total = (result.data?.total as number) || 0;
   return { records: Array.isArray(rows) ? rows as MIPSPassRecord[] : [], total };
 }
 
 // Fetch persons from MIPS
-export async function fetchMIPSEmployees(page = 1, size = 50): Promise<{
+export async function fetchMIPSEmployees(page = 1, size = 50, branchId?: string): Promise<{
   employees: MIPSPerson[];
   total: number;
 }> {
   const result = await callMIPSProxy("/personInfo/person/list", "GET", {
     pageNum: String(page),
     pageSize: String(size),
-  });
+  }, undefined, branchId);
   const rows = result.data?.rows || result.data?.data;
   const total = (result.data?.total as number) || 0;
   return { employees: Array.isArray(rows) ? rows as MIPSPerson[] : [], total };
@@ -165,9 +165,9 @@ export async function syncPersonToMIPS(
 }
 
 // Remote open door
-export async function remoteOpenDoor(deviceId: number): Promise<{ success: boolean; message: string }> {
+export async function remoteOpenDoor(deviceId: number, branchId?: string): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy(`/through/device/openDoor/${deviceId}`, "GET");
+    const result = await callMIPSProxy(`/through/device/openDoor/${deviceId}`, "GET", undefined, undefined, branchId);
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
@@ -179,9 +179,9 @@ export async function remoteOpenDoor(deviceId: number): Promise<{ success: boole
 }
 
 // Restart device
-export async function restartDevice(deviceId: number): Promise<{ success: boolean; message: string }> {
+export async function restartDevice(deviceId: number, branchId?: string): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy(`/through/device/reboot/${deviceId}`, "GET");
+    const result = await callMIPSProxy(`/through/device/reboot/${deviceId}`, "GET", undefined, undefined, branchId);
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
