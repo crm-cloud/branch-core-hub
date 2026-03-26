@@ -304,6 +304,34 @@ Deno.serve(async (req) => {
       },
     });
 
+    // Relay: forward to MIPS internal callback (fire-and-forget)
+    try {
+      let mipsServerUrl: string | null = null;
+      if (branchId) {
+        const { data: conn } = await supabase
+          .from("mips_connections")
+          .select("server_url")
+          .eq("branch_id", branchId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (conn) mipsServerUrl = conn.server_url;
+      }
+      if (!mipsServerUrl) {
+        mipsServerUrl = Deno.env.get("MIPS_SERVER_URL") || null;
+      }
+      if (mipsServerUrl) {
+        const callbackUrl = `${mipsServerUrl.replace(/\/$/, "")}/api/callback/identify`;
+        // Fire-and-forget: don't await, don't block the device response
+        fetch(callbackUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch((e) => console.warn("Relay forward failed:", e));
+      }
+    } catch (relayErr) {
+      console.warn("Relay lookup failed:", relayErr);
+    }
+
     return new Response(DEVICE_ACK, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
