@@ -158,6 +158,8 @@ async function findPersonByCode(supabase: any, personCode: string) {
     if (trainerByMipsCode) return { ...trainerByMipsCode, type: "trainer" };
   }
 
+  console.warn(`findPersonByCode: no match for ${personCode}; tried ${candidates.join(", ")}`);
+
   return null;
 }
 
@@ -439,7 +441,7 @@ Deno.serve(async (req) => {
     });
 
     if (logError) {
-      console.error("Failed to insert access_log:", logError);
+      console.error("Failed to insert access_log:", logError, { rawTime, scanTime });
     }
 
     console.log(`Processed: result=${result}, person=${personNo}, device=${deviceKey}, message=${message}`);
