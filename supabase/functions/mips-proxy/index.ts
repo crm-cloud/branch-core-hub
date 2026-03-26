@@ -21,7 +21,7 @@ async function getRuoYiToken(): Promise<string> {
 
   const res = await fetch(`${baseUrl}/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "TENANT-ID": "1" },
     body: JSON.stringify({ username, password }),
   });
 
