@@ -76,10 +76,11 @@ async function callMIPSProxy(
   endpoint: string,
   method = "GET",
   params?: Record<string, string>,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  branchId?: string
 ): Promise<MIPSProxyResponse> {
   const { data: result, error } = await supabase.functions.invoke("mips-proxy", {
-    body: { endpoint, method, params, data },
+    body: { endpoint, method, params, data, branch_id: branchId },
   });
   if (error) throw new Error(error.message || "MIPS proxy call failed");
   return result as MIPSProxyResponse;
