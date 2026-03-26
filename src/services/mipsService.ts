@@ -248,6 +248,38 @@ export async function capturePhoto(
   }
 }
 
+// Remote open door by branch — finds the active device for a branch and opens it
+export async function remoteOpenDoorByBranch(branchId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const { data: devices } = await supabase
+      .from("access_devices")
+      .select("mips_device_id, device_name")
+      .eq("branch_id", branchId)
+      .eq("is_online", true);
+
+    if (!devices || devices.length === 0) {
+      // Fallback: try MIPS device list
+      const mipsDevices = await fetchMIPSDevices();
+      const online = mipsDevices.filter(d => d.onlineFlag === 1 || d.status === 1);
+      if (online.length === 0) return { success: false, message: "No online devices found" };
+      return remoteOpenDoor(online[0].id);
+    }
+
+    const deviceWithMipsId = devices.find((d: any) => d.mips_device_id);
+    if (!deviceWithMipsId) {
+      // Fallback to MIPS device list
+      const mipsDevices = await fetchMIPSDevices();
+      const online = mipsDevices.filter(d => d.onlineFlag === 1 || d.status === 1);
+      if (online.length === 0) return { success: false, message: "No online devices found" };
+      return remoteOpenDoor(online[0].id);
+    }
+
+    return remoteOpenDoor(deviceWithMipsId.mips_device_id);
+  } catch (e) {
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Assign device permission for a synced person
 export async function assignDevicePermission(
   personMipsId: string | number,

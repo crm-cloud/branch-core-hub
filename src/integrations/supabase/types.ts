@@ -28,6 +28,7 @@ export type Database = {
           last_heartbeat: string | null
           last_sync: string | null
           mac_address: string | null
+          mips_device_id: number | null
           model: string | null
           relay_delay: number | null
           relay_mode: number | null
@@ -47,6 +48,7 @@ export type Database = {
           last_heartbeat?: string | null
           last_sync?: string | null
           mac_address?: string | null
+          mips_device_id?: number | null
           model?: string | null
           relay_delay?: number | null
           relay_mode?: number | null
@@ -66,6 +68,7 @@ export type Database = {
           last_heartbeat?: string | null
           last_sync?: string | null
           mac_address?: string | null
+          mips_device_id?: number | null
           model?: string | null
           relay_delay?: number | null
           relay_mode?: number | null

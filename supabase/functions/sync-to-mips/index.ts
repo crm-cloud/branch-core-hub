@@ -5,8 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const TARGET_DEVICE_ID = 13;
 const PERMANENT_END = "2099-12-31 23:59:59";
+const MAX_PHOTO_BYTES = 400 * 1024; // 400KB per MIPS manual
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
@@ -83,7 +83,6 @@ async function upsertPerson(
   const isUpdate = existingPerson !== null;
   const method = isUpdate ? "PUT" : "POST";
 
-  // For PUT, merge with full existing object (required by MIPS for photoUri to persist)
   let body: Record<string, unknown>;
   if (isUpdate) {
     body = { ...existingPerson, ...payload, personId: existingPerson.personId };
@@ -91,7 +90,6 @@ async function upsertPerson(
     body = { ...payload };
   }
 
-  // Never send photo via JSON — must be uploaded separately
   delete body.personPhotoUrl;
   delete body.photoUrl;
 
@@ -128,6 +126,8 @@ async function upsertPerson(
  * Two-step photo upload:
  * 1. POST /common/uploadHeadPhoto (multipart) → get fileName
  * 2. PUT /personInfo/person with full person object + photoUri = fileName
+ * 
+ * MIPS rules: JPG only, max 400KB
  */
 async function uploadPhoto(
   baseUrl: string,
@@ -151,22 +151,22 @@ async function uploadPhoto(
     }
 
     const photoBytes = new Uint8Array(await photoRes.arrayBuffer());
-    if (photoBytes.length > 500 * 1024) {
-      return { success: false, message: `Photo too large: ${Math.round(photoBytes.length / 1024)}KB` };
+    const sizeKB = Math.round(photoBytes.length / 1024);
+
+    if (photoBytes.length > MAX_PHOTO_BYTES) {
+      return { success: false, message: `Photo too large: ${sizeKB}KB (max 400KB). Please compress before uploading.` };
     }
 
-    console.log(`Photo fetched: ${Math.round(photoBytes.length / 1024)}KB`);
+    console.log(`Photo fetched: ${sizeKB}KB`);
 
-    // Step 1: Upload to /common/uploadHeadPhoto
+    // Step 1: Upload to /common/uploadHeadPhoto — always as JPG
     const boundary = `----FormBoundary${Date.now()}`;
-    const contentType = photoRes.headers.get("content-type") || "image/jpeg";
-    const ext = contentType.includes("png") ? "png" : "jpg";
-    const fileName = `${personSn}.${ext}`;
+    const fileName = `${personSn}.jpg`;
 
     const preamble = [
       `--${boundary}`,
       `Content-Disposition: form-data; name="file"; filename="${fileName}"`,
-      `Content-Type: ${contentType}`,
+      `Content-Type: image/jpeg`,
       "",
       "",
     ].join("\r\n");
@@ -229,25 +229,80 @@ async function uploadPhoto(
   }
 }
 
-async function dispatchToDevice(
+/**
+ * Multi-device dispatch: send personnel to ALL active devices for the branch
+ * Falls back to MIPS device list if no access_devices configured
+ */
+async function dispatchToDevices(
   baseUrl: string,
   token: string,
   personId: number,
-  deviceId: number
-): Promise<any> {
-  console.log(`Dispatching personId=${personId} to device ${deviceId}`);
+  supabase: any,
+  branchId?: string
+): Promise<{ results: any[]; deviceIds: number[] }> {
+  // 1. Try to get device IDs from access_devices table
+  let deviceIds: number[] = [];
+
+  try {
+    let query = supabase
+      .from("access_devices")
+      .select("mips_device_id, device_name, serial_number")
+      .eq("is_online", true);
+    if (branchId) query = query.eq("branch_id", branchId);
+    const { data: devices } = await query;
+
+    if (devices && devices.length > 0) {
+      deviceIds = devices
+        .map((d: any) => d.mips_device_id)
+        .filter((id: any) => id && !isNaN(Number(id)));
+    }
+  } catch (e) {
+    console.warn("Error fetching access_devices:", e);
+  }
+
+  // 2. Fallback: fetch from MIPS device list
+  if (deviceIds.length === 0) {
+    try {
+      const res = await fetch(`${baseUrl}/through/device/list`, {
+        method: "GET",
+        headers: authHeaders(token),
+      });
+      const text = await res.text();
+      const json = JSON.parse(text);
+      const rows = json?.rows || json?.data;
+      if (Array.isArray(rows)) {
+        deviceIds = rows
+          .filter((d: any) => d.onlineFlag === 1 || d.status === 1)
+          .map((d: any) => d.id)
+          .filter((id: any) => !isNaN(Number(id)));
+      }
+    } catch (e) {
+      console.warn("Error fetching MIPS device list:", e);
+    }
+  }
+
+  if (deviceIds.length === 0) {
+    console.warn("No devices found for dispatch");
+    return { results: [], deviceIds: [] };
+  }
+
+  // 3. Dispatch to all devices in a single call (API supports deviceIds array)
+  console.log(`Dispatching personId=${personId} to devices: [${deviceIds.join(",")}]`);
   const res = await fetch(`${baseUrl}/through/device/syncPerson`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({
       personId: personId,
-      deviceIds: [deviceId],
+      deviceIds: deviceIds,
       deviceNumType: "4",
     }),
   });
   const text = await res.text();
   console.log(`Dispatch response: ${text.substring(0, 300)}`);
-  try { return JSON.parse(text); } catch { return { raw: text }; }
+  let result: any;
+  try { result = JSON.parse(text); } catch { result = { raw: text }; }
+
+  return { results: [result], deviceIds };
 }
 
 Deno.serve(async (req) => {
@@ -305,6 +360,7 @@ Deno.serve(async (req) => {
     let validTimeEnd = PERMANENT_END;
     let tableName: string;
     let deptId = 100;
+    let effectiveBranchId = branch_id;
 
     if (person_type === "member") {
       tableName = "members";
@@ -322,6 +378,7 @@ Deno.serve(async (req) => {
       phone = profile?.phone || "";
       email = profile?.email || "";
       photoUrl = member.biometric_photo_url || profile?.avatar_url || "";
+      effectiveBranchId = effectiveBranchId || member.branch_id;
 
       // Members get validity from membership dates
       const { data: membership } = await supabase
@@ -353,11 +410,11 @@ Deno.serve(async (req) => {
       phone = profile?.phone || "";
       email = profile?.email || "";
       photoUrl = emp.biometric_photo_url || profile?.avatar_url || "";
-      // Staff get permanent access
+      effectiveBranchId = effectiveBranchId || emp.branch_id;
       validTimeEnd = PERMANENT_END;
     } else if (person_type === "trainer") {
       tableName = "trainers";
-      deptId = 101; // Same dept as staff
+      deptId = 101;
       const { data: trainer, error } = await supabase
         .from("trainers")
         .select("*, profiles:user_id(full_name, phone, avatar_url, email)")
@@ -370,23 +427,16 @@ Deno.serve(async (req) => {
       phone = profile?.phone || "";
       email = profile?.email || "";
       photoUrl = trainer.biometric_photo_url || profile?.avatar_url || "";
-      // Trainers get permanent access
+      effectiveBranchId = effectiveBranchId || trainer.branch_id;
       validTimeEnd = PERMANENT_END;
 
       // Generate trainer code from branch code
-      if (branch_id) {
+      const trainerBranchId = branch_id || trainer.branch_id;
+      if (trainerBranchId) {
         const { data: branch } = await supabase
           .from("branches")
           .select("code")
-          .eq("id", branch_id)
-          .single();
-        const prefix = branch?.code || "GYM";
-        personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
-      } else if (trainer.branch_id) {
-        const { data: branch } = await supabase
-          .from("branches")
-          .select("code")
-          .eq("id", trainer.branch_id)
+          .eq("id", trainerBranchId)
           .single();
         const prefix = branch?.code || "GYM";
         personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
@@ -467,10 +517,10 @@ Deno.serve(async (req) => {
       console.log(`Photo upload: ${photoResult.success ? "✓" : "✗"} ${photoResult.message}`);
     }
 
-    // Step 5: Dispatch to device
+    // Step 5: Dispatch to ALL active devices (multi-device)
     let dispatchResult: any = null;
     try {
-      dispatchResult = await dispatchToDevice(baseUrl, token, personId, TARGET_DEVICE_ID);
+      dispatchResult = await dispatchToDevices(baseUrl, token, personId, supabase, effectiveBranchId);
     } catch (e) {
       console.error("Dispatch error:", e);
       dispatchResult = { error: String(e) };

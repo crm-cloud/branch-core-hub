@@ -1,0 +1,1 @@
+ALTER TABLE public.access_devices ADD COLUMN IF NOT EXISTS mips_device_id integer;

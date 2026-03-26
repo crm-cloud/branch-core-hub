@@ -16,7 +16,8 @@ import { useAttendance } from '@/hooks/useAttendance';
 import { useStaffAttendance } from '@/hooks/useStaffAttendance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
+import { Users, UserCheck, UserMinus, Clock, Search, Calendar, TrendingUp, Activity, ShieldAlert, LogIn, LogOut, History, Scan, CheckCircle, XCircle, AlertCircle, Download, DoorOpen } from 'lucide-react';
+import { remoteOpenDoorByBranch } from '@/services/mipsService';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
@@ -398,6 +399,21 @@ export default function AttendanceDashboard() {
               <Button variant="outline" className="gap-2 border-warning text-warning hover:bg-warning/10" onClick={() => setForceEntryOpen(true)}>
                 <ShieldAlert className="h-4 w-4" />
                 Force Entry
+              </Button>
+            )}
+            {isAdmin && effectiveBranchId && (
+              <Button
+                variant="outline"
+                className="gap-2 border-primary text-primary hover:bg-primary/10"
+                onClick={async () => {
+                  toast.info('Opening door...');
+                  const result = await remoteOpenDoorByBranch(effectiveBranchId);
+                  if (result.success) toast.success(result.message);
+                  else toast.error(result.message);
+                }}
+              >
+                <DoorOpen className="h-4 w-4" />
+                Override Entry
               </Button>
             )}
             <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-[180px]" />

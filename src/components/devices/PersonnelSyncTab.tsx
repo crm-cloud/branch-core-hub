@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 interface PersonnelSyncTabProps {
   branchId?: string;
+  mainBranchId?: string;
 }
 
 interface SyncPerson {
@@ -33,9 +34,10 @@ interface SyncPerson {
   mipsSyncStatus: string | null;
   mipsPersonId: string | null;
   verifiedOnDevice?: boolean | null;
+  branchId?: string;
 }
 
-const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
+const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -72,6 +74,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
             avatarUrl: profile?.avatar_url || null,
             mipsSyncStatus: (m as any).mips_sync_status || "pending",
             mipsPersonId: (m as any).mips_person_id || null,
+            branchId: m.branch_id,
           });
         }
       }
@@ -95,6 +98,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
             avatarUrl: profile?.avatar_url || null,
             mipsSyncStatus: (e as any).mips_sync_status || "pending",
             mipsPersonId: (e as any).mips_person_id || null,
+            branchId: e.branch_id,
           });
         }
       }
@@ -119,6 +123,7 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
             avatarUrl: profile?.avatar_url || null,
             mipsSyncStatus: t.mips_sync_status || "pending",
             mipsPersonId: t.mips_person_id || null,
+            branchId: t.branch_id,
           });
         }
       }
@@ -446,7 +451,12 @@ const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{person.name}</span>
+                      <span className="text-sm font-medium truncate">
+                        {person.name}
+                        {!branchId && mainBranchId && person.branchId === mainBranchId && (
+                          <span className="text-[10px] text-muted-foreground ml-1">(Main Branch)</span>
+                        )}
+                      </span>
                       {getTypeBadge(person.type)}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
