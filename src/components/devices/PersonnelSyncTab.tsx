@@ -451,7 +451,12 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{person.name}</span>
+                      <span className="text-sm font-medium truncate">
+                        {person.name}
+                        {!branchId && mainBranchId && person.branchId === mainBranchId && (
+                          <span className="text-[10px] text-muted-foreground ml-1">(Main Branch)</span>
+                        )}
+                      </span>
                       {getTypeBadge(person.type)}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">

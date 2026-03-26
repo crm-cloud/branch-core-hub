@@ -58,6 +58,7 @@ POST /through/device/syncPerson
 }
 ```
 **CRITICAL: `deviceNumType: "4"` is REQUIRED.**
+**Supports multi-device: `deviceIds: [13, 14, 15]` dispatches to all devices at once.**
 
 ### Restart Device
 ```
@@ -93,11 +94,16 @@ DELETE /personInfo/person/{personId}
 
 ## Photo Upload (Two-Step Flow)
 
+### Rules (from manual)
+- **Only JPG format** supported
+- **Max 400KB** per portrait file
+- Upload always uses `image/jpeg` content-type and `.jpg` extension
+
 ### Step 1: Upload file
 ```
 POST /common/uploadHeadPhoto
 Content-Type: multipart/form-data
-Body: file=<jpeg>
+Body: file=<jpeg, max 400KB>
 
 Response:
 {
@@ -108,13 +114,33 @@ Response:
 }
 ```
 
-### Step 2: Assign photo to person
+### Step 2: Assign photo to person (FULL PUT required)
 ```
 PUT /personInfo/person
 Body: { ...fullPersonObject, "photoUri": "/userfiles/headPhoto/2026-03/photo.jpg" }
 ```
 
 **NOTE:** `POST /personInfo/person/importPhoto` does NOT work (returns 405).
+
+---
+
+## Multi-Device Dispatch
+
+The system supports dispatching personnel to multiple devices at once:
+```
+POST /through/device/syncPerson
+{
+  "personId": 2,
+  "deviceIds": [13, 14, 15],
+  "deviceNumType": "4"
+}
+```
+
+The `sync-to-mips` edge function:
+1. Queries `access_devices` table for all active devices in the branch
+2. Uses `mips_device_id` column for the numeric MIPS device ID
+3. Falls back to fetching the MIPS device list if no `access_devices` are configured
+4. Dispatches to ALL matched device IDs in a single API call
 
 ---
 
@@ -150,14 +176,18 @@ Body: { ...fullPersonObject, "photoUri": "/userfiles/headPhoto/2026-03/photo.jpg
 | Function | Purpose |
 |---|---|
 | `mips-proxy` | Generic proxy to RuoYi API |
-| `sync-to-mips` | Upsert person + photo + dispatch (supports member/employee/trainer) |
-| `mips-webhook-receiver` | Receive device callbacks for attendance |
+| `sync-to-mips` | Upsert person + photo + multi-device dispatch (supports member/employee/trainer) |
+| `mips-webhook-receiver` | Receive device callbacks for attendance + ImgReg photo capture |
 
 ## Webhook Receiver
 
 Endpoint: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver`
 
 Must return: `{"result": 1, "code": "000"}`
+
+### Supported Callback Types
+- **Face scan**: Standard attendance (face_0, face_1, face_2)
+- **ImgReg**: Registration photo capture — saves captured photo to member-photos storage
 
 ## Important Notes
 
@@ -167,3 +197,5 @@ Must return: `{"result": 1, "code": "000"}`
 4. **Photo upload is two-step**: upload file → PUT photoUri on full person record.
 5. **deviceNumType: "4"** is REQUIRED for syncPerson.
 6. **personSn** not personNo; **mobile** not phone.
+7. **Photo must be JPG and under 400KB**.
+8. **Multi-device dispatch**: `deviceIds` supports arrays for simultaneous sync to multiple devices.
