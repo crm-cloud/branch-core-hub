@@ -37,7 +37,7 @@ interface SyncPerson {
   branchId?: string;
 }
 
-const PersonnelSyncTab = ({ branchId }: PersonnelSyncTabProps) => {
+const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
