@@ -9,12 +9,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image, Camera,
+  Users, RefreshCw, Upload, Check, X, AlertCircle, Search, Image,
   ShieldCheck, ShieldX, RotateCw, ImagePlus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  syncPersonToMIPS, capturePhoto, fetchOnlineDeviceIds,
+  syncPersonToMIPS, fetchOnlineDeviceIds,
   verifyPersonOnMIPS, fetchAllMIPSPersons,
 } from "@/services/mipsService";
 import { toast } from "sonner";
@@ -44,7 +44,6 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
   const [typeFilter, setTypeFilter] = useState("all");
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [verifyingIds, setVerifyingIds] = useState<Set<string>>(new Set());
-  const [capturingIds, setCapturingIds] = useState<Set<string>>(new Set());
   const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
   const [verificationMap, setVerificationMap] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,27 +224,6 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
     },
     onError: (error: Error) => {
       toast.error(`Bulk sync failed: ${error.message}`);
-    },
-  });
-
-  const capturePhotoMutation = useMutation({
-    mutationFn: async (person: SyncPerson) => {
-      if (!person.mipsPersonId) throw new Error("Person not synced to MIPS yet");
-      setCapturingIds((prev) => new Set(prev).add(person.id));
-      const deviceIds = await fetchOnlineDeviceIds();
-      if (deviceIds.length === 0) throw new Error("No online devices found");
-      const mipsId = Number(person.mipsPersonId);
-      if (isNaN(mipsId)) throw new Error("Invalid MIPS person ID");
-      return capturePhoto(mipsId, deviceIds[0]);
-    },
-    onSuccess: (result, person) => {
-      setCapturingIds((prev) => { const n = new Set(prev); n.delete(person.id); return n; });
-      if (result.success) toast.success(`Photo capture triggered for ${person.name}`);
-      else toast.error(`Capture failed: ${result.message}`);
-    },
-    onError: (error: Error, person) => {
-      setCapturingIds((prev) => { const n = new Set(prev); n.delete(person.id); return n; });
-      toast.error(`Capture failed: ${error.message}`);
     },
   });
 
@@ -485,11 +463,6 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
                     <Button variant="ghost" size="icon" className="h-8 w-8" disabled={uploadingIds.has(person.id)} onClick={() => { setUploadTargetPerson(person); fileInputRef.current?.click(); }} title="Upload face photo">
                       <ImagePlus className={`h-3.5 w-3.5 ${uploadingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>
-                    {person.mipsSyncStatus === "synced" && person.mipsPersonId && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled={capturingIds.has(person.id)} onClick={() => capturePhotoMutation.mutate(person)} title="Capture face from device camera">
-                        <Camera className={`h-3.5 w-3.5 ${capturingIds.has(person.id) ? "animate-pulse" : ""}`} />
-                      </Button>
-                    )}
                     <Button variant="outline" size="sm" disabled={syncingIds.has(person.id)} onClick={() => syncMutation.mutate(person)} className="shrink-0" title="Sync to MIPS">
                       <Upload className={`h-3.5 w-3.5 ${syncingIds.has(person.id) ? "animate-pulse" : ""}`} />
                     </Button>

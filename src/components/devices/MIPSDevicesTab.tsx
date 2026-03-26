@@ -7,6 +7,7 @@ import {
   Monitor, DoorOpen, RotateCcw,
 } from "lucide-react";
 import { fetchMIPSDevices, remoteOpenDoor, restartDevice, type MIPSDevice } from "@/services/mipsService";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
@@ -58,9 +59,6 @@ const MIPSDeviceCard = ({ device }: { device: MIPSDevice }) => {
               <CardTitle className="text-base">{device.name || device.deviceKey}</CardTitle>
               <CardDescription className="text-xs font-mono flex items-center gap-1.5">
                 SN: <span className="font-semibold text-foreground">{device.deviceKey}</span>
-                {device.deviceKey === "D1146D682A96B1C2" && (
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary text-primary">Primary</Badge>
-                )}
               </CardDescription>
             </div>
           </div>
@@ -120,11 +118,30 @@ interface MIPSDevicesTabProps {
 }
 
 const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
+  // Get local access_devices to filter by branch
+  const { data: localDevices } = useQuery({
+    queryKey: ["access-devices-sns", branchId],
+    queryFn: async () => {
+      let query = supabase.from("access_devices").select("serial_number, branch_id");
+      if (branchId) query = query.eq("branch_id", branchId);
+      const { data } = await query;
+      return data || [];
+    },
+  });
+
   const { data: devices = [], isLoading, refetch } = useQuery({
     queryKey: ["mips-devices"],
     queryFn: fetchMIPSDevices,
     staleTime: 30_000,
   });
+
+  // Filter MIPS devices by branch using serial_number match
+  const filteredDevices = branchId && localDevices
+    ? devices.filter((d) => {
+        const localSNs = new Set(localDevices.map((ld) => ld.serial_number?.toUpperCase()));
+        return localSNs.has(d.deviceKey?.toUpperCase());
+      })
+    : devices;
 
   if (isLoading) {
     return (
@@ -134,11 +151,11 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
     );
   }
 
-  if (devices.length === 0) {
+  if (filteredDevices.length === 0) {
     return (
       <div className="flex flex-col items-center py-12 text-muted-foreground">
         <Monitor className="h-12 w-12 mb-3 opacity-30" />
-        <p className="text-sm">No devices found on MIPS server</p>
+        <p className="text-sm">{branchId ? "No devices found for this branch" : "No devices found on MIPS server"}</p>
         <p className="text-xs mt-1">Make sure the MIPS server is running and devices are connected</p>
         <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
           <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -150,7 +167,7 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {devices.map((device) => (
+      {filteredDevices.map((device) => (
         <MIPSDeviceCard key={device.id || device.deviceKey} device={device} />
       ))}
     </div>

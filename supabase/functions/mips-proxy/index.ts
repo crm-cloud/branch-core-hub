@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -5,17 +7,15 @@ const corsHeaders = {
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
+let cachedBaseUrl = "";
 
-function getBaseUrl(): string {
-  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+function getBaseUrl(overrideUrl?: string): string {
+  return (overrideUrl || Deno.env.get("MIPS_SERVER_URL")!).replace(/\/+$/, "");
 }
 
-async function getRuoYiToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-
-  const username = Deno.env.get("MIPS_USERNAME")!;
-  const password = Deno.env.get("MIPS_PASSWORD")!;
-  const baseUrl = getBaseUrl();
+async function getRuoYiToken(baseUrl: string, username: string, password: string): Promise<string> {
+  // Simple cache — only valid if same server
+  if (cachedToken && Date.now() < tokenExpiry && cachedBaseUrl === baseUrl) return cachedToken;
 
   console.log(`RuoYi auth: POST ${baseUrl}/login`);
 
@@ -40,6 +40,7 @@ async function getRuoYiToken(): Promise<string> {
   cachedToken = json.token || json.data?.token;
   if (!cachedToken) throw new Error(`No token in RuoYi login response: ${JSON.stringify(json)}`);
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+  cachedBaseUrl = baseUrl;
   return cachedToken!;
 }
 
@@ -50,11 +51,12 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { endpoint, method = "GET", params, data } = body as {
+    const { endpoint, method = "GET", params, data, branch_id } = body as {
       endpoint: string;
       method?: string;
       params?: Record<string, string>;
       data?: Record<string, unknown>;
+      branch_id?: string;
     };
 
     if (!endpoint) {
@@ -64,8 +66,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    const token = await getRuoYiToken();
-    const baseUrl = getBaseUrl();
+    // Look up per-branch MIPS connection (fall back to env vars)
+    let mipsServerUrl = Deno.env.get("MIPS_SERVER_URL")!;
+    let mipsUsername = Deno.env.get("MIPS_USERNAME")!;
+    let mipsPassword = Deno.env.get("MIPS_PASSWORD")!;
+
+    if (branch_id) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        const { data: conn } = await supabase
+          .from("mips_connections")
+          .select("server_url, username, password")
+          .eq("branch_id", branch_id)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (conn) {
+          mipsServerUrl = conn.server_url;
+          mipsUsername = conn.username;
+          mipsPassword = conn.password;
+        }
+      } catch (e) {
+        console.warn("Failed to look up mips_connections, using env defaults:", e);
+      }
+    }
+
+    const baseUrl = getBaseUrl(mipsServerUrl);
+    const token = await getRuoYiToken(baseUrl, mipsUsername, mipsPassword);
 
     let url = `${baseUrl}${endpoint}`;
     if (params) {

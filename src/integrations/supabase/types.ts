@@ -3850,6 +3850,47 @@ export type Database = {
           },
         ]
       }
+      mips_connections: {
+        Row: {
+          branch_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean
+          password: string
+          server_url: string
+          updated_at: string | null
+          username: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          password: string
+          server_url: string
+          updated_at?: string | null
+          username: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          password?: string
+          server_url?: string
+          updated_at?: string | null
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mips_connections_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: true
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           created_at: string | null

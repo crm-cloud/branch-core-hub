@@ -76,10 +76,11 @@ async function callMIPSProxy(
   endpoint: string,
   method = "GET",
   params?: Record<string, string>,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  branchId?: string
 ): Promise<MIPSProxyResponse> {
   const { data: result, error } = await supabase.functions.invoke("mips-proxy", {
-    body: { endpoint, method, params, data },
+    body: { endpoint, method, params, data, branch_id: branchId },
   });
   if (error) throw new Error(error.message || "MIPS proxy call failed");
   return result as MIPSProxyResponse;
@@ -180,7 +181,7 @@ export async function remoteOpenDoor(deviceId: number): Promise<{ success: boole
 // Restart device
 export async function restartDevice(deviceId: number): Promise<{ success: boolean; message: string }> {
   try {
-    const result = await callMIPSProxy(`/through/device/restart/${deviceId}`, "GET");
+    const result = await callMIPSProxy(`/through/device/reboot/${deviceId}`, "GET");
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {
       success: isOk,
@@ -225,26 +226,6 @@ export async function fetchOnlineDeviceIds(): Promise<number[]> {
       .filter((id) => !isNaN(id));
   } catch {
     return [];
-  }
-}
-
-// Capture face photo via device camera
-export async function capturePhoto(
-  personMipsId: number,
-  deviceId: number
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const result = await callMIPSProxy("/through/device/capturePhoto", "POST", undefined, {
-      personId: personMipsId,
-      deviceId: deviceId,
-    });
-    const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
-    return {
-      success: isOk,
-      message: isOk ? "Photo capture triggered on device" : (result.data?.msg || "Failed to capture photo"),
-    };
-  } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
 

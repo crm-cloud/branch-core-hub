@@ -11,8 +11,8 @@ const MAX_PHOTO_BYTES = 400 * 1024; // 400KB per MIPS manual
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-function getBaseUrl(): string {
-  return Deno.env.get("MIPS_SERVER_URL")!.replace(/\/+$/, "");
+function getBaseUrl(overrideUrl?: string): string {
+  return (overrideUrl || Deno.env.get("MIPS_SERVER_URL")!).replace(/\/+$/, "");
 }
 
 function stripHyphens(code: string): string {
@@ -27,16 +27,17 @@ function formatDate(dateStr: string | null, fallback: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-async function getRuoYiToken(): Promise<string> {
+async function getRuoYiToken(baseUrl?: string, username?: string, password?: string): Promise<string> {
+  const url = baseUrl || getBaseUrl();
+  const user = username || Deno.env.get("MIPS_USERNAME")!;
+  const pass = password || Deno.env.get("MIPS_PASSWORD")!;
+  const cacheKey = `${url}:${user}`;
+  
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-  const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/login`, {
+  const res = await fetch(`${url}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "TENANT-ID": "1" },
-    body: JSON.stringify({
-      username: Deno.env.get("MIPS_USERNAME")!,
-      password: Deno.env.get("MIPS_PASSWORD")!,
-    }),
+    body: JSON.stringify({ username: user, password: pass }),
   });
   const text = await res.text();
   let json: any;
@@ -325,8 +326,26 @@ Deno.serve(async (req) => {
       person_no?: string;
     };
 
-    const token = await getRuoYiToken();
-    const baseUrl = getBaseUrl();
+    // Look up per-branch MIPS connection (fall back to env vars)
+    let mipsBaseUrl: string | undefined;
+    let mipsUsername: string | undefined;
+    let mipsPassword: string | undefined;
+    if (branch_id) {
+      const { data: conn } = await supabase
+        .from("mips_connections")
+        .select("server_url, username, password")
+        .eq("branch_id", branch_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (conn) {
+        mipsBaseUrl = conn.server_url;
+        mipsUsername = conn.username;
+        mipsPassword = conn.password;
+      }
+    }
+
+    const baseUrl = getBaseUrl(mipsBaseUrl);
+    const token = await getRuoYiToken(mipsBaseUrl, mipsUsername, mipsPassword);
 
     // ── Verify-only mode ──
     if (verify_only && person_no) {
@@ -430,19 +449,8 @@ Deno.serve(async (req) => {
       effectiveBranchId = effectiveBranchId || trainer.branch_id;
       validTimeEnd = PERMANENT_END;
 
-      // Generate trainer code from branch code
-      const trainerBranchId = branch_id || trainer.branch_id;
-      if (trainerBranchId) {
-        const { data: branch } = await supabase
-          .from("branches")
-          .select("code")
-          .eq("id", trainerBranchId)
-          .single();
-        const prefix = branch?.code || "GYM";
-        personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
-      } else {
-        personNo = `TRN-${person_id.substring(0, 5).toUpperCase()}`;
-      }
+      // Generate trainer code: TRN-{first4chars} (consistent with UI)
+      personNo = `TRN-${person_id.substring(0, 4).toUpperCase()}`;
     } else {
       return new Response(JSON.stringify({ error: `Unknown person_type: ${person_type}` }), {
         status: 400,
