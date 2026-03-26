@@ -248,6 +248,7 @@ export async function assignDevicePermission(
     const result = await callMIPSProxy("/through/device/syncPerson", "POST", undefined, {
       personId: personMipsId,
       deviceIds,
+      deviceNumType: "4",
     });
     const isOk = result.success && (result.data?.code === 200 || result.data?.code === 0);
     return {

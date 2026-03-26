@@ -306,6 +306,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             personId: numericPersonId,
             deviceIds: [TARGET_DEVICE_ID],
+            deviceNumType: "4",
           }),
         });
 
