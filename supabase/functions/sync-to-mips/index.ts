@@ -431,19 +431,8 @@ Deno.serve(async (req) => {
       effectiveBranchId = effectiveBranchId || trainer.branch_id;
       validTimeEnd = PERMANENT_END;
 
-      // Generate trainer code from branch code
-      const trainerBranchId = branch_id || trainer.branch_id;
-      if (trainerBranchId) {
-        const { data: branch } = await supabase
-          .from("branches")
-          .select("code")
-          .eq("id", trainerBranchId)
-          .single();
-        const prefix = branch?.code || "GYM";
-        personNo = `${prefix}-T${person_id.substring(0, 4).toUpperCase()}`;
-      } else {
-        personNo = `TRN-${person_id.substring(0, 5).toUpperCase()}`;
-      }
+      // Generate trainer code: TRN-{first4chars} (consistent with UI)
+      personNo = `TRN-${person_id.substring(0, 4).toUpperCase()}`;
     } else {
       return new Response(JSON.stringify({ error: `Unknown person_type: ${person_type}` }), {
         status: 400,
