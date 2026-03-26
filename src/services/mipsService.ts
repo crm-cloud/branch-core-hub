@@ -106,9 +106,9 @@ export async function fetchMIPSDevices(): Promise<MIPSDevice[]> {
     name: d.deviceName || d.name || d.deviceKey || "",
     ip: d.ip || d.ipAddress || "",
     personCount: d.personCount ?? d.personNum ?? 0,
-    faceCount: d.faceCount ?? d.faceNum ?? 0,
-    onlineFlag: d.onlineFlag ?? d.status ?? 0,
-    status: d.onlineFlag ?? d.status ?? 0,
+    faceCount: d.photoCount ?? d.faceCount ?? d.faceNum ?? 0,
+    onlineFlag: d.onlineFlag ?? (d.status === "0" ? 0 : d.status === "1" ? 1 : Number(d.status) || 0),
+    status: d.onlineFlag ?? (d.status === "0" ? 0 : d.status === "1" ? 1 : Number(d.status) || 0),
     lastActiveTime: d.lastActiveTime || d.updateTime || "",
   }));
 }
