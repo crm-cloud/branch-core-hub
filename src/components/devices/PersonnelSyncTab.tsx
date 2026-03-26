@@ -98,6 +98,7 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
             avatarUrl: profile?.avatar_url || null,
             mipsSyncStatus: (e as any).mips_sync_status || "pending",
             mipsPersonId: (e as any).mips_person_id || null,
+            branchId: e.branch_id,
           });
         }
       }
