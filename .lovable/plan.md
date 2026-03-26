@@ -1,81 +1,114 @@
 
 
-# Robust MIPS Verification & Re-sync Workflow
+# Fix MIPS Person Sync — Wrong Field Names & Missing Required Fields
 
-## Problem
+## Root Cause (from curl testing & server logs)
 
-The CRM marks members as "synced" after getting a success response from `POST /personInfo/person`, but there's no verification that the person actually exists on the MIPS server or was dispatched to the device. Members can show "Synced" in the UI while being absent from the device roster.
+I fetched the existing person (RAJAT LEKHARI) from MIPS and compared it against what our code sends. **Every field name is wrong and a required field is missing.**
 
-Additionally, the Personnel Sync tab has UX issues:
-- Bulk sync requires `hasPhoto` (causes 0/0 results)
-- Individual sync disabled without photo (but data-only sync should work)
-- No way to verify device-side presence
-- No way to upload a photo from the app for sync
+### Existing MIPS person (confirmed via curl):
+```json
+{
+  "personId": 1,
+  "personSn": "1000",
+  "personType": 1,
+  "deptId": 100,
+  "name": "RAJAT LEKHARI",
+  "mobile": "9887601200",
+  "email": "rajat.lekhari@hotmail.com",
+  "gender": "M",
+  "attendance": "1",
+  "holiday": "1"
+}
+```
 
-## Solution
+### What our code sends:
+```json
+{
+  "personNo": "MAIN00001",     // WRONG — should be "personSn"
+  "name": "Jessica Lekhari",   // OK
+  "phone": "1234567890",       // WRONG — should be "mobile"
+  "remark": "Gym Member"       // OK but not enough
+}
+```
 
-### 1. Add `verifyPersonOnMIPS()` to `mipsService.ts`
+### Missing required fields causing the NPE:
+- **`personType`** (Integer) — `SysPerson.getPersonType()` is null → NPE. Must be `1`.
+- **`deptId`** (Integer) — department, must be `100` (the "Member" department).
 
-New function that calls `GET /personInfo/person/list` and searches by `personNo` (hyphen-stripped). Returns `{ exists: boolean, hasPhoto: boolean, mipsId: number | null, personData: object }`.
+### False success detection (line 268):
+```typescript
+const success = createJson.code === 200 || createJson.code === 0 || createRes.ok;
+//                                                                   ^^^^^^^^^^
+// HTTP 200 even when MIPS returns {"code":500,"msg":"NPE..."} → success = true!
+```
+This is why the CRM marks everyone "synced" despite MIPS returning errors.
 
-### 2. Add "Verify & Re-sync" workflow to `sync-to-mips` edge function
+### Dispatch error:
+Server log shows `{"deviceIds":[13],"params":{"dataScope":""},"tenantId":1}` — the `personId` is missing from logged params. The dispatch needs the MIPS-internal `personId` (integer like `1`), not the personSn string.
 
-Add an optional `verify_only` mode to the edge function request body. When `verify_only: true`, it:
-- Fetches the MIPS person list
-- Searches for the member by stripped `personNo`
-- Returns `{ verified: boolean, mips_person: {...} }` without creating/updating
-- If not found, returns `{ verified: false }` so the UI can offer re-sync
+## Fix Plan
 
-### 3. Rewrite `PersonnelSyncTab.tsx`
+### 1. Fix `supabase/functions/sync-to-mips/index.ts`
 
-**Data layer changes:**
-- Remove `hasPhoto` from bulk sync filter — allow data-only sync
-- Add a `verifiedOnDevice` field to `SyncPerson` (populated on-demand, not on load)
+**Person create payload** — use correct RuoYi field names:
+```typescript
+const personPayload = {
+  personSn: mipsPersonNo,    // was: personNo
+  personType: 1,             // REQUIRED - was: missing
+  deptId: 100,               // REQUIRED - was: missing  
+  name,
+  mobile: phone,             // was: phone
+  email,
+  gender: "M",               // default
+  attendance: "1",
+  holiday: "1",
+  remark: person_type === "member" ? "Gym Member" : "Staff",
+};
+```
 
-**New per-person actions (3 buttons):**
-- **Verify** — calls `verifyPersonOnMIPS(code)`, shows green check or red X with toast
-- **Sync** — enabled always (not gated on `hasPhoto`), syncs person data + photo if available  
-- **Capture** — triggers device camera capture (existing, only for synced persons)
+**Photo field** — keep `personPhotoUrl` but also test if it needs to be raw base64 without data URI prefix.
 
-**New bulk actions:**
-- "Verify All Synced" — checks every "synced" member against MIPS roster, marks mismatches
-- "Sync All Pending" — syncs all pending/failed (remove `hasPhoto` gate)
-- "Re-sync Stale" — re-syncs members marked synced but not verified on device
+**Success detection** — remove `createRes.ok`:
+```typescript
+const success = createJson.code === 200 || createJson.code === 0;
+// Do NOT use createRes.ok — MIPS wraps errors in HTTP 200
+```
 
-**Display improvements:**
-- Show both codes: `MAIN-00005` → `MAIN00005` (CRM → MIPS)
-- Show verification status: verified/unverified/mismatch badge
-- Show photo status separately from sync status
+**Dispatch payload** — use integer personId from create response:
+```typescript
+body: JSON.stringify({
+  personId: createJson?.data?.personId || createJson?.data?.id,
+  deviceIds: [TARGET_DEVICE_ID],
+})
+```
 
-### 4. Improve Debug tab in `DeviceManagement.tsx`
+**Verify mode** — search by `personSn` not `personNo`:
+```
+?personSn=${stripped}&pageNum=1&pageSize=10
+```
+And match on `r.personSn === stripped`.
 
-Add these debug tools:
-- **Verify Single Member** — pick a member, check if present in MIPS person list
-- **Test Open Door** — one-click for device 13
-- **Compare CRM vs MIPS** — shows side-by-side count (CRM synced count vs MIPS person count)
-- **Test Single Sync** — syncs a specific member and verifies afterward
+### 2. Fix `src/services/mipsService.ts`
 
-### 5. Photo upload from app in Personnel Sync
+Update `verifyPersonOnMIPS()` to match on `personSn` field instead of `personNo`.
 
-Add an inline photo upload button per person:
-- Uses existing `compressImageForDevice` utility
-- Uploads to Supabase Storage `member-photos` bucket
-- Updates `biometric_photo_url` on the member record
-- Auto-triggers sync after upload
+### 3. Fix `src/components/devices/PersonnelSyncTab.tsx`
 
-## Files to Modify
+No structural changes needed — just ensure the sync status reflects actual MIPS success (which the edge function fix handles).
+
+## Testing Strategy
+
+After deploying the fix, I will:
+1. Curl test person creation with the correct payload via `mips-proxy`
+2. Verify the person appears in MIPS person list
+3. Test dispatch to device 13
+4. Confirm the full sync flow works end-to-end
+
+## Files Modified
 
 | File | Change |
 |---|---|
-| `src/services/mipsService.ts` | Add `verifyPersonOnMIPS()`, `verifyAllSynced()`, `compareCRMvsMIPS()` |
-| `supabase/functions/sync-to-mips/index.ts` | Add `verify_only` mode |
-| `src/components/devices/PersonnelSyncTab.tsx` | Full rewrite with verify/re-sync/upload workflow |
-| `src/pages/DeviceManagement.tsx` | Enhanced debug tools |
-
-## Technical Details
-
-- `verifyPersonOnMIPS(personNo)` calls `callMIPSProxy("/personInfo/person/list", "GET", { personNo: strippedCode })` — RuoYi supports filtering by `personNo` query param
-- Verification is on-demand (button click), not on page load, to avoid hammering the MIPS server
-- The bulk verify fetches the full person list once (`pageSize=200`) and cross-references locally
-- Photo upload uses existing `compressImageFile()` → upload to `member-photos/{memberId}.jpg` → update DB → trigger sync
+| `supabase/functions/sync-to-mips/index.ts` | Fix field names, add required fields, fix success detection |
+| `src/services/mipsService.ts` | Fix verify to use `personSn` |
 
