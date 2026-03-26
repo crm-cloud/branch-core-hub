@@ -126,11 +126,41 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { person_type, person_id, branch_id } = body as {
+    const { person_type, person_id, branch_id, verify_only, person_no } = body as {
       person_type: "member" | "employee";
       person_id: string;
       branch_id?: string;
+      verify_only?: boolean;
+      person_no?: string;
     };
+
+    // Verify-only mode: check if person exists in MIPS
+    if (verify_only && person_no) {
+      const token = await getRuoYiToken();
+      const baseUrl = getBaseUrl();
+      const stripped = stripHyphens(person_no);
+      
+      const verifyRes = await fetch(`${baseUrl}/personInfo/person/list?personNo=${stripped}&pageNum=1&pageSize=10`, {
+        method: "GET",
+        headers: authHeaders(token),
+      });
+      const verifyText = await verifyRes.text();
+      let verifyJson: any;
+      try { verifyJson = JSON.parse(verifyText); } catch {
+        verifyJson = { raw: verifyText };
+      }
+      
+      const rows = verifyJson?.rows || verifyJson?.data;
+      const found = Array.isArray(rows) ? rows.find((r: any) => r.personNo === stripped) : null;
+      
+      return new Response(JSON.stringify({
+        verified: !!found,
+        mips_person: found || null,
+        person_no_searched: stripped,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!person_id || !person_type) {
       return new Response(JSON.stringify({ error: "Missing person_id or person_type" }), {
