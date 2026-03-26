@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const DEVICE_ACK = JSON.stringify({ result: 1, code: "000" });
@@ -15,10 +16,14 @@ function reinsertHyphen(stripped: string): string | null {
 
 function mapFaceType(type: string): { result: string; description: string } {
   switch (type) {
-    case "face_0": return { result: "member", description: "Authorized face scan" };
-    case "face_1": return { result: "member_denied", description: "Outside allowed passtime" };
-    case "face_2": return { result: "stranger", description: "Stranger / unrecognized" };
-    default: return { result: "unknown", description: `Unknown type: ${type}` };
+    case "face_0":
+      return { result: "member", description: "Authorized face scan" };
+    case "face_1":
+      return { result: "member_denied", description: "Outside allowed passtime" };
+    case "face_2":
+      return { result: "stranger", description: "Stranger / unrecognized" };
+    default:
+      return { result: "unknown", description: `Unknown type: ${type}` };
   }
 }
 
@@ -84,7 +89,13 @@ async function findPersonByCode(supabase: any, personCode: string) {
   return null;
 }
 
-async function handleMemberCheckin(supabase: any, memberId: string, branchId: string, personName: string, passType: string) {
+async function handleMemberCheckin(
+  supabase: any,
+  memberId: string,
+  branchId: string,
+  personName: string,
+  passType: string,
+) {
   let result = "member";
   let message = `Member ${personName} checked in via ${passType}`;
 
@@ -121,10 +132,7 @@ async function handleStaffCheckin(supabase: any, userId: string, branchId: strin
       .maybeSingle();
 
     if (existing) {
-      await supabase
-        .from("staff_attendance")
-        .update({ check_out: new Date().toISOString() })
-        .eq("id", existing.id);
+      await supabase.from("staff_attendance").update({ check_out: new Date().toISOString() }).eq("id", existing.id);
       message = `Staff ${personName} checked out`;
     } else {
       await supabase.from("staff_attendance").insert({
@@ -166,13 +174,9 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
       for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
       const filePath = `${person.id}_capture.jpg`;
-      await supabase.storage
-        .from("member-photos")
-        .upload(filePath, bytes, { upsert: true, contentType: "image/jpeg" });
+      await supabase.storage.from("member-photos").upload(filePath, bytes, { upsert: true, contentType: "image/jpeg" });
 
-      const { data: urlData } = supabase.storage
-        .from("member-photos")
-        .getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from("member-photos").getPublicUrl(filePath);
 
       const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
       await supabase.from(table).update({ biometric_photo_url: urlData.publicUrl }).eq("id", person.id);
@@ -234,10 +238,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   try {
     let payload: Record<string, unknown>;
@@ -250,7 +251,11 @@ Deno.serve(async (req) => {
       payload = Object.fromEntries(formData.entries());
     } else {
       const text = await req.text();
-      try { payload = JSON.parse(text); } catch { payload = { raw: text }; }
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = { raw: text };
+      }
     }
 
     // Log EVERY incoming request for debugging
@@ -285,7 +290,20 @@ Deno.serve(async (req) => {
     const temperature = payload.temperature ? parseFloat(String(payload.temperature)) : null;
     const deviceName = String(payload.deviceName || payload.device_name || payload.deviceKey || "unknown");
     const deviceKey = String(payload.deviceKey || payload.deviceSn || deviceName);
-    const scanTime = String(payload.createTime || payload.time || new Date().toISOString());
+
+    // --- FIX START: Parse Unix Milliseconds correctly ---
+    const rawTime = payload.createTime || payload.time;
+    let scanTime: string;
+    if (rawTime && !isNaN(Number(rawTime))) {
+      const ts = Number(rawTime);
+      // If 13 digits, it's milliseconds. Otherwise, seconds.
+      const dateObj = ts > 99999999999 ? new Date(ts) : new Date(ts * 1000);
+      scanTime = isNaN(dateObj.getTime()) ? new Date().toISOString() : dateObj.toISOString();
+    } else {
+      scanTime = typeof rawTime === "string" ? rawTime : new Date().toISOString();
+    }
+    // --- FIX END ---
+
     const imgUri = String(payload.imgUri || payload.img_uri || payload.imgBase64 || "");
     const searchScore = payload.searchScore ? parseFloat(String(payload.searchScore)) : null;
     const livenessScore = payload.livenessScore ? parseFloat(String(payload.livenessScore)) : null;
@@ -297,9 +315,13 @@ Deno.serve(async (req) => {
       faceTypeInfo = mapFaceType(passType);
       eventType = "face_scan";
     } else {
-      eventType = passType.includes("face") ? "face_scan" :
-                  passType.includes("finger") ? "fingerprint_scan" :
-                  passType.includes("card") ? "card_scan" : "identify";
+      eventType = passType.includes("face")
+        ? "face_scan"
+        : passType.includes("finger")
+          ? "fingerprint_scan"
+          : passType.includes("card")
+            ? "card_scan"
+            : "identify";
     }
 
     let memberId: string | null = null;
