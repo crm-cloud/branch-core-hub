@@ -401,6 +401,21 @@ export default function AttendanceDashboard() {
                 Force Entry
               </Button>
             )}
+            {isAdmin && effectiveBranchId && (
+              <Button
+                variant="outline"
+                className="gap-2 border-primary text-primary hover:bg-primary/10"
+                onClick={async () => {
+                  toast.info('Opening door...');
+                  const result = await remoteOpenDoorByBranch(effectiveBranchId);
+                  if (result.success) toast.success(result.message);
+                  else toast.error(result.message);
+                }}
+              >
+                <DoorOpen className="h-4 w-4" />
+                Override Entry
+              </Button>
+            )}
             <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-[180px]" />
             <div className="hidden md:flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5">
