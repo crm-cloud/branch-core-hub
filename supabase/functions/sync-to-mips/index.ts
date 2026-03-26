@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       const baseUrl = getBaseUrl();
       const stripped = stripHyphens(person_no);
       
-      const verifyRes = await fetch(`${baseUrl}/personInfo/person/list?personNo=${stripped}&pageNum=1&pageSize=10`, {
+      const verifyRes = await fetch(`${baseUrl}/personInfo/person/list?personSn=${stripped}&pageNum=1&pageSize=10`, {
         method: "GET",
         headers: authHeaders(token),
       });
@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
       }
       
       const rows = verifyJson?.rows || verifyJson?.data;
-      const found = Array.isArray(rows) ? rows.find((r: any) => r.personNo === stripped) : null;
+      const found = Array.isArray(rows) ? rows.find((r: any) => r.personSn === stripped) : null;
       
       return new Response(JSON.stringify({
         verified: !!found,
