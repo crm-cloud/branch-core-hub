@@ -8,7 +8,9 @@ All API calls go through per-branch `mips_connections` table. Fallback: env vars
 Default Base URL: http://212.38.94.228:9000
 ```
 
-> **IMPORTANT**: Server URL is configurable per branch via Settings → Integrations or Device Command Center → Add Device drawer.
+> **IMPORTANT**: Server URL is configurable per branch via Settings → Integrations or Device Command Center → MIPS Server Connection card.
+
+---
 
 ## Authentication
 
@@ -152,23 +154,29 @@ Location: **Device Management → Configure Device → Server Configuration tab*
 | Standard v3 | `/api/callback/identify` | `/api/callback/heartbeat` | `/api/callback/imgReg` |
 | TDX Admin v3 | `/tdx-admin/api/callback/identity` | `/tdx-admin/api/callback/heartbeat` | `/tdx-admin/api/callback/imgReg` |
 
-Our relay tries `/api/callback/identify` as primary path.
+Our relay tries both paths for compatibility.
 
-### Webhook Payload (Face Scan)
+### Actual Device Payload (Face Scan)
+The device sends `personId` (which is the `personSn` code used during sync, NOT the numeric MIPS ID):
 ```json
 {
-  "personNo": "MAIN00001",
-  "personName": "John Doe",
-  "passType": "face_0",
+  "personId": "EMPMM3FYN8U",
+  "personName": "MANAGER",
+  "type": "face_0",
+  "time": "1774594588284",
   "deviceKey": "D1146D682A96B1C2",
   "deviceName": "Front-Door-Device",
-  "createTime": "2026-03-26 15:30:00",
   "searchScore": "0.95",
   "livenessScore": "0.98",
   "imgUri": "/path/to/capture.jpg",
   "temperature": "36.5"
 }
 ```
+
+### Timestamp Formats
+- `time`: Unix milliseconds (13 digits, e.g. `1774594588284`)
+- `createTime`: ISO string or `YYYY-MM-DD HH:mm:ss`
+- `normalizeScanTime()` handles: seconds (10 digits), milliseconds (13), microseconds (16), nanoseconds (19), ISO strings
 
 ### Required Response
 ```json
@@ -182,11 +190,80 @@ Our relay tries `/api/callback/identify` as primary path.
 
 ---
 
+## Person Lookup Chain (Webhook)
+
+When a device sends a face scan, the webhook resolves the person using a 3-tier lookup:
+
+```
+Tier 1: mips_person_sn = personId  (exact match, fastest)
+Tier 2: mips_person_id = personId  (numeric MIPS ID)
+Tier 3: Code normalization:
+  - member_code (with hyphen re-insertion: MAIN00001 → MAIN-00001)
+  - employee_code (with EMP prefix: EMPMM3FYN8U → EMP-MM3FYN8U)
+  - trainers.mips_person_id (TRN prefix: TRN5096)
+```
+
+### Key Fields
+| CRM Column | Purpose |
+|---|---|
+| `mips_person_sn` | The `personSn` sent to MIPS during sync (hyphen-stripped code). Written by `sync-to-mips`. |
+| `mips_person_id` | The numeric MIPS `personId` returned after creation. Written by `sync-to-mips`. |
+| `mips_sync_status` | `synced`, `failed`, or `pending`. |
+
+---
+
+## Attendance Processing Architecture
+
+```
+┌──────────────┐     ┌────────────────────┐     ┌────────────────────┐
+│ Face Terminal │────▶│ mips-webhook-       │────▶│ Database           │
+│ (Hardware)    │     │ receiver            │     │                    │
+└──────────────┘     │                     │     │ access_logs        │
+                     │ 1. Parse payload    │     │ member_attendance  │
+                     │ 2. normalizeScanTime│     │ staff_attendance   │
+                     │ 3. Lookup person    │     └────────────────────┘
+                     │    (3-tier chain)   │
+                     │ 4. Route by type:   │
+                     │   member → RPC      │
+                     │   employee → toggle │
+                     │   trainer → toggle  │
+                     │ 5. Log access_logs  │
+                     │ 6. Relay to MIPS    │
+                     └────────────────────┘
+```
+
+| Role | Table | Key Field | Check-in Method | Used By |
+|---|---|---|---|---|
+| Member | `member_attendance` | `member_id` | `member_check_in` RPC (validates membership) | My Attendance, Attendance Dashboard, Analytics |
+| Employee | `staff_attendance` | `user_id` | Direct insert (toggle check-in/out same day) | HRM Payroll, Staff Attendance page |
+| Trainer | `staff_attendance` | `user_id` | Direct insert (toggle check-in/out same day) | HRM Payroll, Staff Attendance, Trainer Earnings |
+| Admin/Manager | `staff_attendance` | `user_id` | Direct insert (toggle check-in/out same day) | HRM Payroll, Staff Attendance page |
+
+### Member Check-in Flow
+1. `member_check_in` RPC validates: active membership, correct branch, not already checked in
+2. Inserts into `member_attendance` with `check_in_method: "biometric"`
+3. Returns validation result (or denial reason)
+
+### Staff/Trainer Check-in Flow
+1. Query `staff_attendance` for today, same `user_id`, where `check_out IS NULL`
+2. If found → UPDATE `check_out` (check-out)
+3. If not found → INSERT new row (check-in)
+
+### HRM/Payroll Integration
+```
+Payroll = (Base Salary / Calendar Days × Days Present) + PT Commissions − 12% PF
+```
+`calculatePayrollForStaff()` queries `staff_attendance` by `user_id` for the month → counts `daysPresent`.
+
+---
+
 ## CRM → MIPS Field Mapping
 
 | CRM Field | MIPS Field | Notes |
 |---|---|---|
 | `member_code` (hyphen-stripped) | `personSn` | `MAIN-00001` → `MAIN00001` |
+| `employee_code` (hyphen-stripped) | `personSn` | `EMP-MM3FYN8U` → `EMPMM3FYN8U` |
+| `TRN-{first4chars}` (hyphen-stripped) | `personSn` | `TRN-5096` → `TRN5096` |
 | `profiles.full_name` | `name` | |
 | `profiles.phone` | `mobile` | NOT `phone` |
 | `profiles.email` | `email` | |
@@ -227,8 +304,8 @@ All edge functions (`mips-proxy`, `sync-to-mips`, `mips-webhook-receiver`) resol
 | Function | Purpose |
 |---|---|
 | `mips-proxy` | Generic proxy to RuoYi API (branch-aware) |
-| `sync-to-mips` | Upsert person + photo + multi-device dispatch (member/employee/trainer) |
-| `mips-webhook-receiver` | Receive device callbacks → log + attendance → relay to MIPS |
+| `sync-to-mips` | Upsert person + photo + multi-device dispatch. Writes `mips_person_id` AND `mips_person_sn` to CRM. |
+| `mips-webhook-receiver` | Receive device callbacks → 3-tier person lookup → attendance by role → access_log → relay to MIPS |
 
 ---
 
@@ -244,3 +321,6 @@ All edge functions (`mips-proxy`, `sync-to-mips`, `mips-webhook-receiver`) resol
 8. **Multi-device dispatch**: `deviceIds` supports arrays for simultaneous sync to multiple devices.
 9. **Device is HTTP-only**: Cannot reach HTTPS endpoints directly. Use MIPS middleware as relay.
 10. **Reboot endpoint**: `/through/device/reboot/{id}` (NOT `/restart`).
+11. **Device sends `personId` = `personSn`**: The device payload uses `personId` field but the value is the `personSn` code, NOT the numeric MIPS ID.
+12. **Timestamps from device**: `time` field is Unix milliseconds (13 digits). `normalizeScanTime()` handles all formats.
+13. **`mips_person_sn` column**: Added to `members`, `employees`, `trainers` tables. Stores the exact `personSn` sent to MIPS during sync for reliable webhook lookups.
