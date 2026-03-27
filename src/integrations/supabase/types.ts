@@ -1748,6 +1748,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           mips_person_id: string | null
+          mips_person_sn: string | null
           mips_sync_status: string | null
           position: string | null
           salary: number | null
@@ -1770,6 +1771,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           position?: string | null
           salary?: number | null
@@ -1792,6 +1794,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           position?: string | null
           salary?: number | null
@@ -3476,6 +3479,7 @@ export type Database = {
           lead_id: string | null
           member_code: string | null
           mips_person_id: string | null
+          mips_person_sn: string | null
           mips_sync_status: string | null
           notes: string | null
           referred_by: string | null
@@ -3501,6 +3505,7 @@ export type Database = {
           lead_id?: string | null
           member_code?: string | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
@@ -3526,6 +3531,7 @@ export type Database = {
           lead_id?: string | null
           member_code?: string | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
@@ -5560,6 +5566,7 @@ export type Database = {
           is_active: boolean | null
           max_clients: number | null
           mips_person_id: string | null
+          mips_person_sn: string | null
           mips_sync_status: string | null
           pt_share_percentage: number | null
           salary_type: string | null
@@ -5583,6 +5590,7 @@ export type Database = {
           is_active?: boolean | null
           max_clients?: number | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           pt_share_percentage?: number | null
           salary_type?: string | null
@@ -5606,6 +5614,7 @@ export type Database = {
           is_active?: boolean | null
           max_clients?: number | null
           mips_person_id?: string | null
+          mips_person_sn?: string | null
           mips_sync_status?: string | null
           pt_share_percentage?: number | null
           salary_type?: string | null

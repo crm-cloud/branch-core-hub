@@ -24,10 +24,16 @@ function normalizePersonCodeCandidates(rawCode: string): string[] {
   const legacyHyphen = reinsertHyphen(trimmed);
   if (legacyHyphen) candidates.add(legacyHyphen);
 
-  // MIPS may remove hyphens from employee codes, while CRM keeps EMP-xxxxx format.
   const upper = trimmed.toUpperCase();
+
+  // EMP codes: EMPMM3FYN8U → EMP-MM3FYN8U
   if (!trimmed.includes("-") && upper.startsWith("EMP") && trimmed.length > 3) {
     candidates.add(`EMP-${trimmed.slice(3)}`);
+  }
+
+  // TRN codes: TRN5096 → TRN-5096
+  if (!trimmed.includes("-") && upper.startsWith("TRN") && trimmed.length > 3) {
+    candidates.add(`TRN-${trimmed.slice(3)}`);
   }
 
   return Array.from(candidates);
@@ -36,9 +42,9 @@ function normalizePersonCodeCandidates(rawCode: string): string[] {
 function mapFaceType(type: string): { result: string; description: string } {
   switch (type) {
     case "face_0":
-      return { result: "member", description: "Authorized face scan" };
+      return { result: "authorized", description: "Authorized face scan" };
     case "face_1":
-      return { result: "member_denied", description: "Outside allowed passtime" };
+      return { result: "denied", description: "Outside allowed passtime" };
     case "face_2":
       return { result: "stranger", description: "Stranger / unrecognized" };
     default:
@@ -54,18 +60,15 @@ function normalizeScanTime(rawTime: unknown): string {
   const asNumber = Number(rawTime);
   if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
     const abs = Math.abs(asNumber);
-
-    // Common device epoch formats:
-    // seconds (10 digits), milliseconds (13), microseconds (16), nanoseconds (19)
     let ms = asNumber;
     if (abs >= 1e18) {
       ms = asNumber / 1e6;
     } else if (abs >= 1e15) {
       ms = asNumber / 1e3;
     } else if (abs >= 1e12) {
-      ms = asNumber;
+      ms = asNumber; // already milliseconds
     } else {
-      ms = asNumber * 1e3;
+      ms = asNumber * 1e3; // seconds → ms
     }
 
     const dateObj = new Date(ms);
@@ -82,6 +85,36 @@ function normalizeScanTime(rawTime: unknown): string {
   }
 
   return new Date().toISOString();
+}
+
+/**
+ * Lookup person by mips_person_sn first (exact match from sync), 
+ * then by mips_person_id (numeric MIPS ID).
+ */
+async function findPersonByMipsSn(supabase: any, personSn: string) {
+  // Check mips_person_sn (the personSn sent during sync, e.g. EMPMM3FYN8U)
+  const { data: member } = await supabase
+    .from("members")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_sn", personSn)
+    .maybeSingle();
+  if (member) return { ...member, type: "member" };
+
+  const { data: emp } = await supabase
+    .from("employees")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_sn", personSn)
+    .maybeSingle();
+  if (emp) return { ...emp, type: "employee" };
+
+  const { data: trainer } = await supabase
+    .from("trainers")
+    .select("id, branch_id, user_id")
+    .eq("mips_person_sn", personSn)
+    .maybeSingle();
+  if (trainer) return { ...trainer, type: "trainer" };
+
+  return null;
 }
 
 async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
@@ -112,6 +145,7 @@ async function findPersonByMipsId(supabase: any, mipsPersonId: string) {
 async function findPersonByCode(supabase: any, personCode: string) {
   const candidates = normalizePersonCodeCandidates(personCode);
 
+  // Check members by member_code
   for (const candidate of candidates) {
     const { data: member } = await supabase
       .from("members")
@@ -121,6 +155,7 @@ async function findPersonByCode(supabase: any, personCode: string) {
     if (member) return { ...member, type: "member" };
   }
 
+  // Check employees by employee_code
   for (const candidate of candidates) {
     const { data: emp } = await supabase
       .from("employees")
@@ -130,36 +165,36 @@ async function findPersonByCode(supabase: any, personCode: string) {
     if (emp) return { ...emp, type: "employee" };
   }
 
-  // Additional fallback for identifiers that are stored as mips_person_id.
+  // Check trainers by mips_person_id (trainers don't have trainer_code column)
   for (const candidate of candidates) {
-    const { data: memberByMipsCode } = await supabase
-      .from("members")
-      .select("id, branch_id, user_id")
-      .eq("mips_person_id", candidate)
-      .maybeSingle();
-    if (memberByMipsCode) return { ...memberByMipsCode, type: "member" };
-  }
-
-  for (const candidate of candidates) {
-    const { data: empByMipsCode } = await supabase
-      .from("employees")
-      .select("id, branch_id, user_id")
-      .eq("mips_person_id", candidate)
-      .maybeSingle();
-    if (empByMipsCode) return { ...empByMipsCode, type: "employee" };
-  }
-
-  for (const candidate of candidates) {
-    const { data: trainerByMipsCode } = await supabase
+    const { data: trainer } = await supabase
       .from("trainers")
       .select("id, branch_id, user_id")
       .eq("mips_person_id", candidate)
       .maybeSingle();
-    if (trainerByMipsCode) return { ...trainerByMipsCode, type: "trainer" };
+    if (trainer) return { ...trainer, type: "trainer" };
+  }
+
+  // Fallback: check mips_person_id on members/employees too
+  for (const candidate of candidates) {
+    const { data: memberByMips } = await supabase
+      .from("members")
+      .select("id, branch_id, user_id")
+      .eq("mips_person_id", candidate)
+      .maybeSingle();
+    if (memberByMips) return { ...memberByMips, type: "member" };
+  }
+
+  for (const candidate of candidates) {
+    const { data: empByMips } = await supabase
+      .from("employees")
+      .select("id, branch_id, user_id")
+      .eq("mips_person_id", candidate)
+      .maybeSingle();
+    if (empByMips) return { ...empByMips, type: "employee" };
   }
 
   console.warn(`findPersonByCode: no match for ${personCode}; tried ${candidates.join(", ")}`);
-
   return null;
 }
 
@@ -185,13 +220,15 @@ async function handleMemberCheckin(
     }
   } catch (e) {
     console.warn("Check-in RPC failed:", e);
+    message = `Member ${personName} check-in RPC error: ${e}`;
   }
 
   return { result, message };
 }
 
-async function handleStaffCheckin(supabase: any, userId: string, branchId: string, personName: string) {
-  let message = `Staff ${personName} checked in`;
+async function handleStaffCheckin(supabase: any, userId: string, branchId: string, personName: string, personType: string) {
+  const label = personType === "trainer" ? "Trainer" : "Staff";
+  let message = `${label} ${personName} checked in`;
 
   try {
     const todayStart = new Date();
@@ -207,7 +244,7 @@ async function handleStaffCheckin(supabase: any, userId: string, branchId: strin
 
     if (existing) {
       await supabase.from("staff_attendance").update({ check_out: new Date().toISOString() }).eq("id", existing.id);
-      message = `Staff ${personName} checked out`;
+      message = `${label} ${personName} checked out`;
     } else {
       await supabase.from("staff_attendance").insert({
         user_id: userId,
@@ -217,6 +254,7 @@ async function handleStaffCheckin(supabase: any, userId: string, branchId: strin
     }
   } catch (e) {
     console.warn("Staff attendance failed:", e);
+    message = `${label} ${personName} attendance error: ${e}`;
   }
 
   return message;
@@ -234,7 +272,8 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
 
   console.log(`ImgReg callback for ${personNo}, imgUri=${imgUri ? "yes" : "no"}, base64=${imgBase64 ? "yes" : "no"}`);
 
-  let person = await findPersonByMipsId(supabase, personNo);
+  let person = await findPersonByMipsSn(supabase, personNo);
+  if (!person) person = await findPersonByMipsId(supabase, personNo);
   if (!person) person = await findPersonByCode(supabase, personNo);
   if (!person) {
     console.warn(`ImgReg: person ${personNo} not found in CRM`);
@@ -265,10 +304,6 @@ async function handleImgRegCallback(supabase: any, payload: Record<string, unkno
   }
 }
 
-/**
- * Resolve the MIPS server relay URL for a given branch.
- * Tries mips_connections first, falls back to env var.
- */
 async function getRelayUrl(supabase: any, branchId: string | null): Promise<string | null> {
   if (branchId) {
     const { data: conn } = await supabase
@@ -283,21 +318,14 @@ async function getRelayUrl(supabase: any, branchId: string | null): Promise<stri
   return envUrl ? envUrl.replace(/\/+$/, "") : null;
 }
 
-/**
- * Forward the original payload to the MIPS server's internal callback.
- * Tries multiple known callback paths for compatibility across MIPS versions.
- */
 function relayToMips(mipsServerUrl: string, payload: Record<string, unknown>, eventType: string) {
-  // Determine the correct relay path based on event type
   const callbackPaths: string[] = [];
   if (eventType === "ImgReg" || eventType === "img_reg" || eventType === "register") {
     callbackPaths.push("/api/callback/imgReg", "/tdx-admin/api/callback/imgReg");
   } else {
-    // Face scan / attendance callbacks
     callbackPaths.push("/api/callback/identify", "/tdx-admin/api/callback/identity");
   }
 
-  // Fire-and-forget: try the primary path
   const primaryUrl = `${mipsServerUrl}${callbackPaths[0]}`;
   console.log(`Relay forwarding to: ${primaryUrl}`);
   fetch(primaryUrl, {
@@ -333,23 +361,20 @@ Deno.serve(async (req) => {
     }
 
     // Log EVERY incoming request for debugging
-    const reqInfo = {
+    console.log("=== MIPS WEBHOOK RECEIVED ===");
+    console.log("Request info:", JSON.stringify({
       method: req.method,
       url: req.url,
       content_type: contentType,
-      headers: Object.fromEntries(req.headers.entries()),
       payload_keys: Object.keys(payload),
       timestamp: new Date().toISOString(),
-    };
-    console.log("=== MIPS WEBHOOK RECEIVED ===");
-    console.log("Request info:", JSON.stringify(reqInfo));
+    }));
     console.log("Full payload:", JSON.stringify(payload));
 
     // Check for ImgReg (registration photo callback)
     const eventType_raw = String(payload.eventType || payload.event_type || payload.type || "");
     if (eventType_raw === "ImgReg" || eventType_raw === "img_reg" || eventType_raw === "register") {
       await handleImgRegCallback(supabase, payload);
-      // Relay to MIPS
       const relayUrl = await getRelayUrl(supabase, null);
       if (relayUrl) relayToMips(relayUrl, payload, eventType_raw);
       return new Response(DEVICE_ACK, {
@@ -358,6 +383,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Extract fields — device may send personId (which is actually personSn)
     const personNo = String(payload.personNo || payload.personSn || payload.personId || payload.person_no || "");
     const personName = String(payload.personName || payload.name || "Unknown");
     const passType = String(payload.passType || payload.pass_type || payload.type || "face");
@@ -391,18 +417,29 @@ Deno.serve(async (req) => {
     let memberId: string | null = null;
     let profileId: string | null = null;
     let branchId: string | null = null;
-    let result = faceTypeInfo?.result || "stranger";
+    let result = faceTypeInfo?.result || "unknown";
     let message = faceTypeInfo?.description || `${personName} scanned via ${passType}`;
 
     const isStranger = passType === "face_2" || personNo === "STRANGERBABY" || !personNo;
 
     if (personNo && !isStranger) {
-      let person = await findPersonByMipsId(supabase, personNo);
+      console.log(`Looking up person: personNo=${personNo}`);
+
+      // Tier 1: Direct match by mips_person_sn (fastest, most reliable)
+      let person = await findPersonByMipsSn(supabase, personNo);
+
+      // Tier 2: Match by mips_person_id (numeric MIPS ID)
+      if (!person) {
+        person = await findPersonByMipsId(supabase, personNo);
+      }
+
+      // Tier 3: Match by code normalization (member_code, employee_code)
       if (!person) {
         person = await findPersonByCode(supabase, personNo);
       }
 
       if (person) {
+        console.log(`Person found: type=${person.type}, id=${person.id}`);
         branchId = person.branch_id;
         profileId = person.user_id;
 
@@ -412,12 +449,19 @@ Deno.serve(async (req) => {
           result = checkin.result;
           message = checkin.message;
         } else {
+          // Employee or trainer → staff attendance toggle
           result = person.type === "trainer" ? "trainer" : "staff";
-          message = await handleStaffCheckin(supabase, person.user_id, person.branch_id, personName);
+          message = await handleStaffCheckin(supabase, person.user_id, person.branch_id, personName, person.type);
         }
       } else {
-        console.warn(`Person not found in CRM: personNo=${personNo}, personName=${personName}`);
+        // *** CRITICAL FIX: Override result to not_found instead of keeping face_type default ***
+        console.warn(`Person NOT FOUND in CRM: personNo=${personNo}, personName=${personName}`);
+        result = "not_found";
+        message = `Person ${personNo} (${personName}) not found in CRM`;
       }
+    } else if (isStranger) {
+      result = "stranger";
+      message = `Stranger detected at ${deviceName}`;
     }
 
     // Log to access_logs
@@ -437,16 +481,17 @@ Deno.serve(async (req) => {
         search_score: searchScore,
         liveness_score: livenessScore,
         source: "mips_webhook",
+        normalized_time: scanTime,
       },
     });
 
     if (logError) {
-      console.error("Failed to insert access_log:", logError, { rawTime, scanTime });
+      console.error("Failed to insert access_log:", JSON.stringify(logError), { rawTime, scanTime });
     }
 
     console.log(`Processed: result=${result}, person=${personNo}, device=${deviceKey}, message=${message}`);
 
-    // Relay: forward to MIPS internal callback (fire-and-forget)
+    // Relay to MIPS internal callback (fire-and-forget)
     try {
       const relayUrl = await getRelayUrl(supabase, branchId);
       if (relayUrl) {
@@ -465,7 +510,6 @@ Deno.serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("mips-webhook-receiver FATAL error:", message);
-    // Always return ACK to device even on error
     return new Response(DEVICE_ACK, {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

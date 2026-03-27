@@ -555,11 +555,13 @@ Deno.serve(async (req) => {
       dispatchResult = { error: String(e) };
     }
 
-    // Step 6: Update CRM database with real personId
+    // Step 6: Update CRM database with real personId AND mips_person_sn
     await supabase.from(tableName).update({
       mips_sync_status: "synced",
       mips_person_id: String(personId),
+      mips_person_sn: mipsPersonSn,
     }).eq("id", person_id);
+    console.log(`CRM updated: mips_person_id=${personId}, mips_person_sn=${mipsPersonSn}`);
 
     return new Response(JSON.stringify({
       success: true,
