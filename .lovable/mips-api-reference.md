@@ -324,3 +324,65 @@ All edge functions (`mips-proxy`, `sync-to-mips`, `mips-webhook-receiver`) resol
 11. **Device sends `personId` = `personSn`**: The device payload uses `personId` field but the value is the `personSn` code, NOT the numeric MIPS ID.
 12. **Timestamps from device**: `time` field is Unix milliseconds (13 digits). `normalizeScanTime()` handles all formats.
 13. **`mips_person_sn` column**: Added to `members`, `employees`, `trainers` tables. Stores the exact `personSn` sent to MIPS during sync for reliable webhook lookups.
+
+---
+
+## Hardware Access Revocation (Edge Authorization Fix)
+
+### Problem
+The turnstile makes **local** door-open decisions based on synced `validTimeEnd`. If a member is frozen/expired in the CRM but their hardware profile isn't updated, the gate still opens.
+
+### Solution: `revoke-mips-access` Edge Function
+
+```
+POST /functions/v1/revoke-mips-access
+{
+  "member_id": "uuid",
+  "action": "revoke" | "restore",
+  "reason": "Membership frozen",
+  "branch_id": "uuid" (optional)
+}
+```
+
+**Revoke**: Sets `validTimeEnd` to `2000-01-01 00:00:00` → dispatches to devices → hardware blocks access immediately.
+**Restore**: Sets `validTimeEnd` to active membership `end_date` → dispatches to devices → hardware allows access.
+
+### Automatic Triggers
+
+| Event | Action | Triggered By |
+|---|---|---|
+| Freeze approved | Revoke | `approveFreeze()` in membershipService |
+| Unfreeze | Restore | `resumeFromFreeze()` / UnfreezeMembershipDrawer |
+| Cancel membership | Revoke | CancelMembershipDrawer |
+| Membership expired | Revoke | `check-expired-access` cron function |
+| New purchase + sync | Restore | sync-to-mips (sets correct dates) |
+
+### `check-expired-access` Edge Function (Cron)
+
+Batch checks all members with `hardware_access_status = 'active'` who no longer have a valid membership, and auto-revokes their hardware access.
+
+### Member `hardware_access_status` Column
+
+| Value | Meaning |
+|---|---|
+| `none` | Never synced to hardware |
+| `active` | Hardware access granted |
+| `revoked` | Hardware access revoked |
+
+---
+
+## Exterior API (from Postman Collection)
+
+Alternative API paths discovered in MIPS middleware. Currently unused but documented for reference:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/interface/exterior/login` | POST | Alternative auth |
+| `/interface/exterior/getPersonList` | GET | List persons |
+| `/interface/exterior/addPerson` | POST | Add person |
+| `/interface/exterior/updatePerson` | POST | Update person |
+| `/interface/exterior/getCheckRecordList` | GET | Attendance records |
+| `/interface/exterior/listDeptNew` | GET | List departments |
+| `/interface/exterior/addDept` | POST | Add department |
+| `/interface/exterior/getPost` | GET | List positions |
+| `/interface/exterior/addPost` | POST | Add position |

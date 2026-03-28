@@ -8,6 +8,31 @@ import type {
 } from '@/types/membership';
 import { differenceInDays, addDays, parseISO, format, isAfter, isBefore } from 'date-fns';
 
+// ── Hardware Access Revocation / Restoration ──
+export async function revokeHardwareAccess(memberId: string, reason: string, branchId?: string) {
+  try {
+    const { data, error } = await supabase.functions.invoke('revoke-mips-access', {
+      body: { member_id: memberId, action: 'revoke', reason, branch_id: branchId },
+    });
+    if (error) console.error('Hardware revoke error:', error);
+    return data;
+  } catch (e) {
+    console.error('Hardware revoke failed:', e);
+  }
+}
+
+export async function restoreHardwareAccess(memberId: string, reason: string, branchId?: string) {
+  try {
+    const { data, error } = await supabase.functions.invoke('revoke-mips-access', {
+      body: { member_id: memberId, action: 'restore', reason, branch_id: branchId },
+    });
+    if (error) console.error('Hardware restore error:', error);
+    return data;
+  } catch (e) {
+    console.error('Hardware restore failed:', e);
+  }
+}
+
 export async function fetchMembership(membershipId: string) {
   const { data, error } = await supabase
     .from('memberships')
@@ -261,6 +286,11 @@ export async function approveFreeze(freezeId: string, approvedBy: string) {
       .from('memberships')
       .update({ status: 'frozen' })
       .eq('id', freeze.membership_id);
+
+    // Revoke hardware access when freeze activates
+    if (freeze.memberships?.member_id) {
+      revokeHardwareAccess(freeze.memberships.member_id, `Membership frozen: ${freeze.reason || 'Freeze approved'}`, freeze.memberships?.branch_id);
+    }
   }
 
   return freeze;
@@ -298,10 +328,16 @@ export async function resumeFromFreeze(membershipId: string) {
       total_freeze_days_used: totalFrozenDays,
     })
     .eq('id', membershipId)
-    .select()
+    .select('*, members:member_id(id, branch_id)')
     .single();
 
   if (error) throw error;
+
+  // Restore hardware access
+  if ((data as any)?.members?.id) {
+    restoreHardwareAccess((data as any).members.id, 'Membership unfrozen', (data as any).members.branch_id);
+  }
+
   return data;
 }
 

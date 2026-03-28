@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { Play, Calendar, CheckCircle } from 'lucide-react';
+import { restoreHardwareAccess } from '@/services/membershipService';
 
 interface UnfreezeMembershipDrawerProps {
   open: boolean;
@@ -56,6 +57,8 @@ export function UnfreezeMembershipDrawer({
     },
     onSuccess: (data) => {
       toast.success(`Membership resumed. New end date: ${format(new Date(data.newEndDate), 'dd MMM yyyy')}`);
+      // Restore hardware access
+      restoreHardwareAccess(membership.member_id, 'Membership unfrozen', membership.branch_id);
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onOpenChange(false);

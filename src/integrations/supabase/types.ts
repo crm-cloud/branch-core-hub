@@ -30,6 +30,7 @@ export type Database = {
           mac_address: string | null
           mips_device_id: number | null
           model: string | null
+          public_ip: string | null
           relay_delay: number | null
           relay_mode: number | null
           serial_number: string | null
@@ -50,6 +51,7 @@ export type Database = {
           mac_address?: string | null
           mips_device_id?: number | null
           model?: string | null
+          public_ip?: string | null
           relay_delay?: number | null
           relay_mode?: number | null
           serial_number?: string | null
@@ -70,6 +72,7 @@ export type Database = {
           mac_address?: string | null
           mips_device_id?: number | null
           model?: string | null
+          public_ip?: string | null
           relay_delay?: number | null
           relay_mode?: number | null
           serial_number?: string | null
@@ -3473,6 +3476,7 @@ export type Database = {
           custom_welcome_message: string | null
           fitness_goals: string | null
           hardware_access_enabled: boolean | null
+          hardware_access_status: string | null
           health_conditions: string | null
           id: string
           joined_at: string
@@ -3499,6 +3503,7 @@ export type Database = {
           custom_welcome_message?: string | null
           fitness_goals?: string | null
           hardware_access_enabled?: boolean | null
+          hardware_access_status?: string | null
           health_conditions?: string | null
           id?: string
           joined_at?: string
@@ -3525,6 +3530,7 @@ export type Database = {
           custom_welcome_message?: string | null
           fitness_goals?: string | null
           hardware_access_enabled?: boolean | null
+          hardware_access_status?: string | null
           health_conditions?: string | null
           id?: string
           joined_at?: string
