@@ -8,6 +8,31 @@ import type {
 } from '@/types/membership';
 import { differenceInDays, addDays, parseISO, format, isAfter, isBefore } from 'date-fns';
 
+// ── Hardware Access Revocation / Restoration ──
+export async function revokeHardwareAccess(memberId: string, reason: string, branchId?: string) {
+  try {
+    const { data, error } = await supabase.functions.invoke('revoke-mips-access', {
+      body: { member_id: memberId, action: 'revoke', reason, branch_id: branchId },
+    });
+    if (error) console.error('Hardware revoke error:', error);
+    return data;
+  } catch (e) {
+    console.error('Hardware revoke failed:', e);
+  }
+}
+
+export async function restoreHardwareAccess(memberId: string, reason: string, branchId?: string) {
+  try {
+    const { data, error } = await supabase.functions.invoke('revoke-mips-access', {
+      body: { member_id: memberId, action: 'restore', reason, branch_id: branchId },
+    });
+    if (error) console.error('Hardware restore error:', error);
+    return data;
+  } catch (e) {
+    console.error('Hardware restore failed:', e);
+  }
+}
+
 export async function fetchMembership(membershipId: string) {
   const { data, error } = await supabase
     .from('memberships')
