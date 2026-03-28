@@ -328,10 +328,16 @@ export async function resumeFromFreeze(membershipId: string) {
       total_freeze_days_used: totalFrozenDays,
     })
     .eq('id', membershipId)
-    .select()
+    .select('*, members:member_id(id, branch_id)')
     .single();
 
   if (error) throw error;
+
+  // Restore hardware access
+  if ((data as any)?.members?.id) {
+    restoreHardwareAccess((data as any).members.id, 'Membership unfrozen', (data as any).members.branch_id);
+  }
+
   return data;
 }
 
