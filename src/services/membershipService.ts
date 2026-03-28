@@ -286,6 +286,11 @@ export async function approveFreeze(freezeId: string, approvedBy: string) {
       .from('memberships')
       .update({ status: 'frozen' })
       .eq('id', freeze.membership_id);
+
+    // Revoke hardware access when freeze activates
+    if (freeze.memberships?.member_id) {
+      revokeHardwareAccess(freeze.memberships.member_id, `Membership frozen: ${freeze.reason || 'Freeze approved'}`, freeze.memberships?.branch_id);
+    }
   }
 
   return freeze;
