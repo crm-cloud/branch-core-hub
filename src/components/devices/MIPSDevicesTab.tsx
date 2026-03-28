@@ -84,7 +84,7 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <div className="rounded-lg bg-muted/50 p-2 text-center">
             <p className="text-[10px] text-muted-foreground">Persons</p>
             <p className="text-sm font-bold">{device.personCount || 0}</p>
@@ -98,6 +98,10 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
             <p className="text-[10px] font-medium truncate">
               {device.lastActiveTime ? new Date(device.lastActiveTime).toLocaleTimeString() : "—"}
             </p>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-2 text-center">
+            <p className="text-[10px] text-muted-foreground">Public IP</p>
+            <p className="text-[10px] font-mono font-medium truncate">{device.ip || "—"}</p>
           </div>
         </div>
 
