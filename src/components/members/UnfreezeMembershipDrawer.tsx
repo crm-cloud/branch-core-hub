@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { Play, Calendar, CheckCircle } from 'lucide-react';
+import { restoreHardwareAccess } from '@/services/membershipService';
 
 interface UnfreezeMembershipDrawerProps {
   open: boolean;
