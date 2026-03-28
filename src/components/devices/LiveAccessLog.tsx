@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, User, Shield, AlertTriangle, RefreshCw, Eye } from "lucide-react";
+import { Activity, User, Shield, AlertTriangle, RefreshCw, Eye, DoorOpen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, differenceInDays } from "date-fns";
+import { remoteOpenDoorByBranch } from "@/services/mipsService";
+import { toast } from "sonner";
 import {
   Collapsible,
   CollapsibleContent,
@@ -26,6 +28,14 @@ interface AccessLogEntry {
   payload: Record<string, unknown> | null;
   captured_at: string | null;
   created_at: string;
+  // Joined data
+  members?: {
+    id: string;
+    member_code: string;
+    biometric_photo_url: string | null;
+    profiles: { full_name: string; avatar_url: string | null } | null;
+    memberships: Array<{ status: string; end_date: string; membership_plans: { name: string } | null }>;
+  } | null;
 }
 
 interface LiveAccessLogProps {
@@ -43,24 +53,36 @@ const resultConfig: Record<string, { color: string; icon: React.ReactNode; label
   accepted: { color: "bg-green-500", icon: <Activity className="h-3 w-3" />, label: "Accepted" },
 };
 
+function getBillingBadge(memberships: Array<{ status: string; end_date: string }> | undefined) {
+  if (!memberships?.length) return null;
+  const active = memberships.find(m => m.status === "active");
+  if (!active) {
+    const frozen = memberships.find(m => m.status === "frozen");
+    if (frozen) return <Badge variant="outline" className="text-[10px] bg-info/10 text-info border-info/20">Frozen</Badge>;
+    return <Badge variant="outline" className="text-[10px] bg-destructive/10 text-destructive border-destructive/20">No Active Plan</Badge>;
+  }
+  const daysLeft = differenceInDays(new Date(active.end_date), new Date());
+  if (daysLeft < 0) return <Badge variant="outline" className="text-[10px] bg-destructive/10 text-destructive border-destructive/20">Overdue</Badge>;
+  if (daysLeft <= 7) return <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">Due in {daysLeft}d</Badge>;
+  return null;
+}
+
 const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
   const queryClient = useQueryClient();
   const [liveEvents, setLiveEvents] = useState<AccessLogEntry[]>([]);
   const [expandedPayload, setExpandedPayload] = useState<string | null>(null);
+  const [openingDoor, setOpeningDoor] = useState(false);
 
   const { data: initialEvents = [], isLoading } = useQuery({
     queryKey: ["access-logs-live", branchId, limit],
     queryFn: async () => {
       let query = supabase
         .from("access_logs")
-        .select("*")
+        .select(`*, members:member_id(id, member_code, biometric_photo_url, profiles:user_id(full_name, avatar_url), memberships(status, end_date, membership_plans(name)))`)
         .order("created_at", { ascending: false })
         .limit(limit);
 
-      if (branchId) {
-        query = query.eq("branch_id", branchId);
-      }
-
+      if (branchId) query = query.eq("branch_id", branchId);
       const { data, error } = await query;
       if (error) throw error;
       return (data || []) as AccessLogEntry[];
@@ -71,7 +93,7 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
     setLiveEvents(initialEvents);
   }, [initialEvents]);
 
-  // Realtime subscription on access_logs
+  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("access-logs-realtime-" + (branchId || "all"))
@@ -83,35 +105,46 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
           table: "access_logs",
           ...(branchId ? { filter: `branch_id=eq.${branchId}` } : {}),
         },
-        (payload) => {
-          const newEntry = payload.new as AccessLogEntry;
-          setLiveEvents((prev) => [newEntry, ...prev].slice(0, limit));
+        () => {
+          // Refetch to get joined data
+          queryClient.invalidateQueries({ queryKey: ["access-logs-live", branchId, limit] });
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [branchId, limit]);
+    return () => { supabase.removeChannel(channel); };
+  }, [branchId, limit, queryClient]);
 
-  const getConfig = (result: string | null) => {
-    return resultConfig[result || ""] || resultConfig.ignored;
+  const handleManualOverride = async () => {
+    if (!branchId) { toast.error("No branch selected"); return; }
+    setOpeningDoor(true);
+    try {
+      const result = await remoteOpenDoorByBranch(branchId);
+      if (result.success) toast.success("Door opened!");
+      else toast.error(result.message);
+    } finally {
+      setOpeningDoor(false);
+    }
   };
+
+  const getConfig = (result: string | null) => resultConfig[result || ""] || resultConfig.ignored;
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Live Access Feed</CardTitle>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => queryClient.invalidateQueries({ queryKey: ["access-logs-live"] })}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {branchId && (
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleManualOverride} disabled={openingDoor}>
+                <DoorOpen className="h-3.5 w-3.5" />
+                {openingDoor ? "Opening..." : "Override"}
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => queryClient.invalidateQueries({ queryKey: ["access-logs-live"] })}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -132,41 +165,65 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
               <div className="space-y-3">
                 {liveEvents.map((event) => {
                   const config = getConfig(event.result);
+                  const memberData = event.members;
+                  const memberPhoto = memberData?.biometric_photo_url || memberData?.profiles?.avatar_url;
+                  const memberName = memberData?.profiles?.full_name;
+                  const billingBadge = getBillingBadge(memberData?.memberships);
+                  const isDenied = event.result === "member_denied" || event.result === "not_found" || event.result === "stranger";
+
                   return (
                     <div key={event.id} className="relative pl-6">
                       <div className="flex items-start gap-3">
                         {/* Timeline dot */}
-                        <div
-                          className={`absolute left-0 top-2 w-[15px] h-[15px] rounded-full border-2 border-background z-10 ${config.color}`}
-                        />
+                        <div className={`absolute left-0 top-2 w-[15px] h-[15px] rounded-full border-2 border-background z-10 ${config.color}`} />
 
-                        <Avatar className="h-8 w-8 shrink-0">
+                        <Avatar className="h-9 w-9 shrink-0 ring-1 ring-border">
+                          {memberPhoto ? (
+                            <AvatarImage src={memberPhoto} alt={memberName || ""} />
+                          ) : null}
                           <AvatarFallback className="text-xs bg-muted">
-                            {config.icon}
+                            {memberName ? memberName.charAt(0).toUpperCase() : config.icon}
                           </AvatarFallback>
                         </Avatar>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
+                            {memberName && (
+                              <span className="text-xs font-semibold">{memberName}</span>
+                            )}
                             <Badge
                               variant="outline"
                               className={`text-[10px] px-1.5 py-0 ${
                                 event.result === "member" || event.result === "staff" || event.result === "accepted"
                                   ? "bg-green-500/10 text-green-700 border-green-500/20"
-                                  : event.result === "stranger" || event.result === "not_found" || event.result === "member_denied"
+                                  : isDenied
                                   ? "bg-destructive/10 text-destructive border-destructive/20"
                                   : "bg-muted"
                               }`}
                             >
                               {config.label}
                             </Badge>
+                            {billingBadge}
                             <span className="text-[10px] text-muted-foreground font-mono">
                               {event.device_sn}
                             </span>
                           </div>
                           <p className="text-xs mt-0.5 truncate">{event.message || "—"}</p>
 
-                          {/* Expandable payload inspector */}
+                          {/* Manual override for denied entries */}
+                          {isDenied && branchId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[10px] text-warning hover:text-warning mt-1 gap-1"
+                              onClick={handleManualOverride}
+                              disabled={openingDoor}
+                            >
+                              <DoorOpen className="h-3 w-3" />
+                              Manual Override
+                            </Button>
+                          )}
+
                           {event.payload && (
                             <Collapsible
                               open={expandedPayload === event.id}
@@ -189,9 +246,7 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
 
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
                           {event.captured_at || event.created_at
-                            ? formatDistanceToNow(new Date(event.captured_at || event.created_at), {
-                                addSuffix: true,
-                              })
+                            ? formatDistanceToNow(new Date(event.captured_at || event.created_at), { addSuffix: true })
                             : "Just now"}
                         </span>
                       </div>
