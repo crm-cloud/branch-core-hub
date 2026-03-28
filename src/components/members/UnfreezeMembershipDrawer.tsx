@@ -57,6 +57,8 @@ export function UnfreezeMembershipDrawer({
     },
     onSuccess: (data) => {
       toast.success(`Membership resumed. New end date: ${format(new Date(data.newEndDate), 'dd MMM yyyy')}`);
+      // Restore hardware access
+      restoreHardwareAccess(membership.member_id, 'Membership unfrozen', membership.branch_id);
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onOpenChange(false);

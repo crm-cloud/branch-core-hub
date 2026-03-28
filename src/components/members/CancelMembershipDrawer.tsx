@@ -162,6 +162,8 @@ export function CancelMembershipDrawer({
           ? `Membership cancelled. Refund of ₹${data.refundAmount} processed.`
           : 'Membership cancelled successfully'
       );
+      // Revoke hardware access on cancel
+      revokeHardwareAccess(membership.member_id, `Membership cancelled: ${cancellationReason}`, membership.branch_id);
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['memberships'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
