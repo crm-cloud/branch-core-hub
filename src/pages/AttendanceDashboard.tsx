@@ -670,6 +670,22 @@ export default function AttendanceDashboard() {
 
               {/* Members Tab */}
               <TabsContent value="members">
+                {/* Bulk Check-out */}
+                {memberAttendance.some((a: any) => !a.check_out) && (
+                  <div className="flex justify-end mb-4">
+                    <Button variant="outline" size="sm" className="gap-2" onClick={async () => {
+                      const activeIds = memberAttendance.filter((a: any) => !a.check_out).map((a: any) => a.member_id);
+                      let count = 0;
+                      for (const mid of activeIds) {
+                        try { await checkOut(mid); count++; } catch {}
+                      }
+                      toast.success(`Checked out ${count} member(s)`);
+                    }}>
+                      <LogOut className="h-4 w-4" />
+                      Bulk Check Out ({memberAttendance.filter((a: any) => !a.check_out).length})
+                    </Button>
+                  </div>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -678,7 +694,7 @@ export default function AttendanceDashboard() {
                       <TableHead>Check-out</TableHead>
                       <TableHead>Duration</TableHead>
                       <TableHead>Source</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -701,11 +717,13 @@ export default function AttendanceDashboard() {
                         <TableCell>{formatDuration(attendance.check_in, attendance.check_out)}</TableCell>
                         <TableCell>{getSourceBadge(attendance)}</TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <Badge className={`border ${attendance.check_out ? 'bg-muted text-muted-foreground border-border' : 'bg-success/10 text-success border-success/20'}`}>
-                              {attendance.check_out ? 'Completed' : 'Active'}
-                            </Badge>
-                          </div>
+                          {attendance.check_out ? (
+                            <Badge className="bg-muted text-muted-foreground border-border">Completed</Badge>
+                          ) : (
+                            <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" disabled={isCheckingOut} onClick={() => checkOut(attendance.member_id)}>
+                              <LogOut className="h-3 w-3" /> Check Out
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
