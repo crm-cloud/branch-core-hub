@@ -5,11 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server, Heart,
+  Monitor, Wifi, WifiOff, Users, Fingerprint, RefreshCw, Server, Heart, ShieldAlert,
 } from "lucide-react";
 import { testMIPSConnection, fetchMIPSDevices, type MIPSDevice } from "@/services/mipsService";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 interface MIPSDashboardProps {
   branchId?: string;
