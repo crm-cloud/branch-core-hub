@@ -1,177 +1,71 @@
 
 
-# Master Architecture Audit: Hardware Access Revocation, Attendance Workflow, Live Feed Upgrade
+# Comprehensive Audit & Fix: Device Sync Lifecycle, FK Error, and UI/UX Upgrade
 
-## The Core Problem (from screenshot)
+## Bugs Found
 
-The screenshot shows Yogita Lekhari scanning at the turnstile and being allowed through physically, even though the CRM correctly logs "Denied — Membership is currently frozen." The turnstile makes **local decisions** based on synced face data and `validTimeEnd`. Since the CRM never pushed a revocation to MIPS when the membership was frozen, the hardware still treats her as active.
+### Bug 1: "2099" Frozen VIP Pass (CRITICAL)
+**File**: `supabase/functions/revoke-mips-access/index.ts` lines 192-194
+When restoring access and no active membership is found, the fallback is `"2099-12-31 23:59:59"` — giving lifetime access. The same `2099` fallback exists in `sync-to-mips/index.ts` line 8 (`PERMANENT_END`), used for staff/trainers (correct for them) but the restore function should never default to 2099 for members.
 
-## Postman Collection Discovery
+**Fix**: When `action === "restore"` and no active membership is found, return an error instead of granting 2099 access. Only send the actual membership `end_date`.
 
-The uploaded JSON reveals an **alternative "exterior" API** at `/interface/exterior/...`:
-- `POST /interface/exterior/login` — same credentials
-- `GET /interface/exterior/getPersonList` — list persons
-- `POST /interface/exterior/addPerson` — add person (fields: `personSn`, `name`, `deptId`, `postId`, `hireDay`)
-- `POST /interface/exterior/updatePerson` — update person
-- `GET /interface/exterior/getCheckRecordList` — attendance records
-- `GET /interface/exterior/listDeptNew` — departments
-- `POST /interface/exterior/addDept` / `updateDept` — department CRUD
-- `GET /interface/exterior/getPost` / `POST addPost` / `updatePost` — position CRUD
+### Bug 2: Foreign Key Alias Crash (120 errors in System Health)
+**File**: `src/components/devices/LiveAccessLog.tsx` line 81
+Query uses `profiles:members_user_id_fkey(full_name, avatar_url)` — this explicit FK name is fragile and breaks when schema cache changes.
 
-These are documented but we continue using the existing `/personInfo/person` and `/through/device/` APIs which are already working. The exterior API will be noted in documentation for reference.
+**Fix**: Change to `profiles:user_id(full_name, avatar_url)` which uses the column-based hint PostgREST supports.
 
----
+### Bug 3: QuickFreezeDrawer doesn't revoke hardware access
+**File**: `src/components/members/QuickFreezeDrawer.tsx`
+When a quick freeze is applied (status → frozen), no call is made to `revokeHardwareAccess()`. The gate stays open.
 
-## Module 1: Hardware Access Revocation (CRITICAL)
+**Fix**: Add `revokeHardwareAccess()` call after successful freeze.
 
-### What changes
+### Bug 4: FreezeMembershipDrawer doesn't revoke hardware access
+**File**: `src/components/members/FreezeMembershipDrawer.tsx`
+The approval-based freeze also doesn't trigger hardware revocation. Even though it creates an approval request, the `auto_freeze_membership` trigger that fires on approval doesn't call the edge function.
 
-**New edge function: `supabase/functions/revoke-mips-access/index.ts`**
-- Accepts `{ member_id, action: "revoke" | "restore", reason }` 
-- Looks up the member's `mips_person_id` and branch `mips_connections`
-- Calls MIPS `PUT /personInfo/person` setting `validTimeEnd` to `"2000-01-01 00:00:00"` (revoke) or membership `end_date` (restore)
-- Then dispatches to devices via `POST /through/device/syncPerson` to push the updated validity to hardware
-- Logs the action to `access_logs`
+**Fix**: The freeze approval workflow changes status to 'frozen' via a DB trigger. We need to handle this in the `QuickFreezeDrawer` (which bypasses approval) and document that approval-based freezes need a manual or automated revocation step.
 
-**CRM integration points — call `revoke-mips-access` automatically when:**
+### Bug 5: UnfreezeMembershipDrawer uses `original_end_date` which may not exist
+**File**: `src/components/members/UnfreezeMembershipDrawer.tsx` line 41
+References `membership.original_end_date` — this field may not be populated, causing the new end date calculation to fail.
 
-| File | Trigger | Action |
-|---|---|---|
-| `src/services/membershipService.ts` | `approveFreeze()` sets status=frozen | Revoke |
-| `src/services/membershipService.ts` | `resumeFromFreeze()` sets status=active | Restore |
-| `src/components/members/CancelMembershipDrawer.tsx` | Cancel mutation succeeds | Revoke |
-| `src/services/membershipService.ts` | `purchaseMembership()` succeeds | Restore (sync with new dates) |
-| DB function `auto_expire_memberships()` | Cannot call edge function from DB | Add a scheduled check in the webhook or a new cron-style function |
+**Fix**: Fall back to calculating from the current `end_date` minus already-used freeze days, or use `end_date` directly when `original_end_date` is null.
 
-**For auto-expiry handling**: Create a new edge function `check-expired-access` that queries memberships expired today, checks if they have `mips_person_id`, and pushes revocations. This can be triggered via Supabase cron or called manually from the dashboard.
+## Implementation Plan
 
-### New DB migration
-```sql
--- Track access revocation status
-ALTER TABLE members ADD COLUMN IF NOT EXISTS hardware_access_status text DEFAULT 'none' 
-  CHECK (hardware_access_status IN ('none', 'active', 'revoked'));
-```
+### Step 1: Fix `revoke-mips-access` — Remove 2099 fallback for members
+- When `action === "restore"` and no active membership exists, do NOT default to 2099
+- Instead, return `{ success: false, error: "No active membership found to restore" }`
+- Keep 2099 only for staff/trainers in `sync-to-mips` (which is correct)
 
----
+### Step 2: Fix LiveAccessLog FK query
+- Change `profiles:members_user_id_fkey(full_name, avatar_url)` → `profiles:user_id(full_name, avatar_url)`
+- This eliminates all 120 database errors shown in System Health
 
-## Module 2: Member Lifecycle Access State Machine
+### Step 3: Add hardware revocation to QuickFreezeDrawer
+- Import `revokeHardwareAccess` from `membershipService`
+- After successful freeze (line 77), call `revokeHardwareAccess(member.id, 'Membership frozen', activeMembership.branch_id)`
 
-No new pages needed — enforce the state machine in existing code:
+### Step 4: Fix UnfreezeMembershipDrawer end-date calculation
+- Handle missing `original_end_date` by using `end_date` as fallback
+- After successful unfreeze, `restoreHardwareAccess` is already called (line 61) — confirmed working
 
-| State | CRM Status | Hardware Action | Who Triggers |
-|---|---|---|---|
-| Registered, no plan | `status=active`, no membership | No sync to MIPS | Registration flow |
-| Plan purchased + paid | Active membership | `sync-to-mips` with membership dates | `purchaseMembership()` |
-| Frozen | `membership.status=frozen` | `revoke-mips-access` (validTimeEnd=past) | `approveFreeze()` |
-| Expired | `membership.status=expired` | `revoke-mips-access` | `auto_expire_memberships` + cron |
-| Unfrozen | `membership.status=active` | `sync-to-mips` (restore dates) | `resumeFromFreeze()` |
-| Cancelled | `membership.status=cancelled` | `revoke-mips-access` | Cancel drawer |
+### Step 5: Enhance Device Management UI/UX
+- Improve the Dashboard hero card with better status indicators
+- Add a "Check Expired Access" button to trigger the `check-expired-access` edge function
+- Add visual indicators for `hardware_access_status` on device cards
 
-**File changes:**
-- `src/services/membershipService.ts` — add `revokeHardwareAccess()` and `restoreHardwareAccess()` helper functions that invoke the edge function
-- `src/components/members/FreezeMembershipDrawer.tsx` — after freeze approval, call revoke
-- `src/components/members/UnfreezeMembershipDrawer.tsx` — after unfreeze, call restore
-- `src/components/members/CancelMembershipDrawer.tsx` — after cancel, call revoke
-- `src/components/members/PurchaseMembershipDrawer.tsx` — after purchase, call sync-to-mips
+## Files to Modify
 
----
-
-## Module 3: Attendance In/Out Workflow
-
-### Current state
-- Check-in: automated via webhook (working) + manual rapid-entry (working)
-- Check-out: manual for members (working via `member_check_out` RPC) + staff toggle (working)
-
-### Changes needed
-The check-out for members is already manual in `AttendanceDashboard.tsx`. No fundamental refactor needed. But:
-
-**Improve `src/pages/AttendanceDashboard.tsx`:**
-- Make the "Check Out" button more prominent on the Members tab — currently it exists but buried in the table
-- Add a bulk check-out button for end-of-day (check out all members still checked in)
-- Staff/trainer check-out: already toggle-based, but add explicit "Check Out" button alongside the toggle
-
----
-
-## Module 4: Live Access Feed Upgrade (Front Desk Dashboard)
-
-### Current `LiveAccessLog.tsx` — what's missing
-- No member photo
-- No billing status overlay
-- No "payment due in X days" context
-
-### Upgrade plan for `src/components/devices/LiveAccessLog.tsx`:
-- Join `access_logs.member_id` → `members` → `profiles` (avatar, name) and `memberships` (end_date, status)
-- For each feed entry where `member_id` is set:
-  - Show member avatar image (not just icon)
-  - Calculate days until membership expiry
-  - Show colored badge: "Due in 3 days" (yellow), "Overdue" (red), "Frozen" (blue)
-- For denied entries, show a "Manual Override" button that calls `remoteOpenDoorByBranch()`
-- Add real-time Supabase subscription (already exists, just enhance the display)
-
-**New query structure:**
-```typescript
-const query = supabase
-  .from("access_logs")
-  .select(`*, 
-    members:member_id(id, member_code, biometric_photo_url, 
-      profiles:user_id(full_name, avatar_url),
-      memberships(status, end_date, plan_id, membership_plans(name))
-    )`)
-```
-
----
-
-## Module 5: Device Management UI Upgrade
-
-### Changes to `src/pages/DeviceManagement.tsx` and device components:
-
-**Add to `access_devices` table:**
-```sql
-ALTER TABLE access_devices ADD COLUMN IF NOT EXISTS public_ip text;
-```
-
-**UI changes in device cards (`MIPSDevicesTab.tsx`):**
-- Display `public_ip` field
-- Add inline action buttons: "Force Sync", "Reboot", "Remote Open" directly on each device card
-- These already exist as functions in `mipsService.ts` — just need UI buttons
-
----
-
-## Module 6: API Documentation Update
-
-**Update `.lovable/mips-api-reference.md`** with:
-- The exterior API paths from the Postman collection (`/interface/exterior/...`)
-- Access revocation workflow
-- Member lifecycle state machine
-- Hardware sync triggers
-
----
-
-## Files to Create/Modify
-
-| File | Action |
+| File | Change |
 |---|---|
-| `supabase/functions/revoke-mips-access/index.ts` | **Create** — revoke/restore hardware access |
-| `supabase/functions/check-expired-access/index.ts` | **Create** — batch check for expired memberships |
-| `src/services/membershipService.ts` | Add hardware revoke/restore calls |
-| `src/services/mipsService.ts` | Add `revokeHardwareAccess()` and `restoreHardwareAccess()` |
-| `src/components/members/CancelMembershipDrawer.tsx` | Call revoke after cancel |
-| `src/components/members/FreezeMembershipDrawer.tsx` | Call revoke after freeze |
-| `src/components/members/UnfreezeMembershipDrawer.tsx` | Call restore after unfreeze |
-| `src/components/members/PurchaseMembershipDrawer.tsx` | Call sync after purchase |
-| `src/components/devices/LiveAccessLog.tsx` | Add member photo, billing status, override button |
-| `src/components/devices/MIPSDevicesTab.tsx` | Add public_ip display, inline action buttons |
-| `src/pages/AttendanceDashboard.tsx` | Add bulk check-out, prominent check-out buttons |
-| `.lovable/mips-api-reference.md` | Add exterior API docs, revocation workflow |
-| **DB Migration** | Add `hardware_access_status` to members, `public_ip` to access_devices |
-
-## Implementation Order
-
-1. DB migration (hardware_access_status, public_ip)
-2. `revoke-mips-access` edge function + deploy
-3. Wire revocation into membership lifecycle (freeze/unfreeze/cancel/purchase)
-4. Live Access Feed upgrade with photos + billing context + override button
-5. Device Management inline actions + public IP
-6. Attendance check-out improvements
-7. Documentation update
+| `supabase/functions/revoke-mips-access/index.ts` | Remove 2099 fallback; require active membership for restore |
+| `src/components/devices/LiveAccessLog.tsx` | Fix FK alias `members_user_id_fkey` → `user_id` |
+| `src/components/members/QuickFreezeDrawer.tsx` | Add `revokeHardwareAccess()` call after freeze |
+| `src/components/members/UnfreezeMembershipDrawer.tsx` | Fix `original_end_date` fallback |
+| `src/components/devices/MIPSDashboard.tsx` | Add "Check Expired Access" action button |
+| `src/pages/DeviceManagement.tsx` | Minor UI polish |
 
