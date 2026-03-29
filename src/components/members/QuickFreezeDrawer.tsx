@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Snowflake, Calendar, AlertTriangle, IndianRupee } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { revokeHardwareAccess } from '@/services/membershipService';
 
 interface QuickFreezeDrawerProps {
   open: boolean;
