@@ -76,6 +76,8 @@ export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership
       }
 
       toast.success('Membership frozen successfully');
+      // Revoke hardware access immediately so the gate blocks the frozen member
+      revokeHardwareAccess(member.id, 'Membership frozen (quick freeze)', activeMembership.branch_id);
       onSuccess();
       onOpenChange(false);
       setDays(7); setReason(''); setIsPaidFreeze(false); setFreezeFee(0);

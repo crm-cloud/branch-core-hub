@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     // Determine new validTimeEnd
     let newValidTimeEnd = REVOKED_DATE;
     if (action === "restore") {
-      // Get active membership dates
+      // Get active membership dates — NEVER default to 2099 for members
       const { data: membership } = await supabase
         .from("memberships")
         .select("start_date, end_date")
@@ -189,9 +189,18 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (membership) {
-        newValidTimeEnd = formatDate(membership.end_date + "T23:59:59", "2099-12-31 23:59:59");
+        newValidTimeEnd = formatDate(membership.end_date + "T23:59:59", REVOKED_DATE);
       } else {
-        newValidTimeEnd = "2099-12-31 23:59:59";
+        // No active membership — refuse to grant access
+        console.warn(`No active membership found for member ${member_id}, cannot restore access`);
+        return new Response(JSON.stringify({
+          success: false,
+          error: "No active membership found. Cannot restore hardware access without a valid membership.",
+          action,
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 

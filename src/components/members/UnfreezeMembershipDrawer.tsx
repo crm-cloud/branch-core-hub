@@ -37,8 +37,9 @@ export function UnfreezeMembershipDrawer({
       // Calculate total frozen days
       const totalFrozenDays = freezeHistory?.reduce((sum, f) => sum + f.days_frozen, 0) || 0;
       
-      // Calculate new end date
-      const originalEnd = new Date(membership.original_end_date);
+      // Calculate new end date — fall back to current end_date if original_end_date is missing
+      const baseEndDate = membership.original_end_date || membership.end_date;
+      const originalEnd = new Date(baseEndDate);
       const newEndDate = format(addDays(originalEnd, totalFrozenDays), 'yyyy-MM-dd');
 
       // Update membership status

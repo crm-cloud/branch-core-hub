@@ -158,10 +158,22 @@ const MIPSDashboard = ({ branchId, branchName }: MIPSDashboardProps) => {
               </Button>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
-            <Heart className={`h-3 w-3 transition-transform ${heartbeatPulse ? "scale-150 text-red-300" : "scale-100"}`} />
-            <span>Last checked: {formatDistanceToNow(lastChecked, { addSuffix: true })}</span>
-            <span className="text-white/30">• Auto-refresh every 15s</span>
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-white/50">
+              <Heart className={`h-3 w-3 transition-transform ${heartbeatPulse ? "scale-150 text-red-300" : "scale-100"}`} />
+              <span>Last checked: {formatDistanceToNow(lastChecked, { addSuffix: true })}</span>
+              <span className="text-white/30">• Auto-refresh every 15s</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white/80 hover:text-white hover:bg-white/10 gap-1.5 text-xs"
+              onClick={handleCheckExpiredAccess}
+              disabled={checkingExpired}
+            >
+              <ShieldAlert className={`h-3.5 w-3.5 ${checkingExpired ? "animate-spin" : ""}`} />
+              {checkingExpired ? "Checking..." : "Revoke Expired Access"}
+            </Button>
           </div>
         </CardContent>
       </Card>
