@@ -78,7 +78,7 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
     queryFn: async () => {
       let query = supabase
         .from("access_logs")
-        .select(`*, members:member_id(id, member_code, biometric_photo_url, profiles:members_user_id_fkey(full_name, avatar_url), memberships(status, end_date, membership_plans(name)))`)
+        .select(`*, members:member_id(id, member_code, biometric_photo_url, profiles:user_id(full_name, avatar_url), memberships(status, end_date, membership_plans(name)))`)
         .order("created_at", { ascending: false })
         .limit(limit);
 
