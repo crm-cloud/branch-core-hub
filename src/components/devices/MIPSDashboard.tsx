@@ -93,6 +93,28 @@ const MIPSDashboard = ({ branchId, branchName }: MIPSDashboardProps) => {
     }
   };
 
+  const [checkingExpired, setCheckingExpired] = useState(false);
+  const handleCheckExpiredAccess = async () => {
+    setCheckingExpired(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("check-expired-access");
+      if (error) throw error;
+      const result = data as { revoked_count?: number; errors?: string[] };
+      if (result.revoked_count && result.revoked_count > 0) {
+        toast.success(`Revoked hardware access for ${result.revoked_count} expired/frozen member(s)`);
+      } else {
+        toast.info("All hardware access is up to date — no revocations needed");
+      }
+      if (result.errors?.length) {
+        console.warn("Expired access check errors:", result.errors);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to check expired access");
+    } finally {
+      setCheckingExpired(false);
+    }
+  };
+
   const mipsOnline = mipsDevices.filter((d) => (d.onlineFlag === 1 || d.status === 1)).length;
   const mipsTotal = mipsDevices.length;
   const mipsFaces = mipsDevices.reduce((sum, d) => sum + (d.faceCount || 0), 0);
