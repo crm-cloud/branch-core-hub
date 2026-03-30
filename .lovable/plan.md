@@ -1,71 +1,121 @@
 
 
-# Comprehensive Audit & Fix: Device Sync Lifecycle, FK Error, and UI/UX Upgrade
+# Comprehensive MIPS Integration & UI/UX Overhaul Plan
 
-## Bugs Found
+This plan consolidates the 5 Epic Modules and 4 Integration Parts into actionable implementation steps, eliminating duplicate requests.
 
-### Bug 1: "2099" Frozen VIP Pass (CRITICAL)
-**File**: `supabase/functions/revoke-mips-access/index.ts` lines 192-194
-When restoring access and no active membership is found, the fallback is `"2099-12-31 23:59:59"` — giving lifetime access. The same `2099` fallback exists in `sync-to-mips/index.ts` line 8 (`PERMANENT_END`), used for staff/trainers (correct for them) but the restore function should never default to 2099 for members.
+## Current State Summary
 
-**Fix**: When `action === "restore"` and no active membership is found, return an error instead of granting 2099 access. Only send the actual membership `end_date`.
+- `revoke-mips-access` edge function already exists and correctly uses `2000-01-01` for revocation. The 2099 fallback was already removed in the last fix.
+- `sync-to-mips` still uses `PERMANENT_END = "2099-12-31"` for **staff/trainers only** (correct behavior for non-members).
+- `mips-webhook-receiver` already has `normalizeScanTime()`, 3-tier person lookup, and correct `not_found` result handling.
+- `LiveAccessLog.tsx` already has member photos, billing badges, and manual override button.
+- `QuickFreezeDrawer` already calls `revokeHardwareAccess()`.
+- `CancelMembershipDrawer` already calls `revokeHardwareAccess()`.
+- `AttendanceDashboard` already has bulk check-out.
+- No `rewards_ledger` table exists — only `referral_rewards` for referral program.
+- `reinsertHyphen` regex bug exists (only matches `letters + digits`, not alphanumeric codes like `EMPMM3FYN8U`).
 
-### Bug 2: Foreign Key Alias Crash (120 errors in System Health)
-**File**: `src/components/devices/LiveAccessLog.tsx` line 81
-Query uses `profiles:members_user_id_fkey(full_name, avatar_url)` — this explicit FK name is fragile and breaks when schema cache changes.
+## What Actually Needs Doing (De-duplicated)
 
-**Fix**: Change to `profiles:user_id(full_name, avatar_url)` which uses the column-based hint PostgREST supports.
+### 1. Fix `reinsertHyphen` Regex Bug in Webhook
 
-### Bug 3: QuickFreezeDrawer doesn't revoke hardware access
-**File**: `src/components/members/QuickFreezeDrawer.tsx`
-When a quick freeze is applied (status → frozen), no call is made to `revokeHardwareAccess()`. The gate stays open.
+The current regex `^([A-Za-z]+)(\d{5})$` fails on alphanumeric codes. Fix to:
+```typescript
+const match = stripped.match(/^([A-Za-z]{3,4})([A-Za-z0-9]+)$/);
+```
 
-**Fix**: Add `revokeHardwareAccess()` call after successful freeze.
+**File**: `supabase/functions/mips-webhook-receiver/index.ts` line 12
 
-### Bug 4: FreezeMembershipDrawer doesn't revoke hardware access
-**File**: `src/components/members/FreezeMembershipDrawer.tsx`
-The approval-based freeze also doesn't trigger hardware revocation. Even though it creates an approval request, the `auto_freeze_membership` trigger that fires on approval doesn't call the edge function.
+### 2. Live Access Feed Deduplication
 
-**Fix**: The freeze approval workflow changes status to 'frozen' via a DB trigger. We need to handle this in the `QuickFreezeDrawer` (which bypasses approval) and document that approval-based freezes need a manual or automated revocation step.
+Add client-side deduplication: if same `member_id` + same `result` appears within 60 seconds, collapse into one entry with a count badge. This prevents the "5x Yogita" clutter.
 
-### Bug 5: UnfreezeMembershipDrawer uses `original_end_date` which may not exist
-**File**: `src/components/members/UnfreezeMembershipDrawer.tsx` line 41
-References `membership.original_end_date` — this field may not be populated, causing the new end date calculation to fail.
+**File**: `src/components/devices/LiveAccessLog.tsx`
 
-**Fix**: Fall back to calculating from the current `end_date` minus already-used freeze days, or use `end_date` directly when `original_end_date` is null.
+### 3. Add "Check-Out" Button to Live Access Feed
 
-## Implementation Plan
+For entries where `result === "member"` (successful check-in), show a "Check Out" button that calls `member_check_out` RPC. Also add check-out for staff entries.
 
-### Step 1: Fix `revoke-mips-access` — Remove 2099 fallback for members
-- When `action === "restore"` and no active membership exists, do NOT default to 2099
-- Instead, return `{ success: false, error: "No active membership found to restore" }`
-- Keep 2099 only for staff/trainers in `sync-to-mips` (which is correct)
+**File**: `src/components/devices/LiveAccessLog.tsx`
 
-### Step 2: Fix LiveAccessLog FK query
-- Change `profiles:members_user_id_fkey(full_name, avatar_url)` → `profiles:user_id(full_name, avatar_url)`
-- This eliminates all 120 database errors shown in System Health
+### 4. Rewards Ledger System (New Feature)
 
-### Step 3: Add hardware revocation to QuickFreezeDrawer
-- Import `revokeHardwareAccess` from `membershipService`
-- After successful freeze (line 77), call `revokeHardwareAccess(member.id, 'Membership frozen', activeMembership.branch_id)`
+**DB Migration**: Create `rewards_ledger` table:
+```sql
+CREATE TABLE rewards_ledger (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id uuid REFERENCES members(id) ON DELETE CASCADE NOT NULL,
+  branch_id uuid REFERENCES branches(id),
+  points integer NOT NULL,
+  reason text NOT NULL,
+  reference_type text,
+  reference_id text,
+  created_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES profiles(id)
+);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS reward_points integer DEFAULT 0;
+```
 
-### Step 4: Fix UnfreezeMembershipDrawer end-date calculation
-- Handle missing `original_end_date` by using `end_date` as fallback
-- After successful unfreeze, `restoreHardwareAccess` is already called (line 61) — confirmed working
+**UI**: Add a "Rewards Wallet" card in `MemberProfileDrawer.tsx` showing point balance, transaction history, and a "Redeem" action button (staff-facing).
 
-### Step 5: Enhance Device Management UI/UX
-- Improve the Dashboard hero card with better status indicators
-- Add a "Check Expired Access" button to trigger the `check-expired-access` edge function
-- Add visual indicators for `hardware_access_status` on device cards
+**File**: `src/components/members/MemberProfileDrawer.tsx`, new `src/components/members/RewardsWalletCard.tsx`, `src/components/members/RedeemPointsDrawer.tsx`
 
-## Files to Modify
+### 5. Freeze Workflow Enhancement
 
-| File | Change |
+The `FreezeMembershipDrawer` already tracks free days, paid fees, and creates approval requests. What's missing:
+- After approval-based freeze is approved (DB trigger `auto_freeze_membership` fires), there's no automatic hardware revocation. Add a call to `revokeHardwareAccess` in the approval flow.
+- Add "Remaining Free Freeze Days" display prominently in the drawer.
+
+**File**: `src/components/members/FreezeMembershipDrawer.tsx`, `src/components/approvals/ApprovalRequestsDrawer.tsx`
+
+### 6. Device Management UI/UX Upgrade
+
+Upgrade `DeviceManagement.tsx` and `MIPSDashboard.tsx` to premium Vuexy 2026 standards:
+- Add glassmorphism-inspired cards with gradient hero section
+- Glowing status dots (green pulse for online, red for offline)
+- Display `public_ip` on device cards
+- Add "Force Sync Fleet" button on dashboard that triggers `sync-to-mips` for all personnel
+- Better data density and visual hierarchy
+
+**Files**: `src/pages/DeviceManagement.tsx`, `src/components/devices/MIPSDashboard.tsx`, `src/components/devices/MIPSDevicesTab.tsx`
+
+### 7. Payment Enforcement → Hardware Revocation
+
+When an invoice passes its due date without payment, trigger hardware revocation. This requires a new check in `check-expired-access` edge function to also scan for overdue invoices.
+
+**File**: `supabase/functions/check-expired-access/index.ts`
+
+### 8. API Documentation Update
+
+Update `.lovable/mips-api-reference.md` with the complete lifecycle state machine, exterior API paths, and all hardware sync triggers.
+
+## Files to Create/Modify
+
+| File | Action |
 |---|---|
-| `supabase/functions/revoke-mips-access/index.ts` | Remove 2099 fallback; require active membership for restore |
-| `src/components/devices/LiveAccessLog.tsx` | Fix FK alias `members_user_id_fkey` → `user_id` |
-| `src/components/members/QuickFreezeDrawer.tsx` | Add `revokeHardwareAccess()` call after freeze |
-| `src/components/members/UnfreezeMembershipDrawer.tsx` | Fix `original_end_date` fallback |
-| `src/components/devices/MIPSDashboard.tsx` | Add "Check Expired Access" action button |
-| `src/pages/DeviceManagement.tsx` | Minor UI polish |
+| `supabase/functions/mips-webhook-receiver/index.ts` | Fix `reinsertHyphen` regex |
+| `src/components/devices/LiveAccessLog.tsx` | Add deduplication, check-out button, richer billing badges with amounts |
+| `src/components/members/RewardsWalletCard.tsx` | **Create** — rewards balance + history |
+| `src/components/members/RedeemPointsDrawer.tsx` | **Create** — redeem points drawer |
+| `src/components/members/MemberProfileDrawer.tsx` | Add RewardsWalletCard tab |
+| `src/components/members/FreezeMembershipDrawer.tsx` | Enhance remaining days display |
+| `src/components/approvals/ApprovalRequestsDrawer.tsx` | Add hardware revoke on freeze approval |
+| `src/pages/DeviceManagement.tsx` | UI/UX upgrade with premium design |
+| `src/components/devices/MIPSDashboard.tsx` | Glassmorphism hero, fleet sync button |
+| `src/components/devices/MIPSDevicesTab.tsx` | Public IP display, glowing status dots |
+| `supabase/functions/check-expired-access/index.ts` | Add overdue invoice check |
+| `.lovable/mips-api-reference.md` | Full documentation update |
+| **DB Migration** | `rewards_ledger` table + `reward_points` on members |
+
+## Implementation Order
+
+1. DB migration (rewards_ledger, reward_points)
+2. Fix webhook regex bug (quick deploy)
+3. Live Access Feed overhaul (dedup + check-out + richer badges)
+4. Rewards Wallet UI (card + redeem drawer + profile integration)
+5. Freeze approval → hardware revoke wiring
+6. Device Management UI/UX premium upgrade
+7. Payment enforcement in check-expired-access
+8. Documentation update
 
