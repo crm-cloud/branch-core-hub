@@ -351,15 +351,20 @@ POST /functions/v1/revoke-mips-access
 
 | Event | Action | Triggered By |
 |---|---|---|
-| Freeze approved | Revoke | `approveFreeze()` in membershipService |
-| Unfreeze | Restore | `resumeFromFreeze()` / UnfreezeMembershipDrawer |
-| Cancel membership | Revoke | CancelMembershipDrawer |
-| Membership expired | Revoke | `check-expired-access` cron function |
-| New purchase + sync | Restore | sync-to-mips (sets correct dates) |
+| Quick Freeze | Revoke (`2000-01-01`) | `QuickFreezeDrawer` → `revokeHardwareAccess()` |
+| Freeze approved | Revoke (`2000-01-01`) | `ApprovalRequestsDrawer` → `revokeHardwareAccess()` |
+| Unfreeze | Restore (new `end_date`) | `UnfreezeMembershipDrawer` → `restoreHardwareAccess()` |
+| Cancel membership | Revoke (`2000-01-01`) | `CancelMembershipDrawer` → `revokeHardwareAccess()` |
+| Membership expired | Revoke | `check-expired-access` edge function (batch) |
+| Overdue invoice | Revoke | `check-expired-access` edge function (batch) |
+| New purchase + sync | Restore | `sync-to-mips` (sets membership `end_date`) |
 
-### `check-expired-access` Edge Function (Cron)
+### `check-expired-access` Edge Function (Batch Revocation)
 
-Batch checks all members with `hardware_access_status = 'active'` who no longer have a valid membership, and auto-revokes their hardware access.
+Scans three categories:
+1. Members with `hardware_access_status = 'active'` but no valid membership
+2. Frozen memberships with active hardware
+3. Members with overdue invoices and active hardware
 
 ### Member `hardware_access_status` Column
 

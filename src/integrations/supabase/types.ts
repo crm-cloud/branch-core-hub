@@ -3487,6 +3487,7 @@ export type Database = {
           mips_sync_status: string | null
           notes: string | null
           referred_by: string | null
+          reward_points: number | null
           source: string | null
           status: Database["public"]["Enums"]["member_status"]
           updated_at: string
@@ -3514,6 +3515,7 @@ export type Database = {
           mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
+          reward_points?: number | null
           source?: string | null
           status?: Database["public"]["Enums"]["member_status"]
           updated_at?: string
@@ -3541,6 +3543,7 @@ export type Database = {
           mips_sync_status?: string | null
           notes?: string | null
           referred_by?: string | null
+          reward_points?: number | null
           source?: string | null
           status?: Database["public"]["Enums"]["member_status"]
           updated_at?: string
@@ -5038,6 +5041,64 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rewards_ledger: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          member_id: string
+          points: number
+          reason: string
+          reference_id: string | null
+          reference_type: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          member_id: string
+          points: number
+          reason: string
+          reference_id?: string | null
+          reference_type?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          member_id?: string
+          points?: number
+          reason?: string
+          reference_id?: string | null
+          reference_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rewards_ledger_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rewards_ledger_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rewards_ledger_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]

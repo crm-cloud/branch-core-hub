@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CheckCircle, XCircle, Clock, Pause, Calendar } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { revokeHardwareAccess } from '@/services/membershipService';
 
 interface ApprovalRequestsDrawerProps {
   open: boolean;
@@ -88,6 +89,11 @@ export function ApprovalRequestsDrawer({ open, onOpenChange, branchId }: Approva
             .from('memberships')
             .update({ status: 'frozen' })
             .eq('id', requestData.membershipId);
+
+          // Revoke hardware access when freeze is approved
+          if (requestData.memberId) {
+            await revokeHardwareAccess(requestData.memberId, 'Membership frozen (approved)', requestData.branchId);
+          }
         }
       } else if (!approved && request.approval_type === 'membership_freeze') {
         // Update freeze history status to rejected

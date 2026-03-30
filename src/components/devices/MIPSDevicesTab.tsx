@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Monitor, DoorOpen, RotateCcw,
+  Monitor, DoorOpen, RotateCcw, Globe,
 } from "lucide-react";
 import { fetchMIPSDevices, remoteOpenDoor, restartDevice, type MIPSDevice } from "@/services/mipsService";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,9 +14,10 @@ interface MIPSDeviceCardProps {
   device: MIPSDevice;
   branchName?: string;
   branchId?: string;
+  publicIp?: string;
 }
 
-const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) => {
+const MIPSDeviceCard = ({ device, branchName, branchId, publicIp }: MIPSDeviceCardProps) => {
   const isOnline = device.onlineFlag === 1 || device.status === 1;
   const [isOpening, setIsOpening] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
@@ -25,11 +26,8 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
     setIsOpening(true);
     try {
       const result = await remoteOpenDoor(device.id, branchId);
-      if (result.success) {
-        toast.success(`Door opened on ${device.name}`);
-      } else {
-        toast.error(result.message);
-      }
+      if (result.success) toast.success(`Door opened on ${device.name}`);
+      else toast.error(result.message);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -41,11 +39,8 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
     setIsRestarting(true);
     try {
       const result = await restartDevice(device.id, branchId);
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
-      }
+      if (result.success) toast.success(result.message);
+      else toast.error(result.message);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -58,8 +53,12 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isOnline ? "bg-green-500/10" : "bg-muted"}`}>
+            <div className={`p-2.5 rounded-xl relative ${isOnline ? "bg-green-500/10" : "bg-muted"}`}>
               <Monitor className="h-5 w-5" />
+              {/* Glowing status dot */}
+              <span className={`absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card ${
+                isOnline ? "bg-green-500 shadow-[0_0_8px_2px_rgba(34,197,94,0.4)] animate-pulse" : "bg-destructive"
+              }`} />
             </div>
             <div>
               <CardTitle className="text-base">{device.name || device.deviceKey}</CardTitle>
@@ -69,12 +68,9 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-2">
-              <div className={`h-3 w-3 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-destructive"}`} />
-              <Badge variant={isOnline ? "default" : "destructive"} className="text-xs">
-                {isOnline ? "Online" : "Offline"}
-              </Badge>
-            </div>
+            <Badge variant={isOnline ? "default" : "destructive"} className="text-xs">
+              {isOnline ? "Online" : "Offline"}
+            </Badge>
             {branchName && (
               <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-700 border-violet-500/20">
                 {branchName}
@@ -100,8 +96,10 @@ const MIPSDeviceCard = ({ device, branchName, branchId }: MIPSDeviceCardProps) =
             </p>
           </div>
           <div className="rounded-lg bg-muted/50 p-2 text-center">
-            <p className="text-[10px] text-muted-foreground">Public IP</p>
-            <p className="text-[10px] font-mono font-medium truncate">{device.ip || "—"}</p>
+            <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-0.5">
+              <Globe className="h-2.5 w-2.5" /> Public IP
+            </p>
+            <p className="text-[10px] font-mono font-medium truncate">{publicIp || device.ip || "—"}</p>
           </div>
         </div>
 
@@ -135,18 +133,16 @@ interface MIPSDevicesTabProps {
 }
 
 const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
-  // Get local access_devices to map branch info
   const { data: localDevices } = useQuery({
     queryKey: ["access-devices-sns", branchId],
     queryFn: async () => {
-      let query = supabase.from("access_devices").select("serial_number, branch_id");
+      let query = supabase.from("access_devices").select("serial_number, branch_id, public_ip");
       if (branchId) query = query.eq("branch_id", branchId);
       const { data } = await query;
       return data || [];
     },
   });
 
-  // Fetch branch names for labeling
   const { data: branchesList } = useQuery({
     queryKey: ["branches-list-names"],
     queryFn: async () => {
@@ -162,21 +158,23 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
     staleTime: 30_000,
   });
 
-  // Filter MIPS devices by branch using serial_number match
   const filteredDevices = branchId && localDevices
     ? devices.filter((d) => {
-        const localSNs = new Set(localDevices.map((ld) => ld.serial_number?.toUpperCase()));
+        const localSNs = new Set(localDevices.map((ld: any) => ld.serial_number?.toUpperCase()));
         return localSNs.has(d.deviceKey?.toUpperCase());
       })
     : devices;
 
-  // Build a map from SN -> branch name
   const snToBranch = new Map<string, string>();
+  const snToPublicIp = new Map<string, string>();
   if (localDevices && branchesList) {
     const branchMap = new Map(branchesList.map((b) => [b.id, b.name]));
     for (const ld of localDevices) {
       if (ld.serial_number && ld.branch_id) {
         snToBranch.set(ld.serial_number.toUpperCase(), branchMap.get(ld.branch_id) || "");
+      }
+      if (ld.serial_number && (ld as any).public_ip) {
+        snToPublicIp.set(ld.serial_number.toUpperCase(), (ld as any).public_ip);
       }
     }
   }
@@ -211,6 +209,7 @@ const MIPSDevicesTab = ({ branchId }: MIPSDevicesTabProps) => {
           device={device}
           branchId={branchId}
           branchName={snToBranch.get(device.deviceKey?.toUpperCase()) || undefined}
+          publicIp={snToPublicIp.get(device.deviceKey?.toUpperCase()) || undefined}
         />
       ))}
     </div>
