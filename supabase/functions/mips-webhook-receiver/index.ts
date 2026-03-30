@@ -9,7 +9,7 @@ const corsHeaders = {
 const DEVICE_ACK = JSON.stringify({ result: 1, code: "000" });
 
 function reinsertHyphen(stripped: string): string | null {
-  const match = stripped.match(/^([A-Za-z]+)(\d{5})$/);
+  const match = stripped.match(/^([A-Za-z]{3,4})([A-Za-z0-9]+)$/);
   if (match) return `${match[1]}-${match[2]}`;
   return null;
 }
