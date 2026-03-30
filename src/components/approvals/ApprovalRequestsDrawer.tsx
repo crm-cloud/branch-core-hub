@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CheckCircle, XCircle, Clock, Pause, Calendar } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { revokeHardwareAccess } from '@/services/membershipService';
 
 interface ApprovalRequestsDrawerProps {
   open: boolean;
