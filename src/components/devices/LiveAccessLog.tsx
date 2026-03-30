@@ -176,8 +176,8 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
   const staffCheckOutMutation = useMutation({
     mutationFn: async (profileId: string) => {
       const today = new Date().toISOString().split('T')[0];
-      const { data: existing, error: fetchErr } = await supabase
-        .from('staff_attendance')
+      const { data: existing, error: fetchErr } = await (supabase
+        .from('staff_attendance') as any)
         .select('id, check_out')
         .eq('user_id', profileId)
         .eq('date', today)
@@ -185,8 +185,8 @@ const LiveAccessLog = ({ branchId, limit = 20 }: LiveAccessLogProps) => {
         .maybeSingle();
       if (fetchErr) throw fetchErr;
       if (!existing) throw new Error('No active check-in found');
-      const { error: updateErr } = await supabase
-        .from('staff_attendance')
+      const { error: updateErr } = await (supabase
+        .from('staff_attendance') as any)
         .update({ check_out: new Date().toISOString() })
         .eq('id', existing.id);
       if (updateErr) throw updateErr;
