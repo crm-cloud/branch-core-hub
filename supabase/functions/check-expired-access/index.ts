@@ -16,10 +16,11 @@ Deno.serve(async (req) => {
   );
 
   try {
-    // Find members with active hardware access whose memberships have expired or are frozen
     const today = new Date().toISOString().split("T")[0];
+    const revoked: string[] = [];
+    const errors: string[] = [];
 
-    // Get members with hardware_access_status = 'active' who have no active membership
+    // ── 1. Members with active hardware but no active membership ──
     const { data: activeHardwareMembers, error: queryError } = await supabase
       .from("members")
       .select("id, member_code, mips_person_sn, mips_person_id, branch_id")
@@ -28,11 +29,7 @@ Deno.serve(async (req) => {
 
     if (queryError) throw queryError;
 
-    const revoked: string[] = [];
-    const errors: string[] = [];
-
     for (const member of activeHardwareMembers || []) {
-      // Check if they have a valid active membership
       const { data: activeMembership } = await supabase
         .from("memberships")
         .select("id, status, end_date")
@@ -43,7 +40,6 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!activeMembership) {
-        // No active membership — revoke hardware access
         try {
           const { data: revokeResult, error: revokeError } = await supabase.functions.invoke("revoke-mips-access", {
             body: {
@@ -66,7 +62,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Also check for frozen memberships that still have active hardware
+    // ── 2. Frozen memberships with active hardware ──
     const { data: frozenMembers } = await supabase
       .from("memberships")
       .select("member_id, members!inner(id, member_code, hardware_access_status, mips_person_sn, branch_id)")
@@ -82,6 +78,33 @@ Deno.serve(async (req) => {
             member_id: m.id,
             action: "revoke",
             reason: "Auto-revoked: membership frozen",
+            branch_id: m.branch_id,
+          },
+        });
+        revoked.push(m.member_code || m.id);
+      } catch (e) {
+        errors.push(`${m.member_code}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // ── 3. Members with overdue invoices ──
+    const { data: overdueInvoices } = await supabase
+      .from("invoices")
+      .select("member_id, members!inner(id, member_code, hardware_access_status, mips_person_sn, branch_id)")
+      .in("status", ["overdue"])
+      .eq("members.hardware_access_status", "active");
+
+    for (const inv of overdueInvoices || []) {
+      const m = (inv as any).members;
+      if (!m?.mips_person_sn) continue;
+      // Don't double-revoke if already in the revoked list
+      if (revoked.includes(m.member_code || m.id)) continue;
+      try {
+        await supabase.functions.invoke("revoke-mips-access", {
+          body: {
+            member_id: m.id,
+            action: "revoke",
+            reason: "Auto-revoked: overdue invoice",
             branch_id: m.branch_id,
           },
         });

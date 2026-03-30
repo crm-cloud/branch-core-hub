@@ -36,6 +36,7 @@ import { DocumentVaultTab } from './DocumentVaultTab';
 import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
 import { TransferBranchDrawer } from './TransferBranchDrawer';
 import { TransferMembershipDrawer } from './TransferMembershipDrawer';
+import { RewardsWalletCard } from './RewardsWalletCard';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
