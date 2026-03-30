@@ -1258,6 +1258,14 @@ export function MemberProfileDrawer({
             </TabsContent>
 
             <TabsContent value="rewards" className="space-y-4 mt-4">
+              {/* Rewards Wallet */}
+              <RewardsWalletCard
+                memberId={member.id}
+                memberName={profile?.full_name || 'Member'}
+                branchId={member.branch_id}
+                rewardPoints={member.reward_points || 0}
+              />
+
               {/* Referral Code Card */}
               <Card className="border-primary/30 bg-primary/5">
                 <CardHeader className="pb-2">
