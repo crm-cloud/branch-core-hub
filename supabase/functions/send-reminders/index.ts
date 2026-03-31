@@ -28,8 +28,19 @@ Deno.serve(async (req) => {
     if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
+    const callerId = claimsData.claims.sub as string;
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Role check: only staff+ can trigger reminders
+    const { data: roleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", callerId)
+      .in("role", ["owner", "admin", "manager", "staff"]);
+    if (!roleData || roleData.length === 0) {
+      return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
+    }
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];

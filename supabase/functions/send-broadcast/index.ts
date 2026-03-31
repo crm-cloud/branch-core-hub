@@ -33,6 +33,16 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Role check: only staff+ can send broadcasts
+    const { data: roleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["owner", "admin", "manager", "staff"]);
+    if (!roleData || roleData.length === 0) {
+      return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
+    }
+
     const { channel, message, audience, branch_id, subject } = await req.json();
 
     if (!channel || !message || !branch_id) {
