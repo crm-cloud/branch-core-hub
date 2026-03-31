@@ -20,6 +20,7 @@ import {
   LogOut, 
   Moon, 
   Sun,
+  MapPin,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
@@ -35,7 +36,7 @@ export function AppHeader() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
 
-  const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption } = useBranchContext();
+  const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption, currentBranchName } = useBranchContext();
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -51,6 +52,7 @@ export function AppHeader() {
   const primaryRoleString = typeof primaryRole === 'string' ? primaryRole : primaryRole?.role || 'user';
   const isMember = roles.some(r => (typeof r === 'string' ? r : r?.role) === 'member');
   const isAdmin = hasAnyRole(['owner', 'admin']);
+  const showBranchBadge = !showSelector && currentBranchName && currentBranchName !== 'All Branches';
 
   // Fetch member code if user is a member
   const { data: memberCode } = useQuery({
@@ -78,8 +80,15 @@ export function AppHeader() {
   return (
     <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
       {/* Single Search - GlobalSearch component */}
-      <div className="flex-1 max-w-md">
+      <div className="flex-1 max-w-md flex items-center gap-3">
         <GlobalSearch />
+        {/* Branch badge for non-selector roles */}
+        {showBranchBadge && (
+          <Badge variant="secondary" className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium whitespace-nowrap">
+            <MapPin className="h-3 w-3" />
+            {currentBranchName}
+          </Badge>
+        )}
       </div>
 
       {/* Right Side Actions */}

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,6 +29,8 @@ interface AuthContextType {
   roles: UserRoleInfo[];
   isLoading: boolean;
   mustSetPassword: boolean;
+  showTimeoutWarning: boolean;
+  sessionExpiresIn: number | null;
   signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   setPassword: (password: string) => Promise<{ error: Error | null }>;
@@ -38,9 +40,12 @@ interface AuthContextType {
   hasRole: (role: AppRole) => boolean;
   hasAnyRole: (roles: AppRole[]) => boolean;
   refreshProfile: () => Promise<void>;
+  extendSession: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const WARNING_THRESHOLD_MS = 5 * 60 * 1000; // Show warning at 5 minutes remaining
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -49,6 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [roles, setRoles] = useState<UserRoleInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const [sessionExpiresIn, setSessionExpiresIn] = useState<number | null>(null);
+
+  // Cached timeout duration — fetched once, not on every event
+  const timeoutMsRef = useRef<number | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+  const warningIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -86,39 +100,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Session inactivity timer
-  useEffect(() => {
-    if (!user) return;
-
-    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const resetTimer = () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      // Fetch timeout from org settings (cached in memory)
-      supabase
+  // Fetch timeout value once and cache it
+  const fetchTimeoutValue = useCallback(async () => {
+    try {
+      const { data } = await supabase
         .from('organization_settings')
         .select('session_timeout_hours')
         .limit(1)
-        .maybeSingle()
-        .then(({ data }) => {
-          const hours = data?.session_timeout_hours;
-          if (hours && hours > 0) {
-            inactivityTimer = setTimeout(() => {
-              supabase.auth.signOut();
-            }, hours * 60 * 60 * 1000);
-          }
-        });
+        .maybeSingle();
+      const hours = data?.session_timeout_hours;
+      timeoutMsRef.current = hours && hours > 0 ? hours * 60 * 60 * 1000 : null;
+    } catch {
+      timeoutMsRef.current = null;
+    }
+  }, []);
+
+  const clearAllTimers = useCallback(() => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    if (warningIntervalRef.current) clearInterval(warningIntervalRef.current);
+    setShowTimeoutWarning(false);
+    setSessionExpiresIn(null);
+  }, []);
+
+  const resetInactivityTimer = useCallback(() => {
+    const timeoutMs = timeoutMsRef.current;
+    if (!timeoutMs) return;
+
+    clearAllTimers();
+    lastActivityRef.current = Date.now();
+
+    // Set the warning timer (fires WARNING_THRESHOLD_MS before timeout)
+    const warningDelay = Math.max(0, timeoutMs - WARNING_THRESHOLD_MS);
+    warningTimerRef.current = setTimeout(() => {
+      setShowTimeoutWarning(true);
+      // Update countdown every 30s
+      warningIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - lastActivityRef.current;
+        const remaining = Math.max(0, timeoutMs - elapsed);
+        setSessionExpiresIn(remaining);
+        if (remaining <= 0) {
+          clearAllTimers();
+        }
+      }, 30000);
+      setSessionExpiresIn(WARNING_THRESHOLD_MS);
+    }, warningDelay);
+
+    // Set the actual sign-out timer
+    inactivityTimerRef.current = setTimeout(() => {
+      clearAllTimers();
+      supabase.auth.signOut();
+    }, timeoutMs);
+  }, [clearAllTimers]);
+
+  const extendSession = useCallback(() => {
+    setShowTimeoutWarning(false);
+    setSessionExpiresIn(null);
+    resetInactivityTimer();
+  }, [resetInactivityTimer]);
+
+  // Session inactivity timer — uses cached timeout value
+  useEffect(() => {
+    if (!user) {
+      clearAllTimers();
+      return;
+    }
+
+    // Fetch timeout once on user login
+    fetchTimeoutValue().then(() => {
+      resetInactivityTimer();
+    });
+
+    // Lightweight event listener — only resets timers, no DB calls
+    const handleActivity = () => {
+      if (!showTimeoutWarning) {
+        resetInactivityTimer();
+      }
     };
 
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
-    resetTimer();
+    events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
 
     return () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      events.forEach(e => window.removeEventListener(e, resetTimer));
+      clearAllTimers();
+      events.forEach(e => window.removeEventListener(e, handleActivity));
     };
-  }, [user]);
+  }, [user, showTimeoutWarning, fetchTimeoutValue, resetInactivityTimer, clearAllTimers]);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -171,10 +238,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithOtp = async (email: string) => {
-    // NOTE: Do NOT pass emailRedirectTo here — when it's present Supabase sends a
-    // magic-link URL instead of a 6-digit OTP code.  Without it, Supabase uses the
-    // "OTP" email template which must contain {{ .Token }} in your Supabase Dashboard
-    // (Authentication → Email Templates → Magic Link).
     const { error } = await supabase.auth.signInWithOtp({ email });
     return { error: error as Error | null };
   };
@@ -192,7 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) return { error: updateError as Error };
 
-    // Update profile to mark password as set
     const { error: profileError } = await supabase
       .from('profiles')
       .update({ must_set_password: false })
@@ -217,8 +279,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    clearAllTimers();
     await supabase.auth.signOut();
-    queryClient.clear(); // Clear all cached queries on logout
+    queryClient.clear();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -244,6 +307,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         roles,
         isLoading,
         mustSetPassword,
+        showTimeoutWarning,
+        sessionExpiresIn,
         signInWithOtp,
         verifyOtp,
         setPassword,
@@ -253,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasRole,
         hasAnyRole,
         refreshProfile,
+        extendSession,
       }}
     >
       {children}

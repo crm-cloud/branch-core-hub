@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+type BranchStatus = 'loading' | 'ready' | 'no_branch_assigned' | 'error';
+
 interface BranchContextType {
   selectedBranch: string;
   setSelectedBranch: (id: string) => void;
@@ -15,22 +17,28 @@ interface BranchContextType {
   showSelector: boolean;
   /** Whether the "All Branches" option should be available */
   showAllOption: boolean;
+  /** Explicit branch status for UI states */
+  branchStatus: BranchStatus;
+  /** Current branch name for display */
+  currentBranchName: string | null;
+  /** Retry fetching branch data */
+  retryBranchFetch: () => void;
 }
 
 const BranchContext = createContext<BranchContextType | undefined>(undefined);
 
 export function BranchProvider({ children }: { children: ReactNode }) {
-  const { data: allBranches = [], isLoading: branchesLoading } = useBranches();
+  const { data: allBranches = [], isLoading: branchesLoading, error: branchesError, refetch: refetchBranches } = useBranches();
   const { user, roles, hasAnyRole } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [initialized, setInitialized] = useState(false);
 
   const isOwnerOrAdmin = hasAnyRole(['owner', 'admin']);
   const isManager = hasAnyRole(['manager']);
-  const isStaffOrTrainerOrMember = hasAnyRole(['staff', 'trainer', 'member']);
+  const isRestrictedRole = hasAnyRole(['staff', 'trainer', 'member']) && !isOwnerOrAdmin && !isManager;
 
   // For managers: fetch their assigned branches from staff_branches
-  const { data: managerBranches = [] } = useQuery({
+  const { data: managerBranches = [], error: managerError, refetch: refetchManager } = useQuery({
     queryKey: ['manager-branches', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -47,18 +55,16 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   });
 
   // For staff/trainer: fetch their branch from employees/trainers
-  const { data: staffBranch } = useQuery({
+  const { data: staffBranch, error: staffError, refetch: refetchStaff } = useQuery({
     queryKey: ['staff-home-branch', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      // Try employees first
       const { data: emp } = await supabase
         .from('employees')
         .select('branch_id, branches(id, name, code)')
         .eq('user_id', user.id)
         .maybeSingle();
       if (emp?.branches) return emp.branches as any;
-      // Try trainers
       const { data: trainer } = await supabase
         .from('trainers')
         .select('branch_id, branches(id, name, code)')
@@ -71,7 +77,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   });
 
   // For members: fetch their branch
-  const { data: memberBranch } = useQuery({
+  const { data: memberBranch, error: memberError, refetch: refetchMember } = useQuery({
     queryKey: ['member-home-branch', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -102,19 +108,41 @@ export function BranchProvider({ children }: { children: ReactNode }) {
 
   const showAllOption = isOwnerOrAdmin;
 
+  // Compute branchStatus
+  const branchStatus: BranchStatus = useMemo(() => {
+    if (!user) return 'loading';
+    if (branchesLoading) return 'loading';
+    
+    // Check for errors
+    const hasError = branchesError || managerError || staffError || memberError;
+    if (hasError && branches.length === 0) return 'error';
+
+    // For restricted roles, check if they have a branch
+    if (isRestrictedRole) {
+      if (hasAnyRole(['staff', 'trainer']) && !staffBranch && !branchesLoading) {
+        return 'no_branch_assigned';
+      }
+      if (hasAnyRole(['member']) && !memberBranch && !branchesLoading) {
+        return 'no_branch_assigned';
+      }
+    }
+
+    if (isManager && !isOwnerOrAdmin && managerBranches.length === 0 && !branchesLoading) {
+      return 'no_branch_assigned';
+    }
+
+    return 'ready';
+  }, [user, branchesLoading, branchesError, managerError, staffError, memberError, branches, isRestrictedRole, isOwnerOrAdmin, isManager, staffBranch, memberBranch, managerBranches, hasAnyRole]);
+
   // Auto-initialize branch selection for restricted roles
   useEffect(() => {
     if (initialized) return;
     if (isOwnerOrAdmin) {
       setInitialized(true);
-      return; // default 'all' is fine
+      return;
     }
     if (isManager && !isOwnerOrAdmin && managerBranches.length > 0) {
-      if (managerBranches.length === 1) {
-        setSelectedBranch(managerBranches[0].id);
-      } else {
-        setSelectedBranch(managerBranches[0].id); // default to first
-      }
+      setSelectedBranch(managerBranches[0].id);
       setInitialized(true);
     }
     if (staffBranch) {
@@ -138,6 +166,19 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return selectedBranch !== 'all' ? selectedBranch : undefined;
   }, [selectedBranch]);
 
+  const currentBranchName = useMemo(() => {
+    if (selectedBranch === 'all') return 'All Branches';
+    const branch = branches.find(b => b.id === selectedBranch);
+    return branch?.name || null;
+  }, [selectedBranch, branches]);
+
+  const retryBranchFetch = () => {
+    refetchBranches();
+    refetchManager();
+    refetchStaff();
+    refetchMember();
+  };
+
   return (
     <BranchContext.Provider value={{
       selectedBranch,
@@ -148,6 +189,9 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       isLoading,
       showSelector,
       showAllOption,
+      branchStatus,
+      currentBranchName,
+      retryBranchFetch,
     }}>
       {children}
     </BranchContext.Provider>

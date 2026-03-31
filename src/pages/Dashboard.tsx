@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatCard } from '@/components/ui/stat-card';
 import { StatCardSkeleton } from '@/components/ui/table-skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import { RevenueChart, AttendanceChart, MembershipDistribution, HourlyAttendanceChart, AccountsReceivableWidget, ExpiringMembersWidget, PendingApprovalsWidget } from '@/components/dashboard/DashboardCharts';
 import { OccupancyGauge } from '@/components/dashboard/OccupancyGauge';
@@ -12,9 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import LiveAccessLog from '@/components/devices/LiveAccessLog';
-import { MemberVoiceWidget } from '@/components/dashboard/MemberVoiceWidget';
-import { AIInsightsWidget } from '@/components/dashboard/AIInsightsWidget';
+import { useInView } from '@/hooks/useInView';
 import { 
   UserPlus, 
   Dumbbell, 
@@ -24,9 +23,23 @@ import {
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, differenceInHours } from 'date-fns';
 
+// Lazy-load below-fold heavy components
+const LazyLiveAccessLog = lazy(() => import('@/components/devices/LiveAccessLog'));
+const LazyAIInsightsWidget = lazy(() => import('@/components/dashboard/AIInsightsWidget').then(m => ({ default: m.AIInsightsWidget })));
+const LazyMemberVoiceWidget = lazy(() => import('@/components/dashboard/MemberVoiceWidget').then(m => ({ default: m.MemberVoiceWidget })));
+
+function ChartSkeleton() {
+  return <Skeleton className="h-64 rounded-2xl" />;
+}
+
 export default function DashboardPage() {
   const { profile, roles, user } = useAuth();
   const { selectedBranch, setSelectedBranch, branchFilter, branches } = useBranchContext();
+
+  // InView hooks for below-fold sections
+  const { ref: crmRef, inView: crmInView } = useInView();
+  const { ref: bottomRef, inView: bottomInView } = useInView();
+  const { ref: insightsRef, inView: insightsInView } = useInView();
 
   // Fetch dashboard statistics
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
@@ -176,10 +189,10 @@ export default function DashboardPage() {
     },
   });
 
-  // Hourly attendance for today
+  // Hourly attendance - only fetch when CRM section is visible
   const { data: hourlyAttendanceData = [] } = useQuery({
     queryKey: ['hourly-attendance', branchFilter],
-    enabled: !!user,
+    enabled: !!user && crmInView,
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
       let query = supabase.from('member_attendance').select('check_in').gte('check_in', today);
@@ -203,10 +216,10 @@ export default function DashboardPage() {
     },
   });
 
-  // Accounts Receivable query
+  // Accounts Receivable - only fetch when CRM section is visible
   const { data: receivablesData } = useQuery({
     queryKey: ['accounts-receivable', branchFilter],
-    enabled: !!user,
+    enabled: !!user && crmInView,
     queryFn: async () => {
       let query = supabase
         .from('invoices')
@@ -230,10 +243,10 @@ export default function DashboardPage() {
     },
   });
 
-  // Expiring in 48 hours
+  // Expiring in 48 hours - only fetch when CRM section is visible
   const { data: expiringMembers = [] } = useQuery({
     queryKey: ['expiring-48h', branchFilter],
-    enabled: !!user,
+    enabled: !!user && crmInView,
     queryFn: async () => {
       const now = new Date();
       const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
@@ -346,38 +359,68 @@ export default function DashboardPage() {
           <AttendanceChart data={attendanceData} />
         </div>
 
-        {/* CRM Widgets Row */}
-        <div className="grid gap-6 md:grid-cols-4">
-          <OccupancyGauge currentlyIn={stats?.currentlyIn || 0} capacity={branches?.find(b => b.id === branchFilter)?.capacity || 50} />
-          <HourlyAttendanceChart data={hourlyAttendanceData} />
-          <AccountsReceivableWidget
-            data={receivablesData?.items || []}
-            totalOutstanding={receivablesData?.totalOutstanding || 0}
-          />
-          <ExpiringMembersWidget data={expiringMembers} />
+        {/* CRM Widgets Row — lazy loaded */}
+        <div ref={crmRef} className="grid gap-6 md:grid-cols-4">
+          {crmInView ? (
+            <>
+              <OccupancyGauge currentlyIn={stats?.currentlyIn || 0} capacity={branches?.find(b => b.id === branchFilter)?.capacity || 50} />
+              <HourlyAttendanceChart data={hourlyAttendanceData} />
+              <AccountsReceivableWidget
+                data={receivablesData?.items || []}
+                totalOutstanding={receivablesData?.totalOutstanding || 0}
+              />
+              <ExpiringMembersWidget data={expiringMembers} />
+            </>
+          ) : (
+            <>
+              <ChartSkeleton />
+              <ChartSkeleton />
+              <ChartSkeleton />
+              <ChartSkeleton />
+            </>
+          )}
         </div>
 
-        {/* Bottom Row */}
-        <div className="grid gap-6 md:grid-cols-3">
-          <MembershipDistribution data={membershipData} />
-          
-          <Card className="shadow-lg rounded-2xl border-0 md:col-span-2">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Activity className="h-5 w-5 text-success" />
-                Live Access Feed
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <LiveAccessLog />
-            </CardContent>
-          </Card>
+        {/* Bottom Row — lazy loaded */}
+        <div ref={bottomRef} className="grid gap-6 md:grid-cols-3">
+          {bottomInView ? (
+            <>
+              <MembershipDistribution data={membershipData} />
+              <Card className="shadow-lg rounded-2xl border-0 md:col-span-2">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-success" />
+                    Live Access Feed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Suspense fallback={<ChartSkeleton />}>
+                    <LazyLiveAccessLog />
+                  </Suspense>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <>
+              <ChartSkeleton />
+              <Skeleton className="h-64 rounded-2xl md:col-span-2" />
+            </>
+          )}
         </div>
 
-        {/* AI Insights + Member Voice */}
-        <div className="grid gap-6 md:grid-cols-2">
-          <AIInsightsWidget branchId={branchFilter} />
-          <MemberVoiceWidget />
+        {/* AI Insights + Member Voice — lazy loaded */}
+        <div ref={insightsRef} className="grid gap-6 md:grid-cols-2">
+          {insightsInView ? (
+            <Suspense fallback={<><ChartSkeleton /><ChartSkeleton /></>}>
+              <LazyAIInsightsWidget branchId={branchFilter} />
+              <LazyMemberVoiceWidget />
+            </Suspense>
+          ) : (
+            <>
+              <ChartSkeleton />
+              <ChartSkeleton />
+            </>
+          )}
         </div>
       </div>
     </AppLayout>
