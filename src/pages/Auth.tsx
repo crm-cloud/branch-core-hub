@@ -5,6 +5,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase } from '@/integrations/supabase/client';
 import { GymLoader } from '@/components/ui/gym-loader';
 import { Card, CardContent } from '@/components/ui/card';
+import { getHomePath } from '@/lib/roleRedirect';
 
 export default function AuthPage() {
   const { user, isLoading, mustSetPassword, roles } = useAuth();
@@ -40,15 +41,6 @@ export default function AuthPage() {
     checkSetup();
   }, []);
 
-  const getRedirectPath = () => {
-    if (roles.some(r => r.role === 'member')) return '/member-dashboard';
-    if (roles.some(r => r.role === 'trainer') &&
-        !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) return '/trainer-dashboard';
-    if (roles.some(r => r.role === 'staff') &&
-        !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) return '/staff-dashboard';
-    return '/dashboard';
-  };
-
   if (isLoading || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--gradient-hero)' }}>
@@ -58,7 +50,7 @@ export default function AuthPage() {
   }
 
   if (needsSetup) return <Navigate to="/setup" replace />;
-  if (user && !mustSetPassword) return <Navigate to={getRedirectPath()} replace />;
+  if (user && !mustSetPassword) return <Navigate to={getHomePath(roles)} replace />;
   if (user && mustSetPassword) return <Navigate to="/auth/set-password" replace />;
 
   const handleLoginSuccess = () => {

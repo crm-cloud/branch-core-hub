@@ -1,8 +1,13 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ShieldX, ArrowLeft, Lock, Fingerprint } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { getHomePath } from '@/lib/roleRedirect';
 
 export default function UnauthorizedPage() {
+  const { roles } = useAuth();
+  const homePath = getHomePath(roles);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-background via-background to-muted/40 relative overflow-hidden">
       {/* Background decorative elements */}
@@ -40,7 +45,7 @@ export default function UnauthorizedPage() {
               Access Denied
             </h1>
             <p className="text-muted-foreground text-base leading-relaxed max-w-sm mx-auto">
-              You don't have the required permissions to view this page. This area is restricted to authorized personnel only.
+              You don't have the required permissions to view this page. You've been redirected to your home area.
             </p>
           </div>
 
@@ -68,7 +73,7 @@ export default function UnauthorizedPage() {
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <Link to="/dashboard" className="flex-1">
+            <Link to={homePath} className="flex-1">
               <Button className="w-full gap-2 h-11 rounded-xl" size="lg">
                 <ArrowLeft className="h-4 w-4" />
                 Back to Dashboard

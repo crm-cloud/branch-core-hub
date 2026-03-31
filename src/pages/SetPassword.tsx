@@ -2,9 +2,10 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { SetPasswordForm } from '@/components/auth/SetPasswordForm';
 import { GymLoader } from '@/components/ui/gym-loader';
+import { getHomePath } from '@/lib/roleRedirect';
 
 export default function SetPasswordPage() {
-  const { user, isLoading, mustSetPassword } = useAuth();
+  const { user, isLoading, mustSetPassword, roles } = useAuth();
 
   if (isLoading) {
     return (
@@ -19,9 +20,9 @@ export default function SetPasswordPage() {
     return <Navigate to="/auth" replace />;
   }
 
-  // Already set password
+  // Already set password — redirect to role-appropriate dashboard
   if (!mustSetPassword) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getHomePath(roles)} replace />;
   }
 
   return (

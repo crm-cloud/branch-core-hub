@@ -28,6 +28,7 @@ export const memberMenuConfig: MenuSection[] = [
     items: [
       { label: 'Dashboard', href: '/member-dashboard', icon: LayoutDashboard, roles: ['member'] },
       { label: 'My Profile', href: '/member-profile', icon: UserCog, roles: ['member'] },
+      { label: 'My Plans', href: '/my-plans', icon: CreditCard, roles: ['member'] },
       { label: 'My Attendance', href: '/my-attendance', icon: Clock, roles: ['member'] },
       { label: 'My Progress', href: '/my-progress', icon: TrendingUp, roles: ['member'] },
     ],
@@ -36,6 +37,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Fitness',
     items: [
       { label: 'Book & Schedule', href: '/my-classes', icon: Calendar, roles: ['member'] },
+      { label: 'PT Sessions', href: '/my-pt-sessions', icon: Dumbbell, roles: ['member'] },
       { label: 'Workout Plan', href: '/my-workout', icon: Activity, roles: ['member'] },
       { label: 'Diet Plan', href: '/my-diet', icon: UtensilsCrossed, roles: ['member'] },
     ],
@@ -44,6 +46,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Services',
     items: [
       { label: 'My Benefits', href: '/my-benefits', icon: Heart, roles: ['member'] },
+      { label: 'Book Facility', href: '/book-benefit', icon: Calendar, roles: ['member'] },
       { label: 'Refer & Earn', href: '/my-referrals', icon: Gift, roles: ['member'] },
       { label: 'Store', href: '/member-store', icon: ShoppingBag, roles: ['member'] },
       { label: 'My Invoices', href: '/my-invoices', icon: FileText, roles: ['member'] },
@@ -145,7 +148,7 @@ export const staffMenuConfig: MenuSection[] = [
   },
 ];
 
-// Admin/Manager/Owner menu (full access)
+// Admin/Owner menu (full access)
 export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Main',
@@ -172,7 +175,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
-      
+      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager'] },
       { label: 'AI Fitness', href: '/ai-fitness', icon: Sparkles, roles: ['owner', 'admin'] },
     ],
   },
@@ -208,6 +211,9 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Employees', href: '/employees', icon: Users, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Admin Roles', href: '/admin-roles', icon: UserCog, roles: ['owner', 'admin'] },
+      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'System Health', href: '/system-health', icon: Activity, roles: ['owner', 'admin'] },
@@ -217,7 +223,7 @@ export const adminMenuConfig: MenuSection[] = [
   },
 ];
 
-// Manager-specific menu (has Analytics, Finance, Payments, HRM — but no Devices, System Health, Audit Logs, Settings)
+// Manager-specific menu
 export const managerMenuConfig: MenuSection[] = [
   {
     title: 'Main',
@@ -244,7 +250,7 @@ export const managerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['manager'] },
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['manager'] },
-      
+      { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['manager'] },
     ],
   },
   {
@@ -278,6 +284,8 @@ export const managerMenuConfig: MenuSection[] = [
     title: 'Admin & HR',
     items: [
       { label: 'HRM', href: '/hrm', icon: Briefcase, roles: ['manager'] },
+      { label: 'Employees', href: '/employees', icon: Users, roles: ['manager'] },
+      { label: 'Staff Attendance', href: '/staff-attendance', icon: Clock, roles: ['manager'] },
       { label: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['manager'] },
       { label: 'Approvals', href: '/approvals', icon: CheckSquare, roles: ['manager'] },
     ],

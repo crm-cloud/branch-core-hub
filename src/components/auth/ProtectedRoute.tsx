@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Database } from '@/integrations/supabase/types';
 import { GymLoader } from '@/components/ui/gym-loader';
+import { getHomePath } from '@/lib/roleRedirect';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -38,31 +39,11 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   // Check role requirements
   if (requiredRoles && requiredRoles.length > 0) {
     if (!hasAnyRole(requiredRoles)) {
-      // Instead of showing unauthorized, redirect to appropriate dashboard
-      // This provides a smoother UX
-      
-      // Member trying to access non-member routes
-      if (roles.some(r => r.role === 'member')) {
-        return <Navigate to="/member-dashboard" replace />;
+      // Redirect to role-appropriate dashboard instead of showing unauthorized
+      const homePath = getHomePath(roles);
+      if (location.pathname !== homePath) {
+        return <Navigate to={homePath} replace />;
       }
-      
-      // Trainer trying to access non-trainer routes (without admin privileges)
-      if (roles.some(r => r.role === 'trainer') && 
-          !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
-        return <Navigate to="/trainer-dashboard" replace />;
-      }
-      
-      // Staff trying to access higher-level routes (without admin privileges)
-      if (roles.some(r => r.role === 'staff') && 
-          !roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
-        return <Navigate to="/staff-dashboard" replace />;
-      }
-      
-      // Admin/Manager/Owner trying to access restricted routes
-      if (roles.some(r => ['owner', 'admin', 'manager'].includes(r.role))) {
-        return <Navigate to="/dashboard" replace />;
-      }
-      
       // Fallback to unauthorized page
       return <Navigate to="/unauthorized" replace />;
     }
