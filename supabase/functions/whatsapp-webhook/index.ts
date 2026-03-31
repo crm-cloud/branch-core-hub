@@ -39,7 +39,7 @@ serve(async (req: Request) => {
 
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json", "Allow": "GET, POST, OPTIONS" },
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "GET, POST, OPTIONS" },
     });
   } catch (error) {
     console.error("whatsapp-webhook error:", error);
