@@ -1,121 +1,302 @@
 
 
-# Comprehensive MIPS Integration & UI/UX Overhaul Plan
+# Comprehensive UX Overhaul: Navigation, Workflows, and Performance
 
-This plan consolidates the 5 Epic Modules and 4 Integration Parts into actionable implementation steps, eliminating duplicate requests.
+This plan addresses navigation discoverability, role consistency, branch scoping, auth UX, dashboard performance, and end-to-end workflow reliability across all 6 roles.
 
-## Current State Summary
+---
 
-- `revoke-mips-access` edge function already exists and correctly uses `2000-01-01` for revocation. The 2099 fallback was already removed in the last fix.
-- `sync-to-mips` still uses `PERMANENT_END = "2099-12-31"` for **staff/trainers only** (correct behavior for non-members).
-- `mips-webhook-receiver` already has `normalizeScanTime()`, 3-tier person lookup, and correct `not_found` result handling.
-- `LiveAccessLog.tsx` already has member photos, billing badges, and manual override button.
-- `QuickFreezeDrawer` already calls `revokeHardwareAccess()`.
-- `CancelMembershipDrawer` already calls `revokeHardwareAccess()`.
-- `AttendanceDashboard` already has bulk check-out.
-- No `rewards_ledger` table exists — only `referral_rewards` for referral program.
-- `reinsertHyphen` regex bug exists (only matches `letters + digits`, not alphanumeric codes like `EMPMM3FYN8U`).
+## UX Strategy Summary
 
-## What Actually Needs Doing (De-duplicated)
+**Top problems solved:**
+1. Orphan routes (`/admin-roles`, `/book-benefit`, `/employees`, `/my-plans`, `/my-pt-sessions`, `/equipment`) are unreachable from menus
+2. Role redirect logic is duplicated across 4 files (`DashboardRedirect`, `ProtectedRoute`, `Auth.tsx`, `SetPassword.tsx`)
+3. Branch context has no failure/empty states — restricted roles see broken data silently
+4. Dashboard loads all 12+ queries simultaneously with no progressive rendering
+5. Unauthorized page always links to `/dashboard` regardless of role
+6. No session timeout warning — users are silently signed out
+7. Inactivity timer re-queries `organization_settings` on every mouse event
 
-### 1. Fix `reinsertHyphen` Regex Bug in Webhook
+**Why the new IA is better:** Every route is reachable from its role menu. Menu sections are grouped by operational intent (Home, People, Operations, Finance, Communication, Admin) rather than feature type, reducing cognitive load. Under-discoverable pages are surfaced as sub-items or merged into existing sections.
 
-The current regex `^([A-Za-z]+)(\d{5})$` fails on alphanumeric codes. Fix to:
+---
+
+## Phase 1: Quick Wins (Low Risk, High Impact)
+
+### 1.1 Fix Orphan Routes in Menu Config
+
+**File: `src/config/menu.ts`**
+
+| Orphan Route | Where to Add | Section |
+|---|---|---|
+| `/admin-roles` | `adminMenuConfig` | Admin & HR (after Employees) |
+| `/employees` | `adminMenuConfig` + `managerMenuConfig` | Admin & HR (already exists in admin, missing from sidebar for manager — add to manager) |
+| `/equipment` | Merge into `/equipment-maintenance` or add to Operations | Operations section |
+| `/book-benefit` | `memberMenuConfig` | Services → "Book Facility" |
+| `/my-plans` | `memberMenuConfig` | My Account → "My Plans" |
+| `/my-pt-sessions` | Already redirects to `/my-classes?tab=appointments` — add "PT Sessions" link to member menu | Fitness section |
+| `/benefit-tracking` | `adminMenuConfig` Training & Bookings | Already present — confirmed |
+| `Employees` for staff | `staffMenuConfig` | Add to a "People" section (read-only for staff) — NO, staff shouldn't see employees. Keep as-is. |
+
+Changes to `menu.ts`:
+- Add `{ label: 'Admin Roles', href: '/admin-roles', icon: UserCog, roles: ['owner', 'admin'] }` to admin `Admin & HR` section
+- Add `{ label: 'Employees', href: '/employees', icon: Briefcase, roles: ['manager'] }` to manager `Admin & HR` section  
+- Add `{ label: 'Staff Attendance', href: '/attendance-dashboard', icon: Clock, roles: ['manager'] }` to manager menu
+- Add `{ label: 'Book Facility', href: '/book-benefit', icon: Calendar, roles: ['member'] }` to member `Services` section
+- Add `{ label: 'My Plans', href: '/my-plans', icon: CreditCard, roles: ['member'] }` to member `My Account` section
+- Add `{ label: 'My PT Sessions', href: '/my-pt-sessions', icon: Dumbbell, roles: ['member'] }` to member `Fitness` section
+
+### 1.2 Centralize Role-Home Redirect Logic
+
+**New file: `src/lib/roleRedirect.ts`**
+
 ```typescript
-const match = stripped.match(/^([A-Za-z]{3,4})([A-Za-z0-9]+)$/);
+export function getHomePath(roles): string {
+  if (roles.some(r => r.role === 'member')) return '/member-dashboard';
+  if (roles.some(r => r.role === 'trainer') && !hasAdmin(roles)) return '/trainer-dashboard';
+  if (roles.some(r => r.role === 'staff') && !hasAdmin(roles)) return '/staff-dashboard';
+  return '/dashboard';
+}
 ```
 
-**File**: `supabase/functions/mips-webhook-receiver/index.ts` line 12
+Then update `DashboardRedirect.tsx`, `ProtectedRoute.tsx`, `Auth.tsx`, and `SetPassword.tsx` to import and use this single function. Eliminates 4x duplication.
 
-### 2. Live Access Feed Deduplication
+### 1.3 Fix Unauthorized Page Role-Aware Redirect
 
-Add client-side deduplication: if same `member_id` + same `result` appears within 60 seconds, collapse into one entry with a count badge. This prevents the "5x Yogita" clutter.
+**File: `src/pages/Unauthorized.tsx`**
 
-**File**: `src/components/devices/LiveAccessLog.tsx`
+- Import `useAuth` and `getHomePath`
+- Change "Back to Dashboard" link from hardcoded `/dashboard` to `getHomePath(roles)`
+- Add contextual message: "You don't have access to this section. You've been redirected to your home area."
 
-### 3. Add "Check-Out" Button to Live Access Feed
+### 1.4 Branch Context Badge in Header
 
-For entries where `result === "member"` (successful check-in), show a "Check Out" button that calls `member_check_out` RPC. Also add check-out for staff entries.
+**File: `src/components/layout/AppHeader.tsx`**
 
-**File**: `src/components/devices/LiveAccessLog.tsx`
+- For non-owner/admin roles, show a permanent branch chip: `<Badge variant="secondary">📍 {branchName}</Badge>` next to the search bar
+- This gives staff/trainers/members constant awareness of their scoped branch
 
-### 4. Rewards Ledger System (New Feature)
+### 1.5 Fix Inactivity Timer Performance
 
-**DB Migration**: Create `rewards_ledger` table:
-```sql
-CREATE TABLE rewards_ledger (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id uuid REFERENCES members(id) ON DELETE CASCADE NOT NULL,
-  branch_id uuid REFERENCES branches(id),
-  points integer NOT NULL,
-  reason text NOT NULL,
-  reference_type text,
-  reference_id text,
-  created_at timestamptz DEFAULT now(),
-  created_by uuid REFERENCES profiles(id)
-);
-ALTER TABLE members ADD COLUMN IF NOT EXISTS reward_points integer DEFAULT 0;
+**File: `src/contexts/AuthContext.tsx`**
+
+The current implementation calls `supabase.from('organization_settings')` on EVERY mouse/key/scroll event. Fix:
+- Fetch timeout value once on mount and cache it in a ref
+- Only re-fetch on `refreshProfile()` calls
+- This eliminates hundreds of unnecessary DB queries per session
+
+---
+
+## Phase 2: Structural Changes
+
+### 2.1 Branch Context Failure States
+
+**File: `src/contexts/BranchContext.tsx`**
+
+Add explicit state handling:
+- `branchStatus: 'loading' | 'ready' | 'no_branch_assigned' | 'error'`
+- When staff/trainer/member has no branch assigned, expose `branchStatus = 'no_branch_assigned'`
+
+**File: `src/components/layout/AppLayout.tsx`**
+
+- When `branchStatus === 'loading'`: show skeleton in content area
+- When `branchStatus === 'no_branch_assigned'`: show alert card: "No branch assigned to your account. Please contact your administrator."
+- When `branchStatus === 'error'`: show retry button
+- Never silently fall through to "all branches" for restricted roles
+
+### 2.2 Session Timeout Warning
+
+**File: `src/contexts/AuthContext.tsx`**
+
+- Track remaining time in state: `sessionExpiresIn: number | null`
+- When 5 minutes remain, expose `showTimeoutWarning: true`
+- Add `extendSession()` method that resets the timer
+
+**New component: `src/components/auth/SessionTimeoutWarning.tsx`**
+
+- Renders a toast-like banner: "Your session expires in X minutes. [Stay Signed In]"
+- Clicking "Stay Signed In" calls `extendSession()`
+- Mount in `AppLayout.tsx`
+
+### 2.3 Progressive Dashboard Loading
+
+**File: `src/pages/Dashboard.tsx`**
+
+Currently loads 12+ queries simultaneously. Refactor:
+- Split into above-the-fold (stats + hero card) and below-the-fold sections
+- Use `React.lazy()` for chart components (`RevenueChart`, `AttendanceChart`, etc.)
+- Wrap below-fold sections in `<Suspense fallback={<Skeleton />}>`
+- Use `IntersectionObserver` or a simple `useInView` hook to defer rendering of LiveAccessLog, AIInsightsWidget, MemberVoiceWidget until they scroll into view
+- Keep stat cards loading first with existing `StatCardSkeleton`
+
+### 2.4 Auth Flow Polish
+
+**Files: `src/pages/Auth.tsx`, `src/components/auth/LoginForm.tsx`**
+
+- Add transition animation between password and OTP modes (fade/slide)
+- After login success, show a brief "Welcome back, {name}" toast before redirect
+- On login error, keep email field populated (already works) and auto-focus password
+- On OTP verify error, clear OTP slots and re-focus first slot
+- Ensure password reset flow has consistent gradient background across all 3 pages (Auth, ForgotPassword, ResetPassword) — already consistent, just verify
+
+---
+
+## Phase 3: Performance and Polish
+
+### 3.1 Route-Level Code Splitting
+
+**File: `src/App.tsx`**
+
+Convert all page imports to lazy imports:
+```typescript
+const DashboardPage = lazy(() => import('./pages/Dashboard'));
+const MembersPage = lazy(() => import('./pages/Members'));
+// ... etc
 ```
 
-**UI**: Add a "Rewards Wallet" card in `MemberProfileDrawer.tsx` showing point balance, transaction history, and a "Redeem" action button (staff-facing).
+Wrap `<Routes>` content in `<Suspense fallback={<GymLoader />}>`. This reduces initial bundle significantly since most users only need their role's pages.
 
-**File**: `src/components/members/MemberProfileDrawer.tsx`, new `src/components/members/RewardsWalletCard.tsx`, `src/components/members/RedeemPointsDrawer.tsx`
+### 3.2 Skeleton Consistency Audit
 
-### 5. Freeze Workflow Enhancement
+Ensure every page that uses `useQuery` shows appropriate skeleton/loading states:
+- Dashboard: `StatCardSkeleton` (exists)
+- Members list: `TableSkeleton` (exists)
+- Finance/Payments: verify skeleton exists
+- Member Dashboard: verify skeleton exists (currently uses a simple spinner — upgrade to skeleton cards)
 
-The `FreezeMembershipDrawer` already tracks free days, paid fees, and creates approval requests. What's missing:
-- After approval-based freeze is approved (DB trigger `auto_freeze_membership` fires), there's no automatic hardware revocation. Add a call to `revokeHardwareAccess` in the approval flow.
-- Add "Remaining Free Freeze Days" display prominently in the drawer.
+### 3.3 Dark Mode Contrast Audit
 
-**File**: `src/components/members/FreezeMembershipDrawer.tsx`, `src/components/approvals/ApprovalRequestsDrawer.tsx`
+Quick pass through key components to verify:
+- Sidebar active state contrast in dark mode
+- Card shadows in dark mode (currently `shadow-indigo-500/20` may not be visible)
+- Badge colors maintain readability
+- Form inputs have visible borders
 
-### 6. Device Management UI/UX Upgrade
+---
 
-Upgrade `DeviceManagement.tsx` and `MIPSDashboard.tsx` to premium Vuexy 2026 standards:
-- Add glassmorphism-inspired cards with gradient hero section
-- Glowing status dots (green pulse for online, red for offline)
-- Display `public_ip` on device cards
-- Add "Force Sync Fleet" button on dashboard that triggers `sync-to-mips` for all personnel
-- Better data density and visual hierarchy
+## Role-by-Role Navigation Blueprint
 
-**Files**: `src/pages/DeviceManagement.tsx`, `src/components/devices/MIPSDashboard.tsx`, `src/components/devices/MIPSDevicesTab.tsx`
-
-### 7. Payment Enforcement → Hardware Revocation
-
-When an invoice passes its due date without payment, trigger hardware revocation. This requires a new check in `check-expired-access` edge function to also scan for overdue invoices.
-
-**File**: `supabase/functions/check-expired-access/index.ts`
-
-### 8. API Documentation Update
-
-Update `.lovable/mips-api-reference.md` with the complete lifecycle state machine, exterior API paths, and all hardware sync triggers.
-
-## Files to Create/Modify
-
-| File | Action |
+### Member Menu (Updated)
+| Section | Items |
 |---|---|
-| `supabase/functions/mips-webhook-receiver/index.ts` | Fix `reinsertHyphen` regex |
-| `src/components/devices/LiveAccessLog.tsx` | Add deduplication, check-out button, richer billing badges with amounts |
-| `src/components/members/RewardsWalletCard.tsx` | **Create** — rewards balance + history |
-| `src/components/members/RedeemPointsDrawer.tsx` | **Create** — redeem points drawer |
-| `src/components/members/MemberProfileDrawer.tsx` | Add RewardsWalletCard tab |
-| `src/components/members/FreezeMembershipDrawer.tsx` | Enhance remaining days display |
-| `src/components/approvals/ApprovalRequestsDrawer.tsx` | Add hardware revoke on freeze approval |
-| `src/pages/DeviceManagement.tsx` | UI/UX upgrade with premium design |
-| `src/components/devices/MIPSDashboard.tsx` | Glassmorphism hero, fleet sync button |
-| `src/components/devices/MIPSDevicesTab.tsx` | Public IP display, glowing status dots |
-| `supabase/functions/check-expired-access/index.ts` | Add overdue invoice check |
-| `.lovable/mips-api-reference.md` | Full documentation update |
-| **DB Migration** | `rewards_ledger` table + `reward_points` on members |
+| My Account | Dashboard, My Profile, My Plans*, My Attendance, My Progress |
+| Fitness | Book & Schedule, PT Sessions*, Workout Plan, Diet Plan |
+| Services | My Benefits, Book Facility*, Refer & Earn, Store, My Invoices, My Requests |
+| Communication | Announcements, Feedback |
+
+*New additions
+
+### Trainer Menu (No changes needed)
+| Section | Items |
+|---|---|
+| Dashboard | My Dashboard |
+| Training | My Clients, PT Sessions, Schedule Session, My Classes, Plan Builder |
+| Earnings | My Earnings |
+| Work | My Attendance, Announcements |
+
+### Staff Menu (No changes needed)
+Already comprehensive with 6 sections.
+
+### Manager Menu (Updated)
+| Section | Items |
+|---|---|
+| Main | Dashboard, Analytics |
+| Members & Leads | Leads, Members, Attendance, Plans, Referrals, Feedback |
+| Training & Bookings | Classes, PT Sessions, Trainers, All Bookings |
+| E-Commerce & Sales | POS, Products, Categories, Store Orders, Discount Coupons |
+| Finance | Overview, Invoices, Payments |
+| Operations & Comm | WhatsApp Chat, Announcements, Equipment, Lockers |
+| Admin & HR | HRM, Employees*, Tasks, Approvals |
+
+*New addition
+
+### Admin/Owner Menu (Updated)
+| Section | Items |
+|---|---|
+| (same as current) | + Admin Roles* in Admin & HR section |
+
+*New addition
+
+---
+
+## Critical Flow Redesigns
+
+### Auth Flow
+- Current: Login → `/home` → role-based redirect
+- Improved: Login → brief loading with "Welcome back" → role-based redirect
+- Error: Clear error message with auto-focus on failed field
+- No changes to route structure, just UX polish
+
+### Unauthorized Access Flow
+- Current: Generic "Access Denied" with hardcoded `/dashboard` link
+- Improved: Role-aware redirect button using `getHomePath()`, contextual message
+
+### Branch Scoping Failure Flow
+- Current: Silent fallback to first branch or undefined behavior
+- Improved: Explicit states (loading skeleton → error card with retry → "no branch assigned" alert)
+
+---
+
+## End-to-End Workflow Audit
+
+### Member Onboarding
+- **Risk**: New member created without branch assignment → BranchContext fails silently
+- **Fix**: BranchContext shows "No branch assigned" alert instead of broken data
+- **Acceptance**: Member with no branch sees clear message, not empty tables
+
+### Membership Freeze/Cancel
+- **Risk**: QuickFreezeDrawer now calls `revokeHardwareAccess` (fixed), but approval-based freeze via DB trigger has no hardware revocation
+- **Fix**: Already documented in previous plan — `ApprovalRequestsDrawer` now calls revoke on freeze approval
+- **Acceptance**: Frozen member physically blocked at turnstile within 30 seconds
+
+### Invoice + Payment
+- **Risk**: Partial payment doesn't always update `amount_paid` correctly when multiple payments exist
+- **Fix**: Already handled by `recordManualPayment` in `paymentService.ts` — verify with acceptance test
+- **Acceptance**: Invoice status transitions correctly: pending → partial → paid
+
+### Biometric Sync
+- **Risk**: `mips_person_id` can be null if sync fails — no retry UX
+- **Fix**: Add a "Sync Status" badge on member profile showing `synced | pending | failed` based on `mips_person_id` and `hardware_access_status`
+- **Acceptance**: Staff can see sync status and manually trigger re-sync
+
+### WhatsApp Delivery
+- **Risk**: No delivery state feedback — staff don't know if message was sent
+- **Fix**: Already uses toast for success/failure — verify template send shows delivery status
+- **Acceptance**: Toast confirms "Message sent" or shows error with retry
+
+---
 
 ## Implementation Order
 
-1. DB migration (rewards_ledger, reward_points)
-2. Fix webhook regex bug (quick deploy)
-3. Live Access Feed overhaul (dedup + check-out + richer badges)
-4. Rewards Wallet UI (card + redeem drawer + profile integration)
-5. Freeze approval → hardware revoke wiring
-6. Device Management UI/UX premium upgrade
-7. Payment enforcement in check-expired-access
-8. Documentation update
+| Step | Files | Risk | Time |
+|---|---|---|---|
+| 1.1 Fix orphan routes in menu | `menu.ts` | Low | Small |
+| 1.2 Centralize role redirect | New `roleRedirect.ts`, update 4 files | Low | Small |
+| 1.3 Fix Unauthorized page | `Unauthorized.tsx` | Low | Small |
+| 1.4 Branch badge in header | `AppHeader.tsx` | Low | Small |
+| 1.5 Fix inactivity timer perf | `AuthContext.tsx` | Low | Small |
+| 2.1 Branch context failure states | `BranchContext.tsx`, `AppLayout.tsx` | Medium | Medium |
+| 2.2 Session timeout warning | `AuthContext.tsx`, new component | Medium | Medium |
+| 2.3 Progressive dashboard loading | `Dashboard.tsx` | Medium | Medium |
+| 2.4 Auth flow polish | `LoginForm.tsx` | Low | Small |
+| 3.1 Route-level code splitting | `App.tsx` | Medium | Medium |
+| 3.2 Skeleton consistency | Multiple pages | Low | Small |
+
+---
+
+## Acceptance Checklist
+
+- [ ] Every route in `App.tsx` is reachable from at least one role's sidebar menu
+- [ ] Role redirect logic exists in exactly one function (`getHomePath`)
+- [ ] Unauthorized page redirects to role-appropriate dashboard
+- [ ] Staff/Trainer/Member see their branch name in the header
+- [ ] Branch fetch failure shows explicit error state with retry
+- [ ] "No branch assigned" shows clear admin-contact message
+- [ ] Session timeout shows 5-minute warning with extend option
+- [ ] Inactivity timer does NOT query DB on every input event
+- [ ] Dashboard above-fold loads within 2 seconds on mid-tier device
+- [ ] Below-fold dashboard sections lazy-load on scroll
+- [ ] All auth pages share consistent gradient background
+- [ ] Dark mode maintains WCAG AA contrast ratios
+- [ ] Touch targets >= 44px on mobile nav items
 
