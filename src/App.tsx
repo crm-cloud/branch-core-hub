@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,96 +7,104 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
+import { GymLoader } from "@/components/ui/gym-loader";
 
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
+
+// Critical auth pages — loaded eagerly (small bundles)
 import SetupPage from "./pages/Setup";
 import AuthPage from "./pages/Auth";
 import SetPasswordPage from "./pages/SetPassword";
 import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
-import DashboardPage from "./pages/Dashboard";
-import MembersPage from "./pages/Members";
-import LeadsPage from "./pages/Leads";
-import PlansPage from "./pages/Plans";
-import InvoicesPage from "./pages/Invoices";
-import PaymentsPage from "./pages/Payments";
-// Attendance.tsx removed — consolidated into AttendanceDashboard
-import ClassesPage from "./pages/Classes";
-import PTSessionsPage from "./pages/PTSessions";
-import AIFitnessPage from "./pages/AIFitness";
-import EquipmentPage from "./pages/Equipment";
-import EquipmentMaintenancePage from "./pages/EquipmentMaintenance";
-import LockersPage from "./pages/Lockers";
-import EmployeesPage from "./pages/Employees";
-import HRMPage from "./pages/HRM";
-import TrainersPage from "./pages/Trainers";
-import StaffAttendancePage from "./pages/StaffAttendance";
-import AttendanceDashboardPage from "./pages/AttendanceDashboard";
-import TasksPage from "./pages/Tasks";
-import AnalyticsPage from "./pages/Analytics";
-import AuditLogsPage from "./pages/AuditLogs";
-import AdminUsersPage from "./pages/AdminUsers";
-import BranchesPage from "./pages/Branches";
-import AnnouncementsPage from "./pages/Announcements";
-import SettingsPage from "./pages/Settings";
-import StorePage from "./pages/Store";
-import POSPage from "./pages/POS";
-import ReferralsPage from "./pages/Referrals";
-import FeedbackPage from "./pages/Feedback";
-import PublicWebsite from "./pages/PublicWebsite";
-import WebsiteCMSPage from "./pages/WebsiteCMS";
-import IntegrationsPage from "./pages/Integrations";
-import WhatsAppChatPage from "./pages/WhatsAppChat";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
+import PublicWebsite from "./pages/PublicWebsite";
+import EmbedLeadForm from "./pages/EmbedLeadForm";
 
-import FinancePage from "./pages/Finance";
-import MemberPlansPage from "./pages/MemberPlans";
-import ProductsPage from "./pages/Products";
-import ProductCategoriesPage from "./pages/ProductCategories";
-import BenefitTrackingPage from "./pages/BenefitTracking";
-import AllBookingsPage from "./pages/AllBookings";
+// All other pages — lazy loaded for code splitting
+const DashboardPage = lazy(() => import("./pages/Dashboard"));
+const MembersPage = lazy(() => import("./pages/Members"));
+const LeadsPage = lazy(() => import("./pages/Leads"));
+const PlansPage = lazy(() => import("./pages/Plans"));
+const InvoicesPage = lazy(() => import("./pages/Invoices"));
+const PaymentsPage = lazy(() => import("./pages/Payments"));
+const ClassesPage = lazy(() => import("./pages/Classes"));
+const PTSessionsPage = lazy(() => import("./pages/PTSessions"));
+const AIFitnessPage = lazy(() => import("./pages/AIFitness"));
+const EquipmentPage = lazy(() => import("./pages/Equipment"));
+const EquipmentMaintenancePage = lazy(() => import("./pages/EquipmentMaintenance"));
+const LockersPage = lazy(() => import("./pages/Lockers"));
+const EmployeesPage = lazy(() => import("./pages/Employees"));
+const HRMPage = lazy(() => import("./pages/HRM"));
+const TrainersPage = lazy(() => import("./pages/Trainers"));
+const StaffAttendancePage = lazy(() => import("./pages/StaffAttendance"));
+const AttendanceDashboardPage = lazy(() => import("./pages/AttendanceDashboard"));
+const TasksPage = lazy(() => import("./pages/Tasks"));
+const AnalyticsPage = lazy(() => import("./pages/Analytics"));
+const AuditLogsPage = lazy(() => import("./pages/AuditLogs"));
+const BranchesPage = lazy(() => import("./pages/Branches"));
+const AnnouncementsPage = lazy(() => import("./pages/Announcements"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
+const StorePage = lazy(() => import("./pages/Store"));
+const POSPage = lazy(() => import("./pages/POS"));
+const ReferralsPage = lazy(() => import("./pages/Referrals"));
+const FeedbackPage = lazy(() => import("./pages/Feedback"));
+const WhatsAppChatPage = lazy(() => import("./pages/WhatsAppChat"));
+const FinancePage = lazy(() => import("./pages/Finance"));
+const MemberPlansPage = lazy(() => import("./pages/MemberPlans"));
+const ProductsPage = lazy(() => import("./pages/Products"));
+const ProductCategoriesPage = lazy(() => import("./pages/ProductCategories"));
+const BenefitTrackingPage = lazy(() => import("./pages/BenefitTracking"));
+const AllBookingsPage = lazy(() => import("./pages/AllBookings"));
 
 // Member-specific pages
-import MemberDashboard from "./pages/MemberDashboard";
-import MyAttendance from "./pages/MyAttendance";
-import MyProgress from "./pages/MyProgress";
-import MemberClassBooking from "./pages/MemberClassBooking";
-import MyPTSessions from "./pages/MyPTSessions";
-import MyInvoices from "./pages/MyInvoices";
-import MemberRequests from "./pages/MemberRequests";
-import MemberStore from "./pages/MemberStore";
-import MyWorkout from "./pages/MyWorkout";
-import MyDiet from "./pages/MyDiet";
-import MyBenefits from "./pages/MyBenefits";
-import BookBenefitSlot from "./pages/BookBenefitSlot";
-import MemberProfile from "./pages/MemberProfile";
-import MemberFeedback from "./pages/MemberFeedback";
-import MemberAnnouncements from "./pages/MemberAnnouncements";
-import MemberReferrals from "./pages/MemberReferrals";
+const MemberDashboard = lazy(() => import("./pages/MemberDashboard"));
+const MyAttendance = lazy(() => import("./pages/MyAttendance"));
+const MyProgress = lazy(() => import("./pages/MyProgress"));
+const MemberClassBooking = lazy(() => import("./pages/MemberClassBooking"));
+const MyPTSessions = lazy(() => import("./pages/MyPTSessions"));
+const MyInvoices = lazy(() => import("./pages/MyInvoices"));
+const MemberRequests = lazy(() => import("./pages/MemberRequests"));
+const MemberStore = lazy(() => import("./pages/MemberStore"));
+const MyWorkout = lazy(() => import("./pages/MyWorkout"));
+const MyDiet = lazy(() => import("./pages/MyDiet"));
+const MyBenefits = lazy(() => import("./pages/MyBenefits"));
+const BookBenefitSlot = lazy(() => import("./pages/BookBenefitSlot"));
+const MemberProfile = lazy(() => import("./pages/MemberProfile"));
+const MemberFeedback = lazy(() => import("./pages/MemberFeedback"));
+const MemberAnnouncements = lazy(() => import("./pages/MemberAnnouncements"));
+const MemberReferrals = lazy(() => import("./pages/MemberReferrals"));
 
 // Trainer-specific pages
-import TrainerDashboard from "./pages/TrainerDashboard";
-import MyClients from "./pages/MyClients";
-import TrainerEarnings from "./pages/TrainerEarnings";
-import ScheduleSession from "./pages/ScheduleSession";
-import TrainerPlanBuilder from "./pages/TrainerPlanBuilder";
+const TrainerDashboard = lazy(() => import("./pages/TrainerDashboard"));
+const MyClients = lazy(() => import("./pages/MyClients"));
+const TrainerEarnings = lazy(() => import("./pages/TrainerEarnings"));
+const ScheduleSession = lazy(() => import("./pages/ScheduleSession"));
+const TrainerPlanBuilder = lazy(() => import("./pages/TrainerPlanBuilder"));
 
 // Staff-specific pages
-import StaffDashboard from "./pages/StaffDashboard";
-import FollowUpCenter from "./pages/FollowUpCenter";
+const StaffDashboard = lazy(() => import("./pages/StaffDashboard"));
+const FollowUpCenter = lazy(() => import("./pages/FollowUpCenter"));
 
 // Admin pages
-import AdminRoles from "./pages/AdminRoles";
-import DeviceManagement from "./pages/DeviceManagement";
-import ApprovalQueue from "./pages/ApprovalQueue";
-import DiscountCouponsPage from "./pages/DiscountCoupons";
-import SystemHealthPage from "./pages/SystemHealth";
+const AdminRoles = lazy(() => import("./pages/AdminRoles"));
+const DeviceManagement = lazy(() => import("./pages/DeviceManagement"));
+const ApprovalQueue = lazy(() => import("./pages/ApprovalQueue"));
+const DiscountCouponsPage = lazy(() => import("./pages/DiscountCoupons"));
+const SystemHealthPage = lazy(() => import("./pages/SystemHealth"));
 
-// Profile & Embed
-import ProfilePage from "./pages/Profile";
-import EmbedLeadForm from "./pages/EmbedLeadForm";
+// Profile
+const ProfilePage = lazy(() => import("./pages/Profile"));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <GymLoader text="Loading..." />
+    </div>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -119,6 +128,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <BranchProvider>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public Website */}
             <Route path="/" element={<PublicWebsite />} />
@@ -218,6 +228,7 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
           </BranchProvider>
         </AuthProvider>
       </BrowserRouter>
