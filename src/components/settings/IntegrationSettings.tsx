@@ -26,11 +26,33 @@ const GOOGLE_PROVIDERS = [
 ];
 
 const PAYMENT_PROVIDERS = [
-  { id: 'razorpay', name: 'Razorpay', logo: '🔵' },
-  { id: 'phonepe', name: 'PhonePe', logo: '💜' },
-  { id: 'ccavenue', name: 'CCAvenue', logo: '🟢' },
-  { id: 'payu', name: 'PayU', logo: '🟡' },
+  { id: 'razorpay', name: 'Razorpay' },
+  { id: 'phonepe', name: 'PhonePe' },
+  { id: 'ccavenue', name: 'CCAvenue' },
+  { id: 'payu', name: 'PayU' },
 ];
+
+const PAYMENT_PROVIDER_LOGOS: Record<string, { src: string; alt: string }> = {
+  razorpay: { src: '/assets/payment-logos/razorpay.svg', alt: 'Razorpay logo' },
+  phonepe: { src: '/assets/payment-logos/phonepe.svg', alt: 'PhonePe logo' },
+  ccavenue: { src: '/assets/payment-logos/ccavenue.svg', alt: 'CCAvenue logo' },
+  payu: { src: '/assets/payment-logos/payu.svg', alt: 'PayU logo' },
+};
+
+function PaymentProviderLogo({ providerId }: { providerId: string }) {
+  const logo = PAYMENT_PROVIDER_LOGOS[providerId];
+  return (
+    <div className="h-12 w-12 rounded-2xl border border-border bg-card flex items-center justify-center p-1">
+      {logo ? (
+        <img src={logo.src} alt={logo.alt} className="h-full w-full object-contain" />
+      ) : (
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {providerId.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const SMS_PROVIDERS = [
   { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
@@ -52,6 +74,10 @@ const WHATSAPP_PROVIDERS = [
   { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
+
+const SUPABASE_FUNCTION_BASE = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
+const PAYMENT_WEBHOOK_URL = `${SUPABASE_FUNCTION_BASE}/payment-webhook`;
+const WHATSAPP_WEBHOOK_URL = `${SUPABASE_FUNCTION_BASE}/whatsapp-webhook`;
 
 export function IntegrationSettings() {
   const { selectedBranch, branchFilter } = useBranchContext();
@@ -171,10 +197,10 @@ export function IntegrationSettings() {
                 <p className="text-xs text-muted-foreground">Paste this URL in your payment gateway's webhook settings to receive real-time payment confirmations.</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                    {`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/payment-webhook`}
+                    {PAYMENT_WEBHOOK_URL}
                   </code>
                   <Button variant="outline" size="sm" onClick={() => {
-                    navigator.clipboard.writeText(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/payment-webhook`);
+                    navigator.clipboard.writeText(PAYMENT_WEBHOOK_URL);
                     toast.success('Webhook URL copied!');
                   }}>
                     <Copy className="h-3.5 w-3.5" />
@@ -191,7 +217,7 @@ export function IntegrationSettings() {
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
-                            <span className="text-2xl">{provider.logo}</span>
+                            <PaymentProviderLogo providerId={provider.id} />
                             <div>
                               <h3 className="font-semibold">{provider.name}</h3>
                               <p className="text-sm text-muted-foreground">
@@ -324,7 +350,27 @@ export function IntegrationSettings() {
                 Configure WhatsApp for chat and messaging
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  <h4 className="font-semibold text-sm">WhatsApp Webhook URL</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Paste this URL into the Meta Developer Portal webhook settings so incoming messages and status updates are delivered to this workspace. Use the same webhook verify token you configured above for Meta to validate requests.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {WHATSAPP_WEBHOOK_URL}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL);
+                    toast.success('Webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {WHATSAPP_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('whatsapp').find(
@@ -584,6 +630,33 @@ function IntegrationConfigSheet({
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
   const queryClient = useQueryClient();
 
+  const generateRandomSecret = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  };
+
+  const copyToClipboard = (value: string, message: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(value).then(() => toast.success(message));
+      return;
+    }
+    toast.success(message);
+  };
+
+  const handleGenerateVerifyToken = () => {
+    const token = generateRandomSecret();
+    setConfig((prev) => ({ ...prev, webhook_verify_token: token }));
+    copyToClipboard(token, 'Webhook verify token copied');
+  };
+
+  const handleGenerateApiKey = () => {
+    const token = generateRandomSecret();
+    setCredentials((prev) => ({ ...prev, api_key: token }));
+    copyToClipboard(token, 'API key copied');
+  };
+
   // Sync state when existing prop changes (e.g., opening sheet for different provider)
   useEffect(() => {
     setIsActive(existing?.is_active || false);
@@ -706,11 +779,25 @@ function IntegrationConfigSheet({
               {fields.config.map((field) => (
                 <div key={field} className="space-y-2">
                   <Label className="capitalize">{field.replace(/_/g, ' ')}</Label>
-                  <Input
-                    value={config[field] || ''}
-                    onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
-                    placeholder={`Enter ${field.replace(/_/g, ' ')}`}
-                  />
+                  {field === 'webhook_verify_token' ? (
+                    <div className="flex gap-2">
+                      <Input
+                        className="flex-1"
+                        value={config[field] || ''}
+                        onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
+                        placeholder={`Enter ${field.replace(/_/g, ' ')}`}
+                      />
+                      <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={handleGenerateVerifyToken}>
+                        <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
+                      </Button>
+                    </div>
+                  ) : (
+                    <Input
+                      value={config[field] || ''}
+                      onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
+                      placeholder={`Enter ${field.replace(/_/g, ' ')}`}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -722,12 +809,27 @@ function IntegrationConfigSheet({
               {fields.credentials.map((field) => (
                 <div key={field} className="space-y-2">
                   <Label className="capitalize">{field.replace(/_/g, ' ')}</Label>
-                  <Input
-                    type="password"
-                    value={credentials[field] || ''}
-                    onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
-                    placeholder={`Enter ${field.replace(/_/g, ' ')}`}
-                  />
+                  {field === 'api_key' ? (
+                    <div className="flex gap-2">
+                      <Input
+                        className="flex-1"
+                        type="password"
+                        value={credentials[field] || ''}
+                        onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
+                        placeholder={`Enter ${field.replace(/_/g, ' ')}`}
+                      />
+                      <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={handleGenerateApiKey}>
+                        <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
+                      </Button>
+                    </div>
+                  ) : (
+                    <Input
+                      type="password"
+                      value={credentials[field] || ''}
+                      onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
+                      placeholder={`Enter ${field.replace(/_/g, ' ')}`}
+                    />
+                  )}
                 </div>
               ))}
             </div>

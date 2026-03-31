@@ -1,0 +1,12 @@
+<svg width="120" height="48" viewBox="0 0 120 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="phonepe-gradient" x1="0" y1="0" x2="120" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5C25FB" />
+      <stop offset="100%" stop-color="#FF63B0" />
+    </linearGradient>
+  </defs>
+  <rect width="120" height="48" rx="12" fill="url(#phonepe-gradient)" />
+  <text x="50%" y="58%" text-anchor="middle" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18">
+    PhonePe
+  </text>
+</svg>
