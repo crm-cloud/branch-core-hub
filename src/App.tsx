@@ -22,6 +22,8 @@ import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
 import PublicWebsite from "./pages/PublicWebsite";
 import EmbedLeadForm from "./pages/EmbedLeadForm";
+import PrivacyPolicyPage from "./pages/PrivacyPolicy";
+import TermsPage from "./pages/Terms";
 
 // All other pages — lazy loaded for code splitting
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
@@ -132,6 +134,8 @@ const App = () => (
           <Routes>
             {/* Public Website */}
             <Route path="/" element={<PublicWebsite />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/auth/set-password" element={<SetPasswordPage />} />

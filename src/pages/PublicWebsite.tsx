@@ -941,7 +941,13 @@ export default function PublicWebsite() {
                       <button data-testid="button-submit-trial" type="submit" disabled={isSubmitting} className="w-full py-4 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-base shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed transition-all">
                         {isSubmitting ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" /> Submitting...</span> : <span className="flex items-center justify-center gap-2">Claim Free Trial Pass <ArrowRight className="h-5 w-5" /></span>}
                       </button>
-                      <p className="text-center text-xs text-white/25">By submitting, you agree to our Privacy Policy.</p>
+                      <p className="text-center text-xs text-white/25">
+                        By submitting, you agree to our{' '}
+                        <Link to="/privacy-policy" className="text-orange-400 hover:text-orange-300 transition-colors">
+                          Privacy Policy
+                        </Link>
+                        .
+                      </p>
                     </form>
                   )}
                 </div>
@@ -970,7 +976,7 @@ export default function PublicWebsite() {
             {[
               { title: 'Company', links: [{ label: 'About Us', href: '#' }, { label: 'Careers', href: '#' }, { label: 'Blog', href: '#' }, { label: 'Press', href: '#' }] },
               { title: 'Members', links: [{ label: 'Sign In', href: '/auth' }, { label: 'Free Trial', href: '#contact' }, { label: 'Plans', href: '#pricing' }, { label: 'Classes', href: '#classes' }] },
-              { title: 'Support', links: [{ label: 'FAQ', href: '#' }, { label: 'Contact', href: '#contact' }, { label: 'Privacy Policy', href: '#' }, { label: 'Terms', href: '#' }] },
+              { title: 'Support', links: [{ label: 'FAQ', href: '#' }, { label: 'Contact', href: '#contact' }, { label: 'Privacy Policy', href: '/privacy-policy' }, { label: 'Terms', href: '/terms' }] },
             ].map(({ title, links }) => (
               <div key={title}>
                 <h4 className="font-bold text-white text-sm mb-4">{title}</h4>
