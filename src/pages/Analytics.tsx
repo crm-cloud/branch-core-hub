@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { format, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getDay, subDays, addDays } from 'date-fns';
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   BarChart,
   Bar,
@@ -975,6 +975,9 @@ export default function AnalyticsPage() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Expiring — {renewalDialog.bucket}</DialogTitle>
+            <DialogDescription>
+              Members whose plans are expiring in the selected time window.
+            </DialogDescription>
           </DialogHeader>
           {renewalDialog.members.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No members expiring in this window.</p>

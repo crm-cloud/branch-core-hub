@@ -19,6 +19,7 @@ type WhatsAppIntegration = {
   id: string;
   branch_id: string | null;
   config: Record<string, unknown>;
+  credentials: Record<string, unknown>;
 };
 
 const integrationCache = new Map<string, WhatsAppIntegration | null>();
@@ -53,12 +54,24 @@ serve(async (req: Request) => {
 
 async function handleVerification(req: Request) {
   const url = new URL(req.url);
-  const mode = url.searchParams.get("hub.mode");
-  const verifyToken = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
+  const modeRaw = getQueryParam(url, ["hub.mode", "hub_mode", "mode"]);
+  const verifyToken = getQueryParam(url, ["hub.verify_token", "hub_verify_token", "verify_token"]);
+  const challenge = getQueryParam(url, ["hub.challenge", "hub_challenge", "challenge"]);
+  const mode = modeRaw?.toLowerCase();
 
   if (mode !== "subscribe" || !verifyToken || !challenge) {
-    return new Response(JSON.stringify({ error: "Invalid verification request" }), {
+    const missingParams = [
+      !modeRaw ? "hub.mode" : null,
+      !verifyToken ? "hub.verify_token" : null,
+      !challenge ? "hub.challenge" : null,
+    ].filter(Boolean);
+
+    return new Response(JSON.stringify({
+      error: "Invalid verification request",
+      expected_mode: "subscribe",
+      received_mode: modeRaw,
+      missing_params: missingParams,
+    }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -87,6 +100,14 @@ async function handleVerification(req: Request) {
   });
 }
 
+function getQueryParam(url: URL, keys: string[]) {
+  for (const key of keys) {
+    const value = url.searchParams.get(key)?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 async function handleEvent(req: Request) {
   const bodyText = await req.text();
   let payload: any;
@@ -98,6 +119,41 @@ async function handleEvent(req: Request) {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  if (payload?.object && payload.object !== "whatsapp_business_account") {
+    return new Response(JSON.stringify({ status: "ignored" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const phoneNumberIds = extractPhoneNumberIds(payload);
+  const candidateIntegrations = await Promise.all(
+    phoneNumberIds.map((id) => findIntegrationByPhoneNumberId(id)),
+  );
+  const signatureSecrets: string[] = Array.from(new Set(
+    candidateIntegrations
+      .map(getWebhookSignatureSecret)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  ));
+
+  if (signatureSecrets.length > 0) {
+    const signatureHeader = req.headers.get("x-hub-signature-256") ?? req.headers.get("x-hub-signature");
+    if (!signatureHeader) {
+      return new Response(JSON.stringify({ error: "Missing webhook signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isValidSignature = await verifyWebhookSignature(bodyText, signatureHeader, signatureSecrets);
+    if (!isValidSignature) {
+      return new Response(JSON.stringify({ error: "Invalid webhook signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   const entries = Array.isArray(payload.entry) ? payload.entry : [];
@@ -134,14 +190,14 @@ async function handleEvent(req: Request) {
   });
 }
 
-async function findIntegrationByPhoneNumberId(phoneNumberId: string) {
+async function findIntegrationByPhoneNumberId(phoneNumberId: string): Promise<WhatsAppIntegration | null> {
   if (integrationCache.has(phoneNumberId)) {
     return integrationCache.get(phoneNumberId)!;
   }
 
   const { data, error } = await supabase
     .from("integration_settings")
-    .select("id, branch_id, config")
+    .select("id, branch_id, config, credentials")
     .eq("integration_type", "whatsapp")
     .eq("is_active", true)
     .eq("config->>phone_number_id", phoneNumberId)
@@ -152,7 +208,7 @@ async function findIntegrationByPhoneNumberId(phoneNumberId: string) {
     console.error("Error fetching integration for webhook", error);
   }
 
-  const result = data ?? null;
+  const result = (data as WhatsAppIntegration | null) ?? null;
   integrationCache.set(phoneNumberId, result);
   return result;
 }
@@ -220,4 +276,69 @@ function extractMessageContent(message: any): string | null {
 
 function extractMediaUrl(message: any): string | null {
   return message?.image?.id ?? message?.video?.id ?? message?.document?.id ?? null;
+}
+
+function extractPhoneNumberIds(payload: any): string[] {
+  const ids = new Set<string>();
+  const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+
+  for (const entry of entries) {
+    const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+    for (const change of changes) {
+      const id = change?.value?.metadata?.phone_number_id;
+      if (id) ids.add(String(id));
+    }
+  }
+
+  return Array.from(ids);
+}
+
+function getWebhookSignatureSecret(integration: WhatsAppIntegration | null): string | null {
+  if (!integration) return null;
+  const appSecret = integration.credentials?.app_secret;
+  if (typeof appSecret === "string" && appSecret.trim().length > 0) return appSecret.trim();
+
+  const apiKey = integration.credentials?.api_key;
+  if (typeof apiKey === "string" && apiKey.trim().length > 0) return apiKey.trim();
+
+  return null;
+}
+
+function parseSignatureHeader(signatureHeader: string): string | null {
+  const trimmed = signatureHeader.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes("=")) {
+    const [algorithm, value] = trimmed.split("=", 2);
+    if (algorithm.toLowerCase() !== "sha256") return null;
+    return value?.trim().toLowerCase() ?? null;
+  }
+
+  return trimmed.toLowerCase();
+}
+
+async function verifyWebhookSignature(body: string, signatureHeader: string, secrets: string[]) {
+  const expectedSignature = parseSignatureHeader(signatureHeader);
+  if (!expectedSignature) return false;
+
+  for (const secret of secrets) {
+    const computed = await computeHmacSha256(body, secret);
+    if (computed === expectedSignature) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function computeHmacSha256(message: string, secret: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

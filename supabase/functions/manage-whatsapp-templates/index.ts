@@ -65,7 +65,7 @@ serve(async (req) => {
 
     // ── STEP 2: Verify caller has access to requested branch ───────────────
     // Check the user has a role in this branch (or is the org owner)
-    const { data: branchAccess, error: accessError } = await supabase
+    const { data: branchAccess } = await supabase
       .from("branch_members")
       .select("id, role")
       .eq("user_id", user.id)
@@ -82,17 +82,30 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (!branchAccess && !globalRole) {
+    const allowedRoles = ["owner", "admin", "manager"];
+    const hasBranchMemberAccess = Boolean(branchAccess || globalRole);
+    const branchMemberRole = branchAccess?.role || globalRole?.role;
+    const branchMemberRoleAllowed = typeof branchMemberRole === "string" && allowedRoles.includes(branchMemberRole);
+
+    // Fallback to canonical global roles table used across the app.
+    const { data: userRoles } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .in("role", allowedRoles)
+      .limit(1);
+
+    const hasGlobalAllowedRole = Array.isArray(userRoles) && userRoles.length > 0;
+
+    if (!hasBranchMemberAccess && !hasGlobalAllowedRole) {
       return new Response(
         JSON.stringify({ error: "Forbidden — you do not have access to this branch" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Restrict template creation/management to admin-level roles
-    const allowedRoles = ["owner", "admin", "manager"];
-    const userRole = branchAccess?.role || globalRole?.role;
-    if (!allowedRoles.includes(userRole)) {
+    // Restrict template creation/management to admin-level roles.
+    if (!branchMemberRoleAllowed && !hasGlobalAllowedRole) {
       return new Response(
         JSON.stringify({ error: "Forbidden — only owners, admins, and managers can manage Meta templates" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

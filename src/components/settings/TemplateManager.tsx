@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -539,20 +538,20 @@ export function TemplateManager() {
         </SheetContent>
       </Sheet>
 
-      {/* Submit to Meta Dialog */}
-      <Dialog open={showMetaDialog} onOpenChange={setShowMetaDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      {/* Submit to Meta Drawer */}
+      <Sheet open={showMetaDialog} onOpenChange={setShowMetaDialog}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
               <Send className="h-4 w-4 text-green-600" />
               Submit to Meta
-            </DialogTitle>
-            <DialogDescription>
+            </SheetTitle>
+            <SheetDescription>
               Submit this template to WhatsApp for approval. Once approved, it can be sent to users who have not opted in.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 mt-6">
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
               <p className="text-xs text-amber-700">
                 <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>). WhatsApp will auto-format the name if needed.
@@ -620,7 +619,7 @@ export function TemplateManager() {
             </div>
           </div>
 
-          <DialogFooter>
+          <SheetFooter className="pt-4">
             <Button variant="outline" onClick={() => setShowMetaDialog(false)}>
               Cancel
             </Button>
@@ -636,9 +635,9 @@ export function TemplateManager() {
                 <><Send className="h-4 w-4 mr-2" /> Submit for Approval</>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

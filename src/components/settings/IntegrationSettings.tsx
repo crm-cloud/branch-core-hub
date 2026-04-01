@@ -765,7 +765,7 @@ function IntegrationConfigSheet({
     if (type === 'whatsapp') {
       return {
         config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-        credentials: ['access_token', 'api_key'],
+        credentials: ['access_token', 'app_secret', 'api_key'],
       };
     }
     if (type === 'google_business') {
