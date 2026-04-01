@@ -519,10 +519,19 @@ export default function AttendanceDashboard() {
                     </div>
                   </div>
                   {alreadyIn ? (
-                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 gap-1 px-3 py-1.5">
-                      <AlertCircle className="h-3 w-3" />
-                      Already In
-                    </Badge>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        checkOut(member.id);
+                        setSearchResults(prev => prev.filter(m => m.id !== member.id));
+                      }} 
+                      disabled={isCheckingOut} 
+                      size="lg" 
+                      className="gap-2 border-warning text-warning hover:bg-warning/10"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      {isCheckingOut ? 'Checking Out...' : 'Check Out'}
+                    </Button>
                   ) : (
                     <Button onClick={() => handleQuickCheckIn(member.id, member.profiles?.full_name, member.profiles?.avatar_url)} disabled={isCheckingIn} size="lg" className="gap-2">
                       <UserCheck className="w-5 h-5" />

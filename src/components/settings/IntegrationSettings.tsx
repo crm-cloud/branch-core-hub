@@ -472,6 +472,38 @@ export function IntegrationSettings() {
                 <div className="flex gap-3">
                   <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">5</div>
                   <div>
+                    <h4 className="font-semibold text-sm">Register the Webhook in Meta</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      In Meta Developer Portal → Your App → WhatsApp → Configuration → Webhook:
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      <div>
+                        <Label className="text-xs font-medium">Callback URL</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input readOnly value={WHATSAPP_WEBHOOK_URL} className="font-mono text-xs h-8" />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 flex-shrink-0"
+                            onClick={() => {
+                              navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL);
+                              toast.success('Webhook URL copied!');
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Verify Token:</strong> Use the same token you entered in "Webhook Verify Token" above. Subscribe to <strong>messages</strong> and <strong>message_template_status_update</strong> fields.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">6</div>
+                  <div>
                     <h4 className="font-semibold text-sm">Send a Test Message</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Go to <strong>WhatsApp Chat</strong> from the sidebar, select a contact, type a message and hit send. If configured correctly, the message status will update from "pending" to "sent".
