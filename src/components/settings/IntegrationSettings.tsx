@@ -763,6 +763,12 @@ function IntegrationConfigSheet({
       };
     }
     if (type === 'whatsapp') {
+      if (provider === 'custom') {
+        return {
+          config: ['api_url', 'webhook_verify_token'],
+          credentials: ['api_key'],
+        };
+      }
       return {
         config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
         credentials: ['access_token', 'api_key'],
