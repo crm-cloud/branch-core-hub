@@ -268,6 +268,9 @@ export default function SystemHealth() {
             </Tabs>
           </CardContent>
         </Card>
+
+        {/* Database Audit: Empty/Unused Tables */}
+        <DatabaseAuditCard />
       </div>
 
       {/* Clear Resolved Confirmation */}
