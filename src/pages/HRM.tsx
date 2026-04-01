@@ -34,6 +34,47 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { generatePayslipPDF } from '@/utils/pdfGenerator';
 
+const MONTH_VALUE_RE = /^\d{4}-\d{2}$/;
+
+function parseDateSafe(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateSafe(value: unknown, pattern: string, fallback = '-'): string {
+  const date = parseDateSafe(value);
+  if (!date) return fallback;
+  return format(date, pattern);
+}
+
+function getDurationHours(checkIn: unknown, checkOut: unknown): number | null {
+  const inDate = parseDateSafe(checkIn);
+  const outDate = parseDateSafe(checkOut);
+  if (!inDate || !outDate) return null;
+
+  const diff = (outDate.getTime() - inDate.getTime()) / 3600000;
+  if (!Number.isFinite(diff) || diff < 0) return null;
+  return diff;
+}
+
+function getPayrollMonthLabel(payrollMonth: string): string {
+  if (!MONTH_VALUE_RE.test(payrollMonth)) {
+    return format(new Date(), 'MMMM yyyy');
+  }
+
+  const [yearText, monthText] = payrollMonth.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const date = new Date(year, month - 1, 1);
+
+  if (Number.isNaN(date.getTime())) {
+    return format(new Date(), 'MMMM yyyy');
+  }
+
+  return format(date, 'MMMM yyyy');
+}
+
 export default function HRMPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [contractDrawerOpen, setContractDrawerOpen] = useState(false);
@@ -95,8 +136,19 @@ export default function HRMPage() {
   const { data: staffAttendance = [] } = useQuery({
     queryKey: ['hrm-staff-attendance', payrollMonth],
     queryFn: async () => {
+      if (!MONTH_VALUE_RE.test(payrollMonth)) {
+        return [];
+      }
+
+      const [yearText, monthText] = payrollMonth.split('-');
+      const year = Number(yearText);
+      const month = Number(monthText);
+      if (!Number.isFinite(year) || !Number.isFinite(month)) {
+        return [];
+      }
+
       const startDate = `${payrollMonth}-01T00:00:00`;
-      const endDate = new Date(parseInt(payrollMonth.split('-')[0]), parseInt(payrollMonth.split('-')[1]), 0).toISOString();
+      const endDate = new Date(year, month, 0).toISOString();
       const { data, error } = await supabase
         .from('staff_attendance')
         .select('*')
@@ -196,10 +248,8 @@ export default function HRMPage() {
     const records = staffAttendance.filter((a: any) => a.user_id === userId);
     const totalDays = records.length;
     const totalHours = records.reduce((sum: number, a: any) => {
-      if (a.check_in && a.check_out) {
-        return sum + (new Date(a.check_out).getTime() - new Date(a.check_in).getTime()) / 3600000;
-      }
-      return sum;
+      const duration = getDurationHours(a.check_in, a.check_out);
+      return duration !== null ? sum + duration : sum;
     }, 0);
     return { totalDays, totalHours: Math.round(totalHours * 10) / 10, records };
   };
@@ -453,10 +503,10 @@ export default function HRMPage() {
                           </div>
                         </TableCell>
                         <TableCell className="capitalize">{contract.contract_type.replace('_', ' ')}</TableCell>
-                        <TableCell>{format(new Date(contract.start_date), 'dd MMM yyyy')}</TableCell>
+                        <TableCell>{formatDateSafe(contract.start_date, 'dd MMM yyyy')}</TableCell>
                         <TableCell>
                           {contract.end_date 
-                            ? format(new Date(contract.end_date), 'dd MMM yyyy') 
+                            ? formatDateSafe(contract.end_date, 'dd MMM yyyy') 
                             : <span className="text-muted-foreground">Ongoing</span>
                           }
                         </TableCell>
@@ -558,9 +608,7 @@ export default function HRMPage() {
                   <TableBody>
                     {staffAttendance.slice(0, 50).map((record: any) => {
                       const staff = payrollStaff.find((s: PayrollStaffItem) => s.user_id === record.user_id);
-                      const duration = record.check_in && record.check_out
-                        ? ((new Date(record.check_out).getTime() - new Date(record.check_in).getTime()) / 3600000).toFixed(1)
-                        : '-';
+                      const duration = getDurationHours(record.check_in, record.check_out);
                       return (
                         <TableRow key={record.id}>
                           <TableCell>
@@ -576,12 +624,12 @@ export default function HRMPage() {
                           <TableCell>
                             {staff ? getStaffTypeBadge(staff) : <span className="text-muted-foreground">-</span>}
                           </TableCell>
-                          <TableCell>{format(new Date(record.check_in), 'dd MMM yyyy')}</TableCell>
-                          <TableCell>{format(new Date(record.check_in), 'hh:mm a')}</TableCell>
+                          <TableCell>{formatDateSafe(record.check_in, 'dd MMM yyyy')}</TableCell>
+                          <TableCell>{formatDateSafe(record.check_in, 'hh:mm a')}</TableCell>
                           <TableCell>
-                            {record.check_out ? format(new Date(record.check_out), 'hh:mm a') : <Badge variant="outline" className="text-warning">Active</Badge>}
+                            {record.check_out ? formatDateSafe(record.check_out, 'hh:mm a') : <Badge variant="outline" className="text-warning">Active</Badge>}
                           </TableCell>
-                          <TableCell>{duration !== '-' ? `${duration}h` : '-'}</TableCell>
+                          <TableCell>{duration !== null ? `${duration.toFixed(1)}h` : '-'}</TableCell>
                         </TableRow>
                       );
                     })}
@@ -692,7 +740,7 @@ export default function HRMPage() {
                                   generatePayslipPDF({
                                     employeeName: staff.name,
                                     employeeCode: staff.code,
-                                    month: format(new Date(payrollMonth), 'MMMM yyyy'),
+                                    month: getPayrollMonthLabel(payrollMonth),
                                     baseSalary: staff.salary || 0,
                                     daysPresent: p.daysPresent || 0,
                                     workingDays: p.workingDays || 26,
@@ -735,7 +783,7 @@ export default function HRMPage() {
 
                 {/* Payroll Summary */}
                 <div className="mt-6 p-4 rounded-lg bg-muted/50">
-                  <h4 className="font-semibold mb-3">Payroll Summary - {format(new Date(payrollMonth), 'MMMM yyyy')}</h4>
+                  <h4 className="font-semibold mb-3">Payroll Summary - {getPayrollMonthLabel(payrollMonth)}</h4>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Pro-rated Base</p>

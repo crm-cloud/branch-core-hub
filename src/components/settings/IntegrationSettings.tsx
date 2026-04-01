@@ -351,26 +351,6 @@ export function IntegrationSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-primary" />
-                  <h4 className="font-semibold text-sm">WhatsApp Webhook URL</h4>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Paste this URL into the Meta Developer Portal webhook settings so incoming messages and status updates are delivered to this workspace. Use the same webhook verify token you configured above for Meta to validate requests.
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                    {WHATSAPP_WEBHOOK_URL}
-                  </code>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL);
-                    toast.success('Webhook URL copied!');
-                  }}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {WHATSAPP_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('whatsapp').find(
