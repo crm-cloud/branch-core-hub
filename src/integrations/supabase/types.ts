@@ -1480,6 +1480,7 @@ export type Database = {
           member_id: string
           name: string
           plan_data: Json
+          plan_type: string | null
           start_date: string | null
           trainer_id: string | null
           updated_at: string
@@ -1495,6 +1496,7 @@ export type Database = {
           member_id: string
           name: string
           plan_data?: Json
+          plan_type?: string | null
           start_date?: string | null
           trainer_id?: string | null
           updated_at?: string
@@ -1510,6 +1512,7 @@ export type Database = {
           member_id?: string
           name?: string
           plan_data?: Json
+          plan_type?: string | null
           start_date?: string | null
           trainer_id?: string | null
           updated_at?: string
@@ -5374,6 +5377,9 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean | null
+          meta_rejection_reason: string | null
+          meta_template_name: string | null
+          meta_template_status: string | null
           name: string
           subject: string | null
           type: string
@@ -5386,6 +5392,9 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          meta_rejection_reason?: string | null
+          meta_template_name?: string | null
+          meta_template_status?: string | null
           name: string
           subject?: string | null
           type: string
@@ -5398,6 +5407,9 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          meta_rejection_reason?: string | null
+          meta_template_name?: string | null
+          meta_template_status?: string | null
           name?: string
           subject?: string | null
           type?: string
