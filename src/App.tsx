@@ -24,6 +24,7 @@ import PublicWebsite from "./pages/PublicWebsite";
 import EmbedLeadForm from "./pages/EmbedLeadForm";
 import PrivacyPolicyPage from "./pages/PrivacyPolicy";
 import TermsPage from "./pages/Terms";
+import ContractSignPage from "./pages/ContractSign";
 
 // All other pages — lazy loaded for code splitting
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
@@ -145,6 +146,7 @@ const App = () => (
 
             {/* Embeddable lead form - no auth required */}
             <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
+            <Route path="/contract-sign/:token" element={<ContractSignPage />} />
 
             {/* Smart Dashboard Redirect */}
             <Route path="/home" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />

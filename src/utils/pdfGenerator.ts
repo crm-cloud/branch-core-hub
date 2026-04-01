@@ -27,6 +27,80 @@ interface ContractData {
   companyAddress?: string;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeContractTerms(terms: unknown, startDate?: string, companyAddress?: string): string {
+  if (!terms) return '';
+  let content = '';
+
+  if (typeof terms === 'string') content = terms;
+  if (typeof terms === 'object') {
+    const candidate = (terms as { conditions?: unknown }).conditions;
+    if (typeof candidate === 'string') content = candidate;
+    else content = JSON.stringify(terms, null, 2);
+  }
+  if (!content) content = String(terms);
+
+  const readableDate = startDate
+    ? new Date(startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const resolvedCompanyAddress = companyAddress || 'Udaipur, Rajasthan';
+
+  // Normalize legacy placeholders from older saved contracts.
+  content = content.replace(
+    /This Employment Agreement \("Agreement"\) is executed on this ___ day of ________, 20__ at __________\./g,
+    `This Employment Agreement ("Agreement") is executed on ${readableDate} at ${resolvedCompanyAddress}.`,
+  );
+  content = content.replace(
+    /Having its principal place of business at:\s*_+/g,
+    `Having its principal place of business at: ${resolvedCompanyAddress}`,
+  );
+
+  return content;
+}
+
+function renderContractTermsHtml(terms: unknown, startDate?: string, companyAddress?: string): string {
+  const raw = normalizeContractTerms(terms, startDate, companyAddress).trim();
+  if (!raw) {
+    return '<p style="font-size:13px;color:#666;">No terms added.</p>';
+  }
+
+  const lines = raw.split(/\r?\n/);
+  const htmlLines = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return '<br/>';
+
+    const headingMatch = trimmed.match(/^#{1,6}\s+(.*)$/);
+    if (headingMatch) {
+      return `<p style="font-weight:700;margin:12px 0 4px;">${escapeHtml(headingMatch[1])}</p>`;
+    }
+
+    if (trimmed === '---') {
+      return '<hr style="border:none;border-top:1px solid #ddd;margin:10px 0;"/>';
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      return `<p style="margin:4px 0 4px 14px;">• ${escapeHtml(trimmed.replace(/^[-*]\s+/, ''))}</p>`;
+    }
+
+    if (/^\[[ xX]\]\s+/.test(trimmed)) {
+      const checked = /^\[[xX]\]\s+/.test(trimmed) ? '☑' : '☐';
+      return `<p style="margin:4px 0;">${checked} ${escapeHtml(trimmed.replace(/^\[[ xX]\]\s+/, ''))}</p>`;
+    }
+
+    return `<p style="margin:4px 0;">${escapeHtml(trimmed)}</p>`;
+  });
+
+  return htmlLines.join('');
+}
+
 export function generatePlanPDF(plan: PlanData): void {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
@@ -196,96 +270,102 @@ export function generateContractPDF(contract: ContractData): void {
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Times New Roman', serif; 
-          padding: 50px;
-          color: #333;
-          max-width: 800px;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          padding: 36px;
+          color: #0f172a;
+          max-width: 900px;
           margin: 0 auto;
-          line-height: 1.6;
+          line-height: 1.55;
+          background: #ffffff;
         }
         .header {
           text-align: center;
-          margin-bottom: 40px;
-          padding-bottom: 20px;
-          border-bottom: 3px double #333;
+          margin-bottom: 30px;
+          padding-bottom: 18px;
+          border-bottom: 2px solid #0f172a;
         }
         .company-name {
           font-size: 24px;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 2px;
+          font-weight: 700;
+          letter-spacing: 0.5px;
         }
         .company-address {
-          font-size: 12px;
-          color: #666;
-          margin-top: 5px;
+          font-size: 13px;
+          color: #475569;
+          margin-top: 6px;
         }
         .title {
           font-size: 20px;
-          font-weight: bold;
+          font-weight: 700;
           text-align: center;
-          margin: 30px 0;
-          text-decoration: underline;
+          margin: 22px 0 26px;
+          color: #1e293b;
         }
         .section {
-          margin-bottom: 25px;
+          margin-bottom: 18px;
         }
         .section-title {
-          font-size: 14px;
-          font-weight: bold;
+          font-size: 13px;
+          font-weight: 700;
           margin-bottom: 10px;
+          letter-spacing: 0.6px;
+          color: #334155;
           text-transform: uppercase;
         }
         .info-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          margin-bottom: 20px;
+          gap: 10px 16px;
+          margin-bottom: 16px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 14px;
         }
         .info-item {
           font-size: 13px;
         }
         .info-item label {
-          font-weight: bold;
+          font-weight: 600;
           display: block;
-          margin-bottom: 3px;
+          margin-bottom: 2px;
+          color: #475569;
         }
         .terms-box {
-          background: #f9f9f9;
+          background: #ffffff;
           padding: 20px;
-          border: 1px solid #ddd;
-          margin: 20px 0;
-        }
-        .terms-box ol {
-          margin-left: 20px;
-        }
-        .terms-box li {
-          margin-bottom: 10px;
-          font-size: 13px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          margin: 18px 0;
         }
         .signature-section {
-          margin-top: 60px;
+          margin-top: 36px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 50px;
+          gap: 30px;
         }
         .signature-box {
           text-align: center;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 16px 12px;
         }
         .signature-line {
-          border-top: 1px solid #333;
-          margin-top: 60px;
+          border-top: 1px solid #334155;
+          margin-top: 50px;
           padding-top: 10px;
           font-size: 12px;
+          color: #334155;
         }
         .footer {
-          margin-top: 40px;
+          margin-top: 30px;
           text-align: center;
           font-size: 11px;
-          color: #999;
+          color: #64748b;
         }
         @media print {
-          body { padding: 30px; }
+          body { padding: 24px; }
           .signature-section { break-inside: avoid; }
         }
       </style>
@@ -293,7 +373,7 @@ export function generateContractPDF(contract: ContractData): void {
     <body>
       <div class="header">
         <div class="company-name">${contract.companyName || 'FITNESS CENTER'}</div>
-        <div class="company-address">${contract.companyAddress || 'Address to be filled'}</div>
+        <div class="company-address">${contract.companyAddress || 'Udaipur, Rajasthan'}</div>
       </div>
 
       <div class="title">EMPLOYMENT CONTRACT</div>
@@ -311,19 +391,19 @@ export function generateContractPDF(contract: ContractData): void {
           </div>
           <div class="info-item">
             <label>Email:</label>
-            <span>${contract.employeeEmail || '___________________'}</span>
+            <span>${contract.employeeEmail || '-'}</span>
           </div>
           <div class="info-item">
             <label>Phone:</label>
-            <span>${contract.employeePhone || '___________________'}</span>
+            <span>${contract.employeePhone || '-'}</span>
           </div>
           <div class="info-item">
             <label>Position:</label>
-            <span>${contract.position || '___________________'}</span>
+            <span>${contract.position || '-'}</span>
           </div>
           <div class="info-item">
             <label>Department:</label>
-            <span>${contract.department || '___________________'}</span>
+            <span>${contract.department || '-'}</span>
           </div>
         </div>
       </div>
@@ -333,11 +413,11 @@ export function generateContractPDF(contract: ContractData): void {
         <div class="info-grid">
           <div class="info-item">
             <label>Contract Type:</label>
-            <span>${contract.contractType}</span>
+            <span>${escapeHtml(contract.contractType)}</span>
           </div>
           <div class="info-item">
             <label>Salary Type:</label>
-            <span>${contract.salaryType || 'Monthly'}</span>
+            <span>${escapeHtml(contract.salaryType || 'Monthly')}</span>
           </div>
           <div class="info-item">
             <label>Start Date:</label>
@@ -356,16 +436,7 @@ export function generateContractPDF(contract: ContractData): void {
 
       <div class="terms-box">
         <div class="section-title">Terms & Conditions</div>
-        <ol>
-          <li>The Employee agrees to perform their duties diligently and to the best of their abilities.</li>
-          <li>Working hours shall be as per the organization's standard policy.</li>
-          <li>The Employee shall maintain confidentiality of all business information.</li>
-          <li>Either party may terminate this contract with a notice period of 30 days.</li>
-          <li>The Employee shall adhere to all company policies and procedures.</li>
-          <li>Salary shall be paid on or before the 7th of each month.</li>
-          <li>The Employee is entitled to leaves as per company policy.</li>
-          <li>Any disputes shall be resolved through mutual discussion.</li>
-        </ol>
+        ${renderContractTermsHtml(contract.terms, contract.startDate, contract.companyAddress || 'Udaipur, Rajasthan')}
       </div>
 
       <div class="signature-section">

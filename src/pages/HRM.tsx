@@ -25,14 +25,18 @@ import {
   Download,
   Edit,
   Mail,
-  Dumbbell
+  Dumbbell,
+  Printer,
+  Eye,
+  ExternalLink,
+  Link,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEmployees, fetchEmployeeContracts, calculatePayroll, fetchAllPayrollStaff, calculatePayrollForStaff, type PayrollStaffItem } from '@/services/hrmService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { generatePayslipPDF } from '@/utils/pdfGenerator';
+import { generateContractPDF, generatePayslipPDF } from '@/utils/pdfGenerator';
 
 const MONTH_VALUE_RE = /^\d{4}-\d{2}$/;
 
@@ -100,7 +104,7 @@ export default function HRMPage() {
         .from('contracts')
         .select(`
           *,
-          employees(employee_code, user_id, profiles:employees_user_id_profiles_fkey(full_name)),
+          employees(employee_code, user_id, position, department, profiles:employees_user_id_profiles_fkey(full_name, email, phone)),
           trainers(user_id, specializations)
         `)
         .order('created_at', { ascending: false })
@@ -116,17 +120,26 @@ export default function HRMPage() {
       if (trainerUserIds.length > 0) {
         const { data: tp } = await supabase
           .from('profiles')
-          .select('id, full_name')
+          .select('id, full_name, email, phone')
           .in('id', trainerUserIds);
         trainerProfiles = tp || [];
       }
       
       return (data || []).map((c: any) => ({
+        trainerProfile: trainerProfiles.find((p: any) => p.id === c.trainers?.user_id) || null,
         ...c,
         _resolvedName: c.employees?.profiles?.full_name 
           || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.full_name 
           || null,
         _resolvedCode: c.employees?.employee_code || (c.trainers ? 'Trainer' : null),
+        _resolvedEmail: c.employees?.profiles?.email
+          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.email
+          || null,
+        _resolvedPhone: c.employees?.profiles?.phone
+          || trainerProfiles.find((p: any) => p.id === c.trainers?.user_id)?.phone
+          || null,
+        _resolvedPosition: c.employees?.position || (c.trainers ? 'Trainer' : null),
+        _resolvedDepartment: c.employees?.department || (c.trainers ? 'Training' : null),
         _isTrainer: !!c.trainer_id && !c.employee_id,
       }));
     },
@@ -226,6 +239,49 @@ export default function HRMPage() {
       return <Badge className="border bg-accent/10 text-accent border-accent/20">Manager</Badge>;
     }
     return <Badge className="border bg-muted text-muted-foreground border-border">Staff</Badge>;
+  };
+
+  const openContractPdf = (contract: any) => {
+    const employeeName = contract._resolvedName || 'Employee';
+    const employeeCode = contract._resolvedCode || '-';
+
+    generateContractPDF({
+      employeeName,
+      employeeCode,
+      employeeEmail: contract._resolvedEmail || undefined,
+      employeePhone: contract._resolvedPhone || undefined,
+      position: contract._resolvedPosition || undefined,
+      department: contract._resolvedDepartment || undefined,
+      startDate: contract.start_date,
+      endDate: contract.end_date || undefined,
+      salary: Number(contract.base_salary || contract.salary || 0),
+      salaryType: 'Monthly',
+      contractType: String(contract.contract_type || '').replace('_', ' '),
+      terms: contract.terms,
+      companyName: 'Incline',
+      companyAddress: 'Udaipur, Rajasthan',
+    });
+  };
+
+  const createContractSignLink = async (contract: any) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('contract-signing', {
+        body: { action: 'create_link', contract_id: contract.id },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const link = data?.sign_url as string | undefined;
+      if (!link) throw new Error('No sign URL returned');
+
+      await navigator.clipboard.writeText(link);
+      toast.success('Signing link copied to clipboard');
+
+      queryClient.invalidateQueries({ queryKey: ['all-contracts'] });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to generate signing link');
+    }
   };
 
   // Payroll processing
@@ -481,6 +537,7 @@ export default function HRMPage() {
                       <TableHead>Base Salary</TableHead>
                       <TableHead>Commission %</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -522,11 +579,57 @@ export default function HRMPage() {
                             {contract.status}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openContractPdf(contract)}
+                              title="Preview / Print Contract"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openContractPdf(contract)}
+                              title="Print or Save as PDF"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openContractPdf(contract)}
+                              title="Download Contract PDF"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                            {contract.document_url && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => window.open(contract.document_url, '_blank', 'noopener,noreferrer')}
+                                title="Open uploaded contract"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => createContractSignLink(contract)}
+                              title="Generate signing link"
+                            >
+                              <Link className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                     {allContracts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                           <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No contracts found</p>
                         </TableCell>
