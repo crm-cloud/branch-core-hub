@@ -55,9 +55,12 @@ function PaymentProviderLogo({ providerId }: { providerId: string }) {
 }
 
 const SMS_PROVIDERS = [
+  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
   { id: 'gupshup', name: 'Gupshup', description: 'Enterprise SMS platform' },
   { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
+  { id: 'textlocal', name: 'TextLocal', description: 'SMS API service' },
+  { id: 'fast2sms', name: 'Fast2SMS', description: 'Indian bulk SMS' },
   { id: 'custom', name: 'Custom API', description: 'Your own SMS API' },
 ];
 
@@ -69,9 +72,11 @@ const EMAIL_PROVIDERS = [
 ];
 
 const WHATSAPP_PROVIDERS = [
+  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
   { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
   { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
+  { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
@@ -258,7 +263,12 @@ export function IntegrationSettings() {
                 Configure SMS providers with DLT registration
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <strong>⚠️ DLT Registration Required:</strong> For Indian SMS providers (RoundSMS, MSG91, Fast2SMS), DLT registration is mandatory for transactional SMS. You'll need your DLT Principal Entity ID, registered Sender ID, and pre-approved DLT Template IDs.
+                </p>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {SMS_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('sms').find(
@@ -725,10 +735,38 @@ function IntegrationConfigSheet({
       };
     }
     if (type === 'sms') {
-      return {
-        config: ['sender_id', 'dlt_entity_id', 'dlt_template_id', 'api_url'],
-        credentials: ['api_key', 'auth_token'],
-      };
+      switch (provider) {
+        case 'roundsms':
+          return {
+            config: ['api_url', 'sender_id', 'priority', 'sms_type', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['username', 'password'],
+          };
+        case 'msg91':
+          return {
+            config: ['sender_id', 'route', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['auth_key'],
+          };
+        case 'textlocal':
+          return {
+            config: ['sender_name'],
+            credentials: ['api_key'],
+          };
+        case 'twilio':
+          return {
+            config: ['from_number'],
+            credentials: ['account_sid', 'auth_token'],
+          };
+        case 'fast2sms':
+          return {
+            config: ['sender_id', 'route', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['api_key'],
+          };
+        default:
+          return {
+            config: ['api_url', 'sender_id', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['api_key', 'auth_token'],
+          };
+      }
     }
     if (type === 'email') {
       if (provider === 'smtp') {
@@ -743,10 +781,38 @@ function IntegrationConfigSheet({
       };
     }
     if (type === 'whatsapp') {
-      return {
-        config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-        credentials: ['access_token', 'app_secret', 'api_key'],
-      };
+      switch (provider) {
+        case 'meta_cloud':
+          return {
+            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
+            credentials: ['access_token'],
+          };
+        case 'wati':
+          return {
+            config: ['api_endpoint_url', 'webhook_verify_token'],
+            credentials: ['api_token'],
+          };
+        case 'gupshup':
+          return {
+            config: ['app_name', 'source_phone_number'],
+            credentials: ['api_key'],
+          };
+        case 'interakt':
+          return {
+            config: [],
+            credentials: ['api_key'],
+          };
+        case 'aisensy':
+          return {
+            config: [],
+            credentials: ['api_key'],
+          };
+        default:
+          return {
+            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
+            credentials: ['access_token', 'api_key'],
+          };
+      }
     }
     if (type === 'google_business') {
       return {

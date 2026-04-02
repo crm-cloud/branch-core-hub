@@ -205,14 +205,18 @@ async function getContractByToken(body: any) {
       .in("signature_status", ["sent", "not_sent"]);
   }
 
-  let resolvedName = contract.employees?.profiles?.full_name ?? null;
-  let resolvedCode = contract.employees?.employee_code ?? null;
+  const emp = Array.isArray(contract.employees) ? contract.employees[0] : contract.employees;
+  const trn = Array.isArray(contract.trainers) ? contract.trainers[0] : contract.trainers;
 
-  if (!resolvedName && contract.trainers?.user_id) {
+  const empProfile = Array.isArray(emp?.profiles) ? emp?.profiles[0] : emp?.profiles;
+  let resolvedName = empProfile?.full_name ?? null;
+  let resolvedCode = emp?.employee_code ?? null;
+
+  if (!resolvedName && trn?.user_id) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name")
-      .eq("id", contract.trainers.user_id)
+      .eq("id", trn.user_id)
       .maybeSingle();
 
     resolvedName = profile?.full_name ?? "Trainer";

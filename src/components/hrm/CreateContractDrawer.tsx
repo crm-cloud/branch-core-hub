@@ -508,13 +508,24 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
             <Label>Agreement Role *</Label>
             <Select
               value={formData.agreementRole}
-              onValueChange={(value: AgreementRole) => {
+              onValueChange={async (value: AgreementRole) => {
                 const employeeName = employee?.profile?.full_name || employee?.full_name || '__________________________';
+                // Try fetching template from DB first
+                let templateContent: string | null = null;
+                try {
+                  const { data } = await supabase
+                    .from('contract_templates')
+                    .select('content')
+                    .eq('role', value)
+                    .maybeSingle();
+                  templateContent = data?.content || null;
+                } catch { /* fallback to hardcoded */ }
+
                 setFormData({
                   ...formData,
                   agreementRole: value,
                   commissionPercentage: value === 'trainer' ? Math.max(formData.commissionPercentage, 10) : formData.commissionPercentage,
-                  terms: getEmploymentAgreementTemplate(value, employeeName, formData.salary, formData.startDate, {
+                  terms: templateContent || getEmploymentAgreementTemplate(value, employeeName, formData.salary, formData.startDate, {
                     employeeCode: employee?.employee_code,
                     email: employee?.profile?.email,
                     phone: employee?.profile?.phone,
@@ -602,18 +613,21 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
                 required
               />
             </div>
+            {formData.agreementRole === 'trainer' && (
             <div className="space-y-2">
-              <Label>Commission %</Label>
+              <Label>Commission % *</Label>
               <Input
                 type="number"
                 value={formData.commissionPercentage}
                 onChange={(e) => setFormData({ ...formData, commissionPercentage: Number(e.target.value) })}
-                min={0}
+                min={1}
                 max={100}
-                placeholder="0"
+                placeholder="10"
+                required
               />
-              <p className="text-xs text-muted-foreground">PT session commission rate</p>
+              <p className="text-xs text-muted-foreground">PT session commission rate — required for trainers</p>
             </div>
+            )}
           </div>
 
           <div className="space-y-2">
