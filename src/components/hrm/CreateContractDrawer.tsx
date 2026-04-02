@@ -613,18 +613,21 @@ export function CreateContractDrawer({ open, onOpenChange, employee }: CreateCon
                 required
               />
             </div>
+            {formData.agreementRole === 'trainer' && (
             <div className="space-y-2">
-              <Label>Commission %</Label>
+              <Label>Commission % *</Label>
               <Input
                 type="number"
                 value={formData.commissionPercentage}
                 onChange={(e) => setFormData({ ...formData, commissionPercentage: Number(e.target.value) })}
-                min={0}
+                min={1}
                 max={100}
-                placeholder="0"
+                placeholder="10"
+                required
               />
-              <p className="text-xs text-muted-foreground">PT session commission rate</p>
+              <p className="text-xs text-muted-foreground">PT session commission rate — required for trainers</p>
             </div>
+            )}
           </div>
 
           <div className="space-y-2">
