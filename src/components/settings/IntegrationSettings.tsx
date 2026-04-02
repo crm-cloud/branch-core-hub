@@ -55,9 +55,12 @@ function PaymentProviderLogo({ providerId }: { providerId: string }) {
 }
 
 const SMS_PROVIDERS = [
+  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
   { id: 'gupshup', name: 'Gupshup', description: 'Enterprise SMS platform' },
   { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
+  { id: 'textlocal', name: 'TextLocal', description: 'SMS API service' },
+  { id: 'fast2sms', name: 'Fast2SMS', description: 'Indian bulk SMS' },
   { id: 'custom', name: 'Custom API', description: 'Your own SMS API' },
 ];
 
@@ -69,9 +72,11 @@ const EMAIL_PROVIDERS = [
 ];
 
 const WHATSAPP_PROVIDERS = [
+  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
   { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
   { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
+  { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
