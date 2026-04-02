@@ -208,7 +208,8 @@ async function getContractByToken(body: any) {
   const emp = Array.isArray(contract.employees) ? contract.employees[0] : contract.employees;
   const trn = Array.isArray(contract.trainers) ? contract.trainers[0] : contract.trainers;
 
-  let resolvedName = emp?.profiles?.full_name ?? null;
+  const empProfile = Array.isArray(emp?.profiles) ? emp?.profiles[0] : emp?.profiles;
+  let resolvedName = empProfile?.full_name ?? null;
   let resolvedCode = emp?.employee_code ?? null;
 
   if (!resolvedName && trn?.user_id) {
