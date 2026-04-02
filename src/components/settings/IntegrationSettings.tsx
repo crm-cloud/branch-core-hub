@@ -730,10 +730,38 @@ function IntegrationConfigSheet({
       };
     }
     if (type === 'sms') {
-      return {
-        config: ['sender_id', 'dlt_entity_id', 'dlt_template_id', 'api_url'],
-        credentials: ['api_key', 'auth_token'],
-      };
+      switch (provider) {
+        case 'roundsms':
+          return {
+            config: ['api_url', 'sender_id', 'priority', 'sms_type', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['username', 'password'],
+          };
+        case 'msg91':
+          return {
+            config: ['sender_id', 'route', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['auth_key'],
+          };
+        case 'textlocal':
+          return {
+            config: ['sender_name'],
+            credentials: ['api_key'],
+          };
+        case 'twilio':
+          return {
+            config: ['from_number'],
+            credentials: ['account_sid', 'auth_token'],
+          };
+        case 'fast2sms':
+          return {
+            config: ['sender_id', 'route', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['api_key'],
+          };
+        default:
+          return {
+            config: ['api_url', 'sender_id', 'dlt_entity_id', 'dlt_template_id'],
+            credentials: ['api_key', 'auth_token'],
+          };
+      }
     }
     if (type === 'email') {
       if (provider === 'smtp') {
@@ -748,10 +776,38 @@ function IntegrationConfigSheet({
       };
     }
     if (type === 'whatsapp') {
-      return {
-        config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-        credentials: ['access_token', 'app_secret', 'api_key'],
-      };
+      switch (provider) {
+        case 'meta_cloud':
+          return {
+            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
+            credentials: ['access_token'],
+          };
+        case 'wati':
+          return {
+            config: ['api_endpoint_url', 'webhook_verify_token'],
+            credentials: ['api_token'],
+          };
+        case 'gupshup':
+          return {
+            config: ['app_name', 'source_phone_number'],
+            credentials: ['api_key'],
+          };
+        case 'interakt':
+          return {
+            config: [],
+            credentials: ['api_key'],
+          };
+        case 'aisensy':
+          return {
+            config: [],
+            credentials: ['api_key'],
+          };
+        default:
+          return {
+            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
+            credentials: ['access_token', 'api_key'],
+          };
+      }
     }
     if (type === 'google_business') {
       return {
