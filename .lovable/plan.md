@@ -1,92 +1,98 @@
 
 
-# Comprehensive Audit & Fix Plan: Attendance, System Health, WhatsApp, DB Cleanup
+# Fix Build Errors + Multi-Section Audit Plan
 
-## Bugs Found
+## Priority 0: Fix Build Error (BLOCKING)
 
-### Bug 1: "Already In" Has No Check-Out Button (CRITICAL)
-**File**: `src/pages/AttendanceDashboard.tsx` lines 521-525
-When a member search returns "Already In", the UI shows only a static badge with no action. The `checkOut` mutation exists in the hook but is never called from search results.
+**File**: `supabase/functions/contract-signing/index.ts` lines 184-215
 
-**Fix**: Replace the static "Already In" badge with a "Check Out" button that calls `checkOut(member.id)`.
+The Supabase query uses FK joins `employees(...)` and `trainers(...)` which return **arrays**, but the code accesses them as single objects. Fix by accessing `[0]`:
 
-### Bug 2: Stats Show 0 Active Despite Members Checked In
-**File**: `src/pages/AttendanceDashboard.tsx` lines 327-332
-The stats derive from `memberAttendance` which is filtered by `dateFilter`. The `checkedInMembers` query (used for `isAlreadyCheckedIn`) is separate and works correctly. The stats count `activeMemberCheckIns` from the date-filtered attendance, which is correct — the issue is that the "Currently Active" stat only counts today's attendance records with `check_out === null`. If the hardware check-in created a `member_attendance` record via RPC, this should work. Need to verify the RPC actually inserts the record.
+```typescript
+// Line 184: query already correct
+// Lines 208-215: fix access pattern
+const emp = Array.isArray(contract.employees) ? contract.employees[0] : contract.employees;
+const trn = Array.isArray(contract.trainers) ? contract.trainers[0] : contract.trainers;
 
-The real issue: MIPS webhook calls `member_check_in` RPC which inserts into `member_attendance` — this IS working. The attendance dashboard query filters by `branchFilter` but members checked in via hardware may have a different `branch_id` mapping. Verify the branch_id alignment.
+let resolvedName = emp?.profiles?.full_name ?? null;
+let resolvedCode = emp?.employee_code ?? null;
 
-### Bug 3: 99 Database Errors — `meta_template_name` Column Missing
-**Root cause**: The `manage-whatsapp-templates` edge function references `meta_template_name`, `meta_template_status`, and `meta_rejection_reason` columns on the `templates` table. These columns **do not exist** in the schema. The templates table only has: `id, branch_id, name, type, subject, content, variables, is_active, created_at, updated_at`.
-
-**Fix**: Add the missing columns via migration: `meta_template_name`, `meta_template_status`, `meta_rejection_reason`.
-
-### Bug 4: `diet_plans.plan_type` Column Missing (4 errors)
-The frontend references `plan_type` on `diet_plans` but this column doesn't exist.
-
-**Fix**: Add `plan_type` column to `diet_plans` via migration.
-
-### Bug 5: WhatsApp Webhook Already Works
-The `whatsapp-webhook` edge function already handles GET verification (lines 55-80) correctly. The issue is likely that the webhook URL registered in Meta must point to:
-`https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/whatsapp-webhook`
-
-The function also correctly validates the `webhook_verify_token` from `integration_settings.config`. This is a configuration issue, not a code issue.
-
-## Implementation Plan
-
-### Step 1: DB Migration — Add Missing Template Columns + diet_plans.plan_type
-```sql
-ALTER TABLE templates ADD COLUMN IF NOT EXISTS meta_template_name text;
-ALTER TABLE templates ADD COLUMN IF NOT EXISTS meta_template_status text;
-ALTER TABLE templates ADD COLUMN IF NOT EXISTS meta_rejection_reason text;
-ALTER TABLE diet_plans ADD COLUMN IF NOT EXISTS plan_type text DEFAULT 'custom';
+if (!resolvedName && trn?.user_id) {
+  // ... use trn.user_id
+}
 ```
-This instantly fixes 103 of 111 database errors.
 
-### Step 2: Fix "Already In" → Add Check-Out Button
-**File**: `src/pages/AttendanceDashboard.tsx` lines 521-525
-Replace static badge with a Button calling `checkOut(member.id)`.
+---
 
-### Step 3: Clear Resolved Error Logs
-Bulk-resolve all 103 "column does not exist" errors since the migration fixes the root cause.
+## Section 1: HRM Contract Templates
 
-### Step 4: WhatsApp Integration Instructions
-Add clear setup instructions to the Integration Settings page showing:
-- Exact webhook URL to register in Meta Developer Portal
-- The verify token from the config
-- How to sync template approval statuses
+**Current state**: The template function `getEmploymentAgreementTemplate()` in `CreateContractDrawer.tsx` already generates role-specific content (trainer/staff/manager checkboxes, trainer PT commission section). The role dropdown already triggers template regeneration (line 511-524). This is **already working** — the template content DOES change when role changes.
 
-### Step 5: Resolve Unused Tables
-The following tables have 0 rows and appear to be superseded or unused:
-- `role_permissions` (0 rows — superseded by `user_roles` + `has_role` function)
-- `permissions` (0 rows — superseded by `user_roles`)
-- `settings` (0 rows — superseded by `organization_settings`)
-- `payment_transactions` (0 rows — superseded by `payments`)
-- `payroll_rules` (0 rows — never used)
-- `biometric_sync_queue` (0 rows — never used)
-- `device_commands` (0 rows — never used)
-- `exercises` (0 rows — never used)
-- `workout_templates` (0 rows — never used)
-- `diet_templates` (0 rows — never used)
-- `ai_plan_logs` (0 rows — never used)
+**What's actually needed**: The user wants templates stored in a DB table for admin editability. Plan:
+- DB migration: create `contract_templates` table with `id`, `role` (text), `content`, `created_at`
+- Seed 3 templates based on the existing `getEmploymentAgreementTemplate()` function output
+- On role change, fetch from `contract_templates` instead of using the hardcoded function
+- Make Commission % field required + visible only for trainer role
 
-Will NOT delete these automatically — instead, document them in the System Health page as "Empty/Unused" for admin review.
+---
 
-### Step 6: Email — Check Configuration
-Lovable Cloud handles email via its own system. Will check if email domain is configured and provide guidance.
+## Section 2: Logo Upload RLS Fix
 
-## Files to Modify
+**Current state**: `OrganizationSettings.tsx` uploads to `avatars` bucket (line 80) and upserts `organization_settings` table. The `organization_settings` table already has an RLS policy `"Admin can manage org settings"` using `has_any_role(auth.uid(), ARRAY['owner','admin'])` for ALL operations with WITH CHECK.
 
-| File | Change |
-|---|---|
-| **DB Migration** | Add `meta_template_name`, `meta_template_status`, `meta_rejection_reason` to `templates`; `plan_type` to `diet_plans` |
-| `src/pages/AttendanceDashboard.tsx` | Replace "Already In" badge with Check-Out button |
-| `src/pages/SystemHealth.tsx` | Add "Empty Tables" audit view, bulk-clear old errors button |
-| `src/components/settings/IntegrationSettings.tsx` | Add WhatsApp webhook URL display + copy button + setup instructions |
+**Diagnosis**: The RLS policy exists and looks correct. The issue is likely that the INSERT path (line 63-66) doesn't include all required fields or the `WITH CHECK` clause fails. Need to verify the exact error. The upload itself goes to the `avatars` bucket which is public, so that should work.
+
+**Fix**: Ensure the `organization_settings` FOR ALL policy has both USING and WITH CHECK that match. Current migration shows `WITH CHECK(...)` — verify it allows INSERT by checking the exact SQL.
+
+---
+
+## Section 3: WhatsApp Provider-Specific Forms
+
+**Current state**: `IntegrationSettings.tsx` has 4 WhatsApp providers (wati, interakt, gupshup, custom). The config form likely shows generic fields.
+
+**Plan**: Add provider-specific field configurations + Meta Cloud API as a 5th provider. Update the config sheet to render different fields based on selected provider.
+
+---
+
+## Section 4: SMS Provider-Specific Forms
+
+**Current state**: 4 SMS providers with generic fields. Need provider-specific forms for RoundSMS, MSG91, TextLocal, Twilio, Fast2SMS with DLT fields for Indian providers.
+
+**Plan**: Add RoundSMS and Fast2SMS to SMS providers list. Create dynamic field rendering per provider. Add DLT fields section for Indian providers.
+
+---
+
+## Section 5: RoundSMS Edge Function
+
+**Plan**: Create `send-sms` edge function that constructs the RoundSMS HTTP GET URL format. Create `sms_logs` table via migration. Add balance check endpoint.
+
+---
+
+## Section 6: WhatsApp Chat
+
+**Current state**: `WhatsAppChat.tsx` (686 lines) already has a full chat UI with contacts, messages, realtime subscriptions. The `whatsapp_messages` table exists. Need to verify the queries are working and the realtime subscription is properly configured.
+
+---
+
+## Section 7: Edge Function Deployment
+
+Edge functions auto-deploy in Lovable Cloud. No "Redeploy" button needed. Will verify CORS headers on all edge functions.
+
+---
 
 ## Implementation Order
-1. DB migration (fixes 103 errors immediately)
-2. Attendance check-out button fix
-3. System Health enhancements
-4. WhatsApp instructions & template sync guidance
+
+| Step | Description | Files |
+|---|---|---|
+| 1 | **Fix build error** in contract-signing | `supabase/functions/contract-signing/index.ts` |
+| 2 | Fix org settings RLS for logo upload | DB migration |
+| 3 | Contract templates table + seeding | DB migration + `CreateContractDrawer.tsx` |
+| 4 | SMS provider-specific forms + RoundSMS | `IntegrationSettings.tsx` + new edge function |
+| 5 | WhatsApp provider forms + Meta Cloud API | `IntegrationSettings.tsx` |
+| 6 | WhatsApp chat debugging | `WhatsAppChat.tsx` |
+| 7 | CORS audit on all edge functions | Multiple edge functions |
+
+## Scope Note
+
+This is a very large request spanning 7 sections. I'll implement them in priority order, starting with the blocking build error, then the RLS fix, then the contract templates, then the integration forms. The SMS/WhatsApp edge functions for external providers (RoundSMS, Wati, Gupshup) require API credentials from the user — I'll create the infrastructure and prompt for secrets when needed.
 
