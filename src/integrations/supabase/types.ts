@@ -1268,6 +1268,33 @@ export type Database = {
           },
         ]
       }
+      contract_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          template_name: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          template_name: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          template_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contracts: {
         Row: {
           approved_at: string | null
@@ -5166,6 +5193,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_logs: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          message: string
+          message_id: string | null
+          phone: string
+          provider: string
+          sent_by: string | null
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          message_id?: string | null
+          phone: string
+          provider: string
+          sent_by?: string | null
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          message_id?: string | null
+          phone?: string
+          provider?: string
+          sent_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_logs_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
