@@ -263,7 +263,12 @@ export function IntegrationSettings() {
                 Configure SMS providers with DLT registration
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <strong>⚠️ DLT Registration Required:</strong> For Indian SMS providers (RoundSMS, MSG91, Fast2SMS), DLT registration is mandatory for transactional SMS. You'll need your DLT Principal Entity ID, registered Sender ID, and pre-approved DLT Template IDs.
+                </p>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {SMS_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('sms').find(
