@@ -31,7 +31,7 @@ export const leadService = {
     }
 
     if (filters?.status?.length) {
-      query = query.in('status', filters.status);
+      query = query.in('status', filters.status as any);
     }
     if (filters?.temperature?.length) {
       query = query.in('temperature', filters.temperature);
