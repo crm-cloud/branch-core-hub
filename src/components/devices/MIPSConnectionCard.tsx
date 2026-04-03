@@ -30,15 +30,15 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
     queryFn: async () => {
       if (!branchId) return null;
       const { data } = await supabase
-        .from("mips_connections")
+        .from("mips_connections_safe" as any)
         .select("*")
         .eq("branch_id", branchId)
         .maybeSingle();
       if (data) {
         setConfig({
-          server_url: data.server_url || "",
-          username: data.username || "",
-          password: data.password || "",
+          server_url: (data as any).server_url || "",
+          username: (data as any).username || "",
+          password: "",
         });
       }
       return data;
