@@ -2740,6 +2740,64 @@ export type Database = {
           },
         ]
       }
+      lead_activities: {
+        Row: {
+          activity_type: string
+          actor_id: string | null
+          branch_id: string
+          created_at: string
+          id: string
+          lead_id: string
+          metadata: Json | null
+          notes: string | null
+          title: string | null
+        }
+        Insert: {
+          activity_type: string
+          actor_id?: string | null
+          branch_id: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          metadata?: Json | null
+          notes?: string | null
+          title?: string | null
+        }
+        Update: {
+          activity_type?: string
+          actor_id?: string | null
+          branch_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          metadata?: Json | null
+          notes?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_followups: {
         Row: {
           created_at: string
@@ -2785,56 +2843,119 @@ export type Database = {
         Row: {
           assigned_to: string | null
           branch_id: string
+          budget: string | null
           converted_at: string | null
           converted_member_id: string | null
           created_at: string
           date_of_birth: string | null
+          duplicate_of: string | null
           email: string | null
+          first_response_at: string | null
           full_name: string
           gender: Database["public"]["Enums"]["gender_type"] | null
+          goals: string | null
           id: string
           interested_plan_id: string | null
+          landing_page: string | null
+          last_contacted_at: string | null
+          lost_reason: string | null
+          merged_into: string | null
+          next_action_at: string | null
           notes: string | null
+          owner_id: string | null
           phone: string
+          preferred_contact_channel: string
+          referrer_url: string | null
+          score: number
           source: string | null
           status: Database["public"]["Enums"]["lead_status"]
+          tags: string[]
+          temperature: string
           updated_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          won_at: string | null
         }
         Insert: {
           assigned_to?: string | null
           branch_id: string
+          budget?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
           date_of_birth?: string | null
+          duplicate_of?: string | null
           email?: string | null
+          first_response_at?: string | null
           full_name: string
           gender?: Database["public"]["Enums"]["gender_type"] | null
+          goals?: string | null
           id?: string
           interested_plan_id?: string | null
+          landing_page?: string | null
+          last_contacted_at?: string | null
+          lost_reason?: string | null
+          merged_into?: string | null
+          next_action_at?: string | null
           notes?: string | null
+          owner_id?: string | null
           phone: string
+          preferred_contact_channel?: string
+          referrer_url?: string | null
+          score?: number
           source?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[]
+          temperature?: string
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          won_at?: string | null
         }
         Update: {
           assigned_to?: string | null
           branch_id?: string
+          budget?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
           date_of_birth?: string | null
+          duplicate_of?: string | null
           email?: string | null
+          first_response_at?: string | null
           full_name?: string
           gender?: Database["public"]["Enums"]["gender_type"] | null
+          goals?: string | null
           id?: string
           interested_plan_id?: string | null
+          landing_page?: string | null
+          last_contacted_at?: string | null
+          lost_reason?: string | null
+          merged_into?: string | null
+          next_action_at?: string | null
           notes?: string | null
+          owner_id?: string | null
           phone?: string
+          preferred_contact_channel?: string
+          referrer_url?: string | null
+          score?: number
           source?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[]
+          temperature?: string
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          won_at?: string | null
         }
         Relationships: [
           {
@@ -2842,6 +2963,27 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_merged_into_fkey"
+            columns: ["merged_into"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
