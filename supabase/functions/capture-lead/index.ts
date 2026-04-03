@@ -1,3 +1,4 @@
+// v1.1.0 — UTM + branch routing support
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -5,186 +6,101 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation constants
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 255;
 const MAX_PHONE_LENGTH = 20;
-const MAX_SOURCE_LENGTH = 50;
-const ALLOWED_SOURCES = ['website', 'walk-in', 'referral', 'social', 'phone', 'instagram', 'facebook', 'google_ads', 'landing_page', 'embed', 'api', 'other'];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+?[0-9]{10,15}$/;
-const NAME_REGEX = /^[a-zA-Z\s\-'.]+$/;
 
-// Sanitize string input
-function sanitizeString(str: string, maxLength: number): string {
-  return str
-    .trim()
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control chars
-    .slice(0, maxLength);
-}
-
-// Validate name
-function validateName(name: string): { valid: boolean; error?: string } {
-  if (!name) return { valid: false, error: 'Name is required' };
-  if (name.length < 2) return { valid: false, error: 'Name must be at least 2 characters' };
-  if (name.length > MAX_NAME_LENGTH) return { valid: false, error: 'Name is too long' };
-  if (!NAME_REGEX.test(name)) return { valid: false, error: 'Name contains invalid characters' };
-  return { valid: true };
-}
-
-// Validate phone
-function validatePhone(phone: string): { valid: boolean; cleanPhone?: string; error?: string } {
-  if (!phone) return { valid: false, error: 'Phone number is required' };
-  const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-  if (cleanPhone.length < 10) return { valid: false, error: 'Please enter a valid phone number' };
-  if (cleanPhone.length > MAX_PHONE_LENGTH) return { valid: false, error: 'Phone number is too long' };
-  if (!PHONE_REGEX.test(cleanPhone)) return { valid: false, error: 'Invalid phone number format' };
-  return { valid: true, cleanPhone };
-}
-
-// Validate email (optional)
-function validateEmail(email: string | undefined): { valid: boolean; error?: string } {
-  if (!email) return { valid: true }; // Email is optional
-  if (email.length > MAX_EMAIL_LENGTH) return { valid: false, error: 'Email is too long' };
-  if (!EMAIL_REGEX.test(email)) return { valid: false, error: 'Invalid email format' };
-  return { valid: true };
-}
-
-// Validate source
-function validateSource(source: string | undefined): string {
-  if (!source) return 'website';
-  const cleanSource = source.toLowerCase().trim().slice(0, MAX_SOURCE_LENGTH);
-  return ALLOWED_SOURCES.includes(cleanSource) ? cleanSource : 'other';
+function sanitize(str: string, max: number): string {
+  return str.trim().replace(/[\u0000-\u001F\u007F-\u009F]/g, '').slice(0, max);
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Check request size
     const contentLength = parseInt(req.headers.get('content-length') || '0');
-    if (contentLength > 10240) { // 10KB max
-      return new Response(
-        JSON.stringify({ error: 'Request too large' }),
-        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (contentLength > 10240) {
+      return new Response(JSON.stringify({ error: 'Request too large' }), { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const body = await req.json();
-    
-    // Sanitize inputs
-    const fullName = sanitizeString(body.fullName || '', MAX_NAME_LENGTH);
-    const phone = sanitizeString(body.phone || '', MAX_PHONE_LENGTH);
-    const email = body.email ? sanitizeString(body.email, MAX_EMAIL_LENGTH) : undefined;
-    const source = validateSource(body.source);
 
-    console.log('Received lead capture request:', { 
-      fullName: fullName.slice(0, 3) + '***', 
-      phone: phone.slice(0, 4) + '****',
-      source 
-    });
+    const fullName = sanitize(body.fullName || '', MAX_NAME_LENGTH);
+    const phone = (body.phone || '').replace(/[\s\-\(\)]/g, '').slice(0, MAX_PHONE_LENGTH);
+    const email = body.email ? sanitize(body.email, MAX_EMAIL_LENGTH) : null;
 
-    // Validate name
-    const nameValidation = validateName(fullName);
-    if (!nameValidation.valid) {
-      return new Response(
-        JSON.stringify({ error: nameValidation.error }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!fullName || fullName.length < 2) {
+      return new Response(JSON.stringify({ error: 'Name is required (min 2 chars)' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (!phone || phone.length < 10 || !PHONE_REGEX.test(phone)) {
+      return new Response(JSON.stringify({ error: 'Valid phone number is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (email && !EMAIL_REGEX.test(email)) {
+      return new Response(JSON.stringify({ error: 'Invalid email format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Validate phone
-    const phoneValidation = validatePhone(phone);
-    if (!phoneValidation.valid) {
-      return new Response(
-        JSON.stringify({ error: phoneValidation.error }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Duplicate check
+    const { data: existing } = await supabase.from('leads').select('id').eq('phone', phone).maybeSingle();
+    if (existing) {
+      return new Response(JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Validate email if provided
-    const emailValidation = validateEmail(email);
-    if (!emailValidation.valid) {
-      return new Response(
-        JSON.stringify({ error: emailValidation.error }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Branch resolution: explicit > slug > first active
+    let branchId = body.branch_id || null;
+    if (!branchId && body.branch_slug) {
+      const { data: slugBranch } = await supabase.from('branches').select('id').eq('code', body.branch_slug).eq('is_active', true).maybeSingle();
+      if (slugBranch) branchId = slugBranch.id;
+    }
+    if (!branchId) {
+      const { data: defaultBranch } = await supabase.from('branches').select('id').eq('is_active', true).limit(1).single();
+      if (!defaultBranch) {
+        return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      branchId = defaultBranch.id;
     }
 
-    // Check for existing lead with same phone
-    const { data: existingLead } = await supabase
-      .from('leads')
-      .select('id')
-      .eq('phone', phoneValidation.cleanPhone || phone)
-      .maybeSingle();
+    // Determine source and UTM data
+    const source = (body.source || body.utm_source || 'website').toLowerCase().slice(0, 50);
+    const utmSource = (body.utm_source || '').slice(0, 100) || null;
+    const utmMedium = (body.utm_medium || '').slice(0, 100) || null;
+    const utmCampaign = (body.utm_campaign || '').slice(0, 100) || null;
+    const utmContent = (body.utm_content || '').slice(0, 100) || null;
+    const utmTerm = (body.utm_term || '').slice(0, 100) || null;
+    const landingPage = (body.landing_page || '').slice(0, 500) || null;
+    const referrerUrl = (body.referrer_url || '').slice(0, 500) || null;
 
-    if (existingLead) {
-      console.log('Lead already exists with this phone number');
-      // Return success anyway to not reveal existing leads
-      return new Response(
-        JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get first branch as default
-    const { data: branch, error: branchError } = await supabase
-      .from('branches')
-      .select('id')
-      .eq('is_active', true)
-      .limit(1)
-      .single();
-
-    if (branchError || !branch) {
-      console.error('No active branch found:', branchError);
-      return new Response(
-        JSON.stringify({ error: 'Service temporarily unavailable' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Create the lead
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .insert({
-        full_name: fullName,
-        phone: phoneValidation.cleanPhone || phone,
-        email: email || null,
-        source,
-        branch_id: branch.id,
-        status: 'new',
-      })
-      .select()
-      .single();
+    const { data: lead, error: leadError } = await supabase.from('leads').insert({
+      full_name: fullName,
+      phone,
+      email,
+      source,
+      branch_id: branchId,
+      status: 'new',
+      temperature: 'warm',
+      utm_source: utmSource,
+      utm_medium: utmMedium,
+      utm_campaign: utmCampaign,
+      utm_content: utmContent,
+      utm_term: utmTerm,
+      landing_page: landingPage,
+      referrer_url: referrerUrl,
+    }).select('id').single();
 
     if (leadError) {
       console.error('Failed to create lead:', leadError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to submit. Please try again.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Failed to submit. Please try again.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    console.log('Lead created successfully:', lead.id);
+    console.log('Lead captured:', lead.id, 'source:', source, 'branch:', branchId);
 
-    return new Response(
-      JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('Capture lead error:', error);
-    return new Response(
-      JSON.stringify({ error: 'An unexpected error occurred' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: 'An unexpected error occurred' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
