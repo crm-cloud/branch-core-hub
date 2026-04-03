@@ -6112,6 +6112,47 @@ export type Database = {
       }
     }
     Views: {
+      mips_connections_safe: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          password: string | null
+          server_url: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          password?: never
+          server_url?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          password?: never
+          server_url?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mips_connections_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: true
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers_public: {
         Row: {
           avatar_url: string | null
