@@ -157,7 +157,7 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
             <div className="relative">
               <Input
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••"
+                placeholder={connection ? "Leave blank to keep current" : "Enter password"}
                 value={config.password}
                 onChange={(e) => setConfig({ ...config, password: e.target.value })}
               />

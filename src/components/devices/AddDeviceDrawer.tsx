@@ -44,7 +44,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     queryFn: async () => {
       if (!formData.branch_id) return null;
       const { data } = await supabase
-        .from("mips_connections")
+        .from("mips_connections_safe" as any)
         .select("*")
         .eq("branch_id", formData.branch_id)
         .maybeSingle();
