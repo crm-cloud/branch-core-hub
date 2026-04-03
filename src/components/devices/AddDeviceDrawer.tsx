@@ -44,7 +44,7 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
     queryFn: async () => {
       if (!formData.branch_id) return null;
       const { data } = await supabase
-        .from("mips_connections")
+        .from("mips_connections_safe" as any)
         .select("*")
         .eq("branch_id", formData.branch_id)
         .maybeSingle();
@@ -54,11 +54,12 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
   });
 
   useEffect(() => {
-    if (existingConnection) {
+    const conn = existingConnection as any;
+    if (conn) {
       setMipsConfig({
-        server_url: existingConnection.server_url || "",
-        username: existingConnection.username || "",
-        password: existingConnection.password || "",
+        server_url: conn.server_url || "",
+        username: conn.username || "",
+        password: "",
       });
     } else {
       setMipsConfig({ server_url: "", username: "", password: "" });
@@ -83,24 +84,29 @@ const AddDeviceDrawer = ({ isOpen, onClose, branches, defaultBranchId }: AddDevi
   const saveMipsConnection = useMutation({
     mutationFn: async () => {
       if (!formData.branch_id || !mipsConfig.server_url) return;
-      const payload = {
+      const payload: Record<string, unknown> = {
         branch_id: formData.branch_id,
         server_url: mipsConfig.server_url.replace(/\/+$/, ""),
         username: mipsConfig.username,
-        password: mipsConfig.password,
         is_active: true,
       };
+      if (mipsConfig.password) {
+        payload.password = mipsConfig.password;
+      }
 
-      if (existingConnection) {
+      const conn = existingConnection as any;
+      if (conn) {
         const { error } = await supabase
           .from("mips_connections")
-          .update(payload)
-          .eq("id", existingConnection.id);
+          .update(payload as any)
+          .eq("id", conn.id);
         if (error) throw error;
       } else {
+        if (!mipsConfig.password) throw new Error("Password required for new connection");
+        payload.password = mipsConfig.password;
         const { error } = await supabase
           .from("mips_connections")
-          .insert(payload);
+          .insert(payload as any);
         if (error) throw error;
       }
     },

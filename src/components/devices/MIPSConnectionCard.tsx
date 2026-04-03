@@ -30,15 +30,15 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
     queryFn: async () => {
       if (!branchId) return null;
       const { data } = await supabase
-        .from("mips_connections")
+        .from("mips_connections_safe" as any)
         .select("*")
         .eq("branch_id", branchId)
         .maybeSingle();
       if (data) {
         setConfig({
-          server_url: data.server_url || "",
-          username: data.username || "",
-          password: data.password || "",
+          server_url: (data as any).server_url || "",
+          username: (data as any).username || "",
+          password: "",
         });
       }
       return data;
@@ -49,23 +49,29 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!branchId || !config.server_url) throw new Error("Branch and server URL required");
-      const payload = {
+      const payload: Record<string, unknown> = {
         branch_id: branchId,
         server_url: config.server_url.replace(/\/+$/, ""),
         username: config.username,
-        password: config.password,
         is_active: true,
       };
-      if (connection) {
+      // Only include password if user entered a new one
+      if (config.password) {
+        payload.password = config.password;
+      }
+      const connData = connection as any;
+      if (connData) {
         const { error } = await supabase
           .from("mips_connections")
           .update(payload)
-          .eq("id", connection.id);
+          .eq("id", connData.id);
         if (error) throw error;
       } else {
+        if (!config.password) throw new Error("Password is required for new connections");
+        payload.password = config.password;
         const { error } = await supabase
           .from("mips_connections")
-          .insert(payload);
+          .insert(payload as any);
         if (error) throw error;
       }
     },
@@ -151,7 +157,7 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
             <div className="relative">
               <Input
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••"
+                placeholder={connection ? "Leave blank to keep current" : "Enter password"}
                 value={config.password}
                 onChange={(e) => setConfig({ ...config, password: e.target.value })}
               />
