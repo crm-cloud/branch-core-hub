@@ -49,20 +49,26 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!branchId || !config.server_url) throw new Error("Branch and server URL required");
-      const payload = {
+      const payload: Record<string, unknown> = {
         branch_id: branchId,
         server_url: config.server_url.replace(/\/+$/, ""),
         username: config.username,
-        password: config.password,
         is_active: true,
       };
-      if (connection) {
+      // Only include password if user entered a new one
+      if (config.password) {
+        payload.password = config.password;
+      }
+      const connData = connection as any;
+      if (connData) {
         const { error } = await supabase
           .from("mips_connections")
           .update(payload)
-          .eq("id", connection.id);
+          .eq("id", connData.id);
         if (error) throw error;
       } else {
+        if (!config.password) throw new Error("Password is required for new connections");
+        payload.password = config.password;
         const { error } = await supabase
           .from("mips_connections")
           .insert(payload);
