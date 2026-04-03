@@ -1,98 +1,158 @@
 
 
-# Fix Build Errors + Multi-Section Audit Plan
+# Marketing CRM Upgrade Plan
 
-## Priority 0: Fix Build Error (BLOCKING)
+## Scope Assessment
 
-**File**: `supabase/functions/contract-signing/index.ts` lines 184-215
+This is an extremely large request spanning database schema, edge functions, React pages, services, and seed data. To deliver meaningfully without breaking the existing system, I'll divide into **3 phases**, implementing **Phase 1** now (the foundation) with clear hooks for Phases 2-3.
 
-The Supabase query uses FK joins `employees(...)` and `trainers(...)` which return **arrays**, but the code accesses them as single objects. Fix by accessing `[0]`:
+---
 
-```typescript
-// Line 184: query already correct
-// Lines 208-215: fix access pattern
-const emp = Array.isArray(contract.employees) ? contract.employees[0] : contract.employees;
-const trn = Array.isArray(contract.trainers) ? contract.trainers[0] : contract.trainers;
+## Phase 1: Schema + Core UI (This Implementation)
 
-let resolvedName = emp?.profiles?.full_name ?? null;
-let resolvedCode = emp?.employee_code ?? null;
+### 1A. Database Migration — Extend `leads` Table
 
-if (!resolvedName && trn?.user_id) {
-  // ... use trn.user_id
-}
+Add CRM columns to existing `leads` table (no new table needed):
+
+```sql
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS
+  owner_id uuid REFERENCES auth.users(id),          -- staff who owns this lead
+  temperature text DEFAULT 'warm',                    -- hot/warm/cold
+  score integer DEFAULT 0,                            -- 0-100
+  utm_source text,
+  utm_medium text,
+  utm_campaign text,
+  utm_content text,
+  utm_term text,
+  landing_page text,
+  referrer_url text,
+  tags text[] DEFAULT '{}',
+  preferred_contact_channel text DEFAULT 'phone',
+  budget text,
+  goals text,
+  lost_reason text,
+  next_action_at timestamptz,
+  last_contacted_at timestamptz,
+  first_response_at timestamptz,
+  won_at timestamptz,
+  duplicate_of uuid REFERENCES leads(id),
+  merged_into uuid REFERENCES leads(id);
 ```
 
+Create unified `lead_activities` table to replace split follow-up systems:
+
+```sql
+CREATE TABLE lead_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  branch_id uuid NOT NULL REFERENCES branches(id),
+  actor_id uuid REFERENCES auth.users(id),
+  activity_type text NOT NULL,  -- call, whatsapp, visit, note, status_change, assignment, conversion
+  title text,
+  notes text,
+  metadata jsonb DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
+Add indexes for performance:
+
+```sql
+CREATE INDEX idx_leads_branch_status ON leads(branch_id, status);
+CREATE INDEX idx_leads_owner ON leads(owner_id);
+CREATE INDEX idx_leads_next_action ON leads(next_action_at) WHERE next_action_at IS NOT NULL;
+CREATE INDEX idx_leads_temperature ON leads(temperature);
+CREATE INDEX idx_lead_activities_lead ON lead_activities(lead_id, created_at DESC);
+```
+
+RLS policies for `lead_activities`: staff roles with branch scoping (same pattern as `leads`).
+
+Seed ~15 sample leads with varied statuses, temperatures, sources, UTM data, and activities.
+
+### 1B. Refactor `leadService.ts`
+
+- `fetchLeads(branchId)` → always branch-filter using `effectiveBranchId`
+- `getLeadStats(branchId)` → include new statuses (qualified, negotiation) properly
+- Add `fetchLeadActivities(leadId)`, `createActivity(...)`, `assignLead(leadId, ownerId)`, `updateLeadScore(...)`
+- Fix conversion to NOT require fake placeholder email: if no email, pass `email: null` and let edge function generate a proper one server-side
+- Add `detectDuplicates(phone, email)` method
+
+### 1C. Redesign `/leads` Page — Premium CRM UI
+
+Replace the current 510-line page with a component-based architecture:
+
+**New files:**
+- `src/pages/Leads.tsx` — Main page shell with dashboard stats, view switcher
+- `src/components/leads/LeadDashboard.tsx` — Funnel stats, conversion rates, source breakdown
+- `src/components/leads/LeadKanban.tsx` — Drag-friendly kanban with owner avatars, temperature badges
+- `src/components/leads/LeadList.tsx` — Dense table with sortable columns, inline status change
+- `src/components/leads/LeadProfileDrawer.tsx` — Full lead detail: timeline, activity log, score, quick actions
+- `src/components/leads/LeadFilters.tsx` — Smart filters: owner, branch, source, temperature, status, date range, tags
+- `src/components/leads/LeadActivityTimeline.tsx` — Unified timeline showing all interactions
+- `src/components/leads/AddLeadDrawer.tsx` — Enhanced with UTM fields, branch selector, temperature
+
+**UI upgrades:**
+- Temperature badges: 🔥 Hot (red), ☀️ Warm (amber), ❄️ Cold (blue)
+- Owner avatar next to each lead card
+- "Unassigned" filter and queue
+- Lead score progress bar (0-100)
+- Source-colored badges with icons (Instagram pink, Facebook blue, Google green, Walk-in gray)
+- Next action date with overdue highlighting
+- Keyboard shortcuts: `N` new lead, `/` search, `K` kanban, `L` list
+
+### 1D. Update Edge Functions
+
+**`capture-lead`**: Accept `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `landing_page`, `referrer_url`, `branch_id` (optional explicit). If `branch_id` not provided, use branch slug from query param, then fall back to first active branch. Store all UTM data.
+
+**`webhook-lead-capture`**: Same UTM/branch improvements. Add `branch_slug` query param support alongside existing `slug` auth.
+
+**Deploy both** after changes.
+
+### 1E. Fix Existing Bugs
+
+- Deploy `contract-signing` edge function (404 error)
+- Fix `manage-whatsapp-templates` 403 by verifying auth header handling
+- Fix `fetchLeads()` to always pass `effectiveBranchId`
+
 ---
 
-## Section 1: HRM Contract Templates
+## Phase 2: Intelligence & Analytics (Future)
 
-**Current state**: The template function `getEmploymentAgreementTemplate()` in `CreateContractDrawer.tsx` already generates role-specific content (trainer/staff/manager checkboxes, trainer PT commission section). The role dropdown already triggers template regeneration (line 511-524). This is **already working** — the template content DOES change when role changes.
+- Auto lead scoring based on engagement signals
+- Duplicate detection with merge UI
+- Marketing funnel analytics dashboard
+- SLA tracking and overdue queue
+- Win probability estimation
 
-**What's actually needed**: The user wants templates stored in a DB table for admin editability. Plan:
-- DB migration: create `contract_templates` table with `id`, `role` (text), `content`, `created_at`
-- Seed 3 templates based on the existing `getEmploymentAgreementTemplate()` function output
-- On role change, fetch from `contract_templates` instead of using the hardcoded function
-- Make Commission % field required + visible only for trainer role
+## Phase 3: Advanced Workflows (Future)
 
----
-
-## Section 2: Logo Upload RLS Fix
-
-**Current state**: `OrganizationSettings.tsx` uploads to `avatars` bucket (line 80) and upserts `organization_settings` table. The `organization_settings` table already has an RLS policy `"Admin can manage org settings"` using `has_any_role(auth.uid(), ARRAY['owner','admin'])` for ALL operations with WITH CHECK.
-
-**Diagnosis**: The RLS policy exists and looks correct. The issue is likely that the INSERT path (line 63-66) doesn't include all required fields or the `WITH CHECK` clause fails. Need to verify the exact error. The upload itself goes to the `avatars` bucket which is public, so that should work.
-
-**Fix**: Ensure the `organization_settings` FOR ALL policy has both USING and WITH CHECK that match. Current migration shows `WITH CHECK(...)` — verify it allows INSERT by checking the exact SQL.
+- Saved views / smart filters
+- Drag-and-drop kanban with optimistic updates
+- Bulk actions (assign, tag, status change)
+- Follow-up calendar view
+- AI next-best-action recommendations
 
 ---
 
-## Section 3: WhatsApp Provider-Specific Forms
+## Files Modified/Created
 
-**Current state**: `IntegrationSettings.tsx` has 4 WhatsApp providers (wati, interakt, gupshup, custom). The config form likely shows generic fields.
+| File | Action |
+|---|---|
+| DB Migration | Add columns to `leads`, create `lead_activities`, indexes, RLS, seed data |
+| `src/services/leadService.ts` | Full refactor with new methods |
+| `src/pages/Leads.tsx` | Redesign as shell component |
+| `src/components/leads/LeadDashboard.tsx` | New — funnel stats |
+| `src/components/leads/LeadKanban.tsx` | New — premium kanban |
+| `src/components/leads/LeadList.tsx` | New — sortable table |
+| `src/components/leads/LeadProfileDrawer.tsx` | New — lead detail + timeline |
+| `src/components/leads/LeadFilters.tsx` | New — smart filters |
+| `src/components/leads/LeadActivityTimeline.tsx` | New — unified timeline |
+| `src/components/leads/AddLeadDrawer.tsx` | Enhanced with UTM/branch/temp |
+| `supabase/functions/capture-lead/index.ts` | Add UTM + branch routing |
+| `supabase/functions/webhook-lead-capture/index.ts` | Add UTM + branch routing |
+| `supabase/functions/contract-signing/index.ts` | Deploy (fix 404) |
 
-**Plan**: Add provider-specific field configurations + Meta Cloud API as a 5th provider. Update the config sheet to render different fields based on selected provider.
+## Estimated Scope
 
----
-
-## Section 4: SMS Provider-Specific Forms
-
-**Current state**: 4 SMS providers with generic fields. Need provider-specific forms for RoundSMS, MSG91, TextLocal, Twilio, Fast2SMS with DLT fields for Indian providers.
-
-**Plan**: Add RoundSMS and Fast2SMS to SMS providers list. Create dynamic field rendering per provider. Add DLT fields section for Indian providers.
-
----
-
-## Section 5: RoundSMS Edge Function
-
-**Plan**: Create `send-sms` edge function that constructs the RoundSMS HTTP GET URL format. Create `sms_logs` table via migration. Add balance check endpoint.
-
----
-
-## Section 6: WhatsApp Chat
-
-**Current state**: `WhatsAppChat.tsx` (686 lines) already has a full chat UI with contacts, messages, realtime subscriptions. The `whatsapp_messages` table exists. Need to verify the queries are working and the realtime subscription is properly configured.
-
----
-
-## Section 7: Edge Function Deployment
-
-Edge functions auto-deploy in Lovable Cloud. No "Redeploy" button needed. Will verify CORS headers on all edge functions.
-
----
-
-## Implementation Order
-
-| Step | Description | Files |
-|---|---|---|
-| 1 | **Fix build error** in contract-signing | `supabase/functions/contract-signing/index.ts` |
-| 2 | Fix org settings RLS for logo upload | DB migration |
-| 3 | Contract templates table + seeding | DB migration + `CreateContractDrawer.tsx` |
-| 4 | SMS provider-specific forms + RoundSMS | `IntegrationSettings.tsx` + new edge function |
-| 5 | WhatsApp provider forms + Meta Cloud API | `IntegrationSettings.tsx` |
-| 6 | WhatsApp chat debugging | `WhatsAppChat.tsx` |
-| 7 | CORS audit on all edge functions | Multiple edge functions |
-
-## Scope Note
-
-This is a very large request spanning 7 sections. I'll implement them in priority order, starting with the blocking build error, then the RLS fix, then the contract templates, then the integration forms. The SMS/WhatsApp edge functions for external providers (RoundSMS, Wati, Gupshup) require API credentials from the user — I'll create the infrastructure and prompt for secrets when needed.
+~2000 lines of new/refactored code across 12+ files, 1 migration, 2 edge function updates, seed data.
 
