@@ -71,7 +71,7 @@ const MIPSConnectionCard = ({ branchId, branchName }: MIPSConnectionCardProps) =
         payload.password = config.password;
         const { error } = await supabase
           .from("mips_connections")
-          .insert(payload);
+          .insert(payload as any);
         if (error) throw error;
       }
     },
