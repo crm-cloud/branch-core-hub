@@ -2867,6 +2867,7 @@ export type Database = {
           preferred_contact_channel: string
           referrer_url: string | null
           score: number
+          sla_due_at: string | null
           source: string | null
           status: Database["public"]["Enums"]["lead_status"]
           tags: string[]
@@ -2906,6 +2907,7 @@ export type Database = {
           preferred_contact_channel?: string
           referrer_url?: string | null
           score?: number
+          sla_due_at?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: string[]
@@ -2945,6 +2947,7 @@ export type Database = {
           preferred_contact_channel?: string
           referrer_url?: string | null
           score?: number
+          sla_due_at?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tags?: string[]
@@ -5303,6 +5306,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      saved_lead_views: {
+        Row: {
+          created_at: string
+          filters: Json
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       settings: {
         Row: {
