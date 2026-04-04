@@ -1,158 +1,149 @@
 
 
-# Marketing CRM Upgrade Plan
+# Phase 2 + 3 CRM Upgrade + RoundSMS Full API Integration
 
-## Scope Assessment
+## Overview
 
-This is an extremely large request spanning database schema, edge functions, React pages, services, and seed data. To deliver meaningfully without breaking the existing system, I'll divide into **3 phases**, implementing **Phase 1** now (the foundation) with clear hooks for Phases 2-3.
-
----
-
-## Phase 1: Schema + Core UI (This Implementation)
-
-### 1A. Database Migration — Extend `leads` Table
-
-Add CRM columns to existing `leads` table (no new table needed):
-
-```sql
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS
-  owner_id uuid REFERENCES auth.users(id),          -- staff who owns this lead
-  temperature text DEFAULT 'warm',                    -- hot/warm/cold
-  score integer DEFAULT 0,                            -- 0-100
-  utm_source text,
-  utm_medium text,
-  utm_campaign text,
-  utm_content text,
-  utm_term text,
-  landing_page text,
-  referrer_url text,
-  tags text[] DEFAULT '{}',
-  preferred_contact_channel text DEFAULT 'phone',
-  budget text,
-  goals text,
-  lost_reason text,
-  next_action_at timestamptz,
-  last_contacted_at timestamptz,
-  first_response_at timestamptz,
-  won_at timestamptz,
-  duplicate_of uuid REFERENCES leads(id),
-  merged_into uuid REFERENCES leads(id);
-```
-
-Create unified `lead_activities` table to replace split follow-up systems:
-
-```sql
-CREATE TABLE lead_activities (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
-  branch_id uuid NOT NULL REFERENCES branches(id),
-  actor_id uuid REFERENCES auth.users(id),
-  activity_type text NOT NULL,  -- call, whatsapp, visit, note, status_change, assignment, conversion
-  title text,
-  notes text,
-  metadata jsonb DEFAULT '{}',
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-```
-
-Add indexes for performance:
-
-```sql
-CREATE INDEX idx_leads_branch_status ON leads(branch_id, status);
-CREATE INDEX idx_leads_owner ON leads(owner_id);
-CREATE INDEX idx_leads_next_action ON leads(next_action_at) WHERE next_action_at IS NOT NULL;
-CREATE INDEX idx_leads_temperature ON leads(temperature);
-CREATE INDEX idx_lead_activities_lead ON lead_activities(lead_id, created_at DESC);
-```
-
-RLS policies for `lead_activities`: staff roles with branch scoping (same pattern as `leads`).
-
-Seed ~15 sample leads with varied statuses, temperatures, sources, UTM data, and activities.
-
-### 1B. Refactor `leadService.ts`
-
-- `fetchLeads(branchId)` → always branch-filter using `effectiveBranchId`
-- `getLeadStats(branchId)` → include new statuses (qualified, negotiation) properly
-- Add `fetchLeadActivities(leadId)`, `createActivity(...)`, `assignLead(leadId, ownerId)`, `updateLeadScore(...)`
-- Fix conversion to NOT require fake placeholder email: if no email, pass `email: null` and let edge function generate a proper one server-side
-- Add `detectDuplicates(phone, email)` method
-
-### 1C. Redesign `/leads` Page — Premium CRM UI
-
-Replace the current 510-line page with a component-based architecture:
-
-**New files:**
-- `src/pages/Leads.tsx` — Main page shell with dashboard stats, view switcher
-- `src/components/leads/LeadDashboard.tsx` — Funnel stats, conversion rates, source breakdown
-- `src/components/leads/LeadKanban.tsx` — Drag-friendly kanban with owner avatars, temperature badges
-- `src/components/leads/LeadList.tsx` — Dense table with sortable columns, inline status change
-- `src/components/leads/LeadProfileDrawer.tsx` — Full lead detail: timeline, activity log, score, quick actions
-- `src/components/leads/LeadFilters.tsx` — Smart filters: owner, branch, source, temperature, status, date range, tags
-- `src/components/leads/LeadActivityTimeline.tsx` — Unified timeline showing all interactions
-- `src/components/leads/AddLeadDrawer.tsx` — Enhanced with UTM fields, branch selector, temperature
-
-**UI upgrades:**
-- Temperature badges: 🔥 Hot (red), ☀️ Warm (amber), ❄️ Cold (blue)
-- Owner avatar next to each lead card
-- "Unassigned" filter and queue
-- Lead score progress bar (0-100)
-- Source-colored badges with icons (Instagram pink, Facebook blue, Google green, Walk-in gray)
-- Next action date with overdue highlighting
-- Keyboard shortcuts: `N` new lead, `/` search, `K` kanban, `L` list
-
-### 1D. Update Edge Functions
-
-**`capture-lead`**: Accept `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `landing_page`, `referrer_url`, `branch_id` (optional explicit). If `branch_id` not provided, use branch slug from query param, then fall back to first active branch. Store all UTM data.
-
-**`webhook-lead-capture`**: Same UTM/branch improvements. Add `branch_slug` query param support alongside existing `slug` auth.
-
-**Deploy both** after changes.
-
-### 1E. Fix Existing Bugs
-
-- Deploy `contract-signing` edge function (404 error)
-- Fix `manage-whatsapp-templates` 403 by verifying auth header handling
-- Fix `fetchLeads()` to always pass `effectiveBranchId`
+Three workstreams: (A) AI-powered lead intelligence, (B) advanced CRM workflows, (C) complete RoundSMS API integration. The existing Phase 1 foundation (leads schema with CRM columns, lead_activities, kanban/list/calendar views) is solid — this builds on top.
 
 ---
 
-## Phase 2: Intelligence & Analytics (Future)
+## A. Phase 2: Intelligence & Analytics
 
-- Auto lead scoring based on engagement signals
-- Duplicate detection with merge UI
-- Marketing funnel analytics dashboard
-- SLA tracking and overdue queue
-- Win probability estimation
+### A1. AI Lead Scoring Edge Function
 
-## Phase 3: Advanced Workflows (Future)
+Create `supabase/functions/score-leads/index.ts` that uses Lovable AI (`google/gemini-3-flash-preview`) to analyze each lead's activity history, temperature, source quality, and engagement signals, then returns a 0-100 score with reasoning.
 
-- Saved views / smart filters
-- Drag-and-drop kanban with optimistic updates
-- Bulk actions (assign, tag, status change)
-- Follow-up calendar view
-- AI next-best-action recommendations
+- Input: lead data + activities
+- Output: `{ score: number, reasoning: string, next_best_action: string }`
+- Called on-demand from profile drawer "Refresh Score" button, or batch via "Score All" in dashboard
+- Updates `leads.score` directly
+
+### A2. Duplicate Detection & Merge UI
+
+Add to `LeadProfileDrawer.tsx` a "Duplicates" tab:
+- On drawer open, call `leadService.detectDuplicates(phone, email)` (already exists)
+- Show matching leads with merge button
+- Merge action: pick primary lead, set `merged_into` on duplicate, combine activities, update tags
+- Add `leadService.mergeLeads(primaryId, duplicateId)` method
+
+### A3. Funnel Analytics Dashboard
+
+Create `src/components/leads/LeadAnalytics.tsx`:
+- Funnel visualization: New → Contacted → Qualified → Negotiation → Converted (with drop-off %)
+- Conversion by source (bar chart)
+- Time-to-first-response histogram
+- Owner performance table (leads assigned, converted, avg response time)
+- Lost reason breakdown (pie chart)
+- Use recharts (already in project via `chart.tsx`)
+
+Add "Analytics" as a 4th view mode alongside kanban/list/calendar.
+
+### A4. Overdue & SLA Queue
+
+Add `sla_due_at` column to leads table (migration). In LeadDashboard, add "Overdue" stat card. In LeadFilters, add "Overdue only" toggle that filters `next_action_at < now()`.
 
 ---
 
-## Files Modified/Created
+## B. Phase 3: Advanced Workflows
+
+### B1. Drag-and-Drop Kanban
+
+Install `@hello-pangea/dnd` (maintained fork of react-beautiful-dnd). Update `LeadKanban.tsx`:
+- Wrap columns in `DragDropContext`, each column in `Droppable`, each card in `Draggable`
+- On drag end: optimistically update local state, call `leadService.updateLeadStatus()` in background
+- Revert on error with toast
+
+### B2. Bulk Actions
+
+Add to `LeadList.tsx`:
+- Checkbox column for multi-select
+- Floating action bar when 1+ selected: "Assign to", "Change Status", "Add Tag", "Delete"
+- `leadService.bulkUpdateLeads(ids, updates)` method — single Supabase query with `.in('id', ids)`
+
+### B3. Saved Views / Smart Filters
+
+Create `saved_lead_views` table: `id`, `user_id`, `name`, `filters` (jsonb), `is_default`, `created_at`.
+- In LeadFilters, add "Save View" button that persists current filter state
+- Dropdown to load saved views
+- "My Leads" and "Unassigned" as built-in presets
+
+### B4. Follow-Up Calendar View
+
+Enhance the existing calendar view to show leads by `next_action_at` instead of `created_at`, so staff see upcoming follow-ups. Add a toggle between "Created" and "Follow-up Due" calendar modes.
+
+### B5. AI Next-Best-Action
+
+In `LeadProfileDrawer.tsx` Settings tab, add "AI Recommendation" card that calls the `score-leads` edge function and displays the `next_best_action` suggestion (e.g., "Call today — lead visited website 3 times this week").
+
+---
+
+## C. RoundSMS Full API Integration
+
+### C1. Update `send-sms` Edge Function
+
+Add these new action modes to the existing edge function (currently only supports single send):
+
+- **`action: "send"`** (existing) — single/multiple SMS via `sendmsg.php`
+- **`action: "schedule"`** — calls `schedulemsg.php` with `time` param (format: `YYYY-MM-DD HH:MM`)
+- **`action: "balance"`** — calls `checkbalance.php`, returns balance string
+- **`action: "senderids"`** — calls `getsenderids.php`, returns list
+- **`action: "add_senderid"`** — calls `addsenderid.php` with `senderid` and `type` (dnd/ndnd)
+- **`action: "delivery_report"`** — calls `recdlr.php` with `msgid`, `phone`, `msgtype`
+
+Multiple SMS support: accept `phone` as comma-separated string, pass directly to RoundSMS (already supported by their API).
+
+### C2. SMS Settings UI Enhancements
+
+In `IntegrationSettings.tsx` RoundSMS section, add:
+- "Check Balance" button → calls edge function with `action: "balance"`, shows result in toast/badge
+- "Sender IDs" section → fetches list, shows in table, "Request New" button
+- Delivery report lookup field (enter message ID → get status)
+
+### C3. SMS Scheduling from CRM
+
+In `LeadProfileDrawer.tsx` activity logger, add "Schedule SMS" option:
+- Date/time picker for scheduled send
+- Calls edge function with `action: "schedule"` and `time` param
+
+---
+
+## Database Migrations
+
+1. Add `sla_due_at` column to `leads`
+2. Create `saved_lead_views` table with RLS (user can only see own views)
+
+## Dependencies
+
+- `@hello-pangea/dnd` — for drag-and-drop kanban
+
+## Files Created/Modified
 
 | File | Action |
 |---|---|
-| DB Migration | Add columns to `leads`, create `lead_activities`, indexes, RLS, seed data |
-| `src/services/leadService.ts` | Full refactor with new methods |
-| `src/pages/Leads.tsx` | Redesign as shell component |
-| `src/components/leads/LeadDashboard.tsx` | New — funnel stats |
-| `src/components/leads/LeadKanban.tsx` | New — premium kanban |
-| `src/components/leads/LeadList.tsx` | New — sortable table |
-| `src/components/leads/LeadProfileDrawer.tsx` | New — lead detail + timeline |
-| `src/components/leads/LeadFilters.tsx` | New — smart filters |
-| `src/components/leads/LeadActivityTimeline.tsx` | New — unified timeline |
-| `src/components/leads/AddLeadDrawer.tsx` | Enhanced with UTM/branch/temp |
-| `supabase/functions/capture-lead/index.ts` | Add UTM + branch routing |
-| `supabase/functions/webhook-lead-capture/index.ts` | Add UTM + branch routing |
-| `supabase/functions/contract-signing/index.ts` | Deploy (fix 404) |
+| Migration | Add `sla_due_at` to leads, create `saved_lead_views` |
+| `supabase/functions/score-leads/index.ts` | New — AI scoring edge function |
+| `supabase/functions/send-sms/index.ts` | Add schedule, balance, senderids, DLR actions |
+| `src/services/leadService.ts` | Add merge, bulk update, saved views methods |
+| `src/components/leads/LeadKanban.tsx` | Add drag-and-drop with `@hello-pangea/dnd` |
+| `src/components/leads/LeadList.tsx` | Add bulk selection + action bar |
+| `src/components/leads/LeadProfileDrawer.tsx` | Add Duplicates tab, AI recommendation, schedule SMS |
+| `src/components/leads/LeadAnalytics.tsx` | New — funnel charts + analytics |
+| `src/components/leads/LeadFilters.tsx` | Add saved views dropdown, overdue toggle |
+| `src/components/leads/LeadDashboard.tsx` | Add overdue stat, SLA indicator |
+| `src/pages/Leads.tsx` | Add analytics view mode, saved views |
+| `src/components/settings/IntegrationSettings.tsx` | Add balance check, sender IDs, DLR lookup for RoundSMS |
 
-## Estimated Scope
+## Implementation Order
 
-~2000 lines of new/refactored code across 12+ files, 1 migration, 2 edge function updates, seed data.
+1. DB migration (sla_due_at + saved_lead_views)
+2. RoundSMS edge function enhancements (schedule, balance, DLR, sender IDs)
+3. AI scoring edge function
+4. Drag-and-drop kanban
+5. Bulk actions in list view
+6. Analytics/funnel view
+7. Duplicate merge UI
+8. Saved views
+9. SMS settings UI (balance, sender IDs)
+10. AI next-best-action in profile drawer
 
