@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Users, UserPlus, Phone, Target, TrendingUp, X, Flame, Sun, Snowflake, UserX } from 'lucide-react';
+import { Users, UserPlus, Phone, Target, TrendingUp, X, Flame, Sun, Snowflake, UserX, Clock } from 'lucide-react';
 
 interface LeadDashboardProps {
   stats: {
@@ -14,6 +14,7 @@ interface LeadDashboardProps {
     warm: number;
     cold: number;
     unassigned: number;
+    overdue?: number;
   };
 }
 
@@ -36,11 +37,11 @@ export function LeadDashboard({ stats }: LeadDashboardProps) {
     { label: 'Warm', value: stats.warm, icon: Sun, color: 'text-amber-500' },
     { label: 'Cold', value: stats.cold, icon: Snowflake, color: 'text-blue-500' },
     { label: 'Unassigned', value: stats.unassigned, icon: UserX, color: 'text-muted-foreground' },
+    ...(stats.overdue !== undefined ? [{ label: 'Overdue', value: stats.overdue, icon: Clock, color: 'text-destructive' }] : []),
   ];
 
   return (
     <div className="space-y-4">
-      {/* Pipeline stats */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-6">
         {statCards.map((stat) => (
           <Card
@@ -54,25 +55,15 @@ export function LeadDashboard({ stats }: LeadDashboardProps) {
             <CardContent className="pt-4 pb-3 px-4">
               <stat.icon className={`h-4 w-4 mb-1.5 ${stat.gradient ? 'opacity-80' : 'text-muted-foreground'}`} />
               <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-bold ${stat.gradient ? '' : 'text-foreground'}`}>
-                  {stat.value}
-                </span>
-                {stat.suffix && (
-                  <span className={`text-xs ${stat.gradient ? 'opacity-70' : 'text-muted-foreground'}`}>
-                    {stat.suffix}
-                  </span>
-                )}
+                <span className={`text-2xl font-bold ${stat.gradient ? '' : 'text-foreground'}`}>{stat.value}</span>
+                {stat.suffix && <span className={`text-xs ${stat.gradient ? 'opacity-70' : 'text-muted-foreground'}`}>{stat.suffix}</span>}
               </div>
-              <p className={`text-xs mt-0.5 ${stat.gradient ? 'opacity-80' : 'text-muted-foreground'}`}>
-                {stat.label}
-              </p>
+              <p className={`text-xs mt-0.5 ${stat.gradient ? 'opacity-80' : 'text-muted-foreground'}`}>{stat.label}</p>
             </CardContent>
           </Card>
         ))}
       </div>
-
-      {/* Temperature breakdown */}
-      <div className="grid gap-3 grid-cols-4">
+      <div className="grid gap-3 grid-cols-5">
         {tempCards.map((stat) => (
           <Card key={stat.label} className="rounded-xl border-border/50 shadow-sm">
             <CardContent className="py-3 px-4 flex items-center gap-3">

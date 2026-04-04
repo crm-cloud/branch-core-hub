@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Phone, MessageSquare, Calendar, ArrowRight, Flame, Sun, Snowflake } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { leadService } from '@/services/leadService';
 import { communicationService } from '@/services/communicationService';
@@ -20,17 +22,36 @@ interface LeadKanbanProps {
 
 export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadKanbanProps) {
   const queryClient = useQueryClient();
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, string>>({});
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       leadService.updateLeadStatus(id, status),
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[id]; return n; });
       toast.success('Status updated');
     },
-    onError: () => toast.error('Failed to update status'),
+    onError: (_, { id }) => {
+      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[id]; return n; });
+      toast.error('Failed to update status');
+    },
   });
+
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const newStatus = result.destination.droppableId;
+    const leadId = result.draggableId;
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || lead.status === newStatus) return;
+
+    // Optimistic update
+    setOptimisticUpdates(prev => ({ ...prev, [leadId]: newStatus }));
+    updateStatusMutation.mutate({ id: leadId, status: newStatus });
+  };
+
+  const getLeadStatus = (lead: any) => optimisticUpdates[lead.id] || lead.status;
 
   const handleWhatsApp = (e: React.MouseEvent, phone: string, name: string) => {
     e.stopPropagation();
@@ -38,110 +59,113 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
   };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-      {LEAD_STATUSES.map(status => {
-        const statusLeads = leads.filter((l: any) => l.status === status);
-        const cfg = STATUS_CONFIG[status];
-        return (
-          <div key={status} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Badge className={`${cfg.color} rounded-full px-3`}>{cfg.label}</Badge>
-              <span className="text-sm font-bold text-muted-foreground">{statusLeads.length}</span>
-            </div>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-              {statusLeads.map((lead: any) => {
-                const TempIcon = lead.temperature === 'hot' ? Flame : lead.temperature === 'cold' ? Snowflake : Sun;
-                const tempColor = lead.temperature === 'hot' ? 'text-red-500' : lead.temperature === 'cold' ? 'text-blue-500' : 'text-amber-500';
-                const isOverdue = lead.next_action_at && new Date(lead.next_action_at) < new Date();
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {LEAD_STATUSES.map(status => {
+          const statusLeads = leads.filter((l: any) => getLeadStatus(l) === status);
+          const cfg = STATUS_CONFIG[status];
+          return (
+            <Droppable droppableId={status} key={status}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={`space-y-3 ${snapshot.isDraggingOver ? 'bg-primary/5 rounded-xl p-2 -m-2' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <Badge className={`${cfg.color} rounded-full px-3`}>{cfg.label}</Badge>
+                    <span className="text-sm font-bold text-muted-foreground">{statusLeads.length}</span>
+                  </div>
+                  <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                    {statusLeads.map((lead: any, index: number) => {
+                      const TempIcon = lead.temperature === 'hot' ? Flame : lead.temperature === 'cold' ? Snowflake : Sun;
+                      const tempColor = lead.temperature === 'hot' ? 'text-red-500' : lead.temperature === 'cold' ? 'text-blue-500' : 'text-amber-500';
+                      const isOverdue = lead.next_action_at && new Date(lead.next_action_at) < new Date();
 
-                return (
-                  <Card
-                    key={lead.id}
-                    className={`rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
-                      isOverdue ? 'ring-1 ring-destructive/30' : ''
-                    }`}
-                    onClick={() => onSelectLead(lead)}
-                  >
-                    <CardContent className="p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-1">
-                        <p className="font-semibold text-sm truncate flex-1">{lead.full_name}</p>
-                        <TempIcon className={`h-3.5 w-3.5 shrink-0 ${tempColor}`} />
+                      return (
+                        <Draggable key={lead.id} draggableId={lead.id} index={index}>
+                          {(dragProvided, dragSnapshot) => (
+                            <Card
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              {...dragProvided.dragHandleProps}
+                              className={`rounded-xl border-border/50 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
+                                isOverdue ? 'ring-1 ring-destructive/30' : ''
+                              } ${dragSnapshot.isDragging ? 'shadow-lg ring-2 ring-primary/30 rotate-2' : ''}`}
+                              onClick={() => onSelectLead(lead)}
+                            >
+                              <CardContent className="p-3 space-y-2">
+                                <div className="flex items-start justify-between gap-1">
+                                  <p className="font-semibold text-sm truncate flex-1">{lead.full_name}</p>
+                                  <TempIcon className={`h-3.5 w-3.5 shrink-0 ${tempColor}`} />
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">{lead.phone || lead.email}</p>
+
+                                {lead.score > 0 && (
+                                  <div className="flex items-center gap-1.5">
+                                    <Progress value={lead.score} className="h-1 flex-1" />
+                                    <span className="text-[10px] text-muted-foreground font-mono">{lead.score}</span>
+                                  </div>
+                                )}
+
+                                {lead.notes && (
+                                  <p className="text-xs text-muted-foreground/80 italic line-clamp-2 bg-muted/30 rounded px-2 py-1">
+                                    {lead.notes}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between">
+                                  <Badge variant="outline" className="text-[10px]">{lead.source || 'Direct'}</Badge>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {format(new Date(lead.created_at), 'dd MMM')}
+                                  </span>
+                                </div>
+
+                                {isOverdue && (
+                                  <p className="text-[10px] text-destructive font-medium">
+                                    Overdue: {format(new Date(lead.next_action_at), 'MMM dd')}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center gap-1 pt-1">
+                                  {lead.phone && (
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => handleWhatsApp(e, lead.phone, lead.full_name)}>
+                                      <MessageSquare className="h-3 w-3 text-emerald-500" />
+                                    </Button>
+                                  )}
+                                  {lead.phone && (
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); window.open(`tel:${lead.phone}`); }}>
+                                      <Phone className="h-3 w-3 text-sky-500" />
+                                    </Button>
+                                  )}
+                                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onFollowup(lead); }}>
+                                    <Calendar className="h-3 w-3" />
+                                  </Button>
+                                  {lead.status !== 'converted' && (
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onConvert(lead); }}>
+                                      <ArrowRight className="h-3 w-3 text-primary" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
+                    {statusLeads.length === 0 && (
+                      <div className="text-center py-8 text-xs text-muted-foreground border border-dashed border-border/50 rounded-xl">
+                        No leads
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">{lead.phone || lead.email}</p>
-
-                      {lead.score > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <Progress value={lead.score} className="h-1 flex-1" />
-                          <span className="text-[10px] text-muted-foreground font-mono">{lead.score}</span>
-                        </div>
-                      )}
-
-                      {lead.notes && (
-                        <p className="text-xs text-muted-foreground/80 italic line-clamp-2 bg-muted/30 rounded px-2 py-1">
-                          {lead.notes}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="text-[10px]">{lead.source || 'Direct'}</Badge>
-                        <span className="text-[10px] text-muted-foreground">
-                          {format(new Date(lead.created_at), 'dd MMM')}
-                        </span>
-                      </div>
-
-                      {isOverdue && (
-                        <p className="text-[10px] text-destructive font-medium">
-                          Overdue: {format(new Date(lead.next_action_at), 'MMM dd')}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-1 pt-1">
-                        {lead.phone && (
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => handleWhatsApp(e, lead.phone, lead.full_name)}>
-                            <MessageSquare className="h-3 w-3 text-emerald-500" />
-                          </Button>
-                        )}
-                        {lead.phone && (
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); window.open(`tel:${lead.phone}`); }}>
-                            <Phone className="h-3 w-3 text-sky-500" />
-                          </Button>
-                        )}
-                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onFollowup(lead); }}>
-                          <Calendar className="h-3 w-3" />
-                        </Button>
-                        {lead.status !== 'converted' && (
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onConvert(lead); }}>
-                            <ArrowRight className="h-3 w-3 text-primary" />
-                          </Button>
-                        )}
-                      </div>
-
-                      <Select
-                        value={lead.status}
-                        onValueChange={(s) => updateStatusMutation.mutate({ id: lead.id, status: s })}
-                      >
-                        <SelectTrigger className="h-7 text-xs rounded-lg mt-1" onClick={(e) => e.stopPropagation()}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {LEAD_STATUSES.map(s => (
-                            <SelectItem key={s} value={s}>{STATUS_CONFIG[s].label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              {statusLeads.length === 0 && (
-                <div className="text-center py-8 text-xs text-muted-foreground border border-dashed border-border/50 rounded-xl">
-                  No leads
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+            </Droppable>
+          );
+        })}
+      </div>
+    </DragDropContext>
   );
 }
