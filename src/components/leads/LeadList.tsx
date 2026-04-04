@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { UserPlus, Phone, MessageSquare, Calendar, ArrowRight, ChevronLeft, ChevronRight, Flame, Sun, Snowflake } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { UserPlus, Phone, MessageSquare, Calendar, ArrowRight, ChevronLeft, ChevronRight, Flame, Sun, Snowflake, Tag, Users, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { leadService } from '@/services/leadService';
 import { communicationService } from '@/services/communicationService';
@@ -27,6 +29,7 @@ interface LeadListProps {
 
 export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, onFollowup, onConvert }: LeadListProps) {
   const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const paginatedLeads = leads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(leads.length / PAGE_SIZE);
 
@@ -41,10 +44,61 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
     onError: () => toast.error('Failed to update status'),
   });
 
+  const bulkUpdateMutation = useMutation({
+    mutationFn: ({ ids, updates }: { ids: string[]; updates: any }) =>
+      leadService.bulkUpdateLeads(ids, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
+      setSelectedIds(new Set());
+      toast.success(`Updated ${selectedIds.size} leads`);
+    },
+    onError: () => toast.error('Bulk update failed'),
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === paginatedLeads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedLeads.map((l: any) => l.id)));
+    }
+  };
+
   return (
     <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
-      <CardHeader><CardTitle>All Leads ({leads.length})</CardTitle></CardHeader>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>All Leads ({leads.length})</CardTitle>
+        </div>
+      </CardHeader>
       <CardContent>
+        {/* Bulk Action Bar */}
+        {selectedIds.size > 0 && (
+          <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-xl flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <div className="flex gap-2 flex-wrap">
+              {LEAD_STATUSES.map(s => (
+                <Button key={s} size="sm" variant="outline" className="h-7 text-xs rounded-lg"
+                  onClick={() => bulkUpdateMutation.mutate({ ids: Array.from(selectedIds), updates: { status: s } })}
+                >
+                  {STATUS_CONFIG[s].label}
+                </Button>
+              ))}
+            </div>
+            <Button size="sm" variant="ghost" className="h-7 text-xs ml-auto" onClick={() => setSelectedIds(new Set())}>
+              Clear
+            </Button>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map(i => (
@@ -62,6 +116,12 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={paginatedLeads.length > 0 && selectedIds.size === paginatedLeads.length}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
                   <TableHead>Lead</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Status</TableHead>
@@ -77,13 +137,17 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                   const TempIcon = lead.temperature === 'hot' ? Flame : lead.temperature === 'cold' ? Snowflake : Sun;
                   const tempColor = lead.temperature === 'hot' ? 'text-red-500' : lead.temperature === 'cold' ? 'text-blue-500' : 'text-amber-500';
                   const isOverdue = lead.next_action_at && new Date(lead.next_action_at) < new Date();
+                  const isSelected = selectedIds.has(lead.id);
 
                   return (
                     <TableRow
                       key={lead.id}
-                      className={`cursor-pointer hover:bg-muted/50 ${isOverdue ? 'bg-destructive/5' : ''}`}
+                      className={`cursor-pointer hover:bg-muted/50 ${isOverdue ? 'bg-destructive/5' : ''} ${isSelected ? 'bg-primary/5' : ''}`}
                       onClick={() => onSelectLead(lead)}
                     >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(lead.id)} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -125,9 +189,7 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                         <TempIcon className={`h-4 w-4 ${tempColor}`} />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {lead.source || 'Direct'}
-                        </Badge>
+                        <Badge variant="outline" className="text-xs">{lead.source || 'Direct'}</Badge>
                       </TableCell>
                       <TableCell>
                         {lead.score > 0 ? (
@@ -167,7 +229,7 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                 })}
                 {paginatedLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                       <UserPlus className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       No leads found matching your filters
                     </TableCell>
