@@ -3,12 +3,15 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutGrid, List, Calendar, Download, Target } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exportToCSV } from '@/lib/csvExport';
 import { leadService, type LeadFilters } from '@/services/leadService';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // Components
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
@@ -19,6 +22,7 @@ import { LeadKanban } from '@/components/leads/LeadKanban';
 import { LeadList } from '@/components/leads/LeadList';
 import { LeadFilterBar, STATUS_CONFIG } from '@/components/leads/LeadFilters';
 import { LeadProfileDrawer } from '@/components/leads/LeadProfileDrawer';
+import { LeadAnalytics } from '@/components/leads/LeadAnalytics';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +30,7 @@ import { CardHeader, CardTitle } from '@/components/ui/card';
 export default function LeadsPage() {
   const { user } = useAuth();
   const { effectiveBranchId } = useBranchContext();
+  const queryClient = useQueryClient();
 
   // UI State
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -33,9 +38,11 @@ export default function LeadsPage() {
   const [showFollowupDrawer, setShowFollowupDrawer] = useState(false);
   const [showConvertDrawer, setShowConvertDrawer] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
-  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar' | 'analytics'>('kanban');
   const [page, setPage] = useState(0);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [showSaveView, setShowSaveView] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
 
   // Filters
   const [filters, setFilters] = useState<LeadFilters>({});
@@ -49,6 +56,7 @@ export default function LeadsPage() {
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setShowAddDrawer(true); }
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); setViewMode('kanban'); }
       if (e.key === 'l' || e.key === 'L') { e.preventDefault(); setViewMode('list'); }
+      if (e.key === 'a' || e.key === 'A') { e.preventDefault(); setViewMode('analytics'); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -67,6 +75,38 @@ export default function LeadsPage() {
     enabled: !!user,
   });
 
+  const { data: savedViews = [] } = useQuery({
+    queryKey: ['saved-lead-views'],
+    queryFn: () => leadService.getSavedViews(),
+    enabled: !!user,
+  });
+
+  const saveViewMutation = useMutation({
+    mutationFn: (name: string) => leadService.saveView(name, { ...filters, status: statusFilter, temperature: temperatureFilter }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-lead-views'] });
+      setShowSaveView(false);
+      setNewViewName('');
+      toast.success('View saved');
+    },
+  });
+
+  const deleteViewMutation = useMutation({
+    mutationFn: (id: string) => leadService.deleteView(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-lead-views'] });
+      toast.success('View deleted');
+    },
+  });
+
+  const loadView = (view: any) => {
+    const f = view.filters || {};
+    setFilters({ search: f.search, source: f.source, ownerId: f.ownerId, overdueOnly: f.overdueOnly });
+    setStatusFilter(f.status || []);
+    setTemperatureFilter(f.temperature || []);
+    toast.success(`Loaded view: ${view.name}`);
+  };
+
   // Derived
   const sources = useMemo(() => {
     const s = new Set(leads.map((l: any) => l.source).filter(Boolean));
@@ -83,7 +123,8 @@ export default function LeadsPage() {
       const matchesStatus = statusFilter.length === 0 || statusFilter.includes(lead.status);
       const matchesTemp = temperatureFilter.length === 0 || temperatureFilter.includes(lead.temperature);
       const matchesOwner = !filters.ownerId || (filters.ownerId === 'unassigned' ? !lead.owner_id : lead.owner_id === filters.ownerId);
-      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner;
+      const matchesOverdue = !filters.overdueOnly || (lead.next_action_at && new Date(lead.next_action_at) < new Date());
+      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner && matchesOverdue;
     });
   }, [leads, filters, statusFilter, temperatureFilter]);
 
@@ -114,7 +155,7 @@ export default function LeadsPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Track, nurture, and convert leads into members</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex bg-muted rounded-xl p-1">
               <Button variant={viewMode === 'kanban' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('kanban')} className="rounded-lg" title="Kanban (K)">
                 <LayoutGrid className="h-4 w-4" />
@@ -125,24 +166,62 @@ export default function LeadsPage() {
               <Button variant={viewMode === 'calendar' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('calendar')} className="rounded-lg">
                 <Calendar className="h-4 w-4" />
               </Button>
+              <Button variant={viewMode === 'analytics' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('analytics')} className="rounded-lg" title="Analytics (A)">
+                <BarChart3 className="h-4 w-4" />
+              </Button>
             </div>
+
+            {/* Saved Views */}
+            {savedViews.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="rounded-xl gap-1.5">
+                    <BookmarkCheck className="h-4 w-4" /> Views
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2">
+                  {savedViews.map((v: any) => (
+                    <div key={v.id} className="flex items-center justify-between py-1 px-2 hover:bg-muted rounded-lg">
+                      <button className="text-sm text-left flex-1" onClick={() => loadView(v)}>{v.name}</button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => deleteViewMutation.mutate(v.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+
+            <Popover open={showSaveView} onOpenChange={setShowSaveView}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="rounded-xl gap-1.5">
+                  <Save className="h-4 w-4" /> Save View
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-3">
+                <Input
+                  placeholder="View name..."
+                  value={newViewName}
+                  onChange={(e) => setNewViewName(e.target.value)}
+                  className="mb-2"
+                />
+                <Button size="sm" className="w-full" disabled={!newViewName.trim()}
+                  onClick={() => saveViewMutation.mutate(newViewName.trim())}
+                >
+                  Save
+                </Button>
+              </PopoverContent>
+            </Popover>
+
             <Button onClick={() => setShowAddDrawer(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20" title="Add Lead (N)">
-              <Plus className="h-4 w-4" />
-              Add Lead
+              <Plus className="h-4 w-4" /> Add Lead
             </Button>
             <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => {
               const rows = filteredLeads.map((l: any) => ({
-                Name: l.full_name || '',
-                Phone: l.phone || '',
-                Email: l.email || '',
-                Source: l.source || 'Direct',
-                Status: l.status || '',
-                Temperature: l.temperature || '',
-                Score: l.score || 0,
-                'Created At': l.created_at ? format(new Date(l.created_at), 'yyyy-MM-dd') : '',
-                Notes: l.notes || '',
-                'UTM Source': l.utm_source || '',
-                'UTM Campaign': l.utm_campaign || '',
+                Name: l.full_name || '', Phone: l.phone || '', Email: l.email || '',
+                Source: l.source || 'Direct', Status: l.status || '', Temperature: l.temperature || '',
+                Score: l.score || 0, 'Created At': l.created_at ? format(new Date(l.created_at), 'yyyy-MM-dd') : '',
+                Notes: l.notes || '', 'UTM Source': l.utm_source || '', 'UTM Campaign': l.utm_campaign || '',
               }));
               exportToCSV(rows, 'leads');
             }}>
@@ -155,42 +234,32 @@ export default function LeadsPage() {
         {stats && <LeadDashboard stats={stats} />}
 
         {/* Filters */}
-        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
-          <CardContent className="pt-5 pb-4">
-            <LeadFilterBar
-              filters={filters}
-              onFiltersChange={(f) => { setFilters(f); setPage(0); }}
-              sources={sources}
-              statusFilter={statusFilter}
-              onStatusFilterChange={(s) => { setStatusFilter(s); setPage(0); }}
-              temperatureFilter={temperatureFilter}
-              onTemperatureFilterChange={(t) => { setTemperatureFilter(t); setPage(0); }}
-            />
-          </CardContent>
-        </Card>
+        {viewMode !== 'analytics' && (
+          <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
+            <CardContent className="pt-5 pb-4">
+              <LeadFilterBar
+                filters={filters}
+                onFiltersChange={(f) => { setFilters(f); setPage(0); }}
+                sources={sources}
+                statusFilter={statusFilter}
+                onStatusFilterChange={(s) => { setStatusFilter(s); setPage(0); }}
+                temperatureFilter={temperatureFilter}
+                onTemperatureFilterChange={(t) => { setTemperatureFilter(t); setPage(0); }}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Views */}
         {viewMode === 'kanban' && (
-          <LeadKanban
-            leads={filteredLeads}
-            onSelectLead={openProfile}
-            onFollowup={openFollowup}
-            onConvert={openConvert}
-          />
+          <LeadKanban leads={filteredLeads} onSelectLead={openProfile} onFollowup={openFollowup} onConvert={openConvert} />
         )}
-
         {viewMode === 'list' && (
-          <LeadList
-            leads={filteredLeads}
-            isLoading={isLoading}
-            page={page}
-            onPageChange={setPage}
-            onSelectLead={openProfile}
-            onFollowup={openFollowup}
-            onConvert={openConvert}
-          />
+          <LeadList leads={filteredLeads} isLoading={isLoading} page={page} onPageChange={setPage} onSelectLead={openProfile} onFollowup={openFollowup} onConvert={openConvert} />
         )}
-
+        {viewMode === 'analytics' && (
+          <LeadAnalytics leads={filteredLeads} />
+        )}
         {viewMode === 'calendar' && (
           <Card className="rounded-2xl border-border/50 shadow-lg">
             <CardHeader>
@@ -222,17 +291,11 @@ export default function LeadsPage() {
                         {format(day, 'd')}
                       </p>
                       {dayLeads.slice(0, 3).map((lead: any) => (
-                        <div
-                          key={lead.id}
-                          className={`text-xs px-1.5 py-0.5 rounded mb-0.5 truncate cursor-pointer ${STATUS_CONFIG[lead.status]?.color || 'bg-muted'}`}
-                          onClick={() => openProfile(lead)}
-                        >
+                        <div key={lead.id} className={`text-xs px-1.5 py-0.5 rounded mb-0.5 truncate cursor-pointer ${STATUS_CONFIG[lead.status]?.color || 'bg-muted'}`} onClick={() => openProfile(lead)}>
                           {lead.full_name}
                         </div>
                       ))}
-                      {dayLeads.length > 3 && (
-                        <p className="text-xs text-muted-foreground">+{dayLeads.length - 3} more</p>
-                      )}
+                      {dayLeads.length > 3 && <p className="text-xs text-muted-foreground">+{dayLeads.length - 3} more</p>}
                     </div>
                   );
                 })}
@@ -243,13 +306,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Drawers */}
-      <LeadProfileDrawer
-        open={showProfileDrawer}
-        onOpenChange={setShowProfileDrawer}
-        lead={selectedLead}
-        onFollowup={openFollowup}
-        onConvert={openConvert}
-      />
+      <LeadProfileDrawer open={showProfileDrawer} onOpenChange={setShowProfileDrawer} lead={selectedLead} onFollowup={openFollowup} onConvert={openConvert} />
       <AddLeadDrawer open={showAddDrawer} onOpenChange={setShowAddDrawer} defaultBranchId={effectiveBranchId || ''} />
       <FollowupDrawer open={showFollowupDrawer} onOpenChange={setShowFollowupDrawer} lead={selectedLead} />
       <ConvertMemberDrawer open={showConvertDrawer} onOpenChange={setShowConvertDrawer} lead={selectedLead} />
