@@ -20,7 +20,8 @@ import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
-import PublicWebsite from "./pages/PublicWebsite";
+import PublicWebsiteV1 from "./pages/PublicWebsiteV1";
+const InclineAscent = lazy(() => import("./pages/InclineAscent"));
 import EmbedLeadForm from "./pages/EmbedLeadForm";
 import PrivacyPolicyPage from "./pages/PrivacyPolicy";
 import TermsPage from "./pages/Terms";
@@ -134,7 +135,8 @@ const App = () => (
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public Website */}
-            <Route path="/" element={<PublicWebsite />} />
+            <Route path="/" element={<InclineAscent />} />
+            <Route path="/website-v1" element={<PublicWebsiteV1 />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/setup" element={<SetupPage />} />
