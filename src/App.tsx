@@ -135,7 +135,8 @@ const App = () => (
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public Website */}
-            <Route path="/" element={<PublicWebsite />} />
+            <Route path="/" element={<InclineAscent />} />
+            <Route path="/website-v1" element={<PublicWebsiteV1 />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/setup" element={<SetupPage />} />

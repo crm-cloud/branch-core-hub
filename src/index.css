@@ -166,6 +166,10 @@
     @apply bg-card/75 backdrop-blur-xl border border-white/15 shadow-xl shadow-primary/10 rounded-2xl;
   }
 
+  .glass-strong {
+    @apply bg-card/85 backdrop-blur-2xl border border-white/25 shadow-2xl shadow-primary/15;
+  }
+
   /* Gradient text */
   .text-gradient {
     @apply bg-clip-text text-transparent;
