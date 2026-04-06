@@ -1,55 +1,153 @@
 
 
-# Clone "Incline Ascent" 3D Website into Current Project
+# Operational Robustness & Premium Polish Plan
 
-## What We're Doing
+## Problem Summary
 
-Importing the immersive 3D scrolling website from the "Incline Ascent" project as the new default public landing page at `/`. The current `PublicWebsite.tsx` (1027-line CMS-driven page) will be renamed and kept as a backup at `/website-v1`, ready to swap back in 1-2 months.
+Three critical issues and several UX gaps across the codebase:
 
-## Files to Copy from Incline Ascent
+1. **Payment recording is duplicated in 4 places** — `billingService.recordPayment()`, `paymentService.recordManualPayment()`, `walletService.payWithWallet()`, and inline mutation in `Payments.tsx` (lines 96-121). Each independently calculates `amount_paid` and `status`, creating race conditions and inconsistency risks.
 
-1. **`src/components/3d/Scene3D.tsx`** — Three.js canvas with scroll controls
-2. **`src/components/3d/HeroDumbbell.tsx`** — Animated 3D dumbbell with INCLINE branding
-3. **`src/components/3d/FloatingWords.tsx`** — Orbiting text elements
-4. **`src/components/3d/ParticleField.tsx`** — Particle system (not actively used in Scene3D but part of the set)
-5. **`src/components/ui/ScrollOverlay.tsx`** — HTML content overlay (hero, sections, waitlist CTA, footer)
-6. **`src/components/ui/ScrollProgressBar.tsx`** — Top progress indicator
-7. **`src/components/ui/RegisterModal.tsx`** — Multi-step lead capture form (already wired to webhook-lead-capture)
-8. **`src/hooks/useSoundEffects.ts`** — Scroll sound hook (placeholder sounds, no actual audio files needed)
-9. **`src/assets/incline-logo.png`** — Logo image used by ScrollOverlay
+2. **Reminders work but are loosely structured** — the `send-reminders` edge function handles 7 reminder types in one monolith. No issues per se, but reminder types aren't easily configurable or extendable.
 
-## New Dependencies to Install
+3. **Attendance, rewards, and invoice UX** have minor gaps — no loading skeletons in some places, inconsistent empty states, and the rewards/wallet systems are separate but overlapping concepts.
 
-- `@react-three/fiber` (^8.18.0) — React renderer for Three.js
-- `@react-three/drei` (^9.122.0) — Helpers for R3F (ScrollControls, Text, Environment)
-- `three` (^0.160.1) — 3D engine
-- `@types/three` (^0.160.0) — TypeScript types
-- `howler` (^2.2.4) — Audio library (used by useSoundEffects)
-- `@types/howler` (^2.2.12) — TypeScript types
-- `react-hook-form` + `@hookform/resolvers` + `zod` — Already in current project
+---
 
-## Changes to Current Project
+## Phase 1: Unify Payment Recording (Critical)
 
-### 1. Rename current public website (backup)
-- Rename `src/pages/PublicWebsite.tsx` → `src/pages/PublicWebsiteV1.tsx`
-- Update the export/component name inside to `PublicWebsiteV1`
+### 1A. Create `record_payment` Database Function (RPC)
 
-### 2. Create new landing page
-- Create `src/pages/InclineAscent.tsx` — thin wrapper (same as Ascent's `Index.tsx`) that composes `Scene3D`, `ScrollProgressBar`, `RegisterModal`, and `useSoundEffects`
+A single SECURITY DEFINER function that atomically:
+- Inserts into `payments`
+- Updates `invoices.amount_paid` and `invoices.status`
+- If wallet payment: validates balance, debits wallet, creates wallet transaction
+- If fully paid: activates linked memberships
+- Returns the payment record
 
-### 3. Update routing in `App.tsx`
-- `"/"` → `<InclineAscent />` (new 3D site)
-- Add `/website-v1` → `<PublicWebsiteV1 />` (backup, accessible if needed)
+This eliminates all 4 client-side implementations doing the same thing with subtle differences.
 
-### 4. Add `glass-strong` CSS class
-- The ScrollOverlay uses `glass-strong` which exists in Ascent's CSS but not in current project. Add it to `src/index.css`.
+```sql
+CREATE OR REPLACE FUNCTION public.record_payment(
+  p_branch_id uuid, p_invoice_id uuid, p_member_id uuid,
+  p_amount numeric, p_payment_method text,
+  p_transaction_id text DEFAULT NULL, p_notes text DEFAULT NULL,
+  p_received_by uuid DEFAULT NULL, p_income_category_id uuid DEFAULT NULL
+) RETURNS jsonb ...
+```
 
-### 5. Adapt RegisterModal webhook URL
-- The modal currently hardcodes a webhook slug from the Ascent project. Update it to use the current project's Supabase URL and the correct webhook slug, or better, make it call `capture-lead` edge function directly (already exists in this project).
+### 1B. Refactor Service Layer
 
-## What Stays Intact
-- All admin/member/trainer routes unchanged
-- CMS service and WebsiteSettings unchanged
-- The V1 website remains fully functional at `/website-v1`
-- No database changes needed
+- **`billingService.ts`**: `recordPayment()` calls the new RPC instead of doing manual inserts + updates
+- **`walletService.ts`**: `payWithWallet()` calls the same RPC with `p_payment_method = 'wallet'`
+- **`paymentService.ts`**: `recordManualPayment()` becomes a thin wrapper around `billingService.recordPayment()`
+- **`Payments.tsx`**: Replace inline mutation (lines 96-121) with `billingService.recordPayment()`
+
+### 1C. Void Payment Consistency
+
+The void mutation in `Payments.tsx` (lines 150-170) doesn't reverse the invoice `amount_paid`. Create a `void_payment` RPC that atomically:
+- Marks payment as voided
+- Subtracts amount from invoice's `amount_paid`
+- Recalculates invoice status (paid → partial → pending)
+- If wallet payment: refunds wallet balance
+
+---
+
+## Phase 2: Invoice & Payment UX Improvements
+
+### 2A. Invoices Page Polish
+- Add proper empty state with illustration when no invoices
+- Add invoice type icons (membership, PT, POS, manual)
+- Show balance due prominently with color coding (green = paid, red = overdue, amber = partial)
+- Add CSV export button
+
+### 2B. Payments Page Polish
+- Replace inline record-payment form with proper `RecordPaymentDrawer` component (already exists, just wire it)
+- Add running total footer in payments table
+- Better void confirmation with impact preview ("This will revert ₹X on invoice INV-XXX")
+- Add proper loading skeleton
+
+### 2C. RecordPaymentDrawer Improvements
+- Show invoice line items summary before recording
+- Pre-select income category based on invoice type
+- Better wallet balance display with "Use Wallet" toggle
+
+---
+
+## Phase 3: Reminder System Hardening
+
+### 3A. Add `reminder_types` Configuration
+Add a `reminder_configurations` table so gym owners can toggle and customize reminder windows:
+
+```sql
+CREATE TABLE reminder_configurations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id uuid REFERENCES branches(id),
+  reminder_type text NOT NULL, -- payment_due, membership_expiry, birthday, inactive_member, etc.
+  is_enabled boolean DEFAULT true,
+  days_before integer[], -- e.g. [7, 3, 1] for expiry
+  channel text DEFAULT 'notification', -- notification, sms, whatsapp
+  created_at timestamptz DEFAULT now()
+);
+```
+
+### 3B. Update `send-reminders` Edge Function
+- Read from `reminder_configurations` to determine which reminders are active per branch
+- Use configured `days_before` arrays instead of hardcoded values
+- Add summary logging for operational visibility
+
+---
+
+## Phase 4: Attendance UX Polish
+
+### 4A. AttendanceDashboard Improvements
+- Add proper skeleton loading for all tabs
+- Better "no results" state for search
+- Improve the rapid-entry search with keyboard navigation (arrow keys to select, Enter to check in)
+- Show member photo larger in the flash confirmation
+
+### 4B. Bulk Check-Out Enhancement
+- Add confirmation dialog showing count of members to check out
+- Show duration summary after bulk check-out
+
+---
+
+## Phase 5: Rewards & Wallet Consolidation
+
+### 5A. Unified Points Display
+- In `RewardsWalletCard`, show both reward points AND wallet balance side by side
+- Add "Convert Points to Wallet Credit" action if configured
+- Show combined transaction timeline (rewards + wallet) in member profile
+
+### 5B. Redemption Improvements
+- Make `RedeemPointsDrawer` show available redemption options from a configurable list
+- Track redemption as both a rewards_ledger debit AND meaningful action (e.g., create a discount invoice, add wallet credit, extend membership)
+
+---
+
+## Files Modified/Created
+
+| File | Action |
+|---|---|
+| DB Migration | `record_payment` RPC, `void_payment` RPC, `reminder_configurations` table |
+| `src/services/billingService.ts` | Refactor `recordPayment` to use RPC |
+| `src/services/walletService.ts` | Refactor `payWithWallet` to use billing RPC |
+| `src/services/paymentService.ts` | Deprecate `recordManualPayment`, forward to billing |
+| `src/pages/Payments.tsx` | Use shared service, improve UX, add skeleton |
+| `src/pages/Invoices.tsx` | Better empty states, balance display, CSV export |
+| `src/components/invoices/RecordPaymentDrawer.tsx` | Invoice summary, income category auto-select |
+| `supabase/functions/send-reminders/index.ts` | Read from reminder_configurations |
+| `src/pages/AttendanceDashboard.tsx` | Skeleton, keyboard nav, better flash |
+| `src/components/members/RewardsWalletCard.tsx` | Unified points + wallet view |
+| `src/components/members/RedeemPointsDrawer.tsx` | Configurable redemption options |
+
+## Implementation Order
+
+1. `record_payment` and `void_payment` RPCs (database migration)
+2. Service layer refactor (billingService, walletService, paymentService)
+3. Payments.tsx and Invoices.tsx UX improvements
+4. RecordPaymentDrawer improvements
+5. `reminder_configurations` table + send-reminders update
+6. Attendance UX polish
+7. Rewards/wallet consolidation
 
