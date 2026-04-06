@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { recordPayment as unifiedRecordPayment } from '@/services/billingService';
 
 export interface PaymentGatewayConfig {
   provider: 'razorpay' | 'phonepe' | 'ccavenue' | 'payu';
@@ -19,7 +20,6 @@ export interface PaymentOrder {
 
 // Fetch active payment gateway (global setting, not branch-specific)
 export async function fetchActiveGateway(branchId: string): Promise<PaymentGatewayConfig | null> {
-  // Payment gateways are global — search for integration_type = 'payment_gateway' with null branch_id first, then fallback to branch-specific
   const { data, error } = await supabase
     .from('integration_settings')
     .select('*')
@@ -81,50 +81,33 @@ export async function verifyPayment(
   return data;
 }
 
-// Record a manual/cash payment
+/**
+ * Record a manual/cash payment.
+ * Delegates to the unified record_payment RPC via billingService.
+ */
 export async function recordManualPayment(
   invoiceId: string,
   amount: number,
   paymentMethod: 'cash' | 'card' | 'upi' | 'bank_transfer',
   notes?: string
 ): Promise<{ success: boolean }> {
-  // Get invoice details
+  // Get invoice details for branch_id and member_id
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
-    .select('*')
+    .select('branch_id, member_id')
     .eq('id', invoiceId)
     .single();
 
   if (invoiceError) throw invoiceError;
 
-  // Create payment record
-  const { error: paymentError } = await supabase
-    .from('payments')
-    .insert({
-      invoice_id: invoiceId,
-      branch_id: invoice.branch_id,
-      member_id: invoice.member_id,
-      amount,
-      payment_method: paymentMethod,
-      status: 'completed',
-      notes,
-    });
-
-  if (paymentError) throw paymentError;
-
-  // Update invoice
-  const newAmountPaid = (invoice.amount_paid || 0) + amount;
-  const newStatus = newAmountPaid >= invoice.total_amount ? 'paid' : 'partial';
-
-  const { error: updateError } = await supabase
-    .from('invoices')
-    .update({
-      amount_paid: newAmountPaid,
-      status: newStatus,
-    })
-    .eq('id', invoiceId);
-
-  if (updateError) throw updateError;
+  await unifiedRecordPayment({
+    branchId: invoice.branch_id,
+    invoiceId,
+    memberId: invoice.member_id || undefined,
+    amount,
+    paymentMethod,
+    notes,
+  });
 
   return { success: true };
 }

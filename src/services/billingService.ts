@@ -98,78 +98,64 @@ export async function updateInvoiceStatus(invoiceId: string, status: InvoiceStat
   return data;
 }
 
+/**
+ * Unified payment recording via database RPC.
+ * This is the SINGLE source of truth for all payment recording.
+ * Atomically: inserts payment, updates invoice balance/status,
+ * handles wallet debits, and activates memberships when fully paid.
+ */
 export async function recordPayment(payment: {
   branchId: string;
-  invoiceId?: string;
+  invoiceId: string;
   memberId?: string;
   amount: number;
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod | string;
   transactionId?: string;
   notes?: string;
   receivedBy?: string;
-}) {
-  const { data: newPayment, error: paymentError } = await supabase
-    .from('payments')
-    .insert({
-      branch_id: payment.branchId,
-      invoice_id: payment.invoiceId,
-      member_id: payment.memberId,
-      amount: payment.amount,
-      payment_method: payment.paymentMethod,
-      transaction_id: payment.transactionId,
-      notes: payment.notes,
-      received_by: payment.receivedBy,
-      status: 'completed',
-    })
-    .select()
-    .single();
+  incomeCategoryId?: string;
+}): Promise<{ success: boolean; payment_id?: string; new_amount_paid?: number; new_status?: string; error?: string }> {
+  const { data, error } = await supabase.rpc('record_payment', {
+    p_branch_id: payment.branchId,
+    p_invoice_id: payment.invoiceId,
+    p_member_id: payment.memberId || null,
+    p_amount: payment.amount,
+    p_payment_method: payment.paymentMethod,
+    p_transaction_id: payment.transactionId || null,
+    p_notes: payment.notes || null,
+    p_received_by: payment.receivedBy || null,
+    p_income_category_id: payment.incomeCategoryId || null,
+  });
 
-  if (paymentError) throw paymentError;
+  if (error) throw error;
 
-  // Update invoice if linked
-  if (payment.invoiceId) {
-    const { data: invoice } = await supabase
-      .from('invoices')
-      .select('total_amount, amount_paid')
-      .eq('id', payment.invoiceId)
-      .single();
-
-    if (invoice) {
-      const newAmountPaid = (invoice.amount_paid || 0) + payment.amount;
-      const isPaid = newAmountPaid >= invoice.total_amount;
-      const newStatus: InvoiceStatus = isPaid ? 'paid' : 'partial';
-
-      await supabase
-        .from('invoices')
-        .update({
-          amount_paid: newAmountPaid,
-          status: newStatus,
-        })
-        .eq('id', payment.invoiceId);
-
-      // If fully paid and linked to membership, activate it
-      if (isPaid) {
-        const { data: items } = await supabase
-          .from('invoice_items')
-          .select('reference_type, reference_id')
-          .eq('invoice_id', payment.invoiceId)
-          .eq('reference_type', 'membership');
-
-        if (items && items.length > 0) {
-          for (const item of items) {
-            if (item.reference_id) {
-              await supabase
-                .from('memberships')
-                .update({ status: 'active' })
-                .eq('id', item.reference_id);
-            }
-          }
-        }
-      }
-    }
+  const result = data as any;
+  if (!result?.success) {
+    throw new Error(result?.error || 'Payment recording failed');
   }
 
-  return newPayment;
+  return result;
+}
+
+/**
+ * Void a payment via database RPC.
+ * Atomically: marks payment as voided, reverses invoice balance,
+ * recalculates status, and refunds wallet if applicable.
+ */
+export async function voidPayment(paymentId: string, reason: string = 'Voided by admin'): Promise<{ success: boolean; voided_amount?: number; invoice_new_status?: string; error?: string }> {
+  const { data, error } = await supabase.rpc('void_payment', {
+    p_payment_id: paymentId,
+    p_reason: reason,
+  });
+
+  if (error) throw error;
+
+  const result = data as any;
+  if (!result?.success) {
+    throw new Error(result?.error || 'Void payment failed');
+  }
+
+  return result;
 }
 
 export async function fetchPayments(branchId: string, filters?: { memberId?: string; startDate?: string; endDate?: string }) {
