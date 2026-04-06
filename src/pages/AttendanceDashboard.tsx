@@ -122,12 +122,25 @@ export default function AttendanceDashboard() {
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      if (searchResults.length === 1) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.min(prev + 1, searchResults.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && searchResults[selectedIndex]) {
+        const r = searchResults[selectedIndex];
+        handleQuickCheckIn(r.id, r.profiles?.full_name, r.profiles?.avatar_url);
+      } else if (searchResults.length === 1) {
         handleQuickCheckIn(searchResults[0].id, searchResults[0].profiles?.full_name, searchResults[0].profiles?.avatar_url);
       } else {
         handleMemberSearch();
       }
+    } else if (e.key === 'Escape') {
+      setSearchResults([]);
+      setSearchQuery('');
+      setSelectedIndex(-1);
     }
   };
 
