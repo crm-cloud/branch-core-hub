@@ -41,13 +41,10 @@ Deno.serve(async (req) => {
     if (!roleData || roleData.length === 0) {
       return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
     }
+
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const oneDayFromNow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const results = {
       payment_reminders: 0,
@@ -61,6 +58,31 @@ Deno.serve(async (req) => {
     const notifications: any[] = [];
     const commLogs: any[] = [];
 
+    // Load reminder configurations per branch (fallback to defaults if none configured)
+    const { data: allConfigs } = await adminClient.from("reminder_configurations").select("*").eq("is_enabled", true);
+    const configMap = new Map<string, Map<string, any>>();
+    for (const cfg of allConfigs || []) {
+      if (!configMap.has(cfg.branch_id)) configMap.set(cfg.branch_id, new Map());
+      configMap.get(cfg.branch_id)!.set(cfg.reminder_type, cfg);
+    }
+
+    // Helper: check if a reminder type is enabled for a branch
+    function isReminderEnabled(branchId: string, type: string): boolean {
+      const branchConfigs = configMap.get(branchId);
+      if (!branchConfigs) return true; // No configs = all enabled by default
+      const cfg = branchConfigs.get(type);
+      if (!cfg) return true; // Not explicitly configured = enabled
+      return cfg.is_enabled;
+    }
+
+    function getDaysBefore(branchId: string, type: string): number[] {
+      const branchConfigs = configMap.get(branchId);
+      if (!branchConfigs) return [7, 3, 1]; // defaults
+      const cfg = branchConfigs.get(type);
+      if (!cfg || !cfg.days_before) return [7, 3, 1];
+      return cfg.days_before;
+    }
+
     // 1. Payment reminders
     const { data: pendingReminders } = await adminClient
       .from("payment_reminders")
@@ -71,6 +93,7 @@ Deno.serve(async (req) => {
     for (const reminder of pendingReminders || []) {
       const member = reminder.members as any;
       if (!member?.user_id) continue;
+      if (!isReminderEnabled(reminder.branch_id, "payment_due")) continue;
       const name = member.profiles?.full_name || "Member";
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
@@ -100,32 +123,38 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Membership expiry reminders (7, 3, 1 day before)
-    for (const daysOut of [7, 3, 1]) {
-      const targetDate = daysOut === 7 ? sevenDaysFromNow : daysOut === 3 ? threeDaysFromNow : oneDayFromNow;
-      const { data: expiringMemberships } = await adminClient
-        .from("memberships")
-        .select("id, member_id, end_date, branch_id, members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email)), membership_plans:plan_id (name)")
-        .eq("status", "active").eq("end_date", targetDate);
+    // 3. Membership expiry reminders (configurable days_before per branch)
+    const { data: activeBranches } = await adminClient.from("branches").select("id").eq("is_active", true);
+    for (const branch of activeBranches || []) {
+      if (!isReminderEnabled(branch.id, "membership_expiry")) continue;
+      const daysBeforeArr = getDaysBefore(branch.id, "membership_expiry");
 
-      for (const ms of expiringMemberships || []) {
-        const member = ms.members as any;
-        if (!member?.user_id) continue;
-        const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", member.user_id).eq("category", "membership").ilike("message", `%${daysOut} day%`).gte("created_at", today + "T00:00:00");
-        if ((count || 0) > 0) continue;
-        const planName = (ms.membership_plans as any)?.name || "your plan";
-        notifications.push({
-          user_id: member.user_id, branch_id: ms.branch_id, title: "Membership Expiring Soon",
-          message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now.`,
-          type: "warning", category: "membership", action_url: "/member/plans",
-        });
-        commLogs.push({
-          branch_id: ms.branch_id, type: "notification",
-          recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-          subject: "Membership Expiry Reminder", content: `${planName} expires in ${daysOut} days for ${member.profiles?.full_name}`,
-          status: "sent", member_id: ms.member_id, sent_at: now.toISOString(),
-        });
-        results.membership_expiry++;
+      for (const daysOut of daysBeforeArr) {
+        const targetDate = new Date(now.getTime() + daysOut * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+        const { data: expiringMemberships } = await adminClient
+          .from("memberships")
+          .select("id, member_id, end_date, branch_id, members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email)), membership_plans:plan_id (name)")
+          .eq("status", "active").eq("end_date", targetDate).eq("branch_id", branch.id);
+
+        for (const ms of expiringMemberships || []) {
+          const member = ms.members as any;
+          if (!member?.user_id) continue;
+          const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", member.user_id).eq("category", "membership").ilike("message", `%${daysOut} day%`).gte("created_at", today + "T00:00:00");
+          if ((count || 0) > 0) continue;
+          const planName = (ms.membership_plans as any)?.name || "your plan";
+          notifications.push({
+            user_id: member.user_id, branch_id: ms.branch_id, title: "Membership Expiring Soon",
+            message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now.`,
+            type: "warning", category: "membership", action_url: "/member/plans",
+          });
+          commLogs.push({
+            branch_id: ms.branch_id, type: "notification",
+            recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+            subject: "Membership Expiry Reminder", content: `${planName} expires in ${daysOut} days for ${member.profiles?.full_name}`,
+            status: "sent", member_id: ms.member_id, sent_at: now.toISOString(),
+          });
+          results.membership_expiry++;
+        }
       }
     }
 
@@ -137,6 +166,7 @@ Deno.serve(async (req) => {
     for (const booking of tomorrowClasses || []) {
       const cls = booking.classes as any;
       if (!cls?.scheduled_at || cls.scheduled_at.split("T")[0] !== tomorrow) continue;
+      if (!isReminderEnabled(cls.branch_id, "class_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
       notifications.push({ user_id: member.user_id, branch_id: cls.branch_id, title: "Class Tomorrow", message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`, type: "info", category: "class", action_url: "/member/classes" });
@@ -152,6 +182,7 @@ Deno.serve(async (req) => {
       const pkg = session.member_pt_packages as any;
       const member = pkg?.members;
       if (!member?.user_id) continue;
+      if (!isReminderEnabled(pkg.branch_id, "pt_reminder")) continue;
       notifications.push({ user_id: member.user_id, branch_id: pkg.branch_id, title: "PT Session Tomorrow", message: `Reminder: You have a Personal Training session scheduled for tomorrow.`, type: "info", category: "pt_session", action_url: "/member/pt-sessions" });
       results.pt_reminders++;
     }
@@ -164,16 +195,17 @@ Deno.serve(async (req) => {
     for (const booking of tomorrowBenefits || []) {
       const slot = booking.benefit_slots as any;
       if (!slot || slot.slot_date !== tomorrow) continue;
+      if (!isReminderEnabled(slot.branch_id, "benefit_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
       notifications.push({ user_id: member.user_id, branch_id: slot.branch_id, title: "Benefit Booking Tomorrow", message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`, type: "info", category: "benefit", action_url: "/member/benefits" });
       results.benefit_reminders++;
     }
 
-    // 7. Inactive member alerts — only notify STAFF for Day 21+ members (automated nudges handle earlier stages)
+    // 7. Inactive member alerts — only notify STAFF for Day 21+ members
     try {
-      const { data: branches } = await adminClient.from("branches").select("id").eq("is_active", true);
-      for (const branch of branches || []) {
+      for (const branch of activeBranches || []) {
+        if (!isReminderEnabled(branch.id, "inactive_member")) continue;
         const { data: inactiveMembers } = await adminClient.rpc("get_inactive_members", {
           p_branch_id: branch.id,
           p_days: 21,
@@ -181,18 +213,15 @@ Deno.serve(async (req) => {
         });
 
         for (const member of inactiveMembers || []) {
-          // Check if we already sent this alert today
           const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true })
             .eq("category", "retention").ilike("message", `%${member.member_code}%`).gte("created_at", today + "T00:00:00");
           if ((count || 0) > 0) continue;
 
-          // Check if member has received 3 automated nudges
           const { count: nudgeCount } = await adminClient.from("retention_nudge_logs")
             .select("id", { count: "exact", head: true })
             .eq("member_id", member.member_id)
             .gt("stage_level", 0);
 
-          // Only notify staff — no more generic "We miss you" to members
           const { data: staffUsers } = await adminClient.from("user_roles").select("user_id").in("role", ["owner", "admin", "staff"]);
           for (const staff of staffUsers || []) {
             notifications.push({
@@ -222,6 +251,8 @@ Deno.serve(async (req) => {
     }
 
     const totalProcessed = Object.values(results).reduce((a, b) => a + b, 0);
+
+    console.log(`[send-reminders] Processed ${totalProcessed} reminders:`, JSON.stringify(results));
 
     return new Response(
       JSON.stringify({ success: true, total_processed: totalProcessed, details: results }),
