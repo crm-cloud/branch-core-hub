@@ -5106,6 +5106,50 @@ export type Database = {
           },
         ]
       }
+      reminder_configurations: {
+        Row: {
+          branch_id: string
+          channel: string
+          created_at: string
+          days_before: number[] | null
+          id: string
+          is_enabled: boolean
+          reminder_type: string
+          template_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          channel?: string
+          created_at?: string
+          days_before?: number[] | null
+          id?: string
+          is_enabled?: boolean
+          reminder_type: string
+          template_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          channel?: string
+          created_at?: string
+          days_before?: number[] | null
+          id?: string
+          is_enabled?: boolean
+          reminder_type?: string
+          template_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_configurations_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       retention_nudge_logs: {
         Row: {
           branch_id: string
@@ -6454,6 +6498,20 @@ export type Database = {
         }
         Returns: Json
       }
+      record_payment: {
+        Args: {
+          p_amount: number
+          p_branch_id: string
+          p_income_category_id?: string
+          p_invoice_id: string
+          p_member_id: string
+          p_notes?: string
+          p_payment_method: string
+          p_received_by?: string
+          p_transaction_id?: string
+        }
+        Returns: Json
+      }
       search_members: {
         Args: { p_branch_id?: string; p_limit?: number; search_term: string }
         Returns: {
@@ -6473,6 +6531,10 @@ export type Database = {
       }
       validate_member_checkin: {
         Args: { _branch_id: string; _member_id: string }
+        Returns: Json
+      }
+      void_payment: {
+        Args: { p_payment_id: string; p_reason?: string }
         Returns: Json
       }
     }
