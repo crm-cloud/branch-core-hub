@@ -151,24 +151,20 @@ export default function PaymentsPage() {
 
   const voidPaymentMutation = useMutation({
     mutationFn: async ({ paymentId, reason }: { paymentId: string; reason: string }) => {
-      const { error } = await (supabase.from('payments') as any)
-        .update({
-          status: 'voided',
-          void_reason: reason,
-          voided_by: user?.id,
-          voided_at: new Date().toISOString(),
-        })
-        .eq('id', paymentId);
-      if (error) throw error;
+      await unifiedVoidPayment(paymentId, reason);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
-      toast.success('Payment voided successfully');
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet-balance'] });
+      toast.success('Payment voided — invoice balance reversed');
       setVoidDialogOpen(false);
       setVoidingPayment(null);
       setVoidReason('');
     },
-    onError: () => toast.error('Failed to void payment'),
+    onError: (err: any) => toast.error(err?.message || 'Failed to void payment'),
   });
 
   const filteredPayments = useMemo(() => {
