@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { recordPayment as unifiedRecordPayment, voidPayment as unifiedVoidPayment } from '@/services/billingService';
 import { useState, useMemo } from 'react';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -95,41 +96,42 @@ export default function PaymentsPage() {
 
   const recordPaymentMutation = useMutation({
     mutationFn: async (form: { memberId: string; amount: number; method: string; notes: string; invoiceId?: string }) => {
-      const { error } = await (supabase.from('payments') as any).insert({
-        member_id: form.memberId,
-        branch_id: branchFilter!,
-        amount: form.amount,
-        payment_method: form.method,
-        status: 'completed',
-        payment_date: new Date().toISOString(),
-        invoice_id: form.invoiceId || null,
-      });
-      if (error) throw error;
-
-      // Update invoice amount_paid if linked
-      if (form.invoiceId) {
-        const invoice = memberInvoices.find((i: any) => i.id === form.invoiceId);
-        if (invoice) {
-          const newAmountPaid = (invoice.amount_paid || 0) + form.amount;
-          const newStatus = newAmountPaid >= invoice.total_amount ? 'paid' : 'partial';
-          await supabase.from('invoices').update({
-            amount_paid: newAmountPaid,
-            status: newStatus,
-          }).eq('id', form.invoiceId);
-        }
+      if (!form.invoiceId) {
+        // Standalone payment without invoice — direct insert
+        const { error } = await (supabase.from('payments') as any).insert({
+          member_id: form.memberId,
+          branch_id: branchFilter!,
+          amount: form.amount,
+          payment_method: form.method,
+          status: 'completed',
+          payment_date: new Date().toISOString(),
+        });
+        if (error) throw error;
+        return;
       }
+      // Use unified RPC for invoice-linked payments
+      await unifiedRecordPayment({
+        branchId: branchFilter!,
+        invoiceId: form.invoiceId,
+        memberId: form.memberId,
+        amount: form.amount,
+        paymentMethod: form.method,
+        notes: form.notes || undefined,
+        receivedBy: user?.id,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['member-overdue-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Payment recorded successfully');
       setRecordPaymentOpen(false);
       setPaymentForm({ member_search: '', amount: '', payment_method: 'cash', notes: '' });
       setSelectedMember(null);
       setSelectedInvoice(null);
     },
-    onError: () => toast.error('Failed to record payment'),
+    onError: (err: any) => toast.error(err?.message || 'Failed to record payment'),
   });
 
   const { data: payments = [], isLoading } = useQuery({
@@ -149,24 +151,20 @@ export default function PaymentsPage() {
 
   const voidPaymentMutation = useMutation({
     mutationFn: async ({ paymentId, reason }: { paymentId: string; reason: string }) => {
-      const { error } = await (supabase.from('payments') as any)
-        .update({
-          status: 'voided',
-          void_reason: reason,
-          voided_by: user?.id,
-          voided_at: new Date().toISOString(),
-        })
-        .eq('id', paymentId);
-      if (error) throw error;
+      await unifiedVoidPayment(paymentId, reason);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
-      toast.success('Payment voided successfully');
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['member-wallet-balance'] });
+      toast.success('Payment voided — invoice balance reversed');
       setVoidDialogOpen(false);
       setVoidingPayment(null);
       setVoidReason('');
     },
-    onError: () => toast.error('Failed to void payment'),
+    onError: (err: any) => toast.error(err?.message || 'Failed to void payment'),
   });
 
   const filteredPayments = useMemo(() => {

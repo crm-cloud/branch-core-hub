@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Award, Plus, ArrowUp, ArrowDown, Gift } from 'lucide-react';
+import { Award, ArrowUp, ArrowDown, Gift, Wallet } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWallet } from '@/services/walletService';
 import { format } from 'date-fns';
 import { RedeemPointsDrawer } from './RedeemPointsDrawer';
 
@@ -17,6 +18,12 @@ interface RewardsWalletCardProps {
 
 export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints }: RewardsWalletCardProps) {
   const [redeemOpen, setRedeemOpen] = useState(false);
+
+  const { data: walletData } = useQuery({
+    queryKey: ['member-wallet', memberId],
+    queryFn: () => fetchWallet(memberId),
+    enabled: !!memberId,
+  });
 
   const { data: ledger = [] } = useQuery({
     queryKey: ['rewards-ledger', memberId],
@@ -35,26 +42,49 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
 
   return (
     <>
-      {/* Balance Card */}
-      <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+      {/* Unified Balance Cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
+          <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-primary/10">
-                <Award className="h-6 w-6 text-primary" />
+              <div className="p-2.5 rounded-xl bg-primary/10">
+                <Award className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Reward Points</p>
-                <p className="text-3xl font-bold text-primary">{rewardPoints || 0}</p>
+                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Reward Points</p>
+                <p className="text-2xl font-bold text-primary">{rewardPoints || 0}</p>
               </div>
             </div>
-            <Button size="sm" onClick={() => setRedeemOpen(true)} disabled={(rewardPoints || 0) <= 0}>
-              <Gift className="h-4 w-4 mr-1.5" />
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full mt-3 text-xs"
+              onClick={() => setRedeemOpen(true)}
+              disabled={(rewardPoints || 0) <= 0}
+            >
+              <Gift className="h-3.5 w-3.5 mr-1.5" />
               Redeem
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                <Wallet className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Wallet Balance</p>
+                <p className="text-2xl font-bold text-emerald-600">₹{(walletData?.balance || 0).toLocaleString()}</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-3 text-center">
+              Credited: ₹{(walletData?.total_credited || 0).toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Transaction History */}
       <Card>
@@ -70,9 +100,9 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
               {ledger.map((entry: any) => (
                 <div key={entry.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-full ${entry.points > 0 ? 'bg-green-500/10' : 'bg-destructive/10'}`}>
+                    <div className={`p-1.5 rounded-full ${entry.points > 0 ? 'bg-emerald-500/10' : 'bg-destructive/10'}`}>
                       {entry.points > 0 ? (
-                        <ArrowUp className="h-3 w-3 text-green-600" />
+                        <ArrowUp className="h-3 w-3 text-emerald-600" />
                       ) : (
                         <ArrowDown className="h-3 w-3 text-destructive" />
                       )}
@@ -84,7 +114,7 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
                       </p>
                     </div>
                   </div>
-                  <Badge variant="outline" className={entry.points > 0 ? 'text-green-600 border-green-500/20' : 'text-destructive border-destructive/20'}>
+                  <Badge variant="outline" className={entry.points > 0 ? 'text-emerald-600 border-emerald-500/20' : 'text-destructive border-destructive/20'}>
                     {entry.points > 0 ? '+' : ''}{entry.points}
                   </Badge>
                 </div>

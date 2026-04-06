@@ -7,12 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { CreditCard, IndianRupee, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchWallet, debitWallet } from '@/services/walletService';
+import { fetchWallet } from '@/services/walletService';
+import { recordPayment } from '@/services/billingService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RecordPaymentDrawerProps {
   open: boolean;
@@ -64,70 +65,27 @@ export function RecordPaymentDrawer({
 
   const insufficientWallet = paymentMethod === 'wallet' && walletData && amount > walletData.balance;
 
-  const recordPayment = useMutation({
+  const recordPaymentMutation = useMutation({
     mutationFn: async () => {
-      if (amount <= 0) {
-        throw new Error('Amount must be greater than 0');
-      }
-      if (amount > dueAmount) {
-        throw new Error('Amount cannot exceed due amount');
-      }
+      if (amount <= 0) throw new Error('Amount must be greater than 0');
+      if (amount > dueAmount) throw new Error('Amount cannot exceed due amount');
+      if (!invoice?.id) throw new Error('Invoice is required');
 
-      // If wallet payment, debit the wallet first
-      if (paymentMethod === 'wallet') {
-        if (!effectiveMemberId) throw new Error('Member ID required for wallet payment');
-        if (!walletData || walletData.balance < amount) {
-          throw new Error('Insufficient wallet balance');
-        }
-        await debitWallet(
-          effectiveMemberId,
-          amount,
-          `Payment for invoice ${invoice?.invoice_number || 'N/A'}`,
-          'invoice_payment',
-          invoice?.id,
-          user?.id
-        );
-      }
-
-      // Create payment record
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert({
-          branch_id: branchId,
-          member_id: effectiveMemberId || null,
-          invoice_id: invoice?.id,
-          amount,
-          payment_method: paymentMethod as any,
-          status: 'completed',
-          payment_date: new Date().toISOString(),
-          transaction_id: transactionId || null,
-          notes: notes || null,
-          received_by: user?.id,
-          income_category_id: incomeCategoryId || null,
-        });
-
-      if (paymentError) throw paymentError;
-
-      // Update invoice
-      if (invoice) {
-        const newPaidAmount = (invoice.amount_paid || 0) + amount;
-        const newStatus = newPaidAmount >= invoice.total_amount ? 'paid' : 'partial';
-
-        const { error: invoiceError } = await supabase
-          .from('invoices')
-          .update({
-            amount_paid: newPaidAmount,
-            status: newStatus,
-          })
-          .eq('id', invoice.id);
-
-        if (invoiceError) throw invoiceError;
-      }
-
-      return { amount };
+      // Use unified RPC — handles wallet debit, invoice update, membership activation atomically
+      return recordPayment({
+        branchId,
+        invoiceId: invoice.id,
+        memberId: effectiveMemberId,
+        amount,
+        paymentMethod,
+        transactionId: transactionId || undefined,
+        notes: notes || undefined,
+        receivedBy: user?.id,
+        incomeCategoryId: incomeCategoryId || undefined,
+      });
     },
-    onSuccess: (data) => {
-      toast.success(`Payment of ₹${data.amount.toLocaleString()} recorded`);
+    onSuccess: () => {
+      toast.success(`Payment of ₹${amount.toLocaleString()} recorded`);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-details'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-payments'] });
@@ -135,6 +93,7 @@ export function RecordPaymentDrawer({
       queryClient.invalidateQueries({ queryKey: ['member-payments'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       onOpenChange(false);
       resetForm();
     },
@@ -338,15 +297,15 @@ export function RecordPaymentDrawer({
             Cancel
           </Button>
           <Button 
-            onClick={() => recordPayment.mutate()} 
+            onClick={() => recordPaymentMutation.mutate()} 
             disabled={
               amount <= 0 || 
               amount > dueAmount || 
-              recordPayment.isPending ||
+              recordPaymentMutation.isPending ||
               (paymentMethod === 'wallet' && (!!insufficientWallet || !effectiveMemberId || !walletData))
             }
           >
-            {recordPayment.isPending ? 'Recording...' : 'Record Payment'}
+            {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}
           </Button>
         </SheetFooter>
       </SheetContent>

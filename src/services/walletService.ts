@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Wallet, WalletTransaction, WalletTxnType } from '@/types/membership';
+import { recordPayment } from '@/services/billingService';
 
 export async function fetchWallet(memberId: string) {
   const { data, error } = await supabase
@@ -88,6 +89,10 @@ export async function creditWallet(
   return data as Wallet;
 }
 
+/**
+ * Direct wallet debit (for non-invoice use cases like reward redemption).
+ * For invoice payments, use payWithWallet() instead which goes through the unified RPC.
+ */
 export async function debitWallet(
   memberId: string,
   amount: number,
@@ -139,66 +144,36 @@ export async function debitWallet(
   return data as Wallet;
 }
 
+/**
+ * Pay an invoice using wallet balance.
+ * Delegates to the unified record_payment RPC which handles
+ * wallet validation, debit, payment recording, and invoice update atomically.
+ */
 export async function payWithWallet(
   memberId: string,
   invoiceId: string,
   amount: number,
+  branchId: string,
   createdBy?: string
 ) {
-  // Debit from wallet
-  await debitWallet(
-    memberId,
-    amount,
-    'Payment for invoice',
-    'invoice',
-    invoiceId,
-    createdBy
-  );
-
-  // Record as payment
-  const { data: invoice } = await supabase
-    .from('invoices')
-    .select('branch_id')
-    .eq('id', invoiceId)
-    .single();
-
-  if (!invoice) throw new Error('Invoice not found');
-
-  const { data: payment, error: paymentError } = await supabase
-    .from('payments')
-    .insert({
-      branch_id: invoice.branch_id,
-      invoice_id: invoiceId,
-      member_id: memberId,
-      amount,
-      payment_method: 'wallet' as any,
-      status: 'completed',
-      received_by: createdBy,
-    })
-    .select()
-    .single();
-
-  if (paymentError) throw paymentError;
-
-  // Update invoice
-  const { data: currentInvoice } = await supabase
-    .from('invoices')
-    .select('total_amount, amount_paid')
-    .eq('id', invoiceId)
-    .single();
-
-  if (currentInvoice) {
-    const newAmountPaid = (currentInvoice.amount_paid || 0) + amount;
-    const isPaid = newAmountPaid >= currentInvoice.total_amount;
-
-    await supabase
+  // Get invoice branch_id if not provided
+  let effectiveBranchId = branchId;
+  if (!effectiveBranchId) {
+    const { data: invoice } = await supabase
       .from('invoices')
-      .update({
-        amount_paid: newAmountPaid,
-        status: isPaid ? 'paid' : 'partial',
-      })
-      .eq('id', invoiceId);
+      .select('branch_id')
+      .eq('id', invoiceId)
+      .single();
+    if (!invoice) throw new Error('Invoice not found');
+    effectiveBranchId = invoice.branch_id;
   }
 
-  return payment;
+  return recordPayment({
+    branchId: effectiveBranchId,
+    invoiceId,
+    memberId,
+    amount,
+    paymentMethod: 'wallet',
+    receivedBy: createdBy,
+  });
 }
