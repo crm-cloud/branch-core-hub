@@ -564,9 +564,12 @@ export default function AttendanceDashboard() {
         )}
 
         {activeTab !== 'staff-record' && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
-          <div className="text-center py-6 text-muted-foreground">
-            <Search className="h-8 w-8 mx-auto opacity-30 mb-1" />
-            <p className="text-sm">No members found for "{searchQuery}"</p>
+          <div className="text-center py-8 text-muted-foreground">
+            <div className="h-14 w-14 rounded-full bg-muted/80 flex items-center justify-center mx-auto mb-3">
+              <Search className="h-6 w-6 opacity-40" />
+            </div>
+            <p className="font-medium text-foreground/70">No members found</p>
+            <p className="text-sm mt-1">No results for "{searchQuery}" — try a different name, code, or phone number</p>
           </div>
         )}
 

@@ -422,11 +422,48 @@ export default function PaymentsPage() {
       <AlertDialog open={voidDialogOpen} onOpenChange={setVoidDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Void Payment</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Ban className="h-5 w-5 text-destructive" />
+              Void Payment
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will mark the payment of ₹{voidingPayment?.amount?.toLocaleString()} as voided. This action cannot be undone. The original record will be preserved for audit purposes.
+              This action cannot be undone. The original record will be preserved for audit purposes.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {voidingPayment && (
+            <Card className="border-destructive/20 bg-destructive/5">
+              <CardContent className="pt-4 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount:</span>
+                  <span className="font-semibold">₹{voidingPayment.amount?.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Member:</span>
+                  <span>{voidingPayment.members?.profiles?.full_name || 'Walk-in'}</span>
+                </div>
+                {voidingPayment.invoices?.invoice_number && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Invoice:</span>
+                    <span className="font-mono">{voidingPayment.invoices.invoice_number}</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-1.5 border-t border-destructive/10">
+                  <span className="text-muted-foreground">Impact:</span>
+                  <span className="text-destructive font-medium">
+                    {voidingPayment.invoices?.invoice_number
+                      ? `₹${voidingPayment.amount?.toLocaleString()} reverted on invoice`
+                      : 'Payment marked as voided'}
+                  </span>
+                </div>
+                {voidingPayment.payment_method === 'wallet' && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Wallet:</span>
+                    <span className="text-success font-medium">₹{voidingPayment.amount?.toLocaleString()} refunded</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <div className="space-y-3 py-2">
             <Label>Reason for voiding <span className="text-destructive">*</span></Label>
             <Textarea
