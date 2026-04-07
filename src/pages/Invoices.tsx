@@ -66,18 +66,18 @@ export default function InvoicesPage() {
   const totalCount = invoicesResult?.count;
   const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : null;
 
-  const getInvoiceType = (invoice: any): { label: string; emoji: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
-    if (invoice.pos_sale_id) return { label: 'POS', emoji: '🛒', variant: 'secondary' };
+  const getInvoiceType = (invoice: any): { label: string; icon: typeof FileText; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
+    if (invoice.pos_sale_id) return { label: 'POS', icon: ShoppingCart, variant: 'secondary' };
     const items = invoice.invoice_items || [];
     const firstItem = items[0];
-    if (!firstItem) return { label: 'Manual', emoji: '📝', variant: 'outline' };
+    if (!firstItem) return { label: 'Manual', icon: ReceiptText, variant: 'outline' };
     const refType = firstItem.reference_type || '';
     const desc = (firstItem.description || '').toLowerCase();
-    if (refType === 'membership_refund' || invoice.total_amount < 0) return { label: 'Refund', emoji: '↩️', variant: 'destructive' };
-    if (desc.includes('top-up') || desc.includes('top up') || desc.includes('add-on')) return { label: 'Add-On', emoji: '➕', variant: 'default' };
-    if (refType === 'pt_package' || desc.includes('pt ')) return { label: 'PT', emoji: '🏋️', variant: 'secondary' };
-    if (refType === 'membership') return { label: 'Membership', emoji: '📋', variant: 'outline' };
-    return { label: 'Manual', emoji: '📝', variant: 'outline' };
+    if (refType === 'membership_refund' || invoice.total_amount < 0) return { label: 'Refund', icon: Undo2, variant: 'destructive' };
+    if (desc.includes('top-up') || desc.includes('top up') || desc.includes('add-on')) return { label: 'Add-On', icon: PlusCircle, variant: 'default' };
+    if (refType === 'pt_package' || desc.includes('pt ')) return { label: 'PT', icon: Dumbbell, variant: 'secondary' };
+    if (refType === 'membership') return { label: 'Membership', icon: ClipboardList, variant: 'outline' };
+    return { label: 'Manual', icon: ReceiptText, variant: 'outline' };
   };
 
   // Client-side search filter (search is lightweight on paginated data)
