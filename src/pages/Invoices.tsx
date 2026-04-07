@@ -107,6 +107,28 @@ export default function InvoicesPage() {
     return colors[status] || 'bg-muted text-muted-foreground border-border';
   };
 
+  const exportInvoicesCSV = () => {
+    const headers = ['Invoice #', 'Client', 'Type', 'Total', 'Paid', 'Balance', 'Status', 'Date'];
+    const rows = filteredInvoices.map((inv: any) => {
+      const t = getInvoiceType(inv);
+      return [
+        inv.invoice_number,
+        inv.members?.profiles?.full_name || 'Walk-in',
+        t.label,
+        inv.total_amount,
+        inv.amount_paid || 0,
+        inv.total_amount - (inv.amount_paid || 0),
+        inv.status,
+        format(new Date(inv.created_at), 'dd/MM/yyyy'),
+      ];
+    });
+    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `invoices-${format(new Date(), 'yyyy-MM-dd')}.csv`; a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const getInitials = (name: string | null) => {
     if (!name) return 'W';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
