@@ -362,9 +362,25 @@ export default function InvoicesPage() {
                       })}
                       {filteredInvoices.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No invoices found</p>
+                          <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="h-16 w-16 rounded-full bg-muted/80 flex items-center justify-center">
+                                <FileText className="h-8 w-8 opacity-40" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground/70">No invoices found</p>
+                                <p className="text-sm mt-1">
+                                  {searchTerm || statusFilter !== 'all'
+                                    ? 'Try adjusting your search or filters'
+                                    : 'Create your first invoice to get started'}
+                                </p>
+                              </div>
+                              {!searchTerm && statusFilter === 'all' && (
+                                <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+                                  <Plus className="h-4 w-4 mr-1" /> Create Invoice
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )}
