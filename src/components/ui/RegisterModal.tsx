@@ -164,9 +164,8 @@ const RegisterModal = () => {
           </div>
         ) : (
           <>
-<<<<<<< HEAD
-            <DialogHeader className="p-6 pb-0">
-              <DialogTitle className="text-xl font-black text-foreground">
+            <DialogHeader className="p-5 sm:p-6 pb-0 text-left">
+              <DialogTitle className="text-xl font-black text-foreground leading-tight">
                 {step === 1 ? (
                   <>
                     Join the <span className="text-primary">INCLINE</span> Waitlist
@@ -176,23 +175,13 @@ const RegisterModal = () => {
                     Tell us about <span className="text-primary">You</span>
                   </>
                 )}
-=======
-            <DialogHeader className="p-5 sm:p-6 pb-0 text-left">
-              <DialogTitle className="text-xl font-black text-foreground leading-tight">
-                {step === 1 ? (<>Join the <span className="text-primary">INCLINE</span> Waitlist</>) : (<>Tell us about <span className="text-primary">You</span></>)}
->>>>>>> 42aaa16 (Register Model Alignment)
               </DialogTitle>
               <p className="text-muted-foreground text-sm mt-1">
                 {step === 1 ? "Secure your spot as a founding member." : "Help us personalize your experience."}
               </p>
               {stepIndicator}
             </DialogHeader>
-<<<<<<< HEAD
-
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 pt-2 space-y-4">
-=======
             <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-6 pt-2 space-y-4">
->>>>>>> 42aaa16 (Register Model Alignment)
               {step === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-left-4 duration-200">
                   <div className="space-y-1.5">
@@ -251,49 +240,32 @@ const RegisterModal = () => {
                   {/* Age Range */}
                   <div className="space-y-1.5">
                     <Label className="text-foreground text-sm font-semibold">Age Range *</Label>
-<<<<<<< HEAD
                     <Controller
                       control={control}
                       name="age"
                       render={({ field }) => (
-                        <div className="flex flex-wrap gap-2">
-                          {AGE_RANGES.map((range) => (
-                            <button
-                              key={range}
-                              type="button"
-                              onClick={() => field.onChange(range)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 ${
-                                field.value === range
-                                  ? "bg-primary text-primary-foreground border-primary scale-105"
-                                  : "bg-background text-muted-foreground border-border hover:border-primary/50"
-                              }`}
-                            >
-                              {range}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    />
-                    {errors.age && <p className="text-destructive text-xs">{errors.age.message}</p>}
-                  </div>
-
-                  {/* Area & City */}
-                  <div className="grid grid-cols-2 gap-3">
-=======
-                    <Controller control={control} name="age" render={({ field }) => (
                       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                         {AGE_RANGES.map((range) => (
-                          <button key={range} type="button" onClick={() => field.onChange(range)}
-                            className={`min-h-10 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 ${field.value === range ? 'bg-primary text-primary-foreground border-primary scale-105' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}`}>
+                          <button
+                            key={range}
+                            type="button"
+                            onClick={() => field.onChange(range)}
+                            className={`min-h-10 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 ${
+                              field.value === range
+                                ? "bg-primary text-primary-foreground border-primary scale-105"
+                                : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                            }`}
+                          >
                             {range}
                           </button>
                         ))}
                       </div>
-                    )} />
+                    )}
+                    />
                     {errors.age && <p className="text-destructive text-xs">{errors.age.message}</p>}
                   </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
->>>>>>> 42aaa16 (Register Model Alignment)
                     <div className="space-y-1.5">
                       <Label htmlFor="area" className="text-foreground text-sm font-semibold">
                         Area *
@@ -323,104 +295,86 @@ const RegisterModal = () => {
                   {/* Plan Preference */}
                   <div className="space-y-1.5">
                     <Label className="text-foreground text-sm font-semibold">Membership Plan Interest *</Label>
-<<<<<<< HEAD
                     <Controller
                       control={control}
                       name="plan"
                       render={({ field }) => (
-                        <div className="grid grid-cols-3 gap-2">
-                          {[
-                            { value: "monthly", label: "Monthly", icon: "📅" },
-                            { value: "quarterly", label: "Quarterly", icon: "🗓️" },
-                            { value: "annual", label: "Annual", icon: "🏆" },
-                          ].map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => field.onChange(option.value)}
-                              className={`flex flex-col items-center gap-1 p-3 rounded-xl border text-xs font-semibold transition-all duration-200 ${
-                                field.value === option.value
-                                  ? "bg-primary/10 text-primary border-primary scale-105 shadow-md"
-                                  : "bg-background text-muted-foreground border-border hover:border-primary/50"
-                              }`}
-                            >
-                              <span className="text-lg">{option.icon}</span>
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    />
-=======
-                    <Controller control={control} name="plan" render={({ field }) => (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {[{ value: 'monthly', label: 'Monthly', icon: '📅' }, { value: 'quarterly', label: 'Quarterly', icon: '🗓️' }, { value: 'annual', label: 'Annual', icon: '🏆' }].map((option) => (
-                          <button key={option.value} type="button" onClick={() => field.onChange(option.value)}
-                            className={`flex flex-row sm:flex-col items-center justify-start sm:justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all duration-200 ${field.value === option.value ? 'bg-primary/10 text-primary border-primary scale-105 shadow-md' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}`}>
-                            <span className="text-lg">{option.icon}</span>{option.label}
+                        {[
+                          { value: "monthly", label: "Monthly", icon: "📅" },
+                          { value: "quarterly", label: "Quarterly", icon: "🗓️" },
+                          { value: "annual", label: "Annual", icon: "🏆" },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => field.onChange(option.value)}
+                            className={`flex flex-row sm:flex-col items-center justify-start sm:justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all duration-200 ${
+                              field.value === option.value
+                                ? "bg-primary/10 text-primary border-primary scale-105 shadow-md"
+                                : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                            }`}
+                          >
+                            <span className="text-lg">{option.icon}</span>
+                            {option.label}
                           </button>
                         ))}
                       </div>
-                    )} />
->>>>>>> 42aaa16 (Register Model Alignment)
+                    )}
+                    />
                     {errors.plan && <p className="text-destructive text-xs">{errors.plan.message}</p>}
                   </div>
 
                   {/* Gym Frequency */}
                   <div className="space-y-1.5">
                     <Label className="text-foreground text-sm font-semibold">How often do you work out? *</Label>
-<<<<<<< HEAD
                     <Controller
                       control={control}
                       name="frequency"
                       render={({ field }) => (
-                        <div className="space-y-1.5">
-                          {FREQUENCIES.map((freq) => (
-                            <button
-                              key={freq.value}
-                              type="button"
-                              onClick={() => field.onChange(freq.value)}
-                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all duration-200 ${
-                                field.value === freq.value
-                                  ? "bg-primary/10 border-primary shadow-sm"
-                                  : "bg-background border-border hover:border-primary/50"
+                      <div className="space-y-1.5">
+                        {FREQUENCIES.map((freq) => (
+                          <button
+                            key={freq.value}
+                            type="button"
+                            onClick={() => field.onChange(freq.value)}
+                            className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 px-3 py-2.5 rounded-xl border text-left transition-all duration-200 ${
+                              field.value === freq.value
+                                ? "bg-primary/10 border-primary shadow-sm"
+                                : "bg-background border-border hover:border-primary/50"
+                            }`}
+                          >
+                            <span className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                              <span className="text-sm font-semibold text-foreground">{freq.label}</span>
+                              <span className="text-xs text-muted-foreground">{freq.desc}</span>
+                            </span>
+                            <div
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                                field.value === freq.value ? "border-primary bg-primary" : "border-muted-foreground/30"
                               }`}
                             >
-                              <span className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-foreground">{freq.label}</span>
-                                <span className="text-xs text-muted-foreground">{freq.desc}</span>
-                              </span>
-                              <div
-                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
-                                  field.value === freq.value
-                                    ? "border-primary bg-primary"
-                                    : "border-muted-foreground/30"
-                                }`}
-                              >
-                                {field.value === freq.value && (
-                                  <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                              {field.value === freq.value && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     />
                     {errors.frequency && <p className="text-destructive text-xs">{errors.frequency.message}</p>}
                   </div>
 
-                  <div className="flex gap-3 pt-1">
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
                     <button
                       type="button"
                       onClick={() => setStep(1)}
-                      className="px-4 py-3.5 border border-border text-foreground font-bold text-sm tracking-wider uppercase rounded-xl hover:bg-muted transition-colors flex items-center gap-1"
+                      className="w-full sm:w-auto px-4 py-3.5 border border-border text-foreground font-bold text-sm tracking-wider uppercase rounded-xl hover:bg-muted transition-colors flex items-center justify-center gap-1"
                     >
                       <ChevronLeft className="w-4 h-4" /> Back
                     </button>
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="flex-1 px-6 py-3.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm tracking-wider uppercase rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full px-6 py-3.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm tracking-wider uppercase rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isSubmitting ? (
                         <>
@@ -430,32 +384,6 @@ const RegisterModal = () => {
                       ) : (
                         "Join Waitlist 🚀"
                       )}
-=======
-                    <Controller control={control} name="frequency" render={({ field }) => (
-                      <div className="space-y-1.5">
-                        {FREQUENCIES.map((freq) => (
-                          <button key={freq.value} type="button" onClick={() => field.onChange(freq.value)}
-                            className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 px-3 py-2.5 rounded-xl border text-left transition-all duration-200 ${field.value === freq.value ? 'bg-primary/10 border-primary shadow-sm' : 'bg-background border-border hover:border-primary/50'}`}>
-                            <span className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                              <span className="text-sm font-semibold text-foreground">{freq.label}</span>
-                              <span className="text-xs text-muted-foreground">{freq.desc}</span>
-                            </span>
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${field.value === freq.value ? 'border-primary bg-primary' : 'border-muted-foreground/30'}`}>
-                              {field.value === freq.value && <div className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )} />
-                    {errors.frequency && <p className="text-destructive text-xs">{errors.frequency.message}</p>}
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
-                    <button type="button" onClick={() => setStep(1)} className="w-full sm:w-auto px-4 py-3.5 border border-border text-foreground font-bold text-sm tracking-wider uppercase rounded-xl hover:bg-muted transition-colors flex items-center justify-center gap-1">
-                      <ChevronLeft className="w-4 h-4" /> Back
-                    </button>
-                    <button type="submit" disabled={isSubmitting} className="w-full px-6 py-3.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm tracking-wider uppercase rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                      {isSubmitting ? (<><Loader2 className="w-4 h-4 animate-spin" />Submitting...</>) : 'Join Waitlist 🚀'}
->>>>>>> 42aaa16 (Register Model Alignment)
                     </button>
                   </div>
 
