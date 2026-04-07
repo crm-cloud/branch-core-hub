@@ -391,7 +391,26 @@ export default function PaymentsPage() {
                       </TableRow>
                     );
                   })}
-                  {filteredPayments.length === 0 && (<TableRow><TableCell colSpan={isAdminOrOwner ? 7 : 6} className="text-center py-8 text-muted-foreground">{hasActiveFilters ? 'No payments match your filters' : 'No payments found'}</TableCell></TableRow>)}
+                  {filteredPayments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={isAdminOrOwner ? 7 : 6} className="text-center py-16 text-muted-foreground">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="h-16 w-16 rounded-full bg-muted/80 flex items-center justify-center">
+                            <CreditCard className="h-8 w-8 opacity-40" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground/70">{hasActiveFilters ? 'No payments match your filters' : 'No payments recorded yet'}</p>
+                            <p className="text-sm mt-1">{hasActiveFilters ? 'Try adjusting your search or filter criteria' : 'Record your first payment to get started'}</p>
+                          </div>
+                          {hasActiveFilters && (
+                            <Button variant="outline" size="sm" onClick={clearFilters} className="mt-2">
+                              <X className="h-4 w-4 mr-1" /> Clear Filters
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             )}
