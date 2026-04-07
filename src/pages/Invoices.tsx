@@ -291,9 +291,11 @@ export default function InvoicesPage() {
                             <TableCell>
                               {(() => {
                                 const t = getInvoiceType(invoice);
+                                const Icon = t.icon;
                                 return (
-                                  <Badge variant={t.variant}>
-                                    {t.emoji} {t.label}
+                                  <Badge variant={t.variant} className="gap-1">
+                                    <Icon className="h-3 w-3" />
+                                    {t.label}
                                   </Badge>
                                 );
                               })()}
