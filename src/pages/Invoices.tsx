@@ -143,10 +143,16 @@ export default function InvoicesPage() {
             <h1 className="text-3xl font-bold text-foreground">Invoices</h1>
             <p className="text-muted-foreground mt-1">Manage and track all invoices</p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="bg-accent hover:bg-accent/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Invoice
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportInvoicesCSV} className="rounded-xl">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="bg-accent hover:bg-accent/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Invoice
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
