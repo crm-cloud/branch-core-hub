@@ -362,7 +362,7 @@ export default function PaymentsPage() {
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader><CardTitle>{hasActiveFilters ? `Filtered Payments (${filteredPayments.length})` : `Recent Payments (${payments.length})`}</CardTitle></CardHeader>
           <CardContent>
-            {isLoading ? (<div className="flex items-center justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>) : (
+            {isLoading ? (<TableSkeleton rows={8} columns={isAdminOrOwner ? 7 : 6} />) : (
               <Table>
                 <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Amount</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Invoice</TableHead><TableHead>Date</TableHead>{isAdminOrOwner && <TableHead>Actions</TableHead>}</TableRow></TableHeader>
                 <TableBody>
