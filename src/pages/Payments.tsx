@@ -1,4 +1,5 @@
 import { AppLayout } from '@/components/layout/AppLayout';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -361,7 +362,7 @@ export default function PaymentsPage() {
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader><CardTitle>{hasActiveFilters ? `Filtered Payments (${filteredPayments.length})` : `Recent Payments (${payments.length})`}</CardTitle></CardHeader>
           <CardContent>
-            {isLoading ? (<div className="flex items-center justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>) : (
+            {isLoading ? (<TableSkeleton rows={8} columns={isAdminOrOwner ? 7 : 6} />) : (
               <Table>
                 <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Amount</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Invoice</TableHead><TableHead>Date</TableHead>{isAdminOrOwner && <TableHead>Actions</TableHead>}</TableRow></TableHeader>
                 <TableBody>
@@ -390,7 +391,26 @@ export default function PaymentsPage() {
                       </TableRow>
                     );
                   })}
-                  {filteredPayments.length === 0 && (<TableRow><TableCell colSpan={isAdminOrOwner ? 7 : 6} className="text-center py-8 text-muted-foreground">{hasActiveFilters ? 'No payments match your filters' : 'No payments found'}</TableCell></TableRow>)}
+                  {filteredPayments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={isAdminOrOwner ? 7 : 6} className="text-center py-16 text-muted-foreground">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="h-16 w-16 rounded-full bg-muted/80 flex items-center justify-center">
+                            <CreditCard className="h-8 w-8 opacity-40" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground/70">{hasActiveFilters ? 'No payments match your filters' : 'No payments recorded yet'}</p>
+                            <p className="text-sm mt-1">{hasActiveFilters ? 'Try adjusting your search or filter criteria' : 'Record your first payment to get started'}</p>
+                          </div>
+                          {hasActiveFilters && (
+                            <Button variant="outline" size="sm" onClick={clearFilters} className="mt-2">
+                              <X className="h-4 w-4 mr-1" /> Clear Filters
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             )}
@@ -402,11 +422,48 @@ export default function PaymentsPage() {
       <AlertDialog open={voidDialogOpen} onOpenChange={setVoidDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Void Payment</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Ban className="h-5 w-5 text-destructive" />
+              Void Payment
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will mark the payment of ₹{voidingPayment?.amount?.toLocaleString()} as voided. This action cannot be undone. The original record will be preserved for audit purposes.
+              This action cannot be undone. The original record will be preserved for audit purposes.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {voidingPayment && (
+            <Card className="border-destructive/20 bg-destructive/5">
+              <CardContent className="pt-4 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount:</span>
+                  <span className="font-semibold">₹{voidingPayment.amount?.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Member:</span>
+                  <span>{voidingPayment.members?.profiles?.full_name || 'Walk-in'}</span>
+                </div>
+                {voidingPayment.invoices?.invoice_number && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Invoice:</span>
+                    <span className="font-mono">{voidingPayment.invoices.invoice_number}</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-1.5 border-t border-destructive/10">
+                  <span className="text-muted-foreground">Impact:</span>
+                  <span className="text-destructive font-medium">
+                    {voidingPayment.invoices?.invoice_number
+                      ? `₹${voidingPayment.amount?.toLocaleString()} reverted on invoice`
+                      : 'Payment marked as voided'}
+                  </span>
+                </div>
+                {voidingPayment.payment_method === 'wallet' && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Wallet:</span>
+                    <span className="text-success font-medium">₹{voidingPayment.amount?.toLocaleString()} refunded</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <div className="space-y-3 py-2">
             <Label>Reason for voiding <span className="text-destructive">*</span></Label>
             <Textarea

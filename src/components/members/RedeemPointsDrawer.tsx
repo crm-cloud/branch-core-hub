@@ -24,6 +24,7 @@ const REDEEM_OPTIONS = [
   { label: '1 Free Freeze Month', points: 500, icon: Snowflake, type: 'freeze_month' },
   { label: 'Merchandise Credit ₹200', points: 200, icon: ShoppingBag, type: 'merchandise' },
   { label: 'Free PT Session', points: 300, icon: Gift, type: 'pt_session' },
+  { label: 'Wallet Credit ₹100', points: 100, icon: Award, type: 'wallet_credit' },
 ];
 
 export function RedeemPointsDrawer({ open, onOpenChange, memberId, memberName, branchId, currentPoints }: RedeemPointsDrawerProps) {

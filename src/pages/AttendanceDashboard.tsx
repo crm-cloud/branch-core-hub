@@ -448,11 +448,16 @@ export default function AttendanceDashboard() {
 
         {/* Flash Banner */}
         {flash && (
-          <div className={`flex items-center gap-4 p-4 rounded-xl border-2 animate-in slide-in-from-top-2 duration-300 ${flash.type === 'success' ? 'bg-success/10 border-success/40 text-success' : 'bg-destructive/10 border-destructive/40 text-destructive'}`}>
-            {flash.type === 'success' ? <CheckCircle className="h-8 w-8 flex-shrink-0" /> : <XCircle className="h-8 w-8 flex-shrink-0" />}
-            {flash.avatar && <Avatar className="h-10 w-10"><AvatarImage src={flash.avatar} /><AvatarFallback>{flash.name.charAt(0)}</AvatarFallback></Avatar>}
+          <div className={`flex items-center gap-4 p-5 rounded-xl border-2 animate-in slide-in-from-top-2 duration-300 ${flash.type === 'success' ? 'bg-success/10 border-success/40 text-success' : 'bg-destructive/10 border-destructive/40 text-destructive'}`}>
+            {flash.type === 'success' ? <CheckCircle className="h-10 w-10 flex-shrink-0" /> : <XCircle className="h-10 w-10 flex-shrink-0" />}
+            {flash.avatar && (
+              <Avatar className="h-14 w-14 ring-2 ring-success/30">
+                <AvatarImage src={flash.avatar} />
+                <AvatarFallback className="text-lg font-bold">{flash.name.charAt(0)}</AvatarFallback>
+              </Avatar>
+            )}
             <div>
-              <p className="font-bold text-lg">{flash.name}</p>
+              <p className="font-bold text-xl">{flash.name}</p>
               <p className="text-sm opacity-80">{flash.message}</p>
             </div>
           </div>
@@ -559,9 +564,12 @@ export default function AttendanceDashboard() {
         )}
 
         {activeTab !== 'staff-record' && searchQuery.length >= 3 && searchResults.length === 0 && !isSearching && (
-          <div className="text-center py-6 text-muted-foreground">
-            <Search className="h-8 w-8 mx-auto opacity-30 mb-1" />
-            <p className="text-sm">No members found for "{searchQuery}"</p>
+          <div className="text-center py-8 text-muted-foreground">
+            <div className="h-14 w-14 rounded-full bg-muted/80 flex items-center justify-center mx-auto mb-3">
+              <Search className="h-6 w-6 opacity-40" />
+            </div>
+            <p className="font-medium text-foreground/70">No members found</p>
+            <p className="text-sm mt-1">No results for "{searchQuery}" — try a different name, code, or phone number</p>
           </div>
         )}
 

@@ -14,11 +14,12 @@ import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDraw
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ShoppingCart, ClipboardList, Dumbbell, PlusCircle, ReceiptText, Undo2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { format } from 'date-fns';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -65,18 +66,18 @@ export default function InvoicesPage() {
   const totalCount = invoicesResult?.count;
   const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : null;
 
-  const getInvoiceType = (invoice: any): { label: string; emoji: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
-    if (invoice.pos_sale_id) return { label: 'POS', emoji: '🛒', variant: 'secondary' };
+  const getInvoiceType = (invoice: any): { label: string; icon: typeof FileText; variant: 'default' | 'secondary' | 'outline' | 'destructive' } => {
+    if (invoice.pos_sale_id) return { label: 'POS', icon: ShoppingCart, variant: 'secondary' };
     const items = invoice.invoice_items || [];
     const firstItem = items[0];
-    if (!firstItem) return { label: 'Manual', emoji: '📝', variant: 'outline' };
+    if (!firstItem) return { label: 'Manual', icon: ReceiptText, variant: 'outline' };
     const refType = firstItem.reference_type || '';
     const desc = (firstItem.description || '').toLowerCase();
-    if (refType === 'membership_refund' || invoice.total_amount < 0) return { label: 'Refund', emoji: '↩️', variant: 'destructive' };
-    if (desc.includes('top-up') || desc.includes('top up') || desc.includes('add-on')) return { label: 'Add-On', emoji: '➕', variant: 'default' };
-    if (refType === 'pt_package' || desc.includes('pt ')) return { label: 'PT', emoji: '🏋️', variant: 'secondary' };
-    if (refType === 'membership') return { label: 'Membership', emoji: '📋', variant: 'outline' };
-    return { label: 'Manual', emoji: '📝', variant: 'outline' };
+    if (refType === 'membership_refund' || invoice.total_amount < 0) return { label: 'Refund', icon: Undo2, variant: 'destructive' };
+    if (desc.includes('top-up') || desc.includes('top up') || desc.includes('add-on')) return { label: 'Add-On', icon: PlusCircle, variant: 'default' };
+    if (refType === 'pt_package' || desc.includes('pt ')) return { label: 'PT', icon: Dumbbell, variant: 'secondary' };
+    if (refType === 'membership') return { label: 'Membership', icon: ClipboardList, variant: 'outline' };
+    return { label: 'Manual', icon: ReceiptText, variant: 'outline' };
   };
 
   // Client-side search filter (search is lightweight on paginated data)
@@ -106,6 +107,28 @@ export default function InvoicesPage() {
     return colors[status] || 'bg-muted text-muted-foreground border-border';
   };
 
+  const exportInvoicesCSV = () => {
+    const headers = ['Invoice #', 'Client', 'Type', 'Total', 'Paid', 'Balance', 'Status', 'Date'];
+    const rows = filteredInvoices.map((inv: any) => {
+      const t = getInvoiceType(inv);
+      return [
+        inv.invoice_number,
+        inv.members?.profiles?.full_name || 'Walk-in',
+        t.label,
+        inv.total_amount,
+        inv.amount_paid || 0,
+        inv.total_amount - (inv.amount_paid || 0),
+        inv.status,
+        format(new Date(inv.created_at), 'dd/MM/yyyy'),
+      ];
+    });
+    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `invoices-${format(new Date(), 'yyyy-MM-dd')}.csv`; a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const getInitials = (name: string | null) => {
     if (!name) return 'W';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -120,10 +143,16 @@ export default function InvoicesPage() {
             <h1 className="text-3xl font-bold text-foreground">Invoices</h1>
             <p className="text-muted-foreground mt-1">Manage and track all invoices</p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="bg-accent hover:bg-accent/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Invoice
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportInvoicesCSV} className="rounded-xl">
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="bg-accent hover:bg-accent/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Invoice
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -268,9 +297,11 @@ export default function InvoicesPage() {
                             <TableCell>
                               {(() => {
                                 const t = getInvoiceType(invoice);
+                                const Icon = t.icon;
                                 return (
-                                  <Badge variant={t.variant}>
-                                    {t.emoji} {t.label}
+                                  <Badge variant={t.variant} className="gap-1">
+                                    <Icon className="h-3 w-3" />
+                                    {t.label}
                                   </Badge>
                                 );
                               })()}
@@ -331,9 +362,25 @@ export default function InvoicesPage() {
                       })}
                       {filteredInvoices.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                            <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No invoices found</p>
+                          <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="h-16 w-16 rounded-full bg-muted/80 flex items-center justify-center">
+                                <FileText className="h-8 w-8 opacity-40" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground/70">No invoices found</p>
+                                <p className="text-sm mt-1">
+                                  {searchTerm || statusFilter !== 'all'
+                                    ? 'Try adjusting your search or filters'
+                                    : 'Create your first invoice to get started'}
+                                </p>
+                              </div>
+                              {!searchTerm && statusFilter === 'all' && (
+                                <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="mt-2">
+                                  <Plus className="h-4 w-4 mr-1" /> Create Invoice
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )}
