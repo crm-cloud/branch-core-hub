@@ -448,11 +448,16 @@ export default function AttendanceDashboard() {
 
         {/* Flash Banner */}
         {flash && (
-          <div className={`flex items-center gap-4 p-4 rounded-xl border-2 animate-in slide-in-from-top-2 duration-300 ${flash.type === 'success' ? 'bg-success/10 border-success/40 text-success' : 'bg-destructive/10 border-destructive/40 text-destructive'}`}>
-            {flash.type === 'success' ? <CheckCircle className="h-8 w-8 flex-shrink-0" /> : <XCircle className="h-8 w-8 flex-shrink-0" />}
-            {flash.avatar && <Avatar className="h-10 w-10"><AvatarImage src={flash.avatar} /><AvatarFallback>{flash.name.charAt(0)}</AvatarFallback></Avatar>}
+          <div className={`flex items-center gap-4 p-5 rounded-xl border-2 animate-in slide-in-from-top-2 duration-300 ${flash.type === 'success' ? 'bg-success/10 border-success/40 text-success' : 'bg-destructive/10 border-destructive/40 text-destructive'}`}>
+            {flash.type === 'success' ? <CheckCircle className="h-10 w-10 flex-shrink-0" /> : <XCircle className="h-10 w-10 flex-shrink-0" />}
+            {flash.avatar && (
+              <Avatar className="h-14 w-14 ring-2 ring-success/30">
+                <AvatarImage src={flash.avatar} />
+                <AvatarFallback className="text-lg font-bold">{flash.name.charAt(0)}</AvatarFallback>
+              </Avatar>
+            )}
             <div>
-              <p className="font-bold text-lg">{flash.name}</p>
+              <p className="font-bold text-xl">{flash.name}</p>
               <p className="text-sm opacity-80">{flash.message}</p>
             </div>
           </div>
