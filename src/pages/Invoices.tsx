@@ -14,11 +14,12 @@ import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDraw
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ShoppingCart, ClipboardList, Dumbbell, PlusCircle, ReceiptText, Undo2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { format } from 'date-fns';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
