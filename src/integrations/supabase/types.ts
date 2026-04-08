@@ -2839,6 +2839,65 @@ export type Database = {
           },
         ]
       }
+      lead_notification_rules: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          id: string
+          lead_welcome_sms: string
+          lead_welcome_whatsapp: string
+          sms_to_admins: boolean
+          sms_to_lead: boolean
+          sms_to_managers: boolean
+          team_alert_sms: string
+          team_alert_whatsapp: string
+          updated_at: string
+          whatsapp_to_admins: boolean
+          whatsapp_to_lead: boolean
+          whatsapp_to_managers: boolean
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          lead_welcome_sms?: string
+          lead_welcome_whatsapp?: string
+          sms_to_admins?: boolean
+          sms_to_lead?: boolean
+          sms_to_managers?: boolean
+          team_alert_sms?: string
+          team_alert_whatsapp?: string
+          updated_at?: string
+          whatsapp_to_admins?: boolean
+          whatsapp_to_lead?: boolean
+          whatsapp_to_managers?: boolean
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          lead_welcome_sms?: string
+          lead_welcome_whatsapp?: string
+          sms_to_admins?: boolean
+          sms_to_lead?: boolean
+          sms_to_managers?: boolean
+          team_alert_sms?: string
+          team_alert_whatsapp?: string
+          updated_at?: string
+          whatsapp_to_admins?: boolean
+          whatsapp_to_lead?: boolean
+          whatsapp_to_managers?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notification_rules_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: true
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
