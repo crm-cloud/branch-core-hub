@@ -52,13 +52,16 @@ export function AddLeadDrawer({ open, onOpenChange, defaultBranchId }: AddLeadDr
       status: 'new',
       score: lead.temperature === 'hot' ? 70 : lead.temperature === 'warm' ? 40 : 10,
     }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
       onOpenChange(false);
-      if (newLead.phone && defaultBranchId) {
-        import('@/components/communication/WhatsAppTemplateDrawer').then(({ autoSendWhatsAppTemplate }) => {
-          autoSendWhatsAppTemplate('lead_welcome', newLead.phone, newLead.full_name, defaultBranchId);
+      // Fire-and-forget: trigger unified lead notifications via edge function
+      if (data?.id && defaultBranchId) {
+        import('@/integrations/supabase/client').then(({ supabase }) => {
+          supabase.functions.invoke('notify-lead-created', {
+            body: { lead_id: data.id, branch_id: defaultBranchId },
+          }).catch(e => console.error('Lead notification failed:', e));
         });
       }
       setNewLead({ full_name: '', phone: '', email: '', source: 'walk_in', notes: '', temperature: 'warm', goals: '', budget: '', preferred_contact_channel: 'phone', utm_source: '', utm_medium: '', utm_campaign: '' });
