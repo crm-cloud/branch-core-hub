@@ -98,6 +98,21 @@ Deno.serve(async (req) => {
 
     console.log('Lead captured:', lead.id, 'source:', source, 'branch:', branchId);
 
+    // Fire-and-forget: trigger lead notifications via unified dispatcher
+    try {
+      const notifyUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-lead-created`;
+      fetch(notifyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({ lead_id: lead.id, branch_id: branchId }),
+      }).catch(e => console.error('Lead notification dispatch failed:', e));
+    } catch (e) {
+      console.error('Lead notification setup error:', e);
+    }
+
     return new Response(JSON.stringify({ success: true, message: 'Thank you! We will contact you soon.' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('Capture lead error:', error);
