@@ -53,7 +53,7 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-0 h-[100dvh]">
+    <div className="fixed inset-0 z-0" style={{ height: '100dvh' }}>
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
         dpr={[1, 2]}

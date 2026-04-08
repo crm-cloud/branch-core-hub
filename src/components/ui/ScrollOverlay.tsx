@@ -11,7 +11,7 @@ const ScrollOverlay = () => {
       </div>
 
       {/* Section 1: Hero */}
-      <section className="h-screen flex items-center relative px-4">
+      <section className="h-[100dvh] flex items-center relative px-4">
         <div className="w-full max-w-7xl mx-auto flex justify-end">
           <div className="max-w-md text-right mr-8 md:mr-32">
             <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-foreground leading-tight mb-6 tracking-tight">
@@ -34,7 +34,7 @@ const ScrollOverlay = () => {
       </section>
 
       {/* Section 2: Strength Arsenal */}
-      <section className="h-screen flex items-center px-4">
+      <section className="h-[100dvh] flex items-center px-4">
         <div className="w-full max-w-7xl mx-auto flex justify-start">
           <div className="glass p-8 md:p-12 rounded-3xl max-w-md fade-in-up shadow-2xl border border-border/50 ml-4 md:ml-16">
             <div className="flex items-center gap-3 mb-4">
@@ -73,7 +73,7 @@ const ScrollOverlay = () => {
       </section>
 
       {/* Section 3: Recovery */}
-      <section className="h-screen flex items-center px-4">
+      <section className="h-[100dvh] flex items-center px-4">
         <div className="w-full max-w-7xl mx-auto flex justify-end">
           <div className="glass p-8 md:p-12 rounded-3xl max-w-md fade-in-up shadow-2xl border border-border/50 mr-4 md:mr-16">
             <div className="flex items-center gap-3 mb-4">
@@ -123,7 +123,7 @@ const ScrollOverlay = () => {
       </section>
 
       {/* Section 4: Lifestyle */}
-      <section className="h-screen flex items-center px-4">
+      <section className="h-[100dvh] flex items-center px-4">
         <div className="w-full max-w-7xl mx-auto flex justify-start">
           <div className="glass p-8 md:p-12 rounded-3xl max-w-md fade-in-up shadow-2xl border border-border/50 ml-4 md:ml-16">
             <div className="flex items-center gap-3 mb-4">
@@ -165,7 +165,7 @@ const ScrollOverlay = () => {
       </section>
 
       {/* Section 5: Waitlist CTA */}
-      <section className="h-screen flex flex-col justify-between relative px-4 pt-20 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+      <section className="h-[100dvh] flex flex-col justify-between relative px-4 pt-20 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto">
         <div className="flex-1 flex items-center">
           <div className="w-full max-w-7xl mx-auto flex justify-end">
             <div className="glass-strong p-8 md:p-12 rounded-3xl max-w-sm shadow-2xl border border-primary/20 mr-4 md:mr-16">
