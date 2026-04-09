@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getProviderSchema, getProviderDisplayName, getWebhookInfoForProvider, getDefaultConfigForProvider, type ProviderFieldDef } from '@/config/providerSchemas';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -65,66 +66,7 @@ const SMS_PROVIDERS = [
   { id: 'custom', name: 'Custom API', description: 'Your own SMS API' },
 ];
 
-const ROUNDSMS_DEFAULT_CONFIG: Record<string, string> = {
-  api_base_url: 'http://voice.roundsms.co/api',
-  send_endpoint: '/sendmsg.php',
-  schedule_endpoint: '/schedulemsg.php',
-  balance_endpoint: '/checkbalance.php',
-  senderids_endpoint: '/getsenderids.php',
-  addsenderid_endpoint: '/addsenderid.php',
-  dlr_endpoint: '/recdlr.php',
-  priority: 'ndnd',
-  stype: 'normal',
-};
-
-const ROUNDSMS_FIELD_LABELS: Record<string, string> = {
-  api_base_url: 'API Base URL',
-  send_endpoint: 'Single / Multiple SMS Endpoint',
-  schedule_endpoint: 'Schedule SMS Endpoint',
-  balance_endpoint: 'Check Balance Endpoint',
-  senderids_endpoint: 'Get Sender IDs Endpoint',
-  addsenderid_endpoint: 'Add Sender ID Endpoint',
-  dlr_endpoint: 'Delivery Report Endpoint',
-  sender_id: 'Sender ID',
-  priority: 'Priority',
-  stype: 'SMS Type',
-  username: 'Username (user)',
-  password: 'Password (pass)',
-};
-
-const getFieldLabel = (field: string, provider: string) => {
-  if (provider === 'roundsms') {
-    return ROUNDSMS_FIELD_LABELS[field] || field.replace(/_/g, ' ');
-  }
-  return field.replace(/_/g, ' ');
-};
-
-const getFieldPlaceholder = (field: string, provider: string) => {
-  if (provider === 'roundsms') {
-    switch (field) {
-      case 'sender_id':
-        return 'e.g. GYMBLR';
-      case 'priority':
-        return 'ndnd or dnd';
-      case 'stype':
-        return 'normal, flash, or unicode';
-      case 'username':
-        return 'Your RoundSMS user value';
-      case 'password':
-        return 'Your RoundSMS pass value';
-      default:
-        return `Enter ${getFieldLabel(field, provider)}`;
-    }
-  }
-  return `Enter ${field.replace(/_/g, ' ')}`;
-};
-
-const getDefaultConfigForProvider = (type: IntegrationType, provider: string): Record<string, string> => {
-  if (type === 'sms' && provider === 'roundsms') {
-    return ROUNDSMS_DEFAULT_CONFIG;
-  }
-  return {};
-};
+// RoundSMS defaults and labels now live in providerSchemas.ts
 
 const EMAIL_PROVIDERS = [
   { id: 'smtp', name: 'Custom SMTP', description: 'Use your own SMTP server' },
@@ -793,83 +735,70 @@ function IntegrationConfigSheet({
     },
   });
 
-  const getConfigFields = () => {
-    if (type === 'payment_gateway') {
-      return {
-        config: ['webhook_url'],
-        credentials: ['key_id', 'key_secret', 'merchant_id'],
-      };
-    }
-    if (type === 'sms') {
-      return {
-        config: ['sender_id', 'dlt_entity_id', 'dlt_template_id', 'api_url'],
-        credentials: ['api_key', 'auth_token'],
-      };
-    }
-    if (type === 'email') {
-      if (provider === 'smtp') {
-        return {
-          config: ['host', 'port', 'from_email', 'from_name'],
-          credentials: ['username', 'password'],
-        };
-      }
-      return {
-        config: ['from_email', 'from_name'],
-        credentials: ['api_key'],
-      };
-    }
-    if (type === 'whatsapp') {
-      switch (provider) {
-        case 'meta_cloud':
-          return {
-            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-            credentials: ['access_token'],
-          };
-        case 'wati':
-          return {
-            config: ['api_endpoint_url', 'webhook_verify_token'],
-            credentials: ['api_token'],
-          };
-        case 'gupshup':
-          return {
-            config: ['app_name', 'source_phone_number'],
-            credentials: ['api_key'],
-          };
-        case 'interakt':
-          return {
-            config: [],
-            credentials: ['api_key'],
-          };
-        case 'aisensy':
-          return {
-            config: [],
-            credentials: ['api_key'],
-          };
-        default:
-          return {
-            config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-            credentials: ['access_token', 'api_key'],
-          };
-      }
-    }
-    if (type === 'google_business') {
-      return {
-        config: ['account_id', 'location_id', 'auto_sync_approved'],
-        credentials: ['api_key', 'client_id', 'client_secret'],
-      };
-    }
-    return { config: [], credentials: [] };
-  };
+  const schema = getProviderSchema(type, provider);
+  const configFields = schema.filter(f => f.section === 'config');
+  const credentialFields = schema.filter(f => f.section === 'credentials');
+  const webhookInfo = getWebhookInfoForProvider(type, provider);
+  const displayName = getProviderDisplayName(type, provider);
 
-  const fields = getConfigFields();
+  const renderField = (field: ProviderFieldDef, values: Record<string, string>, setter: (v: Record<string, string>) => void) => {
+    if (field.type === 'select' && field.options) {
+      return (
+        <div key={field.key} className="space-y-2">
+          <Label>{field.label}</Label>
+          <Select
+            value={values[field.key] || field.options[0]?.value || ''}
+            onValueChange={(v) => setter({ ...values, [field.key]: v })}
+          >
+            <SelectTrigger><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+            <SelectContent>
+              {field.options.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+    }
+
+    // Special: webhook_verify_token gets Generate & Copy button
+    if (field.key === 'webhook_verify_token') {
+      return (
+        <div key={field.key} className="space-y-2">
+          <Label>{field.label}</Label>
+          <div className="flex gap-2">
+            <Input
+              className="flex-1"
+              value={values[field.key] || ''}
+              onChange={(e) => setter({ ...values, [field.key]: e.target.value })}
+              placeholder={field.placeholder}
+            />
+            <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={handleGenerateVerifyToken}>
+              <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.key} className="space-y-2">
+        <Label>{field.label}</Label>
+        <Input
+          type={field.type === 'password' ? 'password' : 'text'}
+          value={values[field.key] || ''}
+          onChange={(e) => setter({ ...values, [field.key]: e.target.value })}
+          placeholder={field.placeholder}
+        />
+      </div>
+    );
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="capitalize">
-            Configure {provider.replace('_', ' ')}
-          </SheetTitle>
+          <SheetTitle>Configure {displayName}</SheetTitle>
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
@@ -889,104 +818,61 @@ function IntegrationConfigSheet({
             <Switch checked={isActive} onCheckedChange={setIsActive} />
           </div>
 
-          {fields.config.length > 0 && (
+          {/* Webhook URL box */}
+          {webhookInfo && (
+            <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+              <div className="flex items-center gap-2">
+                <Webhook className="h-4 w-4 text-primary" />
+                <h4 className="font-semibold text-sm">{webhookInfo.label}</h4>
+              </div>
+              {webhookInfo.description && (
+                <p className="text-xs text-muted-foreground">{webhookInfo.description}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                  {webhookInfo.url}
+                </code>
+                <Button variant="outline" size="sm" onClick={() => {
+                  navigator.clipboard.writeText(webhookInfo.url);
+                  toast.success(`${webhookInfo.label} copied!`);
+                }}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* RoundSMS hint */}
+          {type === 'sms' && provider === 'roundsms' && (
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <p className="text-xs text-muted-foreground">
+                Use mobile numbers without country code (no 91). Allowed values: <strong>priority</strong> = ndnd/dnd, <strong>stype</strong> = normal/flash/unicode.
+              </p>
+            </div>
+          )}
+
+          {configFields.length > 0 && (
             <div className="space-y-4">
               <h4 className="font-semibold">Configuration</h4>
-              {isRoundSms && (
-                <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                  <p className="text-xs text-muted-foreground">
-                    Use mobile numbers without country code (no 91). Allowed values: <strong>priority</strong> = ndnd/dnd, <strong>stype</strong> = normal/flash/unicode.
-                  </p>
-                </div>
-              )}
-              {fields.config.map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label className="capitalize">{getFieldLabel(field, provider)}</Label>
-                  {field === 'webhook_verify_token' ? (
-                    <div className="flex gap-2">
-                      <Input
-                        className="flex-1"
-                        value={config[field] || ''}
-                        onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
-                        placeholder={getFieldPlaceholder(field, provider)}
-                      />
-                      <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={handleGenerateVerifyToken}>
-                        <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
-                      </Button>
-                    </div>
-                  ) : field === 'priority' && isRoundSms ? (
-                    <Select
-                      value={config[field] || 'ndnd'}
-                      onValueChange={(value) => setConfig({ ...config, [field]: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ndnd">ndnd</SelectItem>
-                        <SelectItem value="dnd">dnd</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : field === 'stype' && isRoundSms ? (
-                    <Select
-                      value={config[field] || 'normal'}
-                      onValueChange={(value) => setConfig({ ...config, [field]: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select SMS type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="normal">normal</SelectItem>
-                        <SelectItem value="flash">flash</SelectItem>
-                        <SelectItem value="unicode">unicode</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      value={config[field] || ''}
-                      onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
-                      placeholder={getFieldPlaceholder(field, provider)}
-                    />
-                  )}
-                </div>
-              ))}
+              {configFields.map(f => renderField(f, config, setConfig))}
             </div>
           )}
 
-          {fields.credentials.length > 0 && (
+          {credentialFields.length > 0 && (
             <div className="space-y-4">
               <h4 className="font-semibold">Credentials</h4>
-              {fields.credentials.map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label className="capitalize">{getFieldLabel(field, provider)}</Label>
-                  {field === 'api_key' ? (
-                    <div className="flex gap-2">
-                      <Input
-                        className="flex-1"
-                        type="password"
-                        value={credentials[field] || ''}
-                        onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
-                        placeholder={getFieldPlaceholder(field, provider)}
-                      />
-                      <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={handleGenerateApiKey}>
-                        <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
-                      </Button>
-                    </div>
-                  ) : (
-                    <Input
-                      type="password"
-                      value={credentials[field] || ''}
-                      onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
-                      placeholder={getFieldPlaceholder(field, provider)}
-                    />
-                  )}
-                </div>
-              ))}
+              {credentialFields.map(f => renderField(f, credentials, setCredentials))}
             </div>
           )}
 
-          <Button 
-            className="w-full" 
+          {schema.length === 0 && (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              No configuration schema available for this provider. Contact support.
+            </div>
+          )}
+
+          <Button
+            className="w-full"
             onClick={() => saveConfig.mutate()}
             disabled={saveConfig.isPending}
           >
