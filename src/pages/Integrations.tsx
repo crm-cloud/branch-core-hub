@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,9 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { getProviderSchema, getProviderDisplayName, getWebhookInfoForProvider, getDefaultConfigForProvider, type ProviderFieldDef } from '@/config/providerSchemas';
 import { 
-  CreditCard, MessageSquare, Mail, Phone, Webhook, 
+  CreditCard, MessageSquare, Mail, Phone, Webhook, Copy,
   Settings, CheckCircle, XCircle, Plus, Save
 } from 'lucide-react';
 
