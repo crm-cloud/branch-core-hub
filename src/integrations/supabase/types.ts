@@ -4249,6 +4249,7 @@ export type Database = {
           updated_at: string
           webhook_slug: string | null
           website_theme: Json | null
+          whatsapp_ai_config: Json | null
         }
         Insert: {
           branch_id?: string | null
@@ -4263,6 +4264,7 @@ export type Database = {
           updated_at?: string
           webhook_slug?: string | null
           website_theme?: Json | null
+          whatsapp_ai_config?: Json | null
         }
         Update: {
           branch_id?: string | null
@@ -4277,6 +4279,7 @@ export type Database = {
           updated_at?: string
           webhook_slug?: string | null
           website_theme?: Json | null
+          whatsapp_ai_config?: Json | null
         }
         Relationships: [
           {
@@ -6250,6 +6253,62 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_templates: {
+        Row: {
+          branch_id: string | null
+          category: string | null
+          components: Json | null
+          created_at: string | null
+          id: string
+          language: string | null
+          meta_template_id: string | null
+          name: string
+          quality_score: string | null
+          rejected_reason: string | null
+          status: string | null
+          synced_at: string | null
+          waba_id: string
+        }
+        Insert: {
+          branch_id?: string | null
+          category?: string | null
+          components?: Json | null
+          created_at?: string | null
+          id?: string
+          language?: string | null
+          meta_template_id?: string | null
+          name: string
+          quality_score?: string | null
+          rejected_reason?: string | null
+          status?: string | null
+          synced_at?: string | null
+          waba_id: string
+        }
+        Update: {
+          branch_id?: string | null
+          category?: string | null
+          components?: Json | null
+          created_at?: string | null
+          id?: string
+          language?: string | null
+          meta_template_id?: string | null
+          name?: string
+          quality_score?: string | null
+          rejected_reason?: string | null
+          status?: string | null
+          synced_at?: string | null
+          waba_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
