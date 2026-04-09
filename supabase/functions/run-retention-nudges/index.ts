@@ -110,10 +110,7 @@ Deno.serve(async (req) => {
         }
 
         // Personalize message
-        const personalizedMessage = matchedTemplate.message_body.replace(
-          /{member_name}/g,
-          member.full_name || "there"
-        );
+        const personalizedMessage = matchedTemplate.message_body.replace(/{member_name}/g, member.full_name || "there");
 
         // Get channels for this template
         const channels: string[] = matchedTemplate.channels || ["whatsapp"];
@@ -171,7 +168,7 @@ Deno.serve(async (req) => {
               await adminClient.from("communication_logs").insert({
                 branch_id: branch.id,
                 type: channel,
-                recipient: channel === "email" ? (member.email || "") : (member.phone || ""),
+                recipient: channel === "email" ? member.email || "" : member.phone || "",
                 subject: `Retention Stage ${matchedTemplate.stage_level}: ${matchedTemplate.stage_name}`,
                 content: personalizedMessage,
                 status: "sent",
@@ -203,12 +200,13 @@ Deno.serve(async (req) => {
     }
 
     const totalSent = results.stage_1 + results.stage_2 + results.stage_3;
-    console.log(`Retention nudges completed: ${totalSent} sent, ${results.skipped_cooldown} cooldown, ${results.skipped_returned} returned`);
-
-    return new Response(
-      JSON.stringify({ success: true, total_sent: totalSent, results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    console.log(
+      `Retention nudges completed: ${totalSent} sent, ${results.skipped_cooldown} cooldown, ${results.skipped_returned} returned`,
     );
+
+    return new Response(JSON.stringify({ success: true, total_sent: totalSent, results }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error: any) {
     console.error("Retention nudges error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
