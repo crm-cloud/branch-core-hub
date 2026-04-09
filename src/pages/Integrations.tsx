@@ -364,6 +364,15 @@ function IntegrationConfigSheet({
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    setIsActive(existing?.is_active || false);
+    setConfig({
+      ...getDefaultConfigForProvider(type, provider),
+      ...(existing?.config || {}),
+    });
+    setCredentials(existing?.credentials || {});
+  }, [existing, open, type, provider]);
+
   const saveConfig = useMutation({
     mutationFn: async () => {
       if (!branchId) {
@@ -378,6 +387,143 @@ function IntegrationConfigSheet({
         config,
         credentials,
       };
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('integration_settings')
+          .update(payload)
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('integration_settings')
+          .insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success('Configuration saved');
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to save');
+    },
+  });
+
+  const schema = getProviderSchema(type, provider);
+  const configFields = schema.filter(f => f.section === 'config');
+  const credentialFields = schema.filter(f => f.section === 'credentials');
+  const webhookInfo = getWebhookInfoForProvider(type, provider);
+  const displayName = getProviderDisplayName(type, provider);
+
+  const renderField = (field: ProviderFieldDef, values: Record<string, string>, setter: (v: Record<string, string>) => void) => {
+    if (field.type === 'select' && field.options) {
+      return (
+        <div key={field.key} className="space-y-2">
+          <Label>{field.label}</Label>
+          <Select
+            value={values[field.key] || field.options[0]?.value || ''}
+            onValueChange={(v) => setter({ ...values, [field.key]: v })}
+          >
+            <SelectTrigger><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+            <SelectContent>
+              {field.options.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.key} className="space-y-2">
+        <Label>{field.label}</Label>
+        <Input
+          type={field.type === 'password' ? 'password' : 'text'}
+          value={values[field.key] || ''}
+          onChange={(e) => setter({ ...values, [field.key]: e.target.value })}
+          placeholder={field.placeholder}
+        />
+      </div>
+    );
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Configure {displayName}</SheetTitle>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <Label>Enable Integration</Label>
+            <Switch checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+
+          {webhookInfo && (
+            <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+              <div className="flex items-center gap-2">
+                <Webhook className="h-4 w-4 text-primary" />
+                <h4 className="font-semibold text-sm">{webhookInfo.label}</h4>
+              </div>
+              {webhookInfo.description && (
+                <p className="text-xs text-muted-foreground">{webhookInfo.description}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                  {webhookInfo.url}
+                </code>
+                <Button variant="outline" size="sm" onClick={() => {
+                  navigator.clipboard.writeText(webhookInfo.url);
+                  toast.success(`${webhookInfo.label} copied!`);
+                }}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {configFields.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-medium">Configuration</h3>
+              {configFields.map(f => renderField(f, config, setConfig))}
+            </div>
+          )}
+
+          {credentialFields.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-medium">Credentials</h3>
+              {credentialFields.map(f => renderField(f, credentials, setCredentials))}
+            </div>
+          )}
+
+          {schema.length === 0 && (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              No configuration schema available for this provider.
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="flex-1" 
+              onClick={() => saveConfig.mutate()}
+              disabled={saveConfig.isPending}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {saveConfig.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
       if (existing?.id) {
         const { error } = await supabase
