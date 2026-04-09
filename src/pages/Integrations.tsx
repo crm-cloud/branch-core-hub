@@ -524,17 +524,6 @@ function IntegrationConfigSheet({
     </Sheet>
   );
 }
-    onSuccess: () => {
-      toast.success('Configuration saved');
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to save');
-    },
-  });
-
-  const getConfigFields = () => {
     if (type === 'payment_gateway') {
       return {
         config: ['webhook_url'],
