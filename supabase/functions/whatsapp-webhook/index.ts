@@ -66,15 +66,18 @@ async function handleVerification(req: Request) {
       !challenge ? "hub.challenge" : null,
     ].filter(Boolean);
 
-    return new Response(JSON.stringify({
-      error: "Invalid verification request",
-      expected_mode: "subscribe",
-      received_mode: modeRaw,
-      missing_params: missingParams,
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: "Invalid verification request",
+        expected_mode: "subscribe",
+        received_mode: modeRaw,
+        missing_params: missingParams,
+      }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 
   const { data: integration, error } = await supabase
@@ -129,14 +132,14 @@ async function handleEvent(req: Request) {
   }
 
   const phoneNumberIds = extractPhoneNumberIds(payload);
-  const candidateIntegrations = await Promise.all(
-    phoneNumberIds.map((id) => findIntegrationByPhoneNumberId(id)),
+  const candidateIntegrations = await Promise.all(phoneNumberIds.map((id) => findIntegrationByPhoneNumberId(id)));
+  const signatureSecrets: string[] = Array.from(
+    new Set(
+      candidateIntegrations
+        .map(getWebhookSignatureSecret)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
   );
-  const signatureSecrets: string[] = Array.from(new Set(
-    candidateIntegrations
-      .map(getWebhookSignatureSecret)
-      .filter((value): value is string => typeof value === "string" && value.length > 0),
-  ));
 
   if (signatureSecrets.length > 0) {
     const signatureHeader = req.headers.get("x-hub-signature-256") ?? req.headers.get("x-hub-signature");
@@ -396,5 +399,7 @@ async function computeHmacSha256(message: string, secret: string) {
     ["sign"],
   );
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
-  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
