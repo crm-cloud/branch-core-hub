@@ -100,32 +100,11 @@ export default function IntegrationsPage() {
           <h1 className="text-2xl font-bold">Integrations</h1>
         </div>
 
-        {/* Stats */}
         <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard
-            title="Payment Gateways"
-            value={activePaymentGateways}
-            icon={CreditCard}
-            variant={activePaymentGateways > 0 ? 'success' : 'default'}
-          />
-          <StatCard
-            title="SMS Providers"
-            value={activeSmsProviders}
-            icon={Phone}
-            variant={activeSmsProviders > 0 ? 'success' : 'default'}
-          />
-          <StatCard
-            title="Email Providers"
-            value={activeEmailProviders}
-            icon={Mail}
-            variant={activeEmailProviders > 0 ? 'success' : 'default'}
-          />
-          <StatCard
-            title="WhatsApp"
-            value={activeWhatsApp}
-            icon={MessageSquare}
-            variant={activeWhatsApp > 0 ? 'success' : 'default'}
-          />
+          <StatCard title="Payment Gateways" value={activePaymentGateways} icon={CreditCard} variant={activePaymentGateways > 0 ? 'success' : 'default'} />
+          <StatCard title="SMS Providers" value={activeSmsProviders} icon={Phone} variant={activeSmsProviders > 0 ? 'success' : 'default'} />
+          <StatCard title="Email Providers" value={activeEmailProviders} icon={Mail} variant={activeEmailProviders > 0 ? 'success' : 'default'} />
+          <StatCard title="WhatsApp" value={activeWhatsApp} icon={MessageSquare} variant={activeWhatsApp > 0 ? 'success' : 'default'} />
         </div>
 
         <Tabs defaultValue="payment" className="space-y-4">
@@ -136,37 +115,25 @@ export default function IntegrationsPage() {
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           </TabsList>
 
-          {/* Payment Gateways */}
           <TabsContent value="payment" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  Payment Gateways
-                </CardTitle>
-                <CardDescription>
-                  Configure payment gateways with webhook support for automatic payment reconciliation
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5" />Payment Gateways</CardTitle>
+                <CardDescription>Configure payment gateways with webhook support for automatic payment reconciliation</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
                   {PAYMENT_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('payment_gateway').find(
-                      (i: any) => i.provider === provider.id
-                    );
+                    const config = getIntegrationsByType('payment_gateway').find((i: any) => i.provider === provider.id);
                     return (
                       <Card key={provider.id} className="relative">
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-bold text-sm`}>
-                                {provider.abbr}
-                              </div>
+                              <div className={`w-10 h-10 rounded-lg ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-bold text-sm`}>{provider.abbr}</div>
                               <div>
                                 <h3 className="font-semibold">{provider.name}</h3>
-                                <p className="text-sm text-muted-foreground">
-                                  {config?.is_active ? 'Active' : 'Not configured'}
-                                </p>
+                                <p className="text-sm text-muted-foreground">{config?.is_active ? 'Active' : 'Not configured'}</p>
                               </div>
                             </div>
                             <Badge variant={config?.is_active ? 'default' : 'secondary'}>
@@ -174,13 +141,8 @@ export default function IntegrationsPage() {
                               {config?.is_active ? 'Active' : 'Inactive'}
                             </Badge>
                           </div>
-                          <Button 
-                            className="w-full mt-4" 
-                            variant={config?.is_active ? 'outline' : 'default'}
-                            onClick={() => openConfig('payment_gateway', provider.id)}
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            {config ? 'Configure' : 'Setup'}
+                          <Button className="w-full mt-4" variant={config?.is_active ? 'outline' : 'default'} onClick={() => openConfig('payment_gateway', provider.id)}>
+                            <Settings className="h-4 w-4 mr-2" />{config ? 'Configure' : 'Setup'}
                           </Button>
                         </CardContent>
                       </Card>
@@ -191,44 +153,24 @@ export default function IntegrationsPage() {
             </Card>
           </TabsContent>
 
-          {/* SMS Providers */}
           <TabsContent value="sms" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="h-5 w-5" />
-                  SMS Providers
-                </CardTitle>
-                <CardDescription>
-                  Configure SMS providers with DLT registration for India
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" />SMS Providers</CardTitle>
+                <CardDescription>Configure SMS providers with DLT registration for India</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
                   {SMS_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('sms').find(
-                      (i: any) => i.provider === provider.id
-                    );
+                    const config = getIntegrationsByType('sms').find((i: any) => i.provider === provider.id);
                     return (
                       <Card key={provider.id}>
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold">{provider.name}</h3>
-                              <p className="text-sm text-muted-foreground">{provider.description}</p>
-                            </div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                              {config?.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
+                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
                           </div>
-                          <Button 
-                            className="w-full mt-4" 
-                            variant="outline"
-                            onClick={() => openConfig('sms', provider.id)}
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            Configure
-                          </Button>
+                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('sms', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
                         </CardContent>
                       </Card>
                     );
@@ -238,44 +180,24 @@ export default function IntegrationsPage() {
             </Card>
           </TabsContent>
 
-          {/* Email Providers */}
           <TabsContent value="email" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-5 w-5" />
-                  Email Providers
-                </CardTitle>
-                <CardDescription>
-                  Configure email sending with custom SMTP or API providers
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" />Email Providers</CardTitle>
+                <CardDescription>Configure email sending with custom SMTP or API providers</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
                   {EMAIL_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('email').find(
-                      (i: any) => i.provider === provider.id
-                    );
+                    const config = getIntegrationsByType('email').find((i: any) => i.provider === provider.id);
                     return (
                       <Card key={provider.id}>
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold">{provider.name}</h3>
-                              <p className="text-sm text-muted-foreground">{provider.description}</p>
-                            </div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                              {config?.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
+                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
                           </div>
-                          <Button 
-                            className="w-full mt-4" 
-                            variant="outline"
-                            onClick={() => openConfig('email', provider.id)}
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            Configure
-                          </Button>
+                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('email', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
                         </CardContent>
                       </Card>
                     );
@@ -285,44 +207,24 @@ export default function IntegrationsPage() {
             </Card>
           </TabsContent>
 
-          {/* WhatsApp */}
           <TabsContent value="whatsapp" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  WhatsApp Business API
-                </CardTitle>
-                <CardDescription>
-                  Configure WhatsApp for chat and automated messaging
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />WhatsApp Business API</CardTitle>
+                <CardDescription>Configure WhatsApp for chat and automated messaging</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-2">
                   {WHATSAPP_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('whatsapp').find(
-                      (i: any) => i.provider === provider.id
-                    );
+                    const config = getIntegrationsByType('whatsapp').find((i: any) => i.provider === provider.id);
                     return (
                       <Card key={provider.id}>
                         <CardContent className="pt-6">
                           <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold">{provider.name}</h3>
-                              <p className="text-sm text-muted-foreground">{provider.description}</p>
-                            </div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                              {config?.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
+                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
                           </div>
-                          <Button 
-                            className="w-full mt-4" 
-                            variant="outline"
-                            onClick={() => openConfig('whatsapp', provider.id)}
-                          >
-                            <Settings className="h-4 w-4 mr-2" />
-                            Configure
-                          </Button>
+                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('whatsapp', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
                         </CardContent>
                       </Card>
                     );
@@ -333,7 +235,6 @@ export default function IntegrationsPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Configuration Sheet */}
         <IntegrationConfigSheet 
           {...configSheet} 
           onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
@@ -345,12 +246,7 @@ export default function IntegrationsPage() {
 }
 
 function IntegrationConfigSheet({ 
-  open, 
-  onOpenChange, 
-  type, 
-  provider, 
-  existing,
-  branchId
+  open, onOpenChange, type, provider, existing, branchId
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -375,10 +271,7 @@ function IntegrationConfigSheet({
 
   const saveConfig = useMutation({
     mutationFn: async () => {
-      if (!branchId) {
-        throw new Error('Please select a specific branch');
-      }
-
+      if (!branchId) throw new Error('Please select a specific branch');
       const payload = {
         branch_id: branchId,
         integration_type: type,
@@ -387,17 +280,11 @@ function IntegrationConfigSheet({
         config,
         credentials,
       };
-
       if (existing?.id) {
-        const { error } = await supabase
-          .from('integration_settings')
-          .update(payload)
-          .eq('id', existing.id);
+        const { error } = await supabase.from('integration_settings').update(payload).eq('id', existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('integration_settings')
-          .insert(payload);
+        const { error } = await supabase.from('integration_settings').insert(payload);
         if (error) throw error;
       }
     },
@@ -406,9 +293,7 @@ function IntegrationConfigSheet({
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
       onOpenChange(false);
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to save');
-    },
+    onError: (error: any) => toast.error(error.message || 'Failed to save'),
   });
 
   const schema = getProviderSchema(type, provider);
@@ -422,21 +307,15 @@ function IntegrationConfigSheet({
       return (
         <div key={field.key} className="space-y-2">
           <Label>{field.label}</Label>
-          <Select
-            value={values[field.key] || field.options[0]?.value || ''}
-            onValueChange={(v) => setter({ ...values, [field.key]: v })}
-          >
+          <Select value={values[field.key] || field.options[0]?.value || ''} onValueChange={(v) => setter({ ...values, [field.key]: v })}>
             <SelectTrigger><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
             <SelectContent>
-              {field.options.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
+              {field.options.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
       );
     }
-
     return (
       <div key={field.key} className="space-y-2">
         <Label>{field.label}</Label>
@@ -456,7 +335,6 @@ function IntegrationConfigSheet({
         <SheetHeader>
           <SheetTitle>Configure {displayName}</SheetTitle>
         </SheetHeader>
-
         <div className="mt-6 space-y-6">
           <div className="flex items-center justify-between">
             <Label>Enable Integration</Label>
@@ -469,17 +347,10 @@ function IntegrationConfigSheet({
                 <Webhook className="h-4 w-4 text-primary" />
                 <h4 className="font-semibold text-sm">{webhookInfo.label}</h4>
               </div>
-              {webhookInfo.description && (
-                <p className="text-xs text-muted-foreground">{webhookInfo.description}</p>
-              )}
+              {webhookInfo.description && <p className="text-xs text-muted-foreground">{webhookInfo.description}</p>}
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                  {webhookInfo.url}
-                </code>
-                <Button variant="outline" size="sm" onClick={() => {
-                  navigator.clipboard.writeText(webhookInfo.url);
-                  toast.success(`${webhookInfo.label} copied!`);
-                }}>
+                <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">{webhookInfo.url}</code>
+                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(webhookInfo.url); toast.success(`${webhookInfo.label} copied!`); }}>
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -507,127 +378,9 @@ function IntegrationConfigSheet({
           )}
 
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button 
-              className="flex-1" 
-              onClick={() => saveConfig.mutate()}
-              disabled={saveConfig.isPending}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saveConfig.isPending ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-    if (type === 'payment_gateway') {
-      return {
-        config: ['webhook_url'],
-        credentials: ['key_id', 'key_secret', 'merchant_id'],
-      };
-    }
-    if (type === 'sms') {
-      return {
-        config: ['sender_id', 'dlt_entity_id', 'dlt_template_id', 'api_url'],
-        credentials: ['api_key', 'auth_token'],
-      };
-    }
-    if (type === 'email') {
-      if (provider === 'smtp') {
-        return {
-          config: ['host', 'port', 'from_email', 'from_name'],
-          credentials: ['username', 'password'],
-        };
-      }
-      return {
-        config: ['from_email', 'from_name'],
-        credentials: ['api_key'],
-      };
-    }
-    if (type === 'whatsapp') {
-      return {
-        config: ['phone_number_id', 'business_account_id', 'webhook_verify_token'],
-        credentials: ['access_token', 'app_secret', 'api_key'],
-      };
-    }
-    return { config: [], credentials: [] };
-  };
-
-  const fields = getConfigFields();
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="capitalize">
-            Configure {provider.replace(/_/g, ' ')}
-          </SheetTitle>
-        </SheetHeader>
-
-        <div className="mt-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <Label>Enable Integration</Label>
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
-          </div>
-
-          {fields.config.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-medium">Configuration</h3>
-              {fields.config.map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label className="capitalize">{field.replace(/_/g, ' ')}</Label>
-                  <Input
-                    value={config[field] || ''}
-                    onChange={(e) => setConfig({ ...config, [field]: e.target.value })}
-                    placeholder={field === 'webhook_url' ? 'Auto-generated after save' : ''}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {fields.credentials.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-medium">Credentials</h3>
-              {fields.credentials.map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label className="capitalize">{field.replace(/_/g, ' ')}</Label>
-                  <Input
-                    type="password"
-                    value={credentials[field] || ''}
-                    onChange={(e) => setCredentials({ ...credentials, [field]: e.target.value })}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {type === 'payment_gateway' && (
-            <Card className="bg-muted/50">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <Webhook className="h-4 w-4" />
-                  <span>Webhook URL will be generated after saving</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="flex gap-3 pt-4">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button 
-              className="flex-1" 
-              onClick={() => saveConfig.mutate()}
-              disabled={saveConfig.isPending}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saveConfig.isPending ? 'Saving...' : 'Save'}
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending}>
+              <Save className="h-4 w-4 mr-2" />{saveConfig.isPending ? 'Saving...' : 'Save'}
             </Button>
           </div>
         </div>
