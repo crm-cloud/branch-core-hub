@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LeadNotificationSettings } from '@/components/settings/LeadNotificationSettings';
+import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -397,6 +398,9 @@ export function IntegrationSettings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* AI Auto-Reply Settings */}
+          <WhatsAppAISettings />
 
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
