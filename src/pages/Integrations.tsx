@@ -524,14 +524,6 @@ function IntegrationConfigSheet({
     </Sheet>
   );
 }
-
-      if (existing?.id) {
-        const { error } = await supabase
-          .from('integration_settings')
-          .update(payload)
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else {
         const { error } = await supabase
           .from('integration_settings')
           .insert(payload);
