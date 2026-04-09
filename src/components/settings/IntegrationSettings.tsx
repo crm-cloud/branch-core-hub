@@ -398,6 +398,9 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
+          {/* AI Auto-Reply Settings */}
+          <WhatsAppAISettings />
+
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
             integrations={integrations}

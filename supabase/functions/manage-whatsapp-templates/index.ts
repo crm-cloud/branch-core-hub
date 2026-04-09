@@ -158,7 +158,7 @@ serve(async (req) => {
     // ── ACTION: list — GET all templates from Meta ──────────────────────────
     if (action === "list") {
       const metaRes = await fetch(
-        `${META_API_BASE}/${wabaId}/message_templates?fields=id,name,status,category,language,rejected_reason,components&limit=100`,
+        `${META_API_BASE}/${wabaId}/message_templates?fields=id,name,status,category,language,rejected_reason,quality_score,components&limit=100`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -174,8 +174,29 @@ serve(async (req) => {
 
       const templates = metaData.data || [];
 
-      // Update local DB statuses for mapped templates (those with meta_template_name set)
-      // Scope by branch_id to prevent cross-branch status contamination
+      // Upsert into whatsapp_templates table
+      for (const mt of templates) {
+        await supabase
+          .from("whatsapp_templates")
+          .upsert(
+            {
+              waba_id: wabaId,
+              branch_id: branch_id,
+              meta_template_id: mt.id,
+              name: mt.name,
+              language: mt.language || "en",
+              category: mt.category,
+              status: mt.status,
+              quality_score: mt.quality_score?.score || mt.quality_score || null,
+              rejected_reason: mt.rejected_reason || null,
+              components: mt.components || null,
+              synced_at: new Date().toISOString(),
+            },
+            { onConflict: "waba_id,name,language" }
+          );
+      }
+
+      // Also update legacy templates table for backward compatibility
       for (const mt of templates) {
         await supabase
           .from("templates")
@@ -185,11 +206,9 @@ serve(async (req) => {
           })
           .eq("meta_template_name", mt.name)
           .not("meta_template_name", "is", null)
-          // Only update templates belonging to this branch OR global templates (branch_id IS NULL)
           .or(`branch_id.eq.${branch_id},branch_id.is.null`);
       }
 
-      // Return full Meta API list (includes category, status, etc.)
       return new Response(
         JSON.stringify({ templates }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
