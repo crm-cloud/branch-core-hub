@@ -121,37 +121,64 @@ Deno.serve(async (req) => {
         for (const channel of channels) {
           try {
             if (channel === "whatsapp" && member.phone) {
-              // Call send-whatsapp edge function internally
+              // Create message row first, then call send-whatsapp with canonical payload.
+              const { data: outboundMsg, error: msgInsertErr } = await adminClient
+                .from("whatsapp_messages")
+                .insert({
+                  branch_id: branch.id,
+                  member_id: member.member_id,
+                  phone_number: member.phone,
+                  content: personalizedMessage,
+                  direction: "outbound",
+                  status: "pending",
+                  message_type: "text",
+                })
+                .select("id")
+                .single();
+
+              if (msgInsertErr || !outboundMsg?.id) {
+                console.error("Failed to create WhatsApp message row:", msgInsertErr);
+                throw new Error("Could not queue WhatsApp message");
+              }
+
               try {
-                await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+                const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${supabaseServiceKey}`,
                   },
                   body: JSON.stringify({
-                    phone: member.phone,
-                    message: personalizedMessage,
-                    branchId: branch.id,
-                    memberId: member.member_id,
+                    message_id: outboundMsg.id,
+                    phone_number: member.phone,
+                    content: personalizedMessage,
+                    branch_id: branch.id,
                   }),
                 });
+
+                if (!sendRes.ok) {
+                  const errBody = await sendRes.text();
+                  throw new Error(`send-whatsapp failed (${sendRes.status}): ${errBody}`);
+                }
               } catch (whatsappErr) {
                 console.error("WhatsApp send error:", whatsappErr);
+                throw whatsappErr;
               }
             }
 
-            // Log to communication_logs for all channels
-            await adminClient.from("communication_logs").insert({
-              branch_id: branch.id,
-              type: channel,
-              recipient: channel === "email" ? (member.email || "") : (member.phone || ""),
-              subject: `Retention Stage ${matchedTemplate.stage_level}: ${matchedTemplate.stage_name}`,
-              content: personalizedMessage,
-              status: "sent",
-              member_id: member.member_id,
-              sent_at: new Date().toISOString(),
-            });
+            // send-whatsapp already writes communication_logs; avoid duplicates.
+            if (channel !== "whatsapp") {
+              await adminClient.from("communication_logs").insert({
+                branch_id: branch.id,
+                type: channel,
+                recipient: channel === "email" ? (member.email || "") : (member.phone || ""),
+                subject: `Retention Stage ${matchedTemplate.stage_level}: ${matchedTemplate.stage_name}`,
+                content: personalizedMessage,
+                status: "sent",
+                member_id: member.member_id,
+                sent_at: new Date().toISOString(),
+              });
+            }
           } catch (channelErr) {
             console.error(`Channel ${channel} error:`, channelErr);
           }

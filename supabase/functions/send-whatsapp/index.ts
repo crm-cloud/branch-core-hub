@@ -13,11 +13,16 @@ serve(async (req) => {
   }
 
   try {
-    const { message_id, phone_number, content, branch_id } = await req.json();
+    const body = await req.json();
+    // Accept both snake_case and legacy camelCase/internal keys.
+    const message_id = body.message_id ?? body.messageId;
+    const phone_number = body.phone_number ?? body.phone;
+    const content = body.content ?? body.message;
+    const branch_id = body.branch_id ?? body.branchId;
 
     if (!message_id || !phone_number || !content || !branch_id) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: message_id, phone_number, content, branch_id" }),
+        JSON.stringify({ error: "Missing required fields: message_id, phone_number, content, branch_id (legacy aliases: messageId, phone, message, branchId)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -26,8 +31,9 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch WhatsApp integration settings for the branch
-    const { data: integration, error: intError } = await supabase
+    // Fetch WhatsApp integration settings for the branch, then fall back to global.
+    let integration: any = null;
+    const { data: branchIntegration, error: intError } = await supabase
       .from("integration_settings")
       .select("config, credentials, is_active")
       .eq("branch_id", branch_id)
@@ -36,7 +42,33 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (intError || !integration) {
+    if (intError) {
+      await supabase
+        .from("whatsapp_messages")
+        .update({ status: "failed" })
+        .eq("id", message_id);
+
+      return new Response(
+        JSON.stringify({ error: "Failed to load WhatsApp integration settings" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (branchIntegration) {
+      integration = branchIntegration;
+    } else {
+      const { data: globalIntegration } = await supabase
+        .from("integration_settings")
+        .select("config, credentials, is_active")
+        .is("branch_id", null)
+        .eq("integration_type", "whatsapp")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      integration = globalIntegration;
+    }
+
+    if (!integration) {
       // Update message status to failed
       await supabase
         .from("whatsapp_messages")

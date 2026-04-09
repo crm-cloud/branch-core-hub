@@ -172,14 +172,14 @@ async function handleEvent(req: Request) {
       if (!phoneNumberId) continue;
 
       const integration = await findIntegrationByPhoneNumberId(String(phoneNumberId));
-      if (!integration?.branch_id) {
-        console.warn("Unable to map phone number id to an active WhatsApp integration", phoneNumberId);
-        continue;
+      const resolvedBranchId = await resolveBranchId(integration, value);
+      if (!resolvedBranchId) {
+        console.warn("Unable to resolve branch_id for WhatsApp webhook event", phoneNumberId);
       }
 
       await Promise.all([
-        processIncomingMessages(value, integration.branch_id),
-        processStatusUpdates(value, integration.branch_id),
+        processIncomingMessages(value, resolvedBranchId),
+        processStatusUpdates(value, resolvedBranchId),
       ]);
     }
   }
@@ -213,7 +213,12 @@ async function findIntegrationByPhoneNumberId(phoneNumberId: string): Promise<Wh
   return result;
 }
 
-async function processIncomingMessages(value: any, branchId: string) {
+async function processIncomingMessages(value: any, branchId: string | null) {
+  if (!branchId) {
+    // Inbound rows require a branch_id. If unresolved, skip inserts but still allow status updates.
+    return;
+  }
+
   const messages = Array.isArray(value.messages) ? value.messages : [];
   const contactName = value.contacts?.[0]?.profile?.name ?? null;
 
@@ -247,22 +252,73 @@ async function processIncomingMessages(value: any, branchId: string) {
   }
 }
 
-async function processStatusUpdates(value: any, branchId: string) {
+async function processStatusUpdates(value: any, branchId: string | null) {
   const statuses = Array.isArray(value.statuses) ? value.statuses : [];
 
   for (const status of statuses) {
     if (!status?.id) continue;
 
-    const { error } = await supabase
+    let updateQuery = supabase
       .from("whatsapp_messages")
       .update({ status: status.status ?? "sent", updated_at: new Date().toISOString() })
-      .eq("whatsapp_message_id", status.id)
-      .eq("branch_id", branchId);
+      .eq("whatsapp_message_id", status.id);
+
+    if (branchId) {
+      updateQuery = updateQuery.eq("branch_id", branchId);
+    }
+
+    const { error } = await updateQuery;
 
     if (error) {
       console.error("Failed to update WhatsApp message status", error);
     }
   }
+}
+
+async function resolveBranchId(integration: WhatsAppIntegration | null, value: any): Promise<string | null> {
+  if (!integration) return null;
+  if (integration.branch_id) return integration.branch_id;
+
+  const configuredDefaultBranch = integration.config?.default_branch_id;
+  if (typeof configuredDefaultBranch === "string" && configuredDefaultBranch.trim().length > 0) {
+    return configuredDefaultBranch.trim();
+  }
+
+  // Fallback 1: resolve via outbound status id if available.
+  const firstStatusId = Array.isArray(value?.statuses) ? value.statuses?.[0]?.id : null;
+  if (typeof firstStatusId === "string" && firstStatusId.trim().length > 0) {
+    const { data: statusMsg } = await supabase
+      .from("whatsapp_messages")
+      .select("branch_id")
+      .eq("whatsapp_message_id", firstStatusId)
+      .not("branch_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (statusMsg?.branch_id) {
+      return statusMsg.branch_id;
+    }
+  }
+
+  // Fallback 2: resolve by sender phone history.
+  const inboundPhone = Array.isArray(value?.messages) ? value.messages?.[0]?.from : null;
+  if (typeof inboundPhone === "string" && inboundPhone.trim().length > 0) {
+    const { data: lastConversation } = await supabase
+      .from("whatsapp_messages")
+      .select("branch_id")
+      .eq("phone_number", inboundPhone)
+      .not("branch_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastConversation?.branch_id) {
+      return lastConversation.branch_id;
+    }
+  }
+
+  return null;
 }
 
 function extractMessageContent(message: any): string | null {
