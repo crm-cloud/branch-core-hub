@@ -14,18 +14,36 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    // Accept both snake_case and legacy camelCase/internal keys.
     const message_id = body.message_id ?? body.messageId;
     const phone_number = body.phone_number ?? body.phone;
     const content = body.content ?? body.message;
     const branch_id = body.branch_id ?? body.branchId;
+    const message_type = body.message_type || "text";
+    const media_url = body.media_url;
+    const caption = body.caption;
+    const template_name = body.template_name;
+    const template_language = body.template_language || "en";
+    const template_components = body.template_components;
 
-    if (!message_id || !phone_number || !content || !branch_id) {
+    if (!message_id || !phone_number || !branch_id) {
       return new Response(
-        JSON.stringify({
-          error:
-            "Missing required fields: message_id, phone_number, content, branch_id (legacy aliases: messageId, phone, message, branchId)",
-        }),
+        JSON.stringify({ error: "Missing required fields: message_id, phone_number, branch_id" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // For text messages, content is required
+    if (message_type === "text" && !content) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: content (for text messages)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // For template messages, template_name is required
+    if (message_type === "template" && !template_name) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: template_name (for template messages)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -47,7 +65,6 @@ serve(async (req) => {
 
     if (intError) {
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
-
       return new Response(JSON.stringify({ error: "Failed to load WhatsApp integration settings" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -69,9 +86,7 @@ serve(async (req) => {
     }
 
     if (!integration) {
-      // Update message status to failed
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
-
       return new Response(
         JSON.stringify({ error: "WhatsApp integration not configured or inactive for this branch" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -83,15 +98,39 @@ serve(async (req) => {
 
     if (!accessToken || !phoneNumberId) {
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
-
       return new Response(
         JSON.stringify({ error: "Missing access_token or phone_number_id in WhatsApp configuration" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Clean phone number (remove spaces, dashes, ensure no leading +)
+    // Clean phone number
     const cleanPhone = phone_number.replace(/[\s\-\+]/g, "");
+
+    // Build Meta payload based on message type
+    let metaPayload: any = {
+      messaging_product: "whatsapp",
+      to: cleanPhone,
+    };
+
+    if (message_type === "image") {
+      metaPayload.type = "image";
+      metaPayload.image = {
+        link: media_url,
+        ...(caption ? { caption } : {}),
+      };
+    } else if (message_type === "template") {
+      metaPayload.type = "template";
+      metaPayload.template = {
+        name: template_name,
+        language: { code: template_language },
+        ...(template_components ? { components: template_components } : {}),
+      };
+    } else {
+      // Default: text
+      metaPayload.type = "text";
+      metaPayload.text = { body: content };
+    }
 
     // Send via Meta Cloud API
     const metaResponse = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
@@ -100,12 +139,7 @@ serve(async (req) => {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: cleanPhone,
-        type: "text",
-        text: { body: content },
-      }),
+      body: JSON.stringify(metaPayload),
     });
 
     const metaData = await metaResponse.json();
@@ -113,7 +147,6 @@ serve(async (req) => {
     if (!metaResponse.ok) {
       console.error("Meta API error:", JSON.stringify(metaData));
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
-
       return new Response(
         JSON.stringify({
           error: "Failed to send WhatsApp message",
@@ -123,12 +156,14 @@ serve(async (req) => {
       );
     }
 
-    // Update message status to sent
+    const waMessageId = metaData?.messages?.[0]?.id || null;
+
+    // Update message status to sent + store Meta's message ID
     await supabase
       .from("whatsapp_messages")
       .update({
         status: "sent",
-        external_id: metaData?.messages?.[0]?.id || null,
+        whatsapp_message_id: waMessageId,
       })
       .eq("id", message_id);
 
@@ -137,12 +172,12 @@ serve(async (req) => {
       branch_id,
       recipient: phone_number,
       type: "whatsapp",
-      content,
+      content: content || `[${message_type}]`,
       status: "sent",
       sent_at: new Date().toISOString(),
     });
 
-    return new Response(JSON.stringify({ success: true, whatsapp_message_id: metaData?.messages?.[0]?.id }), {
+    return new Response(JSON.stringify({ success: true, whatsapp_message_id: waMessageId }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
