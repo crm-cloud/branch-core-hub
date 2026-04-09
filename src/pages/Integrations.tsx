@@ -524,12 +524,6 @@ function IntegrationConfigSheet({
     </Sheet>
   );
 }
-        const { error } = await supabase
-          .from('integration_settings')
-          .insert(payload);
-        if (error) throw error;
-      }
-    },
     onSuccess: () => {
       toast.success('Configuration saved');
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
