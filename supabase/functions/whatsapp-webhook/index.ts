@@ -330,22 +330,147 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   // Check bot_active status for this contact
   const { data: chatSettings } = await supabase
     .from("whatsapp_chat_settings")
-    .select("bot_active")
+    .select("bot_active, lead_captured")
     .eq("branch_id", branchId)
     .eq("phone_number", phoneNumber)
     .maybeSingle();
 
-  // If explicitly paused, skip auto-reply
+  // If explicitly paused or lead already captured, skip auto-reply
   if (chatSettings && chatSettings.bot_active === false) return;
+  if (chatSettings && (chatSettings as any).lead_captured === true) return;
 
-  // Get the inbound message
+  // Get the inbound message (including member_id for context hydration)
   const { data: inboundMsg } = await supabase
     .from("whatsapp_messages")
-    .select("phone_number, contact_name, content")
+    .select("phone_number, contact_name, content, member_id")
     .eq("id", messageId)
     .single();
 
   if (!inboundMsg?.content) return;
+
+  // ── Epic 2: Context Hydration ────────────────────────────────────────────────
+  let contactContextPrefix = "Context: You are speaking to an unregistered Lead.";
+
+  if (inboundMsg.member_id) {
+    // Fetch member record
+    const { data: member } = await supabase
+      .from("members")
+      .select("status")
+      .eq("id", inboundMsg.member_id)
+      .maybeSingle();
+
+    if (member) {
+      // Fetch active memberships with plan name
+      const { data: memberships } = await supabase
+        .from("memberships")
+        .select("id, membership_plans(name), end_date, status")
+        .eq("member_id", inboundMsg.member_id)
+        .eq("status", "active")
+        .limit(3);
+
+      // Fetch remaining benefit credits
+      const { data: credits } = await supabase
+        .from("member_benefit_credits")
+        .select("benefit_type, credits_remaining")
+        .eq("member_id", inboundMsg.member_id)
+        .gt("credits_remaining", 0)
+        .gt("expires_at", new Date().toISOString())
+        .limit(10);
+
+      const memberName = inboundMsg.contact_name || "Valued Member";
+      const planNames = (memberships || [])
+        .map((m: any) => m.membership_plans?.name)
+        .filter(Boolean)
+        .join(", ");
+      const creditSummary = (credits || [])
+        .map((c: any) => `${c.credits_remaining} ${c.benefit_type}`)
+        .join(", ");
+
+      contactContextPrefix =
+        `Context: You are speaking to ${memberName}, an Active Member.` +
+        (planNames ? ` They are on the ${planNames} plan.` : "") +
+        (creditSummary ? ` They have ${creditSummary} remaining benefit credits.` : "");
+    }
+  }
+
+  // ── Epic 1 + 3: Fetch AI Flow Config & Build Lead Capture Prompt ─────────────
+  let leadCaptureInstructions = "";
+  let aiFlowConfig: { target_fields?: string[]; handoff_message?: string } | null = null;
+
+  const { data: flowConfigRecord } = await supabase
+    .from("integration_settings")
+    .select("config")
+    .eq("integration_type", "ai_flow")
+    .eq("provider", "whatsapp_lead")
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (flowConfigRecord?.config) {
+    aiFlowConfig = flowConfigRecord.config as { target_fields?: string[]; handoff_message?: string };
+    const fields = (aiFlowConfig?.target_fields || []).join(", ");
+    if (fields && !inboundMsg.member_id) {
+      // Only inject lead capture instructions for non-members
+      leadCaptureInstructions = `
+
+LEAD CAPTURE INSTRUCTIONS:
+You are a lead generation assistant. Your goal is to naturally and conversationally collect the user's: ${fields}.
+Ask for one piece of information at a time in a friendly, natural way.
+ONCE you have collected ALL of the required fields, stop chatting and output ONLY this strict JSON (nothing else, no markdown, no code block):
+{"status":"lead_captured","data":{"name":"<value>","phone":"<value>","fitness_goal":"<value>","email":"<value>","budget":"<value>","expected_start_date":"<value>","age":"<value>","gender":"<value>","health_conditions":"<value>","referral_source":"<value>"}}
+Only include the fields you actually collected. Do not include fields you didn't collect.`;
+    }
+  }
+
+  // ── Epic 4: Gemini Function Declarations (Tool Calling) ──────────────────────
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "get_schedule",
+        description: "Retrieve available class or session schedule for a given date and type",
+        parameters: {
+          type: "object",
+          properties: {
+            date: {
+              type: "string",
+              description: "The date to check schedule for (YYYY-MM-DD format)",
+            },
+            type: {
+              type: "string",
+              enum: ["yoga", "zumba", "strength", "cardio", "pt_session", "any"],
+              description: "The type of class or session",
+            },
+          },
+          required: ["date", "type"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "book_session",
+        description: "Book a fitness class or PT session for the member",
+        parameters: {
+          type: "object",
+          properties: {
+            user_id: {
+              type: "string",
+              description: "The member's user ID",
+            },
+            type: {
+              type: "string",
+              description: "The type of session to book",
+            },
+            datetime: {
+              type: "string",
+              description: "The date and time of the session in ISO 8601 format",
+            },
+          },
+          required: ["user_id", "type", "datetime"],
+        },
+      },
+    },
+  ];
 
   // Optional delay
   const delaySeconds = aiConfig.reply_delay_seconds || 0;
@@ -367,8 +492,10 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     .map((m: any) => `${m.direction === "inbound" ? inboundMsg.contact_name || "Customer" : "Assistant"}: ${m.content}`)
     .join("\n");
 
-  const systemPrompt = aiConfig.system_prompt ||
+  const basePrompt = aiConfig.system_prompt ||
     'You are a helpful gym assistant. Answer questions about membership, timings, and facilities. Keep responses short and friendly.';
+
+  const systemPrompt = `${contactContextPrefix}\n\n${basePrompt}${leadCaptureInstructions}`;
 
   // Call Lovable AI Gateway
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -377,19 +504,27 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     return;
   }
 
+  const requestBody: Record<string, unknown> = {
+    model: "google/gemini-3-flash-preview",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Conversation:\n${conversationHistory}\n\nReply to the customer's last message concisely.` },
+    ],
+  };
+
+  // Only inject tools for active members (function calling for bookings)
+  if (inboundMsg.member_id) {
+    requestBody.tools = tools;
+    requestBody.tool_choice = "auto";
+  }
+
   const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${LOVABLE_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Conversation:\n${conversationHistory}\n\nReply to the customer's last message concisely.` },
-      ],
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!aiResponse.ok) {
@@ -398,10 +533,170 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   }
 
   const aiResult = await aiResponse.json();
-  const replyText = aiResult.choices?.[0]?.message?.content;
+  const aiMessage = aiResult.choices?.[0]?.message;
+
+  // ── Epic 4: Handle Tool/Function Calls ───────────────────────────────────────
+  if (aiMessage?.tool_calls && aiMessage.tool_calls.length > 0) {
+    const toolCall = aiMessage.tool_calls[0];
+    const functionName = toolCall?.function?.name;
+    let mockedResult: unknown;
+
+    switch (functionName) {
+      case "get_schedule":
+        mockedResult = {
+          available_slots: [
+            { time: "07:00 AM", instructor: "Priya", spots_left: 5 },
+            { time: "06:00 PM", instructor: "Rahul", spots_left: 3 },
+          ],
+          date: JSON.parse(toolCall.function.arguments || "{}").date,
+          type: JSON.parse(toolCall.function.arguments || "{}").type,
+        };
+        break;
+      case "book_session":
+        mockedResult = {
+          success: true,
+          booking_id: `MOCK-${Date.now()}`,
+          message: "Session booked successfully (demo mode)",
+        };
+        break;
+      default:
+        mockedResult = { error: "Unknown function" };
+    }
+
+    // Send mocked tool result back to Gemini to complete conversation loop
+    const followUpBody = {
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Conversation:\n${conversationHistory}\n\nReply to the customer's last message concisely.` },
+        { role: "assistant", content: null, tool_calls: aiMessage.tool_calls },
+        {
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(mockedResult),
+        },
+      ],
+    };
+
+    const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(followUpBody),
+    });
+
+    if (!followUpResponse.ok) {
+      console.error("AI follow-up error after tool call:", followUpResponse.status);
+      return;
+    }
+
+    const followUpResult = await followUpResponse.json();
+    const finalReplyText = followUpResult.choices?.[0]?.message?.content;
+    if (!finalReplyText) return;
+
+    await sendWhatsAppReply(branchId, inboundMsg, finalReplyText);
+    return;
+  }
+
+  const replyText = aiMessage?.content;
   if (!replyText) return;
 
-  // Insert AI reply as outbound message
+  // ── Epic 3: Detect Lead Captured JSON ────────────────────────────────────────
+  const trimmedReply = replyText.trim();
+  let leadCapturedData: Record<string, string> | null = null;
+
+  try {
+    // Try to parse the entire response as JSON first
+    const parsed = JSON.parse(trimmedReply);
+    if (parsed?.status === "lead_captured" && parsed?.data) {
+      leadCapturedData = parsed.data;
+    }
+  } catch {
+    // Try to extract JSON from within the text (model may wrap with markdown)
+    const jsonMatch = trimmedReply.match(/\{[\s\S]*"status"\s*:\s*"lead_captured"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.status === "lead_captured" && parsed?.data) {
+          leadCapturedData = parsed.data;
+        }
+      } catch {
+        // Not a valid lead capture JSON
+      }
+    }
+  }
+
+  if (leadCapturedData) {
+    // Insert lead into CRM
+    const leadName = leadCapturedData.name || inboundMsg.contact_name || "WhatsApp Lead";
+    const leadPhone = leadCapturedData.phone || inboundMsg.phone_number;
+
+    const { data: newLead, error: leadInsertErr } = await supabase
+      .from("leads")
+      .insert({
+        branch_id: branchId,
+        full_name: leadName,
+        phone: leadPhone,
+        email: leadCapturedData.email || null,
+        goals: leadCapturedData.fitness_goal || null,
+        budget: leadCapturedData.budget || null,
+        notes: [
+          leadCapturedData.health_conditions ? `Health: ${leadCapturedData.health_conditions}` : null,
+          leadCapturedData.referral_source ? `Source: ${leadCapturedData.referral_source}` : null,
+          leadCapturedData.age ? `Age: ${leadCapturedData.age}` : null,
+          leadCapturedData.gender ? `Gender: ${leadCapturedData.gender}` : null,
+          leadCapturedData.expected_start_date ? `Start Date: ${leadCapturedData.expected_start_date}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n") || null,
+        source: "whatsapp",
+        status: "new",
+        temperature: "warm",
+        preferred_contact_channel: "whatsapp",
+        tags: ["ai_captured"],
+      })
+      .select("id")
+      .single();
+
+    if (leadInsertErr) {
+      console.error("Failed to insert AI-captured lead:", leadInsertErr);
+    } else if (newLead) {
+      // Mark chat as lead captured and pause bot
+      await supabase
+        .from("whatsapp_chat_settings")
+        .upsert(
+          {
+            branch_id: branchId,
+            phone_number: phoneNumber,
+            bot_active: false,
+            lead_captured: true,
+            captured_lead_id: newLead.id,
+            paused_at: new Date().toISOString(),
+          } as any,
+          { onConflict: "branch_id,phone_number" },
+        );
+    }
+
+    // Send handoff message
+    const handoffMessage =
+      aiFlowConfig?.handoff_message ||
+      "Thanks! 🙏 Our team has your details and will reach out to you shortly!";
+    await sendWhatsAppReply(branchId, inboundMsg, handoffMessage);
+    return;
+  }
+
+  // Standard text reply
+  await sendWhatsAppReply(branchId, inboundMsg, replyText);
+}
+
+// Helper: insert message row + send via Meta API
+async function sendWhatsAppReply(
+  branchId: string,
+  inboundMsg: { phone_number: string; contact_name: string | null; member_id?: string | null },
+  replyText: string,
+) {
   const { data: aiMsg, error: insertErr } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -432,7 +727,6 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 
   const cleanPhone = inboundMsg.phone_number.replace(/[\s\-\+]/g, "");
 
-  // Compute appsecret_proof
   let metaUrl = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
   if (appSecret) {
     const proof = await computeAppSecretProof(accessToken, appSecret);

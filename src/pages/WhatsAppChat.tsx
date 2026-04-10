@@ -22,9 +22,10 @@ import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
-  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
+  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText, ExternalLink,
 } from 'lucide-react';
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
+import { Link } from 'react-router-dom';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,25 +88,38 @@ export default function WhatsAppChatPage() {
   const [newChatPhone, setNewChatPhone] = useState('');
   const [newChatName, setNewChatName] = useState('');
   const [botActive, setBotActive] = useState(true);
+  const [leadCaptured, setLeadCaptured] = useState(false);
+  const [capturedLeadId, setCapturedLeadId] = useState<string | null>(null);
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
+  // Refs to track current contact/branch without causing subscription re-creation
+  const selectedContactRef = useRef(selectedContact);
+  const selectedBranchRef = useRef(selectedBranch);
+  useEffect(() => { selectedContactRef.current = selectedContact; }, [selectedContact]);
+  useEffect(() => { selectedBranchRef.current = selectedBranch; }, [selectedBranch]);
+
   // Fetch bot_active state for selected contact
   useEffect(() => {
     if (!selectedContact || !selectedBranch || selectedBranch === 'all') {
       setBotActive(true);
+      setLeadCaptured(false);
+      setCapturedLeadId(null);
       return;
     }
     supabase
       .from('whatsapp_chat_settings')
-      .select('bot_active')
+      .select('bot_active, lead_captured, captured_lead_id')
       .eq('branch_id', selectedBranch)
       .eq('phone_number', selectedContact.phone_number)
       .maybeSingle()
       .then(({ data }) => {
-        setBotActive(data?.bot_active ?? true);
+        const row = data as { bot_active?: boolean | null; lead_captured?: boolean | null; captured_lead_id?: string | null } | null;
+        setBotActive(row?.bot_active ?? true);
+        setLeadCaptured(row?.lead_captured ?? false);
+        setCapturedLeadId(row?.captured_lead_id ?? null);
       });
   }, [selectedContact, selectedBranch]);
 
@@ -116,6 +130,24 @@ export default function WhatsAppChatPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_messages' }, () => {
         queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
         queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chat_settings' }, (payload) => {
+        // Re-fetch lead capture state if the updated row matches the selected contact
+        const updated = payload.new as { branch_id?: string; phone_number?: string; bot_active?: boolean; lead_captured?: boolean; captured_lead_id?: string | null } | null;
+        const currentContact = selectedContactRef.current;
+        const currentBranch = selectedBranchRef.current;
+        if (
+          updated &&
+          currentContact &&
+          currentBranch &&
+          currentBranch !== 'all' &&
+          updated.branch_id === currentBranch &&
+          updated.phone_number === currentContact.phone_number
+        ) {
+          setBotActive(updated.bot_active ?? true);
+          setLeadCaptured(updated.lead_captured ?? false);
+          setCapturedLeadId(updated.captured_lead_id ?? null);
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -564,6 +596,30 @@ export default function WhatsAppChatPage() {
                           <div className="text-center">
                             <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
                             <p className="text-sm">No messages yet. Send the first one!</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Epic 5: AI Lead Captured Banner ─────────────────── */}
+                      {leadCaptured && (
+                        <div className="flex items-center justify-center my-4">
+                          <div className="flex flex-col items-center gap-3 px-6 py-4 rounded-2xl border border-emerald-400/40 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] max-w-sm w-full text-center">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold text-sm">
+                              <Sparkles className="h-4 w-4 animate-pulse" />
+                              ✨ AI Successfully Captured Lead
+                              <Sparkles className="h-4 w-4 animate-pulse" />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              This contact's information has been saved to the CRM and the bot has been paused for human follow-up.
+                            </p>
+                            {capturedLeadId && (
+                              <Link to={`/leads?lead_id=${capturedLeadId}`}>
+                                <Button size="sm" variant="outline" className="gap-1.5 text-xs border-emerald-400/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  View Lead Profile
+                                </Button>
+                              </Link>
+                            )}
                           </div>
                         </div>
                       )}

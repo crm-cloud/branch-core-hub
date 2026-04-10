@@ -233,6 +233,7 @@ const App = () => (
             <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
             <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
             <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
+            <Route path="/settings/ai-flow-builder" element={<Navigate to="/settings?tab=ai-flow-builder" replace />} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
