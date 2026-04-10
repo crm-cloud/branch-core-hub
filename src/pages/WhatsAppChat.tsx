@@ -759,6 +759,16 @@ export default function WhatsAppChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Convert to Lead Drawer */}
+      {convertLeadOpen && selectedContact && (
+        <AddLeadDrawer
+          open={convertLeadOpen}
+          onClose={() => setConvertLeadOpen(false)}
+          prefillPhone={selectedContact.phone_number}
+          prefillName={selectedContact.contact_name || ''}
+        />
+      )}
     </AppLayout>
   );
 }
