@@ -74,6 +74,7 @@ const PROVIDER_SCHEMAS: Record<string, ProviderFieldDef[]> = {
     { key: 'business_account_id', label: 'Business Account ID', placeholder: 'From Meta Business Settings', type: 'text', section: 'config' },
     { key: 'webhook_verify_token', label: 'Webhook Verify Token', placeholder: 'Any secret string you choose', type: 'text', section: 'config' },
     { key: 'access_token', label: 'Permanent Access Token', placeholder: 'Enter Meta permanent access token', type: 'password', section: 'credentials' },
+    { key: 'app_secret', label: 'App Secret', placeholder: 'From Meta App Dashboard → Settings → Basic', type: 'password', section: 'credentials' },
   ],
   whatsapp_wati: [
     { key: 'api_endpoint_url', label: 'API Endpoint URL', placeholder: 'https://live-server-xxxxx.wati.io', type: 'text', section: 'config' },

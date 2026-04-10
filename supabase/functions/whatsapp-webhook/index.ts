@@ -1,3 +1,4 @@
+// v2.0.0 — appsecret_proof for AI auto-reply + bot_active check
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -182,9 +183,9 @@ async function handleEvent(req: Request) {
 
       // Trigger AI auto-reply for each inbound message
       if (insertedMessageIds.length > 0 && resolvedBranchId) {
-        for (const msgId of insertedMessageIds) {
+        for (const { id: msgId, phone_number } of insertedMessageIds) {
           try {
-            await triggerAiAutoReply(msgId, resolvedBranchId);
+            await triggerAiAutoReply(msgId, phone_number, resolvedBranchId);
           } catch (err) {
             console.error("AI auto-reply error (non-blocking):", err);
           }
@@ -203,12 +204,11 @@ async function handleEvent(req: Request) {
 async function processTemplateStatusUpdate(value: any) {
   if (!value) return;
   const templateName = value.message_template_name;
-  const templateStatus = value.event;  // e.g. "APPROVED", "REJECTED"
+  const templateStatus = value.event;
   const reason = value.reason || value.rejected_reason || null;
 
   if (!templateName || !templateStatus) return;
 
-  // Update whatsapp_templates table
   const { error } = await supabase
     .from("whatsapp_templates")
     .update({
@@ -222,7 +222,6 @@ async function processTemplateStatusUpdate(value: any) {
     console.error("Failed to update whatsapp_templates status:", error);
   }
 
-  // Also update legacy templates table
   await supabase
     .from("templates")
     .update({
@@ -235,12 +234,12 @@ async function processTemplateStatusUpdate(value: any) {
 
 // ─── Incoming Messages ─────────────────────────────────────────────────────────
 
-async function processIncomingMessages(value: any, branchId: string | null): Promise<string[]> {
+async function processIncomingMessages(value: any, branchId: string | null): Promise<{ id: string; phone_number: string }[]> {
   if (!branchId) return [];
 
   const messages = Array.isArray(value.messages) ? value.messages : [];
   const contactName = value.contacts?.[0]?.profile?.name ?? null;
-  const insertedIds: string[] = [];
+  const insertedItems: { id: string; phone_number: string }[] = [];
 
   for (const message of messages) {
     if (!message?.from || !message?.id) continue;
@@ -269,11 +268,11 @@ async function processIncomingMessages(value: any, branchId: string | null): Pro
     if (error) {
       console.error("Failed to insert WhatsApp inbound message", error);
     } else if (data) {
-      insertedIds.push(data.id);
+      insertedItems.push({ id: data.id, phone_number: message.from });
     }
   }
 
-  return insertedIds;
+  return insertedItems;
 }
 
 // ─── Status Updates ────────────────────────────────────────────────────────────
@@ -302,7 +301,21 @@ async function processStatusUpdates(value: any, branchId: string | null) {
 
 // ─── AI Auto-Reply ─────────────────────────────────────────────────────────────
 
-async function triggerAiAutoReply(messageId: string, branchId: string) {
+async function computeAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(accessToken));
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function triggerAiAutoReply(messageId: string, phoneNumber: string, branchId: string) {
   // Check org settings for AI auto-reply config
   const { data: orgSettings } = await supabase
     .from("organization_settings")
@@ -312,6 +325,17 @@ async function triggerAiAutoReply(messageId: string, branchId: string) {
 
   const aiConfig = orgSettings?.whatsapp_ai_config as any;
   if (!aiConfig?.auto_reply_enabled) return;
+
+  // Check bot_active status for this contact
+  const { data: chatSettings } = await supabase
+    .from("whatsapp_chat_settings")
+    .select("bot_active")
+    .eq("branch_id", branchId)
+    .eq("phone_number", phoneNumber)
+    .maybeSingle();
+
+  // If explicitly paused, skip auto-reply
+  if (chatSettings && chatSettings.bot_active === false) return;
 
   // Get the inbound message
   const { data: inboundMsg } = await supabase
@@ -396,17 +420,25 @@ async function triggerAiAutoReply(messageId: string, branchId: string) {
     return;
   }
 
-  // Send via send-whatsapp by calling the Meta API directly (same logic)
+  // Send via Meta API directly with appsecret_proof
   const integration = await getWhatsAppIntegration(branchId);
   if (!integration) return;
 
   const accessToken = integration.credentials?.access_token as string;
   const phoneNumberId = integration.config?.phone_number_id as string;
+  const appSecret = (integration.credentials?.app_secret as string) || null;
   if (!accessToken || !phoneNumberId) return;
 
   const cleanPhone = inboundMsg.phone_number.replace(/[\s\-\+]/g, "");
 
-  const metaResponse = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+  // Compute appsecret_proof
+  let metaUrl = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+  if (appSecret) {
+    const proof = await computeAppSecretProof(accessToken, appSecret);
+    metaUrl += `?appsecret_proof=${proof}`;
+  }
+
+  const metaResponse = await fetch(metaUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
