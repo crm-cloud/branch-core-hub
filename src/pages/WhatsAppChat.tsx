@@ -100,9 +100,12 @@ export default function WhatsAppChatPage() {
   const [newChatName, setNewChatName] = useState('');
   const [botActive, setBotActive] = useState(true);
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachUploading, setAttachUploading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -287,6 +290,63 @@ export default function WhatsAppChatPage() {
       return;
     }
     if (newMessage.trim()) sendMessage.mutate(newMessage.trim());
+  };
+
+  const handleEmojiSelect = useCallback((emoji: any) => {
+    setNewMessage(prev => prev + emoji.native);
+    setEmojiOpen(false);
+  }, []);
+
+  const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedContact || !selectedBranch || selectedBranch === 'all') return;
+    setAttachUploading(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `whatsapp-attachments/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
+      const mediaUrl = urlData.publicUrl;
+
+      // Insert message
+      const { data: msgData, error: msgError } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          branch_id: selectedBranch,
+          phone_number: selectedContact.phone_number,
+          contact_name: selectedContact.contact_name,
+          member_id: selectedContact.member_id,
+          content: mediaUrl,
+          direction: 'outbound',
+          status: 'pending',
+          message_type: file.type.startsWith('image/') ? 'image' : 'document',
+        })
+        .select()
+        .single();
+      if (msgError) throw msgError;
+
+      // Send via edge function
+      await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          message_id: msgData.id,
+          phone_number: selectedContact.phone_number,
+          content: mediaUrl,
+          branch_id: selectedBranch,
+          message_type: file.type.startsWith('image/') ? 'image' : 'document',
+          media_url: mediaUrl,
+        },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      toast.success('Attachment sent');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send attachment');
+    } finally {
+      setAttachUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleAiSuggest = async () => {
