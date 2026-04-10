@@ -1,4 +1,4 @@
-// v2.0.1 — inbound branch fallback for global WhatsApp integrations
+// v3.0.0 — AI Brain: context hydration, structured lead extraction, tool calling scaffold
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -300,7 +300,73 @@ async function processStatusUpdates(value: any, branchId: string | null) {
   }
 }
 
-// ─── AI Auto-Reply ─────────────────────────────────────────────────────────────
+// ─── Context Hydration (Epic 2) ────────────────────────────────────────────────
+
+async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: boolean; contextPrompt: string; memberName?: string }> {
+  const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, "");
+  const phoneVariants = [cleanPhone, `+${cleanPhone}`, cleanPhone.replace(/^91/, "+91")];
+
+  // Check if member
+  for (const variant of phoneVariants) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name, phone")
+      .eq("phone", variant)
+      .limit(1)
+      .maybeSingle();
+
+    if (profile) {
+      // Get member + membership info
+      const { data: member } = await supabase
+        .from("members")
+        .select("id, member_code")
+        .eq("user_id", profile.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (member) {
+        const { data: memberships } = await supabase
+          .from("memberships")
+          .select("id, status, end_date, plan_id, membership_plans(name)")
+          .eq("member_id", member.id)
+          .eq("status", "active")
+          .limit(1);
+
+        const activeMembership = memberships?.[0];
+        let contextLines = `Context: Speaking to ${profile.full_name || "a member"}, an Active Member (Code: ${member.member_code}).`;
+        if (activeMembership) {
+          const planName = (activeMembership as any).membership_plans?.name || "Unknown Plan";
+          const daysLeft = activeMembership.end_date
+            ? Math.max(0, Math.ceil((new Date(activeMembership.end_date).getTime() - Date.now()) / 86400000))
+            : "N/A";
+          contextLines += ` Plan: ${planName}, ${daysLeft} days remaining.`;
+        }
+        return { isMember: true, contextPrompt: contextLines, memberName: profile.full_name || undefined };
+      }
+    }
+  }
+
+  // Check if existing lead
+  for (const variant of phoneVariants) {
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id, full_name, status, temperature")
+      .eq("phone", variant)
+      .limit(1)
+      .maybeSingle();
+
+    if (lead) {
+      return {
+        isMember: false,
+        contextPrompt: `Context: Speaking to ${lead.full_name || "a known lead"} (Lead status: ${lead.status}, Temperature: ${lead.temperature}).`,
+      };
+    }
+  }
+
+  return { isMember: false, contextPrompt: "Context: Speaking to an unregistered contact (potential new lead)." };
+}
+
+// ─── AI Auto-Reply with Brain (Epics 2-4) ──────────────────────────────────────
 
 async function computeAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -353,6 +419,16 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     await new Promise((r) => setTimeout(r, delaySeconds * 1000));
   }
 
+  // ── Epic 2: Context Hydration ──
+  const contactContext = await hydrateContactContext(phoneNumber);
+
+  // ── Epic 3: Lead Capture Config ──
+  const leadCaptureConfig = aiConfig.lead_capture as {
+    enabled?: boolean;
+    target_fields?: string[];
+    handoff_message?: string;
+  } | undefined;
+
   // Fetch recent conversation history
   const { data: recentMsgs } = await supabase
     .from("whatsapp_messages")
@@ -364,11 +440,36 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 
   const conversationHistory = (recentMsgs || [])
     .reverse()
-    .map((m: any) => `${m.direction === "inbound" ? inboundMsg.contact_name || "Customer" : "Assistant"}: ${m.content}`)
-    .join("\n");
+    .map((m: any) => ({
+      role: m.direction === "inbound" ? "user" as const : "assistant" as const,
+      content: m.content || "",
+    }));
 
-  const systemPrompt = aiConfig.system_prompt ||
-    'You are a helpful gym assistant. Answer questions about membership, timings, and facilities. Keep responses short and friendly.';
+  // Build system prompt
+  let systemPrompt = aiConfig.system_prompt ||
+    "You are a helpful gym assistant. Answer questions about membership, timings, and facilities. Keep responses short and friendly.";
+
+  // Inject context
+  systemPrompt = `${contactContext.contextPrompt}\n\n${systemPrompt}`;
+
+  // Epic 3: Inject lead capture instructions for non-members
+  const shouldCaptureLead = !contactContext.isMember && leadCaptureConfig?.enabled && (leadCaptureConfig.target_fields?.length ?? 0) > 0;
+  if (shouldCaptureLead) {
+    const fieldLabels: Record<string, string> = {
+      name: "Full Name", phone: "Phone Number", email: "Email", goal: "Fitness Goal",
+      budget: "Budget", start_date: "Expected Start Date", experience: "Fitness Experience",
+      preferred_time: "Preferred Time",
+    };
+    const fieldNames = (leadCaptureConfig!.target_fields || []).map(f => fieldLabels[f] || f).join(", ");
+    systemPrompt += `\n\nIMPORTANT LEAD CAPTURE INSTRUCTIONS:
+You are also a lead generation assistant. Your secondary goal is to naturally collect the following information from this person during the conversation: ${fieldNames}.
+- Ask for these naturally, one or two at a time, weaving them into the conversation.
+- Do NOT ask for all fields at once.
+- Once you have collected ALL the required fields, respond with ONLY this exact JSON (no other text):
+{"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"..."`).join(",")}}}
+- The phone number is already known: ${phoneNumber}
+- Until all fields are collected, continue the normal helpful conversation.`;
+  }
 
   // Call Lovable AI Gateway
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -377,30 +478,199 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     return;
   }
 
+  // Build messages array
+  const aiMessages: { role: string; content: string }[] = [
+    { role: "system", content: systemPrompt },
+    ...conversationHistory,
+  ];
+
+  // Epic 4: Tool calling for members
+  const tools = contactContext.isMember ? [
+    {
+      type: "function",
+      function: {
+        name: "get_schedule",
+        description: "Get available schedule/classes for a given date and type",
+        parameters: {
+          type: "object",
+          properties: {
+            date: { type: "string", description: "Date in YYYY-MM-DD format" },
+            type: { type: "string", description: "Type of schedule: class, pt_session, facility" },
+          },
+          required: ["date"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "book_session",
+        description: "Book a session for the member",
+        parameters: {
+          type: "object",
+          properties: {
+            type: { type: "string", description: "Type: class, pt_session, facility" },
+            datetime: { type: "string", description: "ISO datetime for the booking" },
+          },
+          required: ["type", "datetime"],
+        },
+      },
+    },
+  ] : undefined;
+
+  const aiRequestBody: any = {
+    model: "google/gemini-3-flash-preview",
+    messages: aiMessages,
+  };
+  if (tools) {
+    aiRequestBody.tools = tools;
+  }
+
   const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${LOVABLE_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Conversation:\n${conversationHistory}\n\nReply to the customer's last message concisely.` },
-      ],
-    }),
+    body: JSON.stringify(aiRequestBody),
   });
 
   if (!aiResponse.ok) {
-    console.error("AI gateway error for auto-reply:", aiResponse.status);
+    const errText = await aiResponse.text();
+    console.error("AI gateway error for auto-reply:", aiResponse.status, errText);
     return;
   }
 
   const aiResult = await aiResponse.json();
-  const replyText = aiResult.choices?.[0]?.message?.content;
+  const choice = aiResult.choices?.[0];
+
+  // Epic 4: Handle tool calls (mocked for now)
+  if (choice?.message?.tool_calls?.length > 0) {
+    const toolCalls = choice.message.tool_calls;
+    console.log("AI requested tool calls:", JSON.stringify(toolCalls));
+
+    // Build mocked tool responses
+    const toolMessages = toolCalls.map((tc: any) => ({
+      role: "tool",
+      tool_call_id: tc.id,
+      content: JSON.stringify({
+        success: true,
+        message: `${tc.function.name} is not yet wired up. Feature coming soon!`,
+        data: [],
+      }),
+    }));
+
+    // Follow-up call with mocked responses
+    const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          ...aiMessages,
+          choice.message,
+          ...toolMessages,
+        ],
+        tools,
+      }),
+    });
+
+    if (followUpResponse.ok) {
+      const followUpResult = await followUpResponse.json();
+      const followUpText = followUpResult.choices?.[0]?.message?.content;
+      if (followUpText) {
+        await sendAiReply(followUpText, inboundMsg, branchId);
+      }
+    }
+    return;
+  }
+
+  let replyText = choice?.message?.content;
   if (!replyText) return;
 
+  // Epic 3: Check for lead_captured JSON
+  if (shouldCaptureLead) {
+    try {
+      // Try to extract JSON from the response
+      const jsonMatch = replyText.match(/\{[\s\S]*"status"\s*:\s*"lead_captured"[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.status === "lead_captured" && parsed.data) {
+          console.log("AI captured lead data:", JSON.stringify(parsed.data));
+
+          // Insert into leads table
+          const leadData: any = {
+            phone: phoneNumber,
+            source: "whatsapp_ai",
+            branch_id: branchId,
+            status: "new",
+            temperature: "warm",
+            score: 50,
+            full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
+            notes: `AI-captured via WhatsApp. ${Object.entries(parsed.data).map(([k, v]) => `${k}: ${v}`).join(", ")}`,
+          };
+          if (parsed.data.email) leadData.email = parsed.data.email;
+          if (parsed.data.goal || parsed.data.fitness_goal) leadData.goals = parsed.data.goal || parsed.data.fitness_goal;
+          if (parsed.data.budget) leadData.budget = parsed.data.budget;
+
+          const { data: newLead, error: leadError } = await supabase
+            .from("leads")
+            .insert(leadData)
+            .select("id")
+            .single();
+
+          if (leadError) {
+            console.error("Failed to insert AI-captured lead:", leadError);
+          } else if (newLead) {
+            // Insert marker message
+            await supabase.from("whatsapp_messages").insert({
+              branch_id: branchId,
+              phone_number: inboundMsg.phone_number,
+              contact_name: inboundMsg.contact_name,
+              content: `[AI_LEAD_CAPTURED:${newLead.id}]`,
+              direction: "outbound",
+              status: "delivered",
+              message_type: "text",
+            });
+
+            // Set bot_active = false
+            await supabase.from("whatsapp_chat_settings").upsert(
+              {
+                branch_id: branchId,
+                phone_number: phoneNumber,
+                bot_active: false,
+                paused_at: new Date().toISOString(),
+              },
+              { onConflict: "branch_id,phone_number" },
+            );
+          }
+
+          // Send handoff message
+          const handoffMessage = leadCaptureConfig?.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
+          await sendAiReply(handoffMessage, inboundMsg, branchId);
+          return;
+        }
+      }
+    } catch (parseErr) {
+      // Not a lead capture JSON — continue with normal reply
+      console.log("AI response is not lead_captured JSON, sending as normal reply");
+    }
+  }
+
+  // Normal AI reply
+  await sendAiReply(replyText, inboundMsg, branchId);
+}
+
+// ─── Send AI Reply via Meta API ────────────────────────────────────────────────
+
+async function sendAiReply(
+  replyText: string,
+  inboundMsg: { phone_number: string; contact_name: string | null },
+  branchId: string,
+) {
   // Insert AI reply as outbound message
   const { data: aiMsg, error: insertErr } = await supabase
     .from("whatsapp_messages")
