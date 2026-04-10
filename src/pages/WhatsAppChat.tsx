@@ -840,7 +840,7 @@ export default function WhatsAppChatPage() {
                                     {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
                                   </div>
                                 )}
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere] w-full">{msg.content}</p>
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
                                     msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'

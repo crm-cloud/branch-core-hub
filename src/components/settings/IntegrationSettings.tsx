@@ -1008,7 +1008,13 @@ function MetaTemplatesPanel({
                       body: { action: 'list', branch_id: branch },
                     });
                     if (error) throw error;
-                    if (data?.error) throw new Error(data.error);
+                    if (data?.error) {
+                      const errStr = String(data.error);
+                      if (errStr.includes('does not exist') || errStr.includes('cannot be loaded')) {
+                        throw new Error('Meta Error: WABA ID not found. Please verify your WhatsApp Business Account ID in Integration Settings.');
+                      }
+                      throw new Error(errStr);
+                    }
                     toast.success(`✅ Connection successful! Found ${data?.templates?.length || 0} templates.`);
                   } catch (err: any) {
                     toast.error(`❌ Connection failed: ${err.message}`);
@@ -1182,8 +1188,7 @@ function LeadCaptureTab() {
       {/* AI Lead Capture Rules */}
       <AIFlowBuilderSettings />
 
-      {/* Lead Notification Rules */}
-      <LeadNotificationSettings />
+      {/* Lead Notification Rules moved to Notifications tab */}
 
       {/* Webhook Configuration */}
       <Card>
