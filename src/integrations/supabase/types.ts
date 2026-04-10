@@ -6209,6 +6209,7 @@ export type Database = {
           branch_id: string | null
           created_at: string | null
           id: string
+          is_unread: boolean | null
           paused_at: string | null
           paused_by: string | null
           phone_number: string
@@ -6219,6 +6220,7 @@ export type Database = {
           branch_id?: string | null
           created_at?: string | null
           id?: string
+          is_unread?: boolean | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number: string
@@ -6229,6 +6231,7 @@ export type Database = {
           branch_id?: string | null
           created_at?: string | null
           id?: string
+          is_unread?: boolean | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number?: string
