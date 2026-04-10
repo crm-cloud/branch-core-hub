@@ -2,16 +2,17 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TEMPLATE_TYPES = [
@@ -321,89 +322,97 @@ export function TemplateManager() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : (
-        <div className="space-y-6">
-          {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
-            <Card key={value}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Icon className="h-4 w-4" />
-                  {label} Templates
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!groupedTemplates[value]?.length ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No {label} templates yet
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {groupedTemplates[value].map((template) => (
-                      <div
-                        key={template.id}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium truncate">{template.name}</p>
-                            {!template.is_active && (
-                              <Badge variant="secondary" className="text-xs">
-                                Inactive
-                              </Badge>
+        <Tabs defaultValue="whatsapp" className="w-full">
+          <TabsList className="w-full grid grid-cols-3">
+            {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} className="flex items-center gap-2">
+                <Icon className="h-4 w-4" />
+                {label}
+                {groupedTemplates[value]?.length ? (
+                  <Badge variant="secondary" className="ml-1 text-xs h-5 px-1.5">
+                    {groupedTemplates[value].length}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {TEMPLATE_TYPES.map(({ value, label }) => (
+            <TabsContent key={value} value={value}>
+              <Card>
+                <CardContent className="pt-4">
+                  {!groupedTemplates[value]?.length ? (
+                    <p className="text-sm text-muted-foreground py-8 text-center">
+                      No {label} templates yet. Click "Add Template" to create one.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {groupedTemplates[value].map((template) => (
+                        <div
+                          key={template.id}
+                          className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium truncate">{template.name}</p>
+                              {!template.is_active && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                              {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
+                            </div>
+                            {value === 'whatsapp' && template.meta_template_name && (
+                              <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                                Meta: {template.meta_template_name}
+                              </p>
                             )}
-                            {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
+                            {value === 'whatsapp' && template.meta_template_status === 'REJECTED' && template.meta_rejection_reason && (
+                              <p className="text-xs text-destructive mt-0.5">
+                                Reason: {template.meta_rejection_reason}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground truncate mt-1">
+                              {template.content.slice(0, 80)}...
+                            </p>
                           </div>
-                          {value === 'whatsapp' && template.meta_template_name && (
-                            <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                              Meta: {template.meta_template_name}
-                            </p>
-                          )}
-                          {value === 'whatsapp' && template.meta_template_status === 'REJECTED' && template.meta_rejection_reason && (
-                            <p className="text-xs text-red-600 mt-0.5">
-                              Reason: {template.meta_rejection_reason}
-                            </p>
-                          )}
-                          <p className="text-xs text-muted-foreground truncate mt-1">
-                            {template.content.slice(0, 80)}...
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 ml-3 flex-shrink-0">
-                          {value === 'whatsapp' && (
+                          <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                            {value === 'whatsapp' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs gap-1.5"
+                                onClick={() => openMetaDialog(template)}
+                                title="Submit to Meta for approval"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Submit to Meta</span>
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="text-green-700 hover:text-green-800 hover:bg-green-50 text-xs gap-1.5"
-                              onClick={() => openMetaDialog(template)}
-                              title="Submit to Meta for approval"
-                              data-testid={`btn-submit-meta-${template.id}`}
+                              size="icon"
+                              onClick={() => openEditor(template)}
                             >
-                              <Send className="h-3.5 w-3.5" />
-                              <span className="hidden sm:inline">Submit to Meta</span>
+                              <Edit className="h-4 w-4" />
                             </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditor(template)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => deleteMutation.mutate(template.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => deleteMutation.mutate(template.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
           ))}
-        </div>
+        </Tabs>
       )}
 
       {/* Template Editor Drawer */}
@@ -554,8 +563,16 @@ export function TemplateManager() {
           <div className="space-y-4 mt-6">
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
               <p className="text-xs text-amber-700">
-                <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>). WhatsApp will auto-format the name if needed.
+                <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>).
               </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
+              <p className="text-xs font-semibold flex items-center gap-1"><Info className="h-3 w-3" /> India Pricing per Conversation</p>
+              <p className="text-xs text-muted-foreground">• <strong>Utility</strong> (confirmations, updates): ~₹0.15</p>
+              <p className="text-xs text-muted-foreground">• <strong>Marketing</strong> (promos, re-engagement): ~₹0.77</p>
+              <p className="text-xs text-muted-foreground">• <strong>Authentication</strong> (OTP, verification): ~₹0.13</p>
+              <p className="text-xs text-muted-foreground">• <strong>Service</strong> (user-initiated, 24h window): Free</p>
             </div>
 
             <div className="space-y-2">

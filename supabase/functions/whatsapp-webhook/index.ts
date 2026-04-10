@@ -610,11 +610,15 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
             temperature: "warm",
             score: 50,
             full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
-            notes: `AI-captured via WhatsApp. ${Object.entries(parsed.data).map(([k, v]) => `${k}: ${v}`).join(", ")}`,
+            email: parsed.data.email || null,
+            goals: parsed.data.goal || parsed.data.fitness_goal || null,
+            budget: parsed.data.budget || null,
+            fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
+            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
+            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
+            preferred_time: parsed.data.preferred_time || null,
+            notes: `AI-captured via WhatsApp conversation`,
           };
-          if (parsed.data.email) leadData.email = parsed.data.email;
-          if (parsed.data.goal || parsed.data.fitness_goal) leadData.goals = parsed.data.goal || parsed.data.fitness_goal;
-          if (parsed.data.budget) leadData.budget = parsed.data.budget;
 
           const { data: newLead, error: leadError } = await supabase
             .from("leads")
