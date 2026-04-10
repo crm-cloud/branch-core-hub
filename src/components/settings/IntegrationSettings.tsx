@@ -990,23 +990,47 @@ function MetaTemplatesPanel({
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-muted-foreground flex-1">
               {useMetaList
                 ? `${metaApiTemplates.length} templates registered with Meta.${lastSynced ? ` Last synced: ${lastSynced}.` : ''}`
-                : 'Click "Sync from Meta" to see all templates registered with your WABA.'}
+                : 'Click "Test Connection" to verify your WABA ID, then "Sync" to fetch templates.'}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSync}
-              disabled={isSyncing || !hasWhatsAppConfig}
-              data-testid="btn-sync-meta-templates"
-              className="flex-shrink-0"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing…' : 'Sync from Meta'}
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const branch = selectedBranch !== 'all' ? selectedBranch : null;
+                  if (!branch) { toast.error('Select a specific branch first'); return; }
+                  try {
+                    const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+                      body: { action: 'list', branch_id: branch },
+                    });
+                    if (error) throw error;
+                    if (data?.error) throw new Error(data.error);
+                    toast.success(`✅ Connection successful! Found ${data?.templates?.length || 0} templates.`);
+                  } catch (err: any) {
+                    toast.error(`❌ Connection failed: ${err.message}`);
+                  }
+                }}
+                disabled={!hasWhatsAppConfig}
+                className="gap-1.5"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                Test Connection
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSync}
+                disabled={isSyncing || !hasWhatsAppConfig}
+                data-testid="btn-sync-meta-templates"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing…' : 'Sync from Meta'}
+              </Button>
+            </div>
           </div>
 
           {/* After sync: show full Meta API list with category */}
