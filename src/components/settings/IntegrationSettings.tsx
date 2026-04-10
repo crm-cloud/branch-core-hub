@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { LeadNotificationSettings } from '@/components/settings/LeadNotificationSettings';
 import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
 import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,13 +60,9 @@ function PaymentProviderLogo({ providerId }: { providerId: string }) {
 }
 
 const SMS_PROVIDERS = [
-  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
-  { id: 'gupshup', name: 'Gupshup', description: 'Enterprise SMS platform' },
+  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
-  { id: 'textlocal', name: 'TextLocal', description: 'SMS API service' },
-  { id: 'fast2sms', name: 'Fast2SMS', description: 'Indian bulk SMS' },
-  { id: 'custom', name: 'Custom API', description: 'Your own SMS API' },
 ];
 
 // RoundSMS defaults and labels now live in providerSchemas.ts
@@ -80,10 +77,7 @@ const EMAIL_PROVIDERS = [
 const WHATSAPP_PROVIDERS = [
   { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
-  { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
-  { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
   { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
-  { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
 const SUPABASE_FUNCTION_BASE = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
@@ -403,124 +397,112 @@ export function IntegrationSettings() {
           {/* AI Auto-Reply Settings */}
           <WhatsAppAISettings />
 
-          {/* AI Lead Capture Rules */}
-          <AIFlowBuilderSettings />
-
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
             integrations={integrations}
             selectedBranch={selectedBranch}
           />
 
-          {/* WhatsApp Business API Setup Guide */}
-          <Card className="border-primary/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ExternalLink className="h-5 w-5 text-primary" />
-                WhatsApp Business API — Setup Guide
-              </CardTitle>
-              <CardDescription>
-                Follow these steps to connect your WhatsApp Business API for sending and receiving messages.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Create a Meta Business Account</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Go to <span className="font-mono text-primary">business.facebook.com</span> and create or verify your business account. You'll need a valid business email and phone number.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Set Up WhatsApp in Meta Developer Portal</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Visit <span className="font-mono text-primary">developers.facebook.com</span> → Create App → Select "Business" type → Add "WhatsApp" product. This gives you access to the Cloud API.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Generate a Permanent Access Token</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      In your Meta App Dashboard → WhatsApp → API Setup → Generate a permanent token (System User token from Business Settings). Copy the <strong>Phone Number ID</strong> and <strong>Business Account ID</strong> as well.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Configure the Provider Above</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Click "Configure" on WATI or Custom API above and enter:
-                    </p>
-                    <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside space-y-0.5">
-                      <li><strong>Phone Number ID</strong> — from Meta API Setup page</li>
-                      <li><strong>Business Account ID</strong> — from Meta Business Settings</li>
-                      <li><strong>Access Token</strong> — the permanent token you generated</li>
-                      <li><strong>Webhook Verify Token</strong> — any secret string you choose</li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">5</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Register the Webhook in Meta</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      In Meta Developer Portal → Your App → WhatsApp → Configuration → Webhook:
-                    </p>
-                    <div className="mt-2 space-y-2">
+          {/* WhatsApp Business API Setup Guide — Collapsible */}
+          <Collapsible>
+            <Card className="border-primary/20">
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer select-none hover:bg-muted/30 transition-colors rounded-t-xl">
+                  <CardTitle className="flex items-center justify-between text-base">
+                    <div className="flex items-center gap-2">
+                      <ExternalLink className="h-5 w-5 text-primary" />
+                      WhatsApp Business API — Setup Guide
+                    </div>
+                    <ChevronRight className="h-4 w-4 transition-transform duration-200 [[data-state=open]_&]:rotate-90" />
+                  </CardTitle>
+                  <CardDescription>
+                    Follow these steps to connect your WhatsApp Business API for sending and receiving messages.
+                  </CardDescription>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-5">
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
                       <div>
-                        <Label className="text-xs font-medium">Callback URL</Label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Input readOnly value={WHATSAPP_WEBHOOK_URL} className="font-mono text-xs h-8" />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 flex-shrink-0"
-                            onClick={() => {
-                              navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL);
-                              toast.success('Webhook URL copied!');
-                            }}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
+                        <h4 className="font-semibold text-sm">Create a Meta Business Account</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Go to <span className="font-mono text-primary">business.facebook.com</span> and create or verify your business account.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Set Up WhatsApp in Meta Developer Portal</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Visit <span className="font-mono text-primary">developers.facebook.com</span> → Create App → Select "Business" type → Add "WhatsApp" product.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Generate a Permanent Access Token</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          In your Meta App Dashboard → WhatsApp → API Setup → Generate a permanent token. Copy the <strong>Phone Number ID</strong> and <strong>Business Account ID</strong>.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Configure the Provider Above</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Click "Configure" on Meta Cloud API above and enter your credentials.</p>
+                        <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside space-y-0.5">
+                          <li><strong>Phone Number ID</strong> — from Meta API Setup page</li>
+                          <li><strong>Business Account ID</strong> — from Meta Business Settings</li>
+                          <li><strong>Access Token</strong> — the permanent token you generated</li>
+                          <li><strong>Webhook Verify Token</strong> — any secret string you choose</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">5</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Register the Webhook in Meta</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">In Meta Developer Portal → Your App → WhatsApp → Configuration → Webhook:</p>
+                        <div className="mt-2 space-y-2">
+                          <div>
+                            <Label className="text-xs font-medium">Callback URL</Label>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Input readOnly value={WHATSAPP_WEBHOOK_URL} className="font-mono text-xs h-8" />
+                              <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL); toast.success('Webhook URL copied!'); }}>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            <strong>Verify Token:</strong> Use the same token you entered above. Subscribe to <strong>messages</strong> and <strong>message_template_status_update</strong> fields.
+                          </p>
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        <strong>Verify Token:</strong> Use the same token you entered in "Webhook Verify Token" above. Subscribe to <strong>messages</strong> and <strong>message_template_status_update</strong> fields.
-                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">6</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Send a Test Message</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Go to <strong>WhatsApp Chat</strong> from the sidebar, select a contact, type a message and hit send.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">6</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Send a Test Message</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Go to <strong>WhatsApp Chat</strong> from the sidebar, select a contact, type a message and hit send. If configured correctly, the message status will update from "pending" to "sent".
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      <strong>Note:</strong> Meta requires your business to be verified and WhatsApp message templates to be approved before sending to non-opted-in users.
                     </p>
                   </div>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  <strong>Note:</strong> Meta requires your business to be verified and WhatsApp message templates to be approved before sending to non-opted-in users. Test messages work immediately with the test phone number provided in your Meta App Dashboard.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         </TabsContent>
 
         <TabsContent value="google" className="space-y-4">
@@ -577,58 +559,59 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
-          {/* Google Business Setup Guide */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Setup Guide</CardTitle>
-              <CardDescription>How to connect Google Business Profile for review syncing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API" and "Business Profile API".
+          {/* Google Business Setup Guide — Collapsible */}
+          <Collapsible>
+            <Card>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer select-none hover:bg-muted/30 transition-colors rounded-t-xl">
+                  <CardTitle className="flex items-center justify-between text-base">
+                    <span>Setup Guide</span>
+                    <ChevronRight className="h-4 w-4 transition-transform duration-200 [[data-state=open]_&]:rotate-90" />
+                  </CardTitle>
+                  <CardDescription>How to connect Google Business Profile for review syncing</CardDescription>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-5">
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API".</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Use the API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong>.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Configure Above & Test</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Click "Setup" above and enter your credentials.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      <strong>Note:</strong> Your Google Business listing must be verified before reviews can be synced.
                     </p>
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID. Copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Use the Google Business Profile API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong> from your verified business listing.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Configure Above & Test</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Click "Setup" above and enter your credentials. Then go to <strong>Feedback</strong> page, approve a review, and click "Publish to Google" to sync it.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  <strong>Note:</strong> Your Google Business listing must be verified before reviews can be synced. Only approved reviews with 4+ star ratings are recommended for publishing.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         </TabsContent>
         <TabsContent value="leads" className="space-y-4">
           <LeadCaptureTab />
@@ -1007,23 +990,47 @@ function MetaTemplatesPanel({
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-muted-foreground flex-1">
               {useMetaList
                 ? `${metaApiTemplates.length} templates registered with Meta.${lastSynced ? ` Last synced: ${lastSynced}.` : ''}`
-                : 'Click "Sync from Meta" to see all templates registered with your WABA.'}
+                : 'Click "Test Connection" to verify your WABA ID, then "Sync" to fetch templates.'}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSync}
-              disabled={isSyncing || !hasWhatsAppConfig}
-              data-testid="btn-sync-meta-templates"
-              className="flex-shrink-0"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing…' : 'Sync from Meta'}
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const branch = selectedBranch !== 'all' ? selectedBranch : null;
+                  if (!branch) { toast.error('Select a specific branch first'); return; }
+                  try {
+                    const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+                      body: { action: 'list', branch_id: branch },
+                    });
+                    if (error) throw error;
+                    if (data?.error) throw new Error(data.error);
+                    toast.success(`✅ Connection successful! Found ${data?.templates?.length || 0} templates.`);
+                  } catch (err: any) {
+                    toast.error(`❌ Connection failed: ${err.message}`);
+                  }
+                }}
+                disabled={!hasWhatsAppConfig}
+                className="gap-1.5"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                Test Connection
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSync}
+                disabled={isSyncing || !hasWhatsAppConfig}
+                data-testid="btn-sync-meta-templates"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing…' : 'Sync from Meta'}
+              </Button>
+            </div>
           </div>
 
           {/* After sync: show full Meta API list with category */}
@@ -1172,6 +1179,9 @@ function LeadCaptureTab() {
 
   return (
     <div className="space-y-6">
+      {/* AI Lead Capture Rules */}
+      <AIFlowBuilderSettings />
+
       {/* Lead Notification Rules */}
       <LeadNotificationSettings />
 

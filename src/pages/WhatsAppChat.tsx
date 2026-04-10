@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,14 @@ import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -24,8 +32,11 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
+  Trash2, Ban, Eye,
 } from 'lucide-react';
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,9 +100,12 @@ export default function WhatsAppChatPage() {
   const [newChatName, setNewChatName] = useState('');
   const [botActive, setBotActive] = useState(true);
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachUploading, setAttachUploading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -276,6 +290,63 @@ export default function WhatsAppChatPage() {
       return;
     }
     if (newMessage.trim()) sendMessage.mutate(newMessage.trim());
+  };
+
+  const handleEmojiSelect = useCallback((emoji: any) => {
+    setNewMessage(prev => prev + emoji.native);
+    setEmojiOpen(false);
+  }, []);
+
+  const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedContact || !selectedBranch || selectedBranch === 'all') return;
+    setAttachUploading(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `whatsapp-attachments/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
+      const mediaUrl = urlData.publicUrl;
+
+      // Insert message
+      const { data: msgData, error: msgError } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          branch_id: selectedBranch,
+          phone_number: selectedContact.phone_number,
+          contact_name: selectedContact.contact_name,
+          member_id: selectedContact.member_id,
+          content: mediaUrl,
+          direction: 'outbound',
+          status: 'pending',
+          message_type: file.type.startsWith('image/') ? 'image' : 'document',
+        })
+        .select()
+        .single();
+      if (msgError) throw msgError;
+
+      // Send via edge function
+      await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          message_id: msgData.id,
+          phone_number: selectedContact.phone_number,
+          content: mediaUrl,
+          branch_id: selectedBranch,
+          message_type: file.type.startsWith('image/') ? 'image' : 'document',
+          media_url: mediaUrl,
+        },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      toast.success('Attachment sent');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send attachment');
+    } finally {
+      setAttachUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleAiSuggest = async () => {
@@ -491,8 +562,8 @@ export default function WhatsAppChatPage() {
                         {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <h3 className="font-semibold text-foreground text-sm">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-foreground text-sm break-words">
                         {selectedContact.contact_name || selectedContact.phone_number}
                       </h3>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -540,9 +611,40 @@ export default function WhatsAppChatPage() {
                         className="scale-75"
                       />
                     </div>
-                    <Button variant="ghost" size="icon" className="rounded-xl">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="rounded-xl">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {selectedContact.member_id && (
+                          <DropdownMenuItem onClick={() => navigate(`/members`)}>
+                            <Eye className="h-4 w-4 mr-2" /> View Profile
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+                            await supabase
+                              .from('whatsapp_messages')
+                              .delete()
+                              .eq('phone_number', selectedContact.phone_number)
+                              .eq('branch_id', selectedBranch);
+                            queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+                            queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+                            setSelectedContact(null);
+                            toast.success('Chat cleared');
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" /> Clear Chat
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" disabled>
+                          <Ban className="h-4 w-4 mr-2" /> Block Contact
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
@@ -649,24 +751,38 @@ export default function WhatsAppChatPage() {
 
                 {/* Message Input */}
                 <div className="px-4 py-3 border-t border-border/30 bg-card flex-shrink-0">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*,application/pdf,.doc,.docx"
+                    onChange={handleAttachment}
+                  />
                   <div className="flex items-center gap-2">
+                    <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
+                          title="Emoji picker"
+                        >
+                          <Smile className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-auto p-0 border-0">
+                        <Picker data={data} onEmojiSelect={handleEmojiSelect} theme="light" previewPosition="none" skinTonePosition="none" />
+                      </PopoverContent>
+                    </Popover>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
-                      disabled
-                      title="Emoji picker (coming soon)"
+                      title="Attach file"
+                      disabled={attachUploading || isBranchUnselected}
+                      onClick={() => fileInputRef.current?.click()}
                     >
-                      <Smile className="h-5 w-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
-                      disabled
-                      title="Attach file (coming soon)"
-                    >
-                      <Paperclip className="h-5 w-5" />
+                      {attachUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
                     </Button>
                     <Button
                       variant="ghost"
