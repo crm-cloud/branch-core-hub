@@ -337,7 +337,7 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 
   // If explicitly paused or lead already captured, skip auto-reply
   if (chatSettings && chatSettings.bot_active === false) return;
-  if (chatSettings && (chatSettings as any).lead_captured === true) return;
+  if (chatSettings && chatSettings.lead_captured === true) return;
 
   // Get the inbound message (including member_id for context hydration)
   const { data: inboundMsg } = await supabase
@@ -407,17 +407,23 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 
   if (flowConfigRecord?.config) {
     aiFlowConfig = flowConfigRecord.config as { target_fields?: string[]; handoff_message?: string };
-    const fields = (aiFlowConfig?.target_fields || []).join(", ");
-    if (fields && !inboundMsg.member_id) {
+    const targetFields = aiFlowConfig?.target_fields || [];
+    if (targetFields.length > 0 && !inboundMsg.member_id) {
+      // Build a JSON example using only the configured fields
+      const exampleData = targetFields.reduce<Record<string, string>>((acc, field) => {
+        acc[field] = `<${field}_value>`;
+        return acc;
+      }, {});
+      const exampleJson = JSON.stringify({ status: "lead_captured", data: exampleData });
+
       // Only inject lead capture instructions for non-members
       leadCaptureInstructions = `
 
 LEAD CAPTURE INSTRUCTIONS:
-You are a lead generation assistant. Your goal is to naturally and conversationally collect the user's: ${fields}.
+You are a lead generation assistant. Your goal is to naturally and conversationally collect the user's: ${targetFields.join(", ")}.
 Ask for one piece of information at a time in a friendly, natural way.
 ONCE you have collected ALL of the required fields, stop chatting and output ONLY this strict JSON (nothing else, no markdown, no code block):
-{"status":"lead_captured","data":{"name":"<value>","phone":"<value>","fitness_goal":"<value>","email":"<value>","budget":"<value>","expected_start_date":"<value>","age":"<value>","gender":"<value>","health_conditions":"<value>","referral_source":"<value>"}}
-Only include the fields you actually collected. Do not include fields you didn't collect.`;
+${exampleJson}`;
     }
   }
 
@@ -664,19 +670,17 @@ Only include the fields you actually collected. Do not include fields you didn't
       console.error("Failed to insert AI-captured lead:", leadInsertErr);
     } else if (newLead) {
       // Mark chat as lead captured and pause bot
+      const chatUpsertPayload = {
+        branch_id: branchId,
+        phone_number: phoneNumber,
+        bot_active: false,
+        lead_captured: true,
+        captured_lead_id: newLead.id,
+        paused_at: new Date().toISOString(),
+      };
       await supabase
         .from("whatsapp_chat_settings")
-        .upsert(
-          {
-            branch_id: branchId,
-            phone_number: phoneNumber,
-            bot_active: false,
-            lead_captured: true,
-            captured_lead_id: newLead.id,
-            paused_at: new Date().toISOString(),
-          } as any,
-          { onConflict: "branch_id,phone_number" },
-        );
+        .upsert(chatUpsertPayload, { onConflict: "branch_id,phone_number" });
     }
 
     // Send handoff message
