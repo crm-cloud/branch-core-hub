@@ -1,4 +1,4 @@
-// v2.0.0 — appsecret_proof for AI auto-reply + bot_active check
+// v2.0.1 — inbound branch fallback for global WhatsApp integrations
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -24,6 +24,7 @@ type WhatsAppIntegration = {
 };
 
 const integrationCache = new Map<string, WhatsAppIntegration | null>();
+let fallbackBranchIdCache: string | null | undefined;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -550,7 +551,24 @@ async function resolveBranchId(integration: WhatsAppIntegration | null, value: a
     if (lastConversation?.branch_id) return lastConversation.branch_id;
   }
 
-  return null;
+  return await getFallbackBranchId();
+}
+
+async function getFallbackBranchId(): Promise<string | null> {
+  if (fallbackBranchIdCache !== undefined) {
+    return fallbackBranchIdCache;
+  }
+
+  const { data: branch } = await supabase
+    .from("branches")
+    .select("id")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  fallbackBranchIdCache = branch?.id ?? null;
+  return fallbackBranchIdCache;
 }
 
 function extractMessageContent(message: any): string | null {
