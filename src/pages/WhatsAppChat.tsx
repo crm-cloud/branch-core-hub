@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useNavigate } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -90,7 +91,9 @@ export default function WhatsAppChatPage() {
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Fetch bot_active state for selected contact
   useEffect(() => {
@@ -256,7 +259,10 @@ export default function WhatsAppChatPage() {
   });
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   const filteredContacts = contacts.filter((c: ChatContact) =>
@@ -550,32 +556,59 @@ export default function WhatsAppChatPage() {
                   </div>
                 )}
 
-                {/* Messages Area */}
-                <div className="flex-1 overflow-hidden">
-                  <ScrollArea className="h-full">
-                    <div
-                      className="p-4 space-y-1"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                      }}
-                    >
-                      {groupedMessages.length === 0 && (
-                        <div className="flex items-center justify-center py-16 text-muted-foreground">
-                          <div className="text-center">
-                            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                            <p className="text-sm">No messages yet. Send the first one!</p>
+                {/* Messages Area — fixed height with overflow scroll */}
+                <div className="flex-1 min-h-0">
+                  <div
+                    ref={messagesContainerRef}
+                    className="h-full overflow-y-auto p-4 space-y-1"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                    }}
+                  >
+                    {groupedMessages.length === 0 && (
+                      <div className="flex items-center justify-center py-16 text-muted-foreground">
+                        <div className="text-center">
+                          <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">No messages yet. Send the first one!</p>
+                        </div>
+                      </div>
+                    )}
+                    {groupedMessages.map((group) => (
+                      <div key={group.date}>
+                        {/* Date divider */}
+                        <div className="flex items-center justify-center my-4">
+                          <div className="px-3 py-1 rounded-lg bg-muted/80 text-xs text-muted-foreground font-medium shadow-sm">
+                            {formatChatDate(group.msgs[0].created_at)}
                           </div>
                         </div>
-                      )}
-                      {groupedMessages.map((group) => (
-                        <div key={group.date}>
-                          {/* Date divider */}
-                          <div className="flex items-center justify-center my-4">
-                            <div className="px-3 py-1 rounded-lg bg-muted/80 text-xs text-muted-foreground font-medium shadow-sm">
-                              {formatChatDate(group.msgs[0].created_at)}
-                            </div>
-                          </div>
-                          {group.msgs.map((msg: Message) => (
+                        {group.msgs.map((msg: Message) => {
+                          // Detect AI Lead Captured marker
+                          const leadCapturedMatch = msg.content?.match(/\[AI_LEAD_CAPTURED:([a-f0-9-]+)\]/);
+                          if (leadCapturedMatch) {
+                            const leadId = leadCapturedMatch[1];
+                            return (
+                              <div key={msg.id} className="flex justify-center my-4">
+                                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-5 py-3 text-center shadow-lg shadow-emerald-500/5 animate-pulse-once">
+                                  <div className="flex items-center gap-2 justify-center mb-1">
+                                    <Sparkles className="h-4 w-4 text-emerald-500" />
+                                    <span className="font-semibold text-sm text-emerald-700 dark:text-emerald-400">AI Successfully Captured Lead</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mb-2">The AI collected all required information and created a lead in your CRM.</p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-xs rounded-lg border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                    onClick={() => navigate('/leads')}
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5" />
+                                    View Lead
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
                             <div
                               key={msg.id}
                               className={`flex mb-1 ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
@@ -606,12 +639,12 @@ export default function WhatsAppChatPage() {
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </ScrollArea>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
                 </div>
 
                 {/* Message Input */}

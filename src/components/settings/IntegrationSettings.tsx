@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { LeadNotificationSettings } from '@/components/settings/LeadNotificationSettings';
 import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
+import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -401,6 +402,9 @@ export function IntegrationSettings() {
 
           {/* AI Auto-Reply Settings */}
           <WhatsAppAISettings />
+
+          {/* AI Lead Capture Rules */}
+          <AIFlowBuilderSettings />
 
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
