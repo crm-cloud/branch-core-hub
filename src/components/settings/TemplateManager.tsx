@@ -563,8 +563,16 @@ export function TemplateManager() {
           <div className="space-y-4 mt-6">
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
               <p className="text-xs text-amber-700">
-                <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>). WhatsApp will auto-format the name if needed.
+                <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>).
               </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
+              <p className="text-xs font-semibold flex items-center gap-1"><Info className="h-3 w-3" /> India Pricing per Conversation</p>
+              <p className="text-xs text-muted-foreground">• <strong>Utility</strong> (confirmations, updates): ~₹0.15</p>
+              <p className="text-xs text-muted-foreground">• <strong>Marketing</strong> (promos, re-engagement): ~₹0.77</p>
+              <p className="text-xs text-muted-foreground">• <strong>Authentication</strong> (OTP, verification): ~₹0.13</p>
+              <p className="text-xs text-muted-foreground">• <strong>Service</strong> (user-initiated, 24h window): Free</p>
             </div>
 
             <div className="space-y-2">
