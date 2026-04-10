@@ -761,14 +761,11 @@ export default function WhatsAppChatPage() {
       </Dialog>
 
       {/* Convert to Lead Drawer */}
-      {convertLeadOpen && selectedContact && (
-        <AddLeadDrawer
-          open={convertLeadOpen}
-          onClose={() => setConvertLeadOpen(false)}
-          prefillPhone={selectedContact.phone_number}
-          prefillName={selectedContact.contact_name || ''}
-        />
-      )}
+      <AddLeadDrawer
+        open={convertLeadOpen}
+        onOpenChange={setConvertLeadOpen}
+        defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+      />
     </AppLayout>
   );
 }
