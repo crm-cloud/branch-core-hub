@@ -6205,6 +6205,7 @@ export type Database = {
       }
       whatsapp_chat_settings: {
         Row: {
+          assigned_to: string | null
           bot_active: boolean | null
           branch_id: string | null
           created_at: string | null
@@ -6216,6 +6217,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          assigned_to?: string | null
           bot_active?: boolean | null
           branch_id?: string | null
           created_at?: string | null
@@ -6227,6 +6229,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          assigned_to?: string | null
           bot_active?: boolean | null
           branch_id?: string | null
           created_at?: string | null
