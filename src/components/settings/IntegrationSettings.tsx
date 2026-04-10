@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { LeadNotificationSettings } from '@/components/settings/LeadNotificationSettings';
 import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
 import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,13 +60,9 @@ function PaymentProviderLogo({ providerId }: { providerId: string }) {
 }
 
 const SMS_PROVIDERS = [
-  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
-  { id: 'gupshup', name: 'Gupshup', description: 'Enterprise SMS platform' },
+  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
   { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
-  { id: 'textlocal', name: 'TextLocal', description: 'SMS API service' },
-  { id: 'fast2sms', name: 'Fast2SMS', description: 'Indian bulk SMS' },
-  { id: 'custom', name: 'Custom API', description: 'Your own SMS API' },
 ];
 
 // RoundSMS defaults and labels now live in providerSchemas.ts
@@ -80,10 +77,7 @@ const EMAIL_PROVIDERS = [
 const WHATSAPP_PROVIDERS = [
   { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
-  { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
-  { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
   { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
-  { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
 const SUPABASE_FUNCTION_BASE = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
