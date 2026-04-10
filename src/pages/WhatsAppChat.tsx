@@ -217,7 +217,6 @@ export default function WhatsAppChatPage() {
           console.warn('WhatsApp delivery failed (message saved as pending):', sendError);
           toast.info('Message saved. WhatsApp delivery failed — check integration settings.');
         } else {
-          // Edge function succeeded — update status to 'sent' in DB
           const { error: updateErr } = await supabase
             .from('whatsapp_messages')
             .update({ status: 'sent' })
@@ -225,6 +224,20 @@ export default function WhatsAppChatPage() {
           if (updateErr) {
             console.warn('Failed to update message status to sent:', updateErr.message);
           }
+        }
+
+        // Auto-pause bot when staff sends a manual message
+        if (selectedBranch !== 'all') {
+          await supabase.from('whatsapp_chat_settings').upsert(
+            {
+              branch_id: selectedBranch,
+              phone_number: selectedContact.phone_number,
+              bot_active: false,
+              paused_at: new Date().toISOString(),
+            },
+            { onConflict: 'branch_id,phone_number' }
+          );
+          setBotActive(false);
         }
       } catch (apiErr) {
         console.warn('send-whatsapp invocation error:', apiErr);
@@ -483,9 +496,34 @@ export default function WhatsAppChatPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="rounded-xl">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
+                      <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">AI Bot</span>
+                      <Switch
+                        checked={botActive}
+                        onCheckedChange={async (checked) => {
+                          setBotActive(checked);
+                          if (selectedContact && selectedBranch && selectedBranch !== 'all') {
+                            await supabase.from('whatsapp_chat_settings').upsert(
+                              {
+                                branch_id: selectedBranch,
+                                phone_number: selectedContact.phone_number,
+                                bot_active: checked,
+                                ...(!checked ? { paused_at: new Date().toISOString() } : { paused_at: null }),
+                              },
+                              { onConflict: 'branch_id,phone_number' }
+                            );
+                            toast.success(checked ? 'AI Bot enabled' : 'AI Bot paused for this contact');
+                          }
+                        }}
+                        className="scale-75"
+                      />
+                    </div>
+                    <Button variant="ghost" size="icon" className="rounded-xl">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Branch-not-selected inline notice */}
