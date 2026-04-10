@@ -87,6 +87,7 @@ export default function WhatsAppChatPage() {
   const [newChatPhone, setNewChatPhone] = useState('');
   const [newChatName, setNewChatName] = useState('');
   const [botActive, setBotActive] = useState(true);
+  const [convertLeadOpen, setConvertLeadOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
