@@ -1,64 +1,111 @@
-# Root Cause Analysis & Fix Plan
 
-## Critical Finding: WHY You Can't Receive Messages
 
-**The `whatsapp-webhook` function is MISSING from `supabase/config.toml`.**
+# WhatsApp AI Brain, Autonomous Lead Capture & Chat UI Fix
 
-This means it defaults to `verify_jwt = true`. When Meta sends a POST webhook request, it does NOT include a Supabase JWT token — so Supabase's API gateway rejects the request with **401 Unauthorized** before your edge function code even runs. This is why:
+## Bug Fix: Chat Window Shifts on New Messages
 
-- Zero inbound messages exist in the database (all 7 messages are outbound)
-- Zero edge function logs for `whatsapp-webhook` — the code never executes
-- Sending works fine (the latest "hi" message has status "read", confirming Meta's API works)
-
-**Fix:** Add `[functions.whatsapp-webhook] verify_jwt = false` to `config.toml`. This is the same pattern used for `payment-webhook`, `mips-webhook-receiver`, and other external webhook receivers.
+The messages area uses `<ScrollArea className="h-full">` inside a `flex-1 overflow-hidden` container (line 554-614). The issue is that `ScrollArea` with `h-full` doesn't properly constrain height in a flex column — when new messages arrive, the content pushes the container. Fix: replace the `ScrollArea` wrapper with a plain `div` using `overflow-y-auto` and explicit height constraint, ensuring the outer container has `min-h-0` (critical for flex children to respect overflow).
 
 ---
 
-## Implementation Plan
+## Epic 1: AI Flow Builder Settings UI
 
-### 1. Fix Webhook (The Critical One-Line Fix)
+**New component:** `src/components/settings/AIFlowBuilderSettings.tsx`
 
-**File:** `supabase/config.toml`
+- Not a new page — add as a sub-section inside the existing WhatsApp tab in Settings (alongside `WhatsAppAISettings`)
+- Admin form with:
+  - Multi-select tags input for "Target Fields to Collect" (Name, Phone, Fitness Goal, Budget, Expected Start Date, etc.)
+  - Textarea for "Handoff Message"
+  - Toggle to enable/disable AI lead capture
+- Save into `organization_settings.whatsapp_ai_config` JSONB under a `lead_capture` key:
+  ```json
+  { "lead_capture": { "enabled": true, "target_fields": ["name","goal","start_date"], "handoff_message": "Thanks! Our manager will call you shortly." } }
+  ```
+- No new DB column needed — reuse existing `whatsapp_ai_config` JSONB
 
-- Add `[functions.whatsapp-webhook]` with `verify_jwt = false`
-- Also add `[functions.manage-whatsapp-templates]` with `verify_jwt = false` (it's also missing, causing the template sync auth errors)
+**Modified:** `src/components/settings/IntegrationSettings.tsx` — render `AIFlowBuilderSettings` in WhatsApp tab
 
-### 2. Fix WhatsApp FAB Phone Number
+---
 
-**File:** `src/pages/PublicWebsite.tsx`
+## Epic 2: Context Hydration in AI Auto-Reply
 
-- The FAB currently links to `https://wa.me/?text=...` with NO phone number
-- Fix: fetch the phone number from `integration_settings` config or `organization_settings`, and inject it into the `wa.me/<phone>` URL
-- If no phone configured, hide the FAB
+**Modified:** `supabase/functions/whatsapp-webhook/index.ts` (`triggerAiAutoReply` function)
 
-### 3. WhatsApp Chat UI Improvements
+Before calling the AI gateway, look up the phone number:
+1. Query `members` joined with `profiles` (via `user_id`) matching cleaned phone number against `profiles.phone`
+2. If found: query `memberships` (active) and `plan_benefits` for that member. Prepend to system prompt: `"Context: Speaking to [Name], Active Member on [Plan]. Benefits: [X] remaining."`
+3. If not found: query `leads` table. If lead exists, prepend lead info. If unknown: `"Context: Unregistered contact."`
 
-**File:** `src/pages/WhatsAppChat.tsx`
+This context gets injected into the system prompt before the Gemini call.
 
-- The bot toggle and core chat functionality already exist
-- Add a "Convert to Lead" quick-action button in the chat header that opens a drawer pre-filled with the contact's phone number
-- Improve auto-scroll behavior on new messages
-- Add message type indicators for non-text messages (image, template badges)
+---
 
-### 4. Template Dashboard in Settings
+## Epic 3: Structured Lead Extraction & CRM Routing
 
-**File:** `src/components/settings/IntegrationSettings.tsx`
+**Modified:** `supabase/functions/whatsapp-webhook/index.ts` (`triggerAiAutoReply` function)
 
-- Add a "Templates" sub-tab in the WhatsApp section showing data from `whatsapp_templates` table
-- Columns: Name, Language, Category, Status badge (APPROVED/REJECTED/PENDING), Quality Score
-- "Sync Templates" button calls `manage-whatsapp-templates` with `action: 'list'`
+1. Fetch `lead_capture` config from `organization_settings.whatsapp_ai_config`
+2. If enabled and contact is not a member, inject structured extraction instructions into system prompt:
+   ```
+   You are a lead generation assistant. Naturally collect: [target_fields].
+   Once ALL fields are collected, output ONLY this JSON:
+   {"status":"lead_captured","data":{"name":"...","goal":"..."}}
+   ```
+3. After getting AI response, check if it contains `lead_captured` JSON (try `JSON.parse`)
+4. If detected:
+   - INSERT into `leads` table with extracted data + phone number + `source: 'whatsapp_ai'` + branch_id
+   - Send the handoff message via Meta API (reuse existing send logic)
+   - Set `bot_active = false` in `whatsapp_chat_settings`
+   - Insert a special marker message: `[AI_LEAD_CAPTURED:lead_id]` as content for the UI to detect
+5. If not detected: send normal AI reply text
+
+---
+
+## Epic 4: Tool Calling Scaffolding (Future-Proofing)
+
+**Modified:** `supabase/functions/whatsapp-webhook/index.ts`
+
+For member contacts only, add Gemini function declarations to the AI request:
+```json
+{
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "get_schedule",
+      "parameters": { "type": "object", "properties": { "date": {"type":"string"}, "type": {"type":"string"} } }
+    }
+  }, {
+    "type": "function",
+    "function": {
+      "name": "book_session",
+      "parameters": { "type": "object", "properties": { "user_id": {"type":"string"}, "type": {"type":"string"}, "datetime": {"type":"string"} } }
+    }
+  }]
+}
+```
+
+After AI response, check for `tool_calls` in the response. If found, return mocked success JSON back in a follow-up call to complete the conversation loop. Actual DB wiring deferred.
+
+---
+
+## Epic 5: "Lead Captured" Badge & Chat UI Polish
+
+**Modified:** `src/pages/WhatsAppChat.tsx`
+
+1. In the message rendering loop, detect messages containing `[AI_LEAD_CAPTURED:uuid]` pattern
+2. Render a glowing green banner: "AI Successfully Captured Lead" with a "View Lead" button linking to `/leads` (or opening `LeadProfileDrawer`)
+3. Pre-fill `AddLeadDrawer` with the selected contact's phone number (already partially done — enhance to pass phone)
 
 ---
 
 ## Files Changed
 
+| File | Action |
+|---|---|
+| `src/pages/WhatsAppChat.tsx` | Fix scroll issue (min-h-0 + overflow-y-auto), add lead captured banner |
+| `src/components/settings/AIFlowBuilderSettings.tsx` | New — lead capture rule config UI |
+| `src/components/settings/IntegrationSettings.tsx` | Add AIFlowBuilderSettings to WhatsApp tab |
+| `supabase/functions/whatsapp-webhook/index.ts` | Context hydration, structured extraction, tool calling scaffold |
 
-| File                                              | Change                                                                           |
-| ------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `supabase/config.toml`                            | Add `whatsapp-webhook` and `manage-whatsapp-templates` with `verify_jwt = false` |
-| `src/pages/PublicWebsiteV1.tsx`                   | Fix FAB to use dynamic phone number from DB                                      |
-| `src/pages/WhatsAppChat.tsx`                      | Add "Convert to Lead" button, message type badges                                |
-| `src/components/settings/IntegrationSettings.tsx` | Add template dashboard table                                                     |
+No database migration needed — all config stored in existing `whatsapp_ai_config` JSONB. Leads inserted into existing `leads` table.
 
-
-No database migrations needed. No edge function code changes needed — the webhook code is correct, it was just never reached.
