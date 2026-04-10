@@ -559,58 +559,59 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
-          {/* Google Business Setup Guide */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Setup Guide</CardTitle>
-              <CardDescription>How to connect Google Business Profile for review syncing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API" and "Business Profile API".
+          {/* Google Business Setup Guide — Collapsible */}
+          <Collapsible>
+            <Card>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer select-none hover:bg-muted/30 transition-colors rounded-t-xl">
+                  <CardTitle className="flex items-center justify-between text-base">
+                    <span>Setup Guide</span>
+                    <ChevronRight className="h-4 w-4 transition-transform duration-200 [[data-state=open]_&]:rotate-90" />
+                  </CardTitle>
+                  <CardDescription>How to connect Google Business Profile for review syncing</CardDescription>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-5">
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">1</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Enable Google Business Profile API</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Go to <span className="font-mono text-primary">console.cloud.google.com</span> → APIs & Services → Enable "Google My Business API".</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Use the API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong>.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Configure Above & Test</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">Click "Setup" above and enter your credentials.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      <strong>Note:</strong> Your Google Business listing must be verified before reviews can be synced.
                     </p>
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">2</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Create OAuth Credentials</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      In Google Cloud Console → Credentials → Create OAuth 2.0 Client ID. Copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">3</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Get Your Account & Location IDs</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Use the Google Business Profile API Explorer to find your <strong>Account ID</strong> and <strong>Location ID</strong> from your verified business listing.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">4</div>
-                  <div>
-                    <h4 className="font-semibold text-sm">Configure Above & Test</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Click "Setup" above and enter your credentials. Then go to <strong>Feedback</strong> page, approve a review, and click "Publish to Google" to sync it.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  <strong>Note:</strong> Your Google Business listing must be verified before reviews can be synced. Only approved reviews with 4+ star ratings are recommended for publishing.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         </TabsContent>
         <TabsContent value="leads" className="space-y-4">
           <LeadCaptureTab />
