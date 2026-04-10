@@ -1,88 +1,114 @@
-# WhatsApp Integration Cleanup, Chat UI Fixes & Template Debugging
 
-## Key Findings
 
-### 1. Template Creation Error — Root Cause
+# WhatsApp CRM: Priority Inbox, Chat UI Fixes & Database Deletion
 
-The `manage-whatsapp-templates` function is **NOT** broken due to auth headers. The logs show the real error:
+## Summary
 
-```
-Meta create template error: Object with ID '4028095467334645' does not exist,
-cannot be loaded due to missing permissions
-```
-
-This means the **WhatsApp Business Account ID (WABA ID)** stored in your integration settings is incorrect or the access token lacks permissions for that WABA ID. The "Missing Authorization header" error only appears when hitting the URL directly in a browser — the UI calls it correctly with auth. **Fix: validate the WABA ID in the configure drawer and add a "Test Connection" button.**
-
-### 2. Emoji & Attachment Buttons — Currently Disabled
-
-Both buttons have `disabled` prop set (lines 657, 666 in WhatsAppChat.tsx). They literally say "coming soon" in the title. **Fix: implement emoji picker and file attachment.**
+Fix chat bubble overflow, implement true database chat deletion with confirmation, add Priority Inbox triage tabs with unread tracking, and add a global unread badge on the sidebar WhatsApp link.
 
 ---
 
-## Implementation Plan
+## Database Migration
 
-### Epic 1: Clean Up Integration Providers
+Add `is_unread` column to `whatsapp_chat_settings` and enable realtime:
 
-**File:** `src/components/settings/IntegrationSettings.tsx`
-
-**WhatsApp tab** — keep only Meta Cloud API,Wati,Aisensy
-
-```typescript
-const WHATSAPP_PROVIDERS = [
-  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
-];
+```sql
+ALTER TABLE whatsapp_chat_settings ADD COLUMN IF NOT EXISTS is_unread boolean DEFAULT true;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.whatsapp_chat_settings;
 ```
 
-Remove: Interakt, Gupshup, Custom API.
+The webhook already upserts into `whatsapp_chat_settings` — update the webhook to also set `is_unread = true` when an inbound message arrives (minor change to the upsert in `whatsapp-webhook/index.ts`).
 
-**SMS tab** — keep only MSG91, RoundSMS, Twilio:
+---
 
-```typescript
-const SMS_PROVIDERS = [
-  { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
-  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
-  { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
-];
+## Epic 1: Template Auth Fix
+
+**Finding:** The "Test Connection" button already uses `supabase.functions.invoke()` correctly (line 1007 of IntegrationSettings.tsx). The "Missing Authorization header" only appears when hitting the URL directly in a browser — this is expected behavior and NOT a bug.
+
+**Action:** No code change needed for invocation. The real error is `Object with ID does not exist` — a wrong WABA ID. Add a clearer error message hint in the Test Connection failure toast.
+
+## Epic 2: Chat Bubble Overflow Fix
+
+**File:** `src/pages/WhatsAppChat.tsx` (line 719-724)
+
+Change message bubble classes from:
+```
+max-w-[65%] rounded-2xl px-4 py-2.5
+```
+To:
+```
+max-w-[85%] rounded-2xl px-4 py-2.5 break-words overflow-hidden
 ```
 
-Remove: Gupshup, TextLocal, Fast2SMS, Custom API.
+Also update the `<p>` tag (line 733) from:
+```
+className="text-sm leading-relaxed whitespace-pre-wrap"
+```
+To:
+```
+className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+```
 
-### Epic 2: Move AI Lead Capture Rules to Lead Capture Tab
+This ensures long phone numbers, URLs, and continuous text wrap properly inside bubbles.
 
-Move `<AIFlowBuilderSettings />` from the WhatsApp tab (line 407) into the Lead Capture tab content (`LeadCaptureTab` component, line 634).
-
-### Epic 3: Collapsible Setup Guides
-
-Wrap both setup guides (WhatsApp and Google) in Shadcn `<Collapsible>` components, defaulting to **collapsed**. Use a clean trigger with a chevron icon.
-
-### Epic 4: WhatsApp Template "Test Connection" Button
-
-Add a "Test Connection" button in the Meta Templates panel that calls `manage-whatsapp-templates` with `action: 'list'` and shows success/error feedback. This helps users verify their WABA ID and access token are correct before trying to create templates.
-
-### Epic 5: Chat UI Fixes
+## Epic 3: True Database Deletion for Clear Chat
 
 **File:** `src/pages/WhatsAppChat.tsx`
 
-1. **Emoji Picker**: Add `@emoji-mart/react` package. Remove `disabled` from emoji button. On click, show a popover with the picker. On emoji select, insert into message input.
-2. **Attachment Button**: Remove `disabled`. On click, open a file picker. Upload file to Supabase Storage, then send as an image/document message via `send-whatsapp` with `message_type: 'image'`.
-3. **Username wrapping**: Add `break-all` or `break-words` to the contact name in the chat header (line 496) and contact list items.
-4. **Typing indicator**: Not feasible with Meta Cloud API — Meta does not expose typing events from users. We can show a local "sending..." indicator when the bot is composing a reply.
-5. **3-dot menu**: Add a dropdown with options: "View Profile", "Clear Chat", "Block Contact".
+1. Add a `clearChatConfirmOpen` state + `clearChatTarget` state
+2. Replace the inline `onClick` on "Clear Chat" menu item (line 626-638) to set confirmation state instead of deleting immediately
+3. Add a confirmation `Dialog` ("Are you sure you want to permanently delete this chat history?") with Cancel/Delete buttons
+4. On confirm: execute `supabase.from('whatsapp_messages').delete().eq(...)`, then invalidate queries, clear selection, show toast
 
-### Epic 6: Chat Transfer to Staff (Plan)
+## Epic 4: Global Sidebar Unread Badge
 
-This requires a new `assigned_to` column on `whatsapp_chat_settings`. The 3-dot menu gets a "Transfer to Staff" option that opens a drawer listing staff members. Selecting one updates `assigned_to` and sends a notification. The chat list can then be filtered by assignment. **This will be scaffolded in the 3-dot menu but full implementation deferred to next sprint.**
+**File:** `src/components/layout/AppSidebar.tsx`
+
+1. Add a `useQuery` that counts unread chats: `SELECT count(*) FROM whatsapp_chat_settings WHERE is_unread = true`
+2. Add a Supabase realtime subscription on `whatsapp_chat_settings` to auto-refetch
+3. In the menu item rendering, when `item.href === '/whatsapp-chat'` and unread count > 0, render a red badge (`bg-red-500 text-white rounded-full text-[10px] min-w-[18px] h-[18px]`) next to the label
+
+## Epic 5: Priority Inbox Triage Tabs
+
+**File:** `src/pages/WhatsAppChat.tsx`
+
+1. Augment the contacts query to also fetch `whatsapp_chat_settings` (bot_active, is_unread) per phone number using a second query or join
+2. Add `chatFilter` state: `'all' | 'unread' | 'needs_human'`
+3. Replace the contact list header area with 3 compact filter buttons/tabs: "All", "Unread", "Needs Human"
+4. Filter `filteredContacts` based on `chatFilter`:
+   - `unread`: only contacts where `is_unread === true`
+   - `needs_human`: only contacts where `bot_active === false`
+5. Add visual indicators on contact cards:
+   - Blue dot (`w-2.5 h-2.5 rounded-full bg-blue-500`) for unread
+   - Amber icon for needs-human
+
+## Epic 6: Auto-Read State Mutation
+
+**File:** `src/pages/WhatsAppChat.tsx`
+
+1. In the `setSelectedContact` click handler (line 520), add an async call:
+   ```typescript
+   await supabase.from('whatsapp_chat_settings')
+     .update({ is_unread: false })
+     .eq('phone_number', contact.phone_number)
+     .eq('branch_id', selectedBranch);
+   ```
+2. Invalidate the chat settings query so the blue dot disappears and the sidebar badge decrements
+
+## Edge Function Change
+
+**File:** `supabase/functions/whatsapp-webhook/index.ts`
+
+In the inbound message handler, when upserting `whatsapp_chat_settings`, add `is_unread: true` to the upsert payload so new incoming messages mark the chat as unread.
 
 ---
 
 ## Files Changed
 
+| File | Change |
+|---|---|
+| **Migration** | Add `is_unread` column to `whatsapp_chat_settings`, enable realtime |
+| `src/pages/WhatsAppChat.tsx` | Bubble overflow fix, delete confirmation dialog, triage tabs, auto-read |
+| `src/components/layout/AppSidebar.tsx` | Global unread badge with realtime subscription |
+| `supabase/functions/whatsapp-webhook/index.ts` | Set `is_unread: true` on inbound message upsert |
 
-| File                                              | Change                                                                        |
-| ------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `src/components/settings/IntegrationSettings.tsx` | Remove extra providers, move AI Flow Builder to leads tab, collapsible guides |
-| `src/pages/WhatsAppChat.tsx`                      | Emoji picker, attachment upload, username wrapping, 3-dot menu actions        |
-| `package.json`                                    | Add `@emoji-mart/react` and `@emoji-mart/data`                                |
-
-
-No database migrations needed. No edge function changes needed — the template error is a Meta configuration issue (wrong WABA ID or missing permissions).
