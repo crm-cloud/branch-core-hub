@@ -32,7 +32,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye,
+  Trash2, Ban, Eye, CircleDot, AlertCircle,
 } from 'lucide-react';
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import data from '@emoji-mart/data';
@@ -47,6 +47,8 @@ interface ChatContact {
   last_message: string;
   last_message_time: string;
   unread_count: number;
+  is_unread?: boolean;
+  bot_active?: boolean;
 }
 
 interface Message {
@@ -56,6 +58,12 @@ interface Message {
   status: string;
   created_at: string;
   message_type: string;
+}
+
+interface ChatSettingsRow {
+  phone_number: string;
+  bot_active: boolean | null;
+  is_unread: boolean | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,6 +93,8 @@ function isAiNotConfiguredError(msg: string): boolean {
   );
 }
 
+type ChatFilter = 'all' | 'unread' | 'needs_human';
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function WhatsAppChatPage() {
@@ -93,6 +103,7 @@ export default function WhatsAppChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [chatFilter, setChatFilter] = useState<ChatFilter>('all');
 
   // New chat dialog state
   const [newChatOpen, setNewChatOpen] = useState(false);
@@ -102,6 +113,9 @@ export default function WhatsAppChatPage() {
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attachUploading, setAttachUploading] = useState(false);
+
+  // Clear chat confirmation
+  const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -126,7 +140,7 @@ export default function WhatsAppChatPage() {
       });
   }, [selectedContact, selectedBranch]);
 
-  // Realtime subscription: refresh messages + contacts on any change
+  // Realtime subscription: refresh messages + contacts + chat settings on any change
   useEffect(() => {
     const channel = supabase
       .channel('whatsapp-realtime')
@@ -134,9 +148,31 @@ export default function WhatsAppChatPage() {
         queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
         queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chat_settings' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-unread-count'] });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
+
+  // Chat settings query for triage
+  const { data: chatSettings = [] } = useQuery<ChatSettingsRow[]>({
+    queryKey: ['whatsapp-chat-settings', selectedBranch],
+    queryFn: async () => {
+      if (!selectedBranch || selectedBranch === 'all') return [];
+      const { data, error } = await supabase
+        .from('whatsapp_chat_settings')
+        .select('phone_number, bot_active, is_unread')
+        .eq('branch_id', selectedBranch);
+      if (error) throw error;
+      return (data ?? []) as ChatSettingsRow[];
+    },
+  });
+
+  // Build a map for quick lookup
+  const settingsMap = new Map<string, ChatSettingsRow>();
+  chatSettings.forEach(s => settingsMap.set(s.phone_number, s));
 
   // Contacts query — builds a unique contact list from whatsapp_messages
   const { data: contacts = [] } = useQuery<ChatContact[]>({
@@ -174,6 +210,16 @@ export default function WhatsAppChatPage() {
     },
   });
 
+  // Enrich contacts with settings
+  const enrichedContacts: ChatContact[] = contacts.map(c => {
+    const s = settingsMap.get(c.phone_number);
+    return {
+      ...c,
+      is_unread: s?.is_unread ?? false,
+      bot_active: s?.bot_active ?? true,
+    };
+  });
+
   // Messages query for the selected contact
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['whatsapp-messages', selectedContact?.phone_number, selectedBranch],
@@ -200,7 +246,6 @@ export default function WhatsAppChatPage() {
         throw new Error('Please select a specific branch before sending messages');
       }
 
-      // 1. Insert message row as pending
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -219,9 +264,6 @@ export default function WhatsAppChatPage() {
 
       const messageId: string = data.id;
 
-      // 2. Call the edge function; update status to 'sent' on success.
-      // We intentionally do NOT throw if the edge function fails so that
-      // the message row is always persisted (admin can retry delivery).
       try {
         const { error: sendError } = await supabase.functions.invoke('send-whatsapp', {
           body: {
@@ -279,10 +321,15 @@ export default function WhatsAppChatPage() {
     }
   }, [messages]);
 
-  const filteredContacts = contacts.filter((c: ChatContact) =>
-    (c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone_number.includes(searchQuery))
-  );
+  // Filter contacts by search + triage tab
+  const filteredContacts = enrichedContacts.filter((c: ChatContact) => {
+    const matchesSearch = c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.phone_number.includes(searchQuery);
+    if (!matchesSearch) return false;
+    if (chatFilter === 'unread') return c.is_unread === true;
+    if (chatFilter === 'needs_human') return c.bot_active === false;
+    return true;
+  });
 
   const handleSend = () => {
     if (selectedBranch === 'all') {
@@ -309,7 +356,6 @@ export default function WhatsAppChatPage() {
       const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
       const mediaUrl = urlData.publicUrl;
 
-      // Insert message
       const { data: msgData, error: msgError } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -326,7 +372,6 @@ export default function WhatsAppChatPage() {
         .single();
       if (msgError) throw msgError;
 
-      // Send via edge function
       await supabase.functions.invoke('send-whatsapp', {
         body: {
           message_id: msgData.id,
@@ -442,6 +487,38 @@ export default function WhatsAppChatPage() {
     }
   };
 
+  // Auto-read: mark as read when selecting a contact
+  const handleSelectContact = async (contact: ChatContact) => {
+    setSelectedContact(contact);
+    if (contact.is_unread && selectedBranch && selectedBranch !== 'all') {
+      await supabase.from('whatsapp_chat_settings')
+        .update({ is_unread: false })
+        .eq('phone_number', contact.phone_number)
+        .eq('branch_id', selectedBranch);
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-unread-count'] });
+    }
+  };
+
+  // Clear chat with database deletion
+  const handleClearChat = async () => {
+    if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+    const { error } = await supabase
+      .from('whatsapp_messages')
+      .delete()
+      .eq('phone_number', selectedContact.phone_number)
+      .eq('branch_id', selectedBranch);
+    if (error) {
+      toast.error('Failed to delete chat: ' + error.message);
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      setSelectedContact(null);
+      toast.success('Chat history permanently deleted');
+    }
+    setClearChatConfirmOpen(false);
+  };
+
   // Group messages by date
   const groupedMessages: { date: string; msgs: Message[] }[] = [];
   messages.forEach((msg) => {
@@ -455,6 +532,10 @@ export default function WhatsAppChatPage() {
   });
 
   const isBranchUnselected = selectedBranch === 'all';
+
+  // Triage tab counts
+  const unreadCount = enrichedContacts.filter(c => c.is_unread).length;
+  const needsHumanCount = enrichedContacts.filter(c => c.bot_active === false).length;
 
   return (
     <AppLayout>
@@ -486,7 +567,7 @@ export default function WhatsAppChatPage() {
                   </Button>
                 </div>
               </div>
-              <div className="relative">
+              <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search conversations..."
@@ -496,6 +577,31 @@ export default function WhatsAppChatPage() {
                   data-testid="input-search-contacts"
                 />
               </div>
+              {/* Triage Tabs */}
+              <div className="flex gap-1">
+                {([
+                  { key: 'all' as ChatFilter, label: 'All', count: contacts.length },
+                  { key: 'unread' as ChatFilter, label: 'Unread', count: unreadCount },
+                  { key: 'needs_human' as ChatFilter, label: 'Needs Human', count: needsHumanCount },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setChatFilter(tab.key)}
+                    className={`flex-1 text-xs font-medium px-2 py-1.5 rounded-lg transition-colors ${
+                      chatFilter === tab.key
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span className={`ml-1 text-[10px] ${chatFilter === tab.key ? 'opacity-80' : ''}`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Contact List */}
@@ -503,10 +609,14 @@ export default function WhatsAppChatPage() {
               {filteredContacts.length === 0 ? (
                 <div className="p-6 text-center text-muted-foreground">
                   <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No conversations yet</p>
-                  <p className="text-xs mt-1 text-muted-foreground/60">
-                    Use the + button to start a new chat
+                  <p className="text-sm">
+                    {chatFilter === 'all' ? 'No conversations yet' : `No ${chatFilter === 'unread' ? 'unread' : 'human-needed'} chats`}
                   </p>
+                  {chatFilter === 'all' && (
+                    <p className="text-xs mt-1 text-muted-foreground/60">
+                      Use the + button to start a new chat
+                    </p>
+                  )}
                 </div>
               ) : (
                 filteredContacts.map((contact: ChatContact) => (
@@ -517,19 +627,30 @@ export default function WhatsAppChatPage() {
                         ? 'bg-primary/5 border-l-2 border-l-primary'
                         : 'border-l-2 border-l-transparent'
                     }`}
-                    onClick={() => setSelectedContact(contact)}
+                    onClick={() => handleSelectContact(contact)}
                     data-testid={`contact-item-${contact.phone_number}`}
                   >
-                    {/* Avatar — no fake online dot */}
-                    <Avatar className="h-11 w-11 ring-2 ring-background flex-shrink-0">
-                      <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
-                        {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
-                      </AvatarFallback>
-                    </Avatar>
+                    {/* Avatar */}
+                    <div className="relative flex-shrink-0">
+                      <Avatar className="h-11 w-11 ring-2 ring-background">
+                        <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
+                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Visual indicators */}
+                      {contact.is_unread && (
+                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
+                      )}
+                      {contact.bot_active === false && !contact.is_unread && (
+                        <span className="absolute -top-0.5 -right-0.5">
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm text-foreground truncate">
+                        <span className="font-semibold text-sm text-foreground truncate break-words">
                           {contact.contact_name || contact.phone_number}
                         </span>
                         <span className="text-[11px] text-muted-foreground flex-shrink-0">
@@ -563,7 +684,7 @@ export default function WhatsAppChatPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-foreground text-sm break-words">
+                      <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
                         {selectedContact.contact_name || selectedContact.phone_number}
                       </h3>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -624,18 +745,7 @@ export default function WhatsAppChatPage() {
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
-                          onClick={async () => {
-                            if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
-                            await supabase
-                              .from('whatsapp_messages')
-                              .delete()
-                              .eq('phone_number', selectedContact.phone_number)
-                              .eq('branch_id', selectedBranch);
-                            queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
-                            queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
-                            setSelectedContact(null);
-                            toast.success('Chat cleared');
-                          }}
+                          onClick={() => setClearChatConfirmOpen(true)}
                         >
                           <Trash2 className="h-4 w-4 mr-2" /> Clear Chat
                         </DropdownMenuItem>
@@ -717,7 +827,7 @@ export default function WhatsAppChatPage() {
                               data-testid={`message-${msg.id}`}
                             >
                               <div
-                                className={`max-w-[65%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                                className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm break-words overflow-hidden ${
                                   msg.direction === 'outbound'
                                     ? 'bg-emerald-600 text-white rounded-br-md'
                                     : 'bg-card border border-border/50 text-foreground rounded-bl-md'
@@ -730,7 +840,7 @@ export default function WhatsAppChatPage() {
                                     {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
                                   </div>
                                 )}
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
                                     msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'
@@ -904,6 +1014,29 @@ export default function WhatsAppChatPage() {
               data-testid="button-start-chat"
             >
               Open Chat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Clear Chat Confirmation Dialog ──────────────────────────────── */}
+      <Dialog open={clearChatConfirmOpen} onOpenChange={setClearChatConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete Chat History
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete this entire chat history? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setClearChatConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleClearChat}>
+              Delete Permanently
             </Button>
           </DialogFooter>
         </DialogContent>
