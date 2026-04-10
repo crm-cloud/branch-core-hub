@@ -776,6 +776,11 @@ export default function WhatsAppChatPage() {
                         >
                           <Trash2 className="h-4 w-4 mr-2" /> Clear Chat
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setTransferStaffOpen(true)}
+                        >
+                          <UserPlus className="h-4 w-4 mr-2" /> Transfer to Staff
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" disabled>
                           <Ban className="h-4 w-4 mr-2" /> Block Contact
