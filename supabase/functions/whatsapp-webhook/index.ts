@@ -270,6 +270,15 @@ async function processIncomingMessages(value: any, branchId: string | null): Pro
       console.error("Failed to insert WhatsApp inbound message", error);
     } else if (data) {
       insertedItems.push({ id: data.id, phone_number: message.from });
+      // Mark chat as unread for staff
+      await supabase.from("whatsapp_chat_settings").upsert(
+        {
+          branch_id: branchId,
+          phone_number: message.from,
+          is_unread: true,
+        },
+        { onConflict: "branch_id,phone_number" },
+      );
     }
   }
 

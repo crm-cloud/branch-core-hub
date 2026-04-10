@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMenuForRole } from '@/config/menu';
@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Menu, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 function useOrgBranding() {
@@ -23,6 +23,34 @@ function useOrgBranding() {
       return data;
     },
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+function useWhatsAppUnreadCount() {
+  const queryClient = useQueryClient();
+
+  // Realtime subscription for auto-refetch
+  useEffect(() => {
+    const channel = supabase
+      .channel('sidebar-unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chat_settings' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-unread-count'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
+
+  return useQuery({
+    queryKey: ['whatsapp-unread-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('whatsapp_chat_settings')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_unread', true);
+      if (error) return 0;
+      return count ?? 0;
+    },
+    staleTime: 30 * 1000,
   });
 }
 
@@ -49,6 +77,7 @@ interface AppSidebarProps {
 export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
   const { signOut, roles } = useAuth();
   const location = useLocation();
+  const { data: unreadCount = 0 } = useWhatsAppUnreadCount();
 
   const userRoleSet = new Set(roles.map(r => r.role));
   const menuSections = getMenuForRole(roles)
@@ -57,6 +86,15 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
       items: section.items.filter(item => item.roles.some(r => userRoleSet.has(r))),
     }))
     .filter(section => section.items.length > 0);
+
+  const renderUnreadBadge = (href: string) => {
+    if (href !== '/whatsapp-chat' || unreadCount === 0) return null;
+    return (
+      <span className="bg-red-500 text-white rounded-full text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center px-1">
+        {unreadCount > 99 ? '99+' : unreadCount}
+      </span>
+    );
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -108,13 +146,18 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
                                 to={item.href}
                                 data-testid={`link-nav-${item.href.replace(/\//g, '-')}`}
                                 className={cn(
-                                  'flex items-center justify-center p-2 rounded-lg transition-colors',
+                                  'flex items-center justify-center p-2 rounded-lg transition-colors relative',
                                   isActive
                                     ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                                     : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                                 )}
                               >
                                 <item.icon className="h-4 w-4" />
+                                {item.href === '/whatsapp-chat' && unreadCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-[9px] font-bold min-w-[16px] h-[16px] flex items-center justify-center px-0.5">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                  </span>
+                                )}
                               </Link>
                             </TooltipTrigger>
                             <TooltipContent side="right">
@@ -137,7 +180,8 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
                           )}
                         >
                           <item.icon className="h-4 w-4" />
-                          {item.label}
+                          <span className="flex-1">{item.label}</span>
+                          {renderUnreadBadge(item.href)}
                         </Link>
                       </li>
                     );
@@ -186,6 +230,7 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const { signOut, roles } = useAuth();
   const location = useLocation();
+  const { data: unreadCount = 0 } = useWhatsAppUnreadCount();
 
   const userRoleSet = new Set(roles.map(r => r.role));
   const menuSections = getMenuForRole(roles)
@@ -232,7 +277,12 @@ export function MobileNav() {
                           )}
                         >
                           <item.icon className="h-4 w-4" />
-                          {item.label}
+                          <span className="flex-1">{item.label}</span>
+                          {item.href === '/whatsapp-chat' && unreadCount > 0 && (
+                            <span className="bg-red-500 text-white rounded-full text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                              {unreadCount > 99 ? '99+' : unreadCount}
+                            </span>
+                          )}
                         </Link>
                       </li>
                     );
