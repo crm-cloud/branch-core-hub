@@ -22,8 +22,9 @@ import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
-  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot,
+  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
 } from 'lucide-react';
+import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

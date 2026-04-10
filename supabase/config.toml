@@ -66,3 +66,9 @@ verify_jwt = false
 [functions.check-expired-access]
 verify_jwt = false
 
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.manage-whatsapp-templates]
+verify_jwt = false
+
