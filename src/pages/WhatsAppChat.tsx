@@ -22,8 +22,9 @@ import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
-  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot,
+  CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
 } from 'lucide-react';
+import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export default function WhatsAppChatPage() {
   const [newChatPhone, setNewChatPhone] = useState('');
   const [newChatName, setNewChatName] = useState('');
   const [botActive, setBotActive] = useState(true);
+  const [convertLeadOpen, setConvertLeadOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -497,6 +499,18 @@ export default function WhatsAppChatPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {/* Convert to Lead */}
+                    {!selectedContact.member_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs rounded-lg"
+                        onClick={() => setConvertLeadOpen(true)}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Convert to Lead
+                      </Button>
+                    )}
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
                       <Bot className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">AI Bot</span>
@@ -574,6 +588,13 @@ export default function WhatsAppChatPage() {
                                     : 'bg-card border border-border/50 text-foreground rounded-bl-md'
                                 }`}
                               >
+                                {msg.message_type !== 'text' && (
+                                  <div className={`flex items-center gap-1 mb-1 text-[10px] ${msg.direction === 'outbound' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                                    {msg.message_type === 'image' && <><Image className="h-3 w-3" /> Photo</>}
+                                    {msg.message_type === 'template' && <><FileText className="h-3 w-3" /> Template</>}
+                                    {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
+                                  </div>
+                                )}
                                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
@@ -738,6 +759,13 @@ export default function WhatsAppChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Convert to Lead Drawer */}
+      <AddLeadDrawer
+        open={convertLeadOpen}
+        onOpenChange={setConvertLeadOpen}
+        defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+      />
     </AppLayout>
   );
 }

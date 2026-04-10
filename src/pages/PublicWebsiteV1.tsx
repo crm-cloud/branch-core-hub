@@ -317,6 +317,46 @@ function RevealSection({ children, className }: { children: React.ReactNode; cla
     </motion.div>
   );
 }
+function WhatsAppFAB() {
+  const { data: phoneNumber } = useQuery({
+    queryKey: ['whatsapp-business-phone'],
+    queryFn: async () => {
+      // Try integration_settings first for WhatsApp config
+      const { data } = await supabase
+        .from('integration_settings')
+        .select('config')
+        .eq('integration_type', 'whatsapp')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      const phone = (data?.config as any)?.business_phone_number || (data?.config as any)?.phone_number;
+      if (phone) return phone.replace(/[^0-9]/g, '');
+      // Fallback to branches table phone
+      const { data: branch } = await supabase
+        .from('branches')
+        .select('phone')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      return branch?.phone?.replace(/[^0-9+]/g, '').replace('+', '') || null;
+    },
+    staleTime: 600000,
+  });
+
+  if (!phoneNumber) return null;
+
+  return (
+    <a
+      href={`https://wa.me/${phoneNumber}?text=Hi%20Incline%20Gym%2C%20I%20would%20like%20to%20know%20more!`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-[#25D366] text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center hover:scale-110 transition-transform animate-pulse hover:animate-none"
+      aria-label="Chat on WhatsApp"
+    >
+      <MessageCircle className="h-7 w-7" />
+    </a>
+  );
+}
 
 export default function PublicWebsite() {
   const [theme, setTheme] = useState<ThemeSettings>(cmsService.getDefaultTheme());
@@ -1019,15 +1059,7 @@ export default function PublicWebsite() {
       )}
 
       {/* WhatsApp FAB */}
-      <a
-        href="https://wa.me/?text=Hi%20Incline%20Gym%2C%20I%20would%20like%20to%20know%20more!"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-[#25D366] text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center hover:scale-110 transition-transform animate-pulse hover:animate-none"
-        aria-label="Chat on WhatsApp"
-      >
-        <MessageCircle className="h-7 w-7" />
-      </a>
+      <WhatsAppFAB />
 
       <style>{`
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-33.33%); } }
