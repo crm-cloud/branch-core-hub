@@ -116,6 +116,8 @@ export default function WhatsAppChatPage() {
 
   // Clear chat confirmation
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
+  // Transfer to staff
+  const [transferStaffOpen, setTransferStaffOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -168,6 +170,31 @@ export default function WhatsAppChatPage() {
       if (error) throw error;
       return (data ?? []) as ChatSettingsRow[];
     },
+  });
+
+  // Staff list for Transfer to Staff
+  const { data: staffList = [] } = useQuery({
+    queryKey: ['staff-list-for-transfer'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('user_id, role, profiles:user_id(id, full_name, avatar_url, email)')
+        .in('role', ['owner', 'admin', 'manager', 'staff']);
+      if (error) throw error;
+      // Deduplicate by user_id
+      const seen = new Set<string>();
+      return (data ?? []).filter((r: any) => {
+        if (seen.has(r.user_id)) return false;
+        seen.add(r.user_id);
+        return true;
+      }).map((r: any) => ({
+        id: r.user_id,
+        full_name: r.profiles?.full_name || r.profiles?.email || 'Unknown',
+        avatar_url: r.profiles?.avatar_url,
+        role: r.role,
+      }));
+    },
+    enabled: transferStaffOpen,
   });
 
   // Build a map for quick lookup
