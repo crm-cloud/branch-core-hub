@@ -1,77 +1,88 @@
-
-
-# CRM Schema Mapping, Template UI Tabs & Auth Clarification
+# WhatsApp Integration Cleanup, Chat UI Fixes & Template Debugging
 
 ## Key Findings
 
-1. **Lead capture mapping**: The `leads` table already has `budget` and `goals` columns. The webhook correctly maps these. However, fields like `fitness_goal`, `expected_start_date`, `fitness_experience`, `preferred_time` get dumped into `notes`. We need to add dedicated columns.
+### 1. Template Creation Error — Root Cause
 
-2. **"Missing Authorization header" is expected behavior**: The `manage-whatsapp-templates` function intentionally requires a JWT (lines 44-51). When you hit the URL directly in a browser, there's no auth token — so it returns 401. The frontend calls via `supabase.functions.invoke()` which automatically includes the auth header when logged in. **This is not a bug.** If it fails from the UI, ensure you're logged in with an owner/admin/manager role.
+The `manage-whatsapp-templates` function is **NOT** broken due to auth headers. The logs show the real error:
 
-3. **Meta template pricing (India)**: Marketing templates cost ~₹0.77/conversation, Utility templates cost ~₹0.15/conversation, Authentication templates cost ~₹0.13/conversation. Service conversations (user-initiated within 24h window) are free. Moving broadcast/promotional templates from UTILITY to MARKETING category is actually more expensive — the current setup is already cost-optimal. The real cost saver is the WhatsApp FAB (zero-cost user-initiated conversations).
+```
+Meta create template error: Object with ID '4028095467334645' does not exist,
+cannot be loaded due to missing permissions
+```
+
+This means the **WhatsApp Business Account ID (WABA ID)** stored in your integration settings is incorrect or the access token lacks permissions for that WABA ID. The "Missing Authorization header" error only appears when hitting the URL directly in a browser — the UI calls it correctly with auth. **Fix: validate the WABA ID in the configure drawer and add a "Test Connection" button.**
+
+### 2. Emoji & Attachment Buttons — Currently Disabled
+
+Both buttons have `disabled` prop set (lines 657, 666 in WhatsAppChat.tsx). They literally say "coming soon" in the title. **Fix: implement emoji picker and file attachment.**
 
 ---
 
-## Epic 1: Lead Capture Schema & Extraction Mapping
+## Implementation Plan
 
-**Migration**: Add columns to `leads` table:
-```sql
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS fitness_goal text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_start_date text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS fitness_experience text;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS preferred_time text;
-```
+### Epic 1: Clean Up Integration Providers
 
-**Edge function update** (`whatsapp-webhook/index.ts`, ~line 605-618): Update the lead insertion mapping to use dedicated columns instead of dumping to notes:
+**File:** `src/components/settings/IntegrationSettings.tsx`
+
+**WhatsApp tab** — keep only Meta Cloud API,Wati,Aisensy
+
 ```typescript
-const leadData = {
-  phone: phoneNumber,
-  source: "whatsapp_ai",
-  branch_id: branchId,
-  full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
-  email: parsed.data.email || null,
-  goals: parsed.data.goal || parsed.data.fitness_goal || null,
-  budget: parsed.data.budget || null,
-  fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
-  expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
-  fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
-  preferred_time: parsed.data.preferred_time || null,
-  notes: `AI-captured via WhatsApp conversation`,
-  status: "new",
-  temperature: "warm",
-  score: 50,
-};
+const WHATSAPP_PROVIDERS = [
+  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
+];
 ```
 
-Also update the AI Flow Builder's target fields list to match these DB columns, and update any lead display components to show the new fields.
+Remove: Interakt, Gupshup, Custom API.
 
-## Epic 2: Template Manager Tabs Refactor
+**SMS tab** — keep only MSG91, RoundSMS, Twilio:
 
-**File**: `src/components/settings/TemplateManager.tsx`
+```typescript
+const SMS_PROVIDERS = [
+  { id: 'msg91', name: 'MSG91', description: 'Indian SMS with DLT support' },
+  { id: 'roundsms', name: 'RoundSMS', description: 'Indian SMS with HTTP API' },
+  { id: 'twilio', name: 'Twilio', description: 'Global SMS provider' },
+];
+```
 
-Replace the current stacked Card-per-type layout (lines 324-325) with Shadcn `<Tabs>`:
-- Default tab: `whatsapp`
-- Three tabs: WhatsApp, SMS, Email
-- Each tab renders only its filtered templates
-- "Add Template" button stays in the header
-- Meta submission dialog only shows in WhatsApp tab
+Remove: Gupshup, TextLocal, Fast2SMS, Custom API.
 
-## Epic 3: Auth Clarification & Cost Notes
+### Epic 2: Move AI Lead Capture Rules to Lead Capture Tab
 
-**No code changes needed for auth** — the function works correctly when called from the logged-in UI via `supabase.functions.invoke()`.
+Move `<AIFlowBuilderSettings />` from the WhatsApp tab (line 407) into the Lead Capture tab content (`LeadCaptureTab` component, line 634).
 
-**Template category guidance**: Add a helper note in the Meta submission dialog (`TemplateManager.tsx`) indicating:
-- MARKETING: Promotional messages, offers, re-engagement (~₹0.77/conv in India)
-- UTILITY: Transaction confirmations, account updates (~₹0.15/conv in India)
-- Recommend MARKETING for broadcasts/promos, UTILITY for transactional only
+### Epic 3: Collapsible Setup Guides
+
+Wrap both setup guides (WhatsApp and Google) in Shadcn `<Collapsible>` components, defaulting to **collapsed**. Use a clean trigger with a chevron icon.
+
+### Epic 4: WhatsApp Template "Test Connection" Button
+
+Add a "Test Connection" button in the Meta Templates panel that calls `manage-whatsapp-templates` with `action: 'list'` and shows success/error feedback. This helps users verify their WABA ID and access token are correct before trying to create templates.
+
+### Epic 5: Chat UI Fixes
+
+**File:** `src/pages/WhatsAppChat.tsx`
+
+1. **Emoji Picker**: Add `@emoji-mart/react` package. Remove `disabled` from emoji button. On click, show a popover with the picker. On emoji select, insert into message input.
+2. **Attachment Button**: Remove `disabled`. On click, open a file picker. Upload file to Supabase Storage, then send as an image/document message via `send-whatsapp` with `message_type: 'image'`.
+3. **Username wrapping**: Add `break-all` or `break-words` to the contact name in the chat header (line 496) and contact list items.
+4. **Typing indicator**: Not feasible with Meta Cloud API — Meta does not expose typing events from users. We can show a local "sending..." indicator when the bot is composing a reply.
+5. **3-dot menu**: Add a dropdown with options: "View Profile", "Clear Chat", "Block Contact".
+
+### Epic 6: Chat Transfer to Staff (Plan)
+
+This requires a new `assigned_to` column on `whatsapp_chat_settings`. The 3-dot menu gets a "Transfer to Staff" option that opens a drawer listing staff members. Selecting one updates `assigned_to` and sends a notification. The chat list can then be filtered by assignment. **This will be scaffolded in the 3-dot menu but full implementation deferred to next sprint.**
 
 ---
 
 ## Files Changed
 
-| File | Change |
-|---|---|
-| **Migration** | Add `fitness_goal`, `expected_start_date`, `fitness_experience`, `preferred_time` to `leads` |
-| `supabase/functions/whatsapp-webhook/index.ts` | Map AI-extracted fields to dedicated columns |
-| `src/components/settings/TemplateManager.tsx` | Refactor to tabbed layout + add pricing hints |
 
+| File                                              | Change                                                                        |
+| ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/components/settings/IntegrationSettings.tsx` | Remove extra providers, move AI Flow Builder to leads tab, collapsible guides |
+| `src/pages/WhatsAppChat.tsx`                      | Emoji picker, attachment upload, username wrapping, 3-dot menu actions        |
+| `package.json`                                    | Add `@emoji-mart/react` and `@emoji-mart/data`                                |
+
+
+No database migrations needed. No edge function changes needed — the template error is a Meta configuration issue (wrong WABA ID or missing permissions).
