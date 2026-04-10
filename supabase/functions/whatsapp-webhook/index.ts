@@ -172,12 +172,13 @@ async function processIncomingMessages(value: any, branchId: string) {
 
     if (existing) continue;
 
+    const messageContent = extractMessageContent(message);
     const payload = {
       branch_id: branchId,
       phone_number: message.from,
       contact_name: contactName,
       message_type: message.type ?? "text",
-      content: extractMessageContent(message),
+      content: messageContent,
       media_url: extractMediaUrl(message),
       direction: "inbound",
       status: "received",
@@ -187,7 +188,93 @@ async function processIncomingMessages(value: any, branchId: string) {
     const { error } = await supabase.from("whatsapp_messages").insert(payload);
     if (error) {
       console.error("Failed to insert WhatsApp inbound message", error);
+      continue;
     }
+
+    // ── AI Auto-Reply: trigger if bot is active for this contact ──────────
+    // Only handle text messages for AI processing
+    if (message.type === "text" && messageContent) {
+      await triggerAiAutoReply({
+        branchId,
+        phoneNumber: message.from,
+        contactName,
+        latestMessage: messageContent,
+      });
+    }
+  }
+}
+
+async function triggerAiAutoReply({
+  branchId,
+  phoneNumber,
+  contactName,
+  latestMessage,
+}: {
+  branchId: string;
+  phoneNumber: string;
+  contactName: string | null;
+  latestMessage: string;
+}) {
+  // Check (or upsert) the whatsapp_chats record to see if bot is active
+  const { data: chat, error: chatErr } = await supabase
+    .from("whatsapp_chats")
+    .select("id, bot_active")
+    .eq("branch_id", branchId)
+    .eq("phone_number", phoneNumber)
+    .maybeSingle();
+
+  if (chatErr) {
+    console.warn("Error fetching whatsapp_chats record", chatErr);
+  }
+
+  // If no record exists yet, create one with bot_active = true (default)
+  if (!chat) {
+    const { error: insertErr } = await supabase.from("whatsapp_chats").insert({
+      branch_id: branchId,
+      phone_number: phoneNumber,
+      contact_name: contactName,
+      bot_active: true,
+      lead_captured: false,
+    });
+    if (insertErr) {
+      // Possible race condition: another concurrent insert may have won. Re-fetch.
+      const { data: refetch } = await supabase
+        .from("whatsapp_chats")
+        .select("id, bot_active")
+        .eq("branch_id", branchId)
+        .eq("phone_number", phoneNumber)
+        .maybeSingle();
+      if (refetch?.bot_active === false) return;
+    }
+  } else if (chat.bot_active === false) {
+    // Bot is paused — human is handling, skip AI reply
+    return;
+  }
+
+  // Fetch the last 10 messages for context
+  const { data: recentMessages } = await supabase
+    .from("whatsapp_messages")
+    .select("content, direction")
+    .eq("branch_id", branchId)
+    .eq("phone_number", phoneNumber)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  const messages = (recentMessages ?? []).reverse();
+
+  try {
+    await supabase.functions.invoke("ai-auto-reply", {
+      body: {
+        mode: "auto_reply",
+        branch_id: branchId,
+        phone_number: phoneNumber,
+        contact_name: contactName,
+        recent_messages: messages,
+        latest_message: latestMessage,
+      },
+    });
+  } catch (err) {
+    console.warn("ai-auto-reply invocation error", err);
   }
 }
 

@@ -5824,6 +5824,67 @@ export type Database = {
           },
         ]
       }
+      whatsapp_chats: {
+        Row: {
+          id: string
+          branch_id: string
+          phone_number: string
+          contact_name: string | null
+          member_id: string | null
+          bot_active: boolean
+          lead_captured: boolean
+          captured_lead_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          branch_id: string
+          phone_number: string
+          contact_name?: string | null
+          member_id?: string | null
+          bot_active?: boolean
+          lead_captured?: boolean
+          captured_lead_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          branch_id?: string
+          phone_number?: string
+          contact_name?: string | null
+          member_id?: string | null
+          bot_active?: boolean
+          lead_captured?: boolean
+          captured_lead_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_chats_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_chats_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_chats_captured_lead_id_fkey"
+            columns: ["captured_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           branch_id: string

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,9 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle,
+  Bot, ExternalLink,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +78,7 @@ function isAiNotConfiguredError(msg: string): boolean {
 
 export default function WhatsAppChatPage() {
   const { selectedBranch } = useBranchContext();
+  const navigate = useNavigate();
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
@@ -88,13 +92,16 @@ export default function WhatsAppChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Realtime subscription: refresh messages + contacts on any change
+  // Realtime subscription: refresh messages + contacts + chat state on any change
   useEffect(() => {
     const channel = supabase
       .channel('whatsapp-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_messages' }, () => {
         queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
         queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chats' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-state'] });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -136,6 +143,46 @@ export default function WhatsAppChatPage() {
     },
   });
 
+  // Chat state query — bot_active / lead_captured for the selected contact
+  const { data: chatState } = useQuery({
+    queryKey: ['whatsapp-chat-state', selectedContact?.phone_number, selectedBranch],
+    queryFn: async () => {
+      if (!selectedContact || !selectedBranch || selectedBranch === 'all') return null;
+      const { data } = await supabase
+        .from('whatsapp_chats')
+        .select('id, bot_active, lead_captured, captured_lead_id')
+        .eq('branch_id', selectedBranch)
+        .eq('phone_number', selectedContact.phone_number)
+        .maybeSingle();
+      return data ?? null;
+    },
+    enabled: !!selectedContact && selectedBranch !== 'all',
+  });
+
+  // Toggle bot_active for the selected contact
+  const toggleBotMutation = useMutation({
+    mutationFn: async (newBotActive: boolean) => {
+      if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+      await supabase
+        .from('whatsapp_chats')
+        .upsert(
+          {
+            branch_id: selectedBranch,
+            phone_number: selectedContact.phone_number,
+            contact_name: selectedContact.contact_name,
+            bot_active: newBotActive,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'branch_id,phone_number' }
+        );
+    },
+    onSuccess: (_, newBotActive) => {
+      toast.success(newBotActive ? 'AI Bot activated' : 'AI Bot paused — you have control');
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-state'] });
+    },
+    onError: () => toast.error('Failed to update bot status'),
+  });
+
   // Messages query for the selected contact
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ['whatsapp-messages', selectedContact?.phone_number, selectedBranch],
@@ -160,6 +207,26 @@ export default function WhatsAppChatPage() {
       if (!selectedContact) throw new Error('No contact selected');
       if (!selectedBranch || selectedBranch === 'all') {
         throw new Error('Please select a specific branch before sending messages');
+      }
+
+      // Auto-pause AI bot when staff sends a manual message
+      if (chatState?.bot_active !== false) {
+        supabase
+          .from('whatsapp_chats')
+          .upsert(
+            {
+              branch_id: selectedBranch,
+              phone_number: selectedContact.phone_number,
+              contact_name: selectedContact.contact_name,
+              bot_active: false,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'branch_id,phone_number' }
+          )
+          .then(({ error: upsertErr }) => {
+            if (upsertErr) console.warn('Failed to auto-pause AI bot:', upsertErr.message);
+            else queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-state'] });
+          });
       }
 
       // 1. Insert message row as pending
@@ -464,9 +531,27 @@ export default function WhatsAppChatPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="rounded-xl">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    {/* AI Bot Active toggle */}
+                    {!isBranchUnselected && (
+                      <div className="flex items-center gap-2">
+                        <Bot className={`h-4 w-4 ${chatState?.bot_active !== false ? 'text-violet-500' : 'text-muted-foreground'}`} />
+                        <Label htmlFor="bot-toggle" className="text-xs text-muted-foreground cursor-pointer select-none">
+                          AI Bot
+                        </Label>
+                        <Switch
+                          id="bot-toggle"
+                          checked={chatState?.bot_active !== false}
+                          onCheckedChange={(v) => toggleBotMutation.mutate(v)}
+                          disabled={toggleBotMutation.isPending}
+                          className="data-[state=checked]:bg-violet-500"
+                        />
+                      </div>
+                    )}
+                    <Button variant="ghost" size="icon" className="rounded-xl">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Branch-not-selected inline notice */}
@@ -488,6 +573,36 @@ export default function WhatsAppChatPage() {
                         backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
                       }}
                     >
+                      {/* ✨ Lead Captured Banner */}
+                      {chatState?.lead_captured && (
+                        <div className="mx-2 mb-4 rounded-2xl border border-emerald-400/50 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 p-4 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/30">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-xl">
+                              ✨
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">
+                                AI Successfully Captured Lead
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                This contact has been converted to a CRM lead. A staff member has taken over.
+                              </p>
+                            </div>
+                            {chatState.captured_lead_id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-shrink-0 border-emerald-400/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 gap-1.5 text-xs"
+                                onClick={() => navigate(`/leads?id=${chatState.captured_lead_id}`)}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                View Lead
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {groupedMessages.length === 0 && (
                         <div className="flex items-center justify-center py-16 text-muted-foreground">
                           <div className="text-center">
