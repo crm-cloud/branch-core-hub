@@ -1,111 +1,77 @@
 
 
-# WhatsApp AI Brain, Autonomous Lead Capture & Chat UI Fix
+# CRM Schema Mapping, Template UI Tabs & Auth Clarification
 
-## Bug Fix: Chat Window Shifts on New Messages
+## Key Findings
 
-The messages area uses `<ScrollArea className="h-full">` inside a `flex-1 overflow-hidden` container (line 554-614). The issue is that `ScrollArea` with `h-full` doesn't properly constrain height in a flex column — when new messages arrive, the content pushes the container. Fix: replace the `ScrollArea` wrapper with a plain `div` using `overflow-y-auto` and explicit height constraint, ensuring the outer container has `min-h-0` (critical for flex children to respect overflow).
+1. **Lead capture mapping**: The `leads` table already has `budget` and `goals` columns. The webhook correctly maps these. However, fields like `fitness_goal`, `expected_start_date`, `fitness_experience`, `preferred_time` get dumped into `notes`. We need to add dedicated columns.
 
----
+2. **"Missing Authorization header" is expected behavior**: The `manage-whatsapp-templates` function intentionally requires a JWT (lines 44-51). When you hit the URL directly in a browser, there's no auth token — so it returns 401. The frontend calls via `supabase.functions.invoke()` which automatically includes the auth header when logged in. **This is not a bug.** If it fails from the UI, ensure you're logged in with an owner/admin/manager role.
 
-## Epic 1: AI Flow Builder Settings UI
-
-**New component:** `src/components/settings/AIFlowBuilderSettings.tsx`
-
-- Not a new page — add as a sub-section inside the existing WhatsApp tab in Settings (alongside `WhatsAppAISettings`)
-- Admin form with:
-  - Multi-select tags input for "Target Fields to Collect" (Name, Phone, Fitness Goal, Budget, Expected Start Date, etc.)
-  - Textarea for "Handoff Message"
-  - Toggle to enable/disable AI lead capture
-- Save into `organization_settings.whatsapp_ai_config` JSONB under a `lead_capture` key:
-  ```json
-  { "lead_capture": { "enabled": true, "target_fields": ["name","goal","start_date"], "handoff_message": "Thanks! Our manager will call you shortly." } }
-  ```
-- No new DB column needed — reuse existing `whatsapp_ai_config` JSONB
-
-**Modified:** `src/components/settings/IntegrationSettings.tsx` — render `AIFlowBuilderSettings` in WhatsApp tab
+3. **Meta template pricing (India)**: Marketing templates cost ~₹0.77/conversation, Utility templates cost ~₹0.15/conversation, Authentication templates cost ~₹0.13/conversation. Service conversations (user-initiated within 24h window) are free. Moving broadcast/promotional templates from UTILITY to MARKETING category is actually more expensive — the current setup is already cost-optimal. The real cost saver is the WhatsApp FAB (zero-cost user-initiated conversations).
 
 ---
 
-## Epic 2: Context Hydration in AI Auto-Reply
+## Epic 1: Lead Capture Schema & Extraction Mapping
 
-**Modified:** `supabase/functions/whatsapp-webhook/index.ts` (`triggerAiAutoReply` function)
-
-Before calling the AI gateway, look up the phone number:
-1. Query `members` joined with `profiles` (via `user_id`) matching cleaned phone number against `profiles.phone`
-2. If found: query `memberships` (active) and `plan_benefits` for that member. Prepend to system prompt: `"Context: Speaking to [Name], Active Member on [Plan]. Benefits: [X] remaining."`
-3. If not found: query `leads` table. If lead exists, prepend lead info. If unknown: `"Context: Unregistered contact."`
-
-This context gets injected into the system prompt before the Gemini call.
-
----
-
-## Epic 3: Structured Lead Extraction & CRM Routing
-
-**Modified:** `supabase/functions/whatsapp-webhook/index.ts` (`triggerAiAutoReply` function)
-
-1. Fetch `lead_capture` config from `organization_settings.whatsapp_ai_config`
-2. If enabled and contact is not a member, inject structured extraction instructions into system prompt:
-   ```
-   You are a lead generation assistant. Naturally collect: [target_fields].
-   Once ALL fields are collected, output ONLY this JSON:
-   {"status":"lead_captured","data":{"name":"...","goal":"..."}}
-   ```
-3. After getting AI response, check if it contains `lead_captured` JSON (try `JSON.parse`)
-4. If detected:
-   - INSERT into `leads` table with extracted data + phone number + `source: 'whatsapp_ai'` + branch_id
-   - Send the handoff message via Meta API (reuse existing send logic)
-   - Set `bot_active = false` in `whatsapp_chat_settings`
-   - Insert a special marker message: `[AI_LEAD_CAPTURED:lead_id]` as content for the UI to detect
-5. If not detected: send normal AI reply text
-
----
-
-## Epic 4: Tool Calling Scaffolding (Future-Proofing)
-
-**Modified:** `supabase/functions/whatsapp-webhook/index.ts`
-
-For member contacts only, add Gemini function declarations to the AI request:
-```json
-{
-  "tools": [{
-    "type": "function",
-    "function": {
-      "name": "get_schedule",
-      "parameters": { "type": "object", "properties": { "date": {"type":"string"}, "type": {"type":"string"} } }
-    }
-  }, {
-    "type": "function",
-    "function": {
-      "name": "book_session",
-      "parameters": { "type": "object", "properties": { "user_id": {"type":"string"}, "type": {"type":"string"}, "datetime": {"type":"string"} } }
-    }
-  }]
-}
+**Migration**: Add columns to `leads` table:
+```sql
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS fitness_goal text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS expected_start_date text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS fitness_experience text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS preferred_time text;
 ```
 
-After AI response, check for `tool_calls` in the response. If found, return mocked success JSON back in a follow-up call to complete the conversation loop. Actual DB wiring deferred.
+**Edge function update** (`whatsapp-webhook/index.ts`, ~line 605-618): Update the lead insertion mapping to use dedicated columns instead of dumping to notes:
+```typescript
+const leadData = {
+  phone: phoneNumber,
+  source: "whatsapp_ai",
+  branch_id: branchId,
+  full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
+  email: parsed.data.email || null,
+  goals: parsed.data.goal || parsed.data.fitness_goal || null,
+  budget: parsed.data.budget || null,
+  fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
+  expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
+  fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
+  preferred_time: parsed.data.preferred_time || null,
+  notes: `AI-captured via WhatsApp conversation`,
+  status: "new",
+  temperature: "warm",
+  score: 50,
+};
+```
 
----
+Also update the AI Flow Builder's target fields list to match these DB columns, and update any lead display components to show the new fields.
 
-## Epic 5: "Lead Captured" Badge & Chat UI Polish
+## Epic 2: Template Manager Tabs Refactor
 
-**Modified:** `src/pages/WhatsAppChat.tsx`
+**File**: `src/components/settings/TemplateManager.tsx`
 
-1. In the message rendering loop, detect messages containing `[AI_LEAD_CAPTURED:uuid]` pattern
-2. Render a glowing green banner: "AI Successfully Captured Lead" with a "View Lead" button linking to `/leads` (or opening `LeadProfileDrawer`)
-3. Pre-fill `AddLeadDrawer` with the selected contact's phone number (already partially done — enhance to pass phone)
+Replace the current stacked Card-per-type layout (lines 324-325) with Shadcn `<Tabs>`:
+- Default tab: `whatsapp`
+- Three tabs: WhatsApp, SMS, Email
+- Each tab renders only its filtered templates
+- "Add Template" button stays in the header
+- Meta submission dialog only shows in WhatsApp tab
+
+## Epic 3: Auth Clarification & Cost Notes
+
+**No code changes needed for auth** — the function works correctly when called from the logged-in UI via `supabase.functions.invoke()`.
+
+**Template category guidance**: Add a helper note in the Meta submission dialog (`TemplateManager.tsx`) indicating:
+- MARKETING: Promotional messages, offers, re-engagement (~₹0.77/conv in India)
+- UTILITY: Transaction confirmations, account updates (~₹0.15/conv in India)
+- Recommend MARKETING for broadcasts/promos, UTILITY for transactional only
 
 ---
 
 ## Files Changed
 
-| File | Action |
+| File | Change |
 |---|---|
-| `src/pages/WhatsAppChat.tsx` | Fix scroll issue (min-h-0 + overflow-y-auto), add lead captured banner |
-| `src/components/settings/AIFlowBuilderSettings.tsx` | New — lead capture rule config UI |
-| `src/components/settings/IntegrationSettings.tsx` | Add AIFlowBuilderSettings to WhatsApp tab |
-| `supabase/functions/whatsapp-webhook/index.ts` | Context hydration, structured extraction, tool calling scaffold |
-
-No database migration needed — all config stored in existing `whatsapp_ai_config` JSONB. Leads inserted into existing `leads` table.
+| **Migration** | Add `fitness_goal`, `expected_start_date`, `fitness_experience`, `preferred_time` to `leads` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Map AI-extracted fields to dedicated columns |
+| `src/components/settings/TemplateManager.tsx` | Refactor to tabbed layout + add pricing hints |
 
