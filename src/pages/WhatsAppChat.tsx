@@ -85,9 +85,27 @@ export default function WhatsAppChatPage() {
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatPhone, setNewChatPhone] = useState('');
   const [newChatName, setNewChatName] = useState('');
+  const [botActive, setBotActive] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+
+  // Fetch bot_active state for selected contact
+  useEffect(() => {
+    if (!selectedContact || !selectedBranch || selectedBranch === 'all') {
+      setBotActive(true);
+      return;
+    }
+    supabase
+      .from('whatsapp_chat_settings')
+      .select('bot_active')
+      .eq('branch_id', selectedBranch)
+      .eq('phone_number', selectedContact.phone_number)
+      .maybeSingle()
+      .then(({ data }) => {
+        setBotActive(data?.bot_active ?? true);
+      });
+  }, [selectedContact, selectedBranch]);
 
   // Realtime subscription: refresh messages + contacts on any change
   useEffect(() => {
