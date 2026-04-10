@@ -1155,6 +1155,9 @@ function LeadCaptureTab() {
 
   return (
     <div className="space-y-6">
+      {/* AI Lead Capture Rules */}
+      <AIFlowBuilderSettings />
+
       {/* Lead Notification Rules */}
       <LeadNotificationSettings />
 
