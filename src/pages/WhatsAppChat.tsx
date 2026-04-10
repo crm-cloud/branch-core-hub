@@ -588,6 +588,13 @@ export default function WhatsAppChatPage() {
                                     : 'bg-card border border-border/50 text-foreground rounded-bl-md'
                                 }`}
                               >
+                                {msg.message_type !== 'text' && (
+                                  <div className={`flex items-center gap-1 mb-1 text-[10px] ${msg.direction === 'outbound' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                                    {msg.message_type === 'image' && <><Image className="h-3 w-3" /> Photo</>}
+                                    {msg.message_type === 'template' && <><FileText className="h-3 w-3" /> Template</>}
+                                    {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
+                                  </div>
+                                )}
                                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
