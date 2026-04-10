@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Brain } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -15,6 +15,7 @@ import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryMan
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { RetentionCampaignManager } from '@/components/settings/RetentionCampaignManager';
+import { AIFlowBuilder } from '@/components/settings/AIFlowBuilder';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
@@ -27,6 +28,7 @@ const SETTINGS_MENU = [
   { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
   { value: 'retention', label: 'Marketing & Retention', icon: Megaphone },
   { value: 'integrations', label: 'Integrations', icon: Plug },
+  { value: 'ai-flow-builder', label: 'AI Lead Flow Builder', icon: Brain },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
   { value: 'website', label: 'Website', icon: Globe },
@@ -43,6 +45,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   'finance-categories': <FinanceCategoryManager />,
   retention: <RetentionCampaignManager />,
   integrations: <IntegrationSettings />,
+  'ai-flow-builder': <AIFlowBuilder />,
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
   website: <WebsiteSettings />,

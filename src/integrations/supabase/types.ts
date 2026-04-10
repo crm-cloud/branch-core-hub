@@ -6195,8 +6195,10 @@ export type Database = {
         Row: {
           bot_active: boolean | null
           branch_id: string | null
+          captured_lead_id: string | null
           created_at: string | null
           id: string
+          lead_captured: boolean | null
           paused_at: string | null
           paused_by: string | null
           phone_number: string
@@ -6205,8 +6207,10 @@ export type Database = {
         Insert: {
           bot_active?: boolean | null
           branch_id?: string | null
+          captured_lead_id?: string | null
           created_at?: string | null
           id?: string
+          lead_captured?: boolean | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number: string
@@ -6215,8 +6219,10 @@ export type Database = {
         Update: {
           bot_active?: boolean | null
           branch_id?: string | null
+          captured_lead_id?: string | null
           created_at?: string | null
           id?: string
+          lead_captured?: boolean | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number?: string
@@ -6228,6 +6234,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_chat_settings_captured_lead_id_fkey"
+            columns: ["captured_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
