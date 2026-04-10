@@ -751,24 +751,38 @@ export default function WhatsAppChatPage() {
 
                 {/* Message Input */}
                 <div className="px-4 py-3 border-t border-border/30 bg-card flex-shrink-0">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*,application/pdf,.doc,.docx"
+                    onChange={handleAttachment}
+                  />
                   <div className="flex items-center gap-2">
+                    <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
+                          title="Emoji picker"
+                        >
+                          <Smile className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-auto p-0 border-0">
+                        <Picker data={data} onEmojiSelect={handleEmojiSelect} theme="light" previewPosition="none" skinTonePosition="none" />
+                      </PopoverContent>
+                    </Popover>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
-                      disabled
-                      title="Emoji picker (coming soon)"
+                      title="Attach file"
+                      disabled={attachUploading || isBranchUnselected}
+                      onClick={() => fileInputRef.current?.click()}
                     >
-                      <Smile className="h-5 w-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="rounded-xl text-muted-foreground hover:text-foreground flex-shrink-0"
-                      disabled
-                      title="Attach file (coming soon)"
-                    >
-                      <Paperclip className="h-5 w-5" />
+                      {attachUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
                     </Button>
                     <Button
                       variant="ghost"
@@ -798,6 +812,8 @@ export default function WhatsAppChatPage() {
                       data-testid="button-send-message"
                     >
                       <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                     </Button>
                   </div>
                 </div>
