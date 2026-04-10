@@ -2909,7 +2909,10 @@ export type Database = {
           date_of_birth: string | null
           duplicate_of: string | null
           email: string | null
+          expected_start_date: string | null
           first_response_at: string | null
+          fitness_experience: string | null
+          fitness_goal: string | null
           full_name: string
           gender: Database["public"]["Enums"]["gender_type"] | null
           goals: string | null
@@ -2924,6 +2927,7 @@ export type Database = {
           owner_id: string | null
           phone: string
           preferred_contact_channel: string
+          preferred_time: string | null
           referrer_url: string | null
           score: number
           sla_due_at: string | null
@@ -2949,7 +2953,10 @@ export type Database = {
           date_of_birth?: string | null
           duplicate_of?: string | null
           email?: string | null
+          expected_start_date?: string | null
           first_response_at?: string | null
+          fitness_experience?: string | null
+          fitness_goal?: string | null
           full_name: string
           gender?: Database["public"]["Enums"]["gender_type"] | null
           goals?: string | null
@@ -2964,6 +2971,7 @@ export type Database = {
           owner_id?: string | null
           phone: string
           preferred_contact_channel?: string
+          preferred_time?: string | null
           referrer_url?: string | null
           score?: number
           sla_due_at?: string | null
@@ -2989,7 +2997,10 @@ export type Database = {
           date_of_birth?: string | null
           duplicate_of?: string | null
           email?: string | null
+          expected_start_date?: string | null
           first_response_at?: string | null
+          fitness_experience?: string | null
+          fitness_goal?: string | null
           full_name?: string
           gender?: Database["public"]["Enums"]["gender_type"] | null
           goals?: string | null
@@ -3004,6 +3015,7 @@ export type Database = {
           owner_id?: string | null
           phone?: string
           preferred_contact_channel?: string
+          preferred_time?: string | null
           referrer_url?: string | null
           score?: number
           sla_due_at?: string | null
