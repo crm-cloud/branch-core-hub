@@ -43,11 +43,31 @@ Deno.serve(async (req) => {
 
     // Build conversation context
     const conversationHistory = recent_messages
-      .slice(-10) // Last 10 messages for context
+      .slice(-10)
       .map((m: any) => `${m.direction === 'inbound' ? contact_name || 'Customer' : 'Staff'}: ${m.content}`)
       .join('\n');
 
-    const systemPrompt = `You are a helpful gym reception assistant for "Incline Fitness". Generate a professional, friendly WhatsApp reply suggestion. Keep it short (1-3 sentences max). Be warm but professional. Use the customer's name when available. 
+    // Fetch custom system prompt from organization_settings if available
+    const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceClient = createClient(supabaseUrl2, serviceKey);
+
+    let customPrompt: string | null = null;
+    try {
+      const { data: orgSettings } = await serviceClient
+        .from('organization_settings')
+        .select('whatsapp_ai_config')
+        .limit(1)
+        .maybeSingle();
+      const aiConfig = orgSettings?.whatsapp_ai_config as any;
+      if (aiConfig?.system_prompt) {
+        customPrompt = aiConfig.system_prompt;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch org AI config, using default prompt:', e);
+    }
+
+    const systemPrompt = customPrompt || `You are a helpful gym reception assistant for "Incline Fitness". Generate a professional, friendly WhatsApp reply suggestion. Keep it short (1-3 sentences max). Be warm but professional. Use the customer's name when available. 
 
 Context type: ${context_type || 'general'}
 ${contact_name ? `Customer name: ${contact_name}` : ''}

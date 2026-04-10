@@ -6191,6 +6191,47 @@ export type Database = {
           },
         ]
       }
+      whatsapp_chat_settings: {
+        Row: {
+          bot_active: boolean | null
+          branch_id: string | null
+          created_at: string | null
+          id: string
+          paused_at: string | null
+          paused_by: string | null
+          phone_number: string
+          updated_at: string | null
+        }
+        Insert: {
+          bot_active?: boolean | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string
+          paused_at?: string | null
+          paused_by?: string | null
+          phone_number: string
+          updated_at?: string | null
+        }
+        Update: {
+          bot_active?: boolean | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string
+          paused_at?: string | null
+          paused_by?: string | null
+          phone_number?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_chat_settings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_messages: {
         Row: {
           branch_id: string
