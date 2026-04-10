@@ -23,7 +23,7 @@ async function computeAppSecretProof(accessToken: string, appSecret: string): Pr
 }
 
 function buildMetaUrl(phoneNumberId: string, accessToken: string, appSecret?: string | null, proof?: string | null): string {
-  let url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+  let url = `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`;
   if (appSecret && proof) {
     url += `?appsecret_proof=${proof}`;
   }

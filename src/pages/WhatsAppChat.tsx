@@ -116,6 +116,8 @@ export default function WhatsAppChatPage() {
 
   // Clear chat confirmation
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
+  // Transfer to staff
+  const [transferStaffOpen, setTransferStaffOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -168,6 +170,31 @@ export default function WhatsAppChatPage() {
       if (error) throw error;
       return (data ?? []) as ChatSettingsRow[];
     },
+  });
+
+  // Staff list for Transfer to Staff
+  const { data: staffList = [] } = useQuery({
+    queryKey: ['staff-list-for-transfer'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('user_id, role, profiles:user_id(id, full_name, avatar_url, email)')
+        .in('role', ['owner', 'admin', 'manager', 'staff']);
+      if (error) throw error;
+      // Deduplicate by user_id
+      const seen = new Set<string>();
+      return (data ?? []).filter((r: any) => {
+        if (seen.has(r.user_id)) return false;
+        seen.add(r.user_id);
+        return true;
+      }).map((r: any) => ({
+        id: r.user_id,
+        full_name: r.profiles?.full_name || r.profiles?.email || 'Unknown',
+        avatar_url: r.profiles?.avatar_url,
+        role: r.role,
+      }));
+    },
+    enabled: transferStaffOpen,
   });
 
   // Build a map for quick lookup
@@ -749,6 +776,11 @@ export default function WhatsAppChatPage() {
                         >
                           <Trash2 className="h-4 w-4 mr-2" /> Clear Chat
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setTransferStaffOpen(true)}
+                        >
+                          <UserPlus className="h-4 w-4 mr-2" /> Transfer to Staff
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" disabled>
                           <Ban className="h-4 w-4 mr-2" /> Block Contact
@@ -840,7 +872,7 @@ export default function WhatsAppChatPage() {
                                     {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
                                   </div>
                                 )}
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere] w-full">{msg.content}</p>
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
                                     msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'
@@ -1039,6 +1071,60 @@ export default function WhatsAppChatPage() {
               Delete Permanently
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer to Staff Dialog */}
+      <Dialog open={transferStaffOpen} onOpenChange={setTransferStaffOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Transfer to Staff
+            </DialogTitle>
+            <DialogDescription>
+              Assign this conversation to a staff member.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-64">
+            <div className="space-y-1">
+              {staffList.map((staff: any) => (
+                <button
+                  key={staff.id}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/80 transition-colors text-left"
+                  onClick={async () => {
+                    if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+                    await supabase.from('whatsapp_chat_settings').upsert(
+                      {
+                        branch_id: selectedBranch,
+                        phone_number: selectedContact.phone_number,
+                        assigned_to: staff.id,
+                        bot_active: false,
+                      },
+                      { onConflict: 'branch_id,phone_number' }
+                    );
+                    setBotActive(false);
+                    queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
+                    setTransferStaffOpen(false);
+                    toast.success(`Chat assigned to ${staff.full_name}`);
+                  }}
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                      {staff.full_name?.[0]?.toUpperCase() || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{staff.full_name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{staff.role}</p>
+                  </div>
+                </button>
+              ))}
+              {staffList.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">Loading staff...</p>
+              )}
+            </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 

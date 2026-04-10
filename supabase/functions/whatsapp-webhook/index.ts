@@ -716,7 +716,7 @@ async function sendAiReply(
   const cleanPhone = inboundMsg.phone_number.replace(/[\s\-\+]/g, "");
 
   // Compute appsecret_proof
-  let metaUrl = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+  let metaUrl = `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`;
   if (appSecret) {
     const proof = await computeAppSecretProof(accessToken, appSecret);
     metaUrl += `?appsecret_proof=${proof}`;
