@@ -1,158 +1,102 @@
 
 
-# WhatsApp Business API Overhaul & AI Chatbot Integration
+# WhatsApp API Auth Fix, AI Chatbot & 2-Way CRM Inbox
 
-## Current State Assessment
+## Root Cause (from actual edge function logs)
 
-The codebase already has solid foundations:
-- `send-whatsapp` edge function correctly fetches credentials from `integration_settings` JSONB and calls Meta Cloud API v18.0 with proper `Bearer` auth headers
-- `whatsapp-webhook` handles GET verification and POST inbound messages + status updates
-- `manage-whatsapp-templates` supports list/create/get_status actions against Meta API
-- `WhatsAppChat.tsx` has a working two-way chat UI with Supabase Realtime subscriptions
-- `ai-auto-reply` edge function provides AI suggestion via Lovable AI Gateway
-- `whatsapp_messages` table tracks all messages with `whatsapp_message_id`, `status`, `direction`
+The error is **NOT** a missing `Authorization` header. The logs show:
 
-**Actual gaps identified:**
-1. `send-whatsapp` only sends `text` type — no image or template message support
-2. `whatsapp-webhook` doesn't handle `message_template_status_update` events
-3. AI auto-reply is manual (suggestion only) — no automatic reply on inbound
-4. No dedicated `whatsapp_templates` table — templates live in generic `templates` table with `meta_template_*` columns
-5. No AI auto-reply toggle/settings stored in DB
-6. `send-whatsapp` stores Meta's `whatsapp_message_id` in `external_id` column (which doesn't exist in the schema — it only has `whatsapp_message_id`)
+```
+"API calls from the server require an appsecret_proof argument"
+```
 
----
+This is Meta's `appsecret_proof` security feature. When enabled in the Meta Developer Dashboard, every Graph API call must include an `appsecret_proof` query parameter — an HMAC-SHA256 hash of the `access_token` using the `app_secret`. The DB already stores `app_secret` in `credentials.app_secret` on the `custom` provider row, but **neither `send-whatsapp` nor `manage-whatsapp-templates` compute or send this proof**.
 
-## Epic 1: Core Send Engine Enhancement
+## Implementation Plan
 
-### Edge Function: `send-whatsapp/index.ts`
-- Add support for `message_type` parameter: `text` (default), `image`, `template`
-- For `image`: accept `media_url` + optional `caption`, build Meta image payload
-- For `template`: accept `template_name`, `language`, `template_components`, build Meta template payload
-- Fix: update `whatsapp_message_id` column (not `external_id`) with Meta's response ID
-- Keep existing text flow unchanged
+### Epic 1: Fix Meta API Auth (`appsecret_proof`)
 
-### No auth fix needed
-The current auth flow is correct — `Bearer ${accessToken}` with `Content-Type: application/json`. The real issue users hit is likely missing/wrong credentials in `integration_settings`. No code change needed for auth itself.
+**Files:** `send-whatsapp/index.ts`, `manage-whatsapp-templates/index.ts`, `whatsapp-webhook/index.ts` (AI auto-reply section)
 
----
+Changes to all three edge functions:
+- After fetching `integration_settings`, extract `credentials.app_secret` alongside `access_token`
+- Compute `appsecret_proof = HMAC-SHA256(access_token, app_secret)` using `crypto.subtle`
+- Append `?appsecret_proof=<hash>` to every `graph.facebook.com` URL
+- If `app_secret` is absent, skip the proof (backward compatible for apps without it enabled)
+- Wrap all Meta `fetch` calls in try/catch and log failures to `error_logs` table with `source: 'edge_function'`, `component_name: 'send-whatsapp'`, and the HTTP status + Meta error message
+- Also update `providerSchemas.ts` to add `app_secret` field to `whatsapp_meta_cloud` schema so users can configure it from Settings UI
 
-## Epic 2: Template Sync & Management Dashboard
+### Epic 2: AI Auto-Reply — Already Working
 
-### Database Migration
-Create a dedicated `whatsapp_templates` table:
+The `ai-auto-reply` edge function already uses the Lovable AI Gateway with `google/gemini-3-flash-preview`. The `whatsapp-webhook` already triggers auto-reply on inbound messages using the same gateway. No rewrite to "Gemini API directly" is needed — Lovable AI Gateway already proxies to Gemini.
+
+**Minor improvement:** Update `ai-auto-reply` to also read the custom `system_prompt` from `organization_settings.whatsapp_ai_config` instead of using only its hardcoded prompt — aligning it with the webhook auto-reply behavior.
+
+### Epic 3: Human Handoff & Bot Toggle
+
+**Database migration:**
+- Add `bot_active` column to `whatsapp_messages` — but actually, bot state should be per-conversation (per phone number), not per message. Better approach: add a `bot_paused_contacts` JSONB array to `organization_settings.whatsapp_ai_config`, or create a lightweight `whatsapp_conversations` table with `phone_number`, `branch_id`, `bot_active` (default true).
+
+**Chosen approach:** Add a `whatsapp_chat_settings` table:
 ```sql
-CREATE TABLE whatsapp_templates (
+CREATE TABLE whatsapp_chat_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   branch_id uuid REFERENCES branches(id),
-  waba_id text NOT NULL,
-  meta_template_id text,
-  name text NOT NULL,
-  language text DEFAULT 'en',
-  category text,
-  status text DEFAULT 'PENDING',
-  quality_score text,
-  rejected_reason text,
-  components jsonb,
-  synced_at timestamptz DEFAULT now(),
-  created_at timestamptz DEFAULT now()
+  phone_number text NOT NULL,
+  bot_active boolean DEFAULT true,
+  paused_at timestamptz,
+  paused_by uuid REFERENCES auth.users(id),
+  UNIQUE(branch_id, phone_number)
 );
-ALTER TABLE whatsapp_templates ENABLE ROW LEVEL SECURITY;
--- Enable realtime for live template status updates
-ALTER PUBLICATION supabase_realtime ADD TABLE public.whatsapp_templates;
 ```
-Add RLS policies for staff-level access.
 
-### Edge Function: `manage-whatsapp-templates/index.ts`
-- Update `list` action to upsert into `whatsapp_templates` table (not the generic `templates` table)
-- Include `quality_score` field from Meta API response
-- Keep backward compatibility with existing `templates` table meta columns
+**Edge function changes (`whatsapp-webhook`):**
+- Before triggering AI auto-reply, check `whatsapp_chat_settings` for the contact — if `bot_active = false`, skip auto-reply.
 
-### UI: Add "Template Management" section in WhatsApp tab of IntegrationSettings
-- Show a table with: name, language, category, status badge (APPROVED/REJECTED/PENDING), quality score
-- "Force Sync" button calls the `list` action
-- Use Supabase Realtime on `whatsapp_templates` for live status badge updates
+**UI changes (`WhatsAppChat.tsx`):**
+- Add a `Switch` toggle in the chat header area: "AI Bot Active / Paused" for the selected contact
+- When staff sends a manual message, auto-set `bot_active = false` for that contact (insert/upsert into `whatsapp_chat_settings`)
+- Toggle allows staff to re-enable the bot
 
----
+### Epic 4: Template Sync Dashboard
 
-## Epic 3: Webhook Payload Parsing (Two-Way Sync)
+The `manage-whatsapp-templates` function already syncs to the `whatsapp_templates` table correctly. The auth fix from Epic 1 will make it work.
 
-### Edge Function: `whatsapp-webhook/index.ts`
-Currently handles:
-- ✅ Incoming messages → saved to `whatsapp_messages` as `inbound`
-- ✅ Status updates (sent/delivered/read) → updates `whatsapp_messages.status`
+**UI (`IntegrationSettings.tsx` — WhatsApp tab):**
+- Add a "Templates" sub-section showing a data table from `whatsapp_templates`: Name, Language, Category, Status badge (APPROVED/REJECTED/PENDING), Quality Score
+- "Sync Templates from Meta" button calls `manage-whatsapp-templates` with `action: 'list'`
+- Use Realtime subscription on `whatsapp_templates` for live status updates
 
-**Add:**
-- Parse `message_template_status_update` events from `entry[].changes[].value`
-- When detected, update `whatsapp_templates` table: set `status` and `rejected_reason`
-- After saving an inbound message, check AI auto-reply settings and trigger auto-reply if enabled (Epic 5)
+### Epic 5: WhatsApp FAB on Public Website
 
----
+**File:** `PublicWebsiteV1.tsx`
 
-## Epic 4: Real-Time Two-Way Chat UI Improvements
-
-The chat UI already exists and works with Realtime. Improvements:
-
-### `WhatsAppChat.tsx`
-- **Delivery status ticks are already implemented** (sent → single check, delivered → double check, read → blue double check) — no changes needed
-- Add unread count tracking: when selecting a contact, mark their messages as "read" in DB
-- Add typing indicator placeholder
-- Show `message_type` icons for non-text messages (image, template)
+- Add a floating action button (fixed bottom-right) with WhatsApp icon
+- Fetch the business phone number dynamically from `organization_settings` or `integration_settings` (config.phone_number_id won't work — need actual display phone number from `organization_settings.phone` or similar)
+- Link format: `https://wa.me/<phone>?text=Hi%20Incline%20Gym%2C%20I%20would%20like%20to%20know%20more!`
+- Fallback: if no phone configured, hide the FAB
+- Style: green circle with WhatsApp icon, subtle pulse animation
 
 ---
 
-## Epic 5: AI Gym Assistant (Auto-Reply)
+## Files Changed
 
-### Database Migration
-Add AI settings to `organization_settings` or a new JSONB field:
-```sql
-ALTER TABLE organization_settings 
-  ADD COLUMN IF NOT EXISTS whatsapp_ai_config jsonb DEFAULT '{}';
-```
-Structure: `{ "auto_reply_enabled": false, "system_prompt": "...", "reply_delay_seconds": 5 }`
-
-### Settings UI: New component `WhatsAppAISettings.tsx`
-- Toggle: "Enable AI Auto-Reply"
-- Textarea: "AI System Prompt / Gym Context" (pre-filled with gym info template)
-- Number input: Reply delay (seconds)
-- Placed in WhatsApp tab of IntegrationSettings
-
-### Edge Function: `whatsapp-webhook/index.ts` (update)
-After saving an inbound message:
-1. Check `organization_settings.whatsapp_ai_config.auto_reply_enabled`
-2. If enabled, fetch recent conversation history from `whatsapp_messages`
-3. Call Lovable AI Gateway with the configured system prompt + conversation
-4. Send the AI response back via `send-whatsapp` edge function
-5. Save the AI response as an outbound message in `whatsapp_messages`
-6. All wrapped in try/catch — failure never blocks inbound message processing
-
----
-
-## Implementation Order
-
-1. **Migration**: `whatsapp_templates` table + `whatsapp_ai_config` column on `organization_settings`
-2. **Epic 1**: Update `send-whatsapp` for image + template message types, fix `whatsapp_message_id` column
-3. **Epic 3**: Update `whatsapp-webhook` for template status events + AI auto-reply trigger
-4. **Epic 2**: Update `manage-whatsapp-templates` to use new table, add Template Management UI
-5. **Epic 5**: Create `WhatsAppAISettings.tsx`, add to IntegrationSettings WhatsApp tab
-6. **Epic 4**: Minor chat UI enhancements
-
-## Files Created/Modified
-
-| File | Action |
+| File | Change |
 |---|---|
-| DB Migration | `whatsapp_templates` table, `whatsapp_ai_config` column |
-| `supabase/functions/send-whatsapp/index.ts` | Add image + template message types |
-| `supabase/functions/whatsapp-webhook/index.ts` | Add template status parsing + AI auto-reply |
-| `supabase/functions/manage-whatsapp-templates/index.ts` | Upsert to `whatsapp_templates` table |
-| `src/components/settings/WhatsAppAISettings.tsx` | New — AI toggle + prompt config |
-| `src/components/settings/IntegrationSettings.tsx` | Add template dashboard table, AI settings |
-| `src/pages/WhatsAppChat.tsx` | Minor: message type icons, unread tracking |
-| `supabase/config.toml` | No changes needed (webhook already `verify_jwt = false`) |
+| **Migration** | Create `whatsapp_chat_settings` table |
+| `supabase/functions/send-whatsapp/index.ts` | Add `appsecret_proof` computation + error logging |
+| `supabase/functions/manage-whatsapp-templates/index.ts` | Add `appsecret_proof` computation + error logging |
+| `supabase/functions/whatsapp-webhook/index.ts` | Add `appsecret_proof` to AI auto-reply Meta calls + check `bot_active` before auto-reply |
+| `supabase/functions/ai-auto-reply/index.ts` | Read system prompt from `organization_settings.whatsapp_ai_config` |
+| `src/config/providerSchemas.ts` | Add `app_secret` field to `whatsapp_meta_cloud` schema |
+| `src/pages/WhatsAppChat.tsx` | Add bot toggle switch + auto-pause on manual send |
+| `src/components/settings/IntegrationSettings.tsx` | Add template dashboard table in WhatsApp tab |
+| `src/pages/PublicWebsiteV1.tsx` | Add WhatsApp FAB |
 
 ## What Stays Unchanged
-- All existing routes and auth flow
+- All existing routes, auth, role system
+- Database schema for `whatsapp_messages`, `integration_settings`, `whatsapp_templates`
 - `send-sms`, `notify-lead-created`, and other edge functions
-- Existing `templates` table and TemplateManager component
-- Branch-aware behavior and role-based access
 - WhatsApp webhook verification (GET) flow
+- Existing chat UI layout and realtime subscriptions
 
