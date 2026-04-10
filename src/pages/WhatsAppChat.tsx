@@ -562,8 +562,8 @@ export default function WhatsAppChatPage() {
                         {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <h3 className="font-semibold text-foreground text-sm">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-foreground text-sm break-words">
                         {selectedContact.contact_name || selectedContact.phone_number}
                       </h3>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -611,9 +611,40 @@ export default function WhatsAppChatPage() {
                         className="scale-75"
                       />
                     </div>
-                    <Button variant="ghost" size="icon" className="rounded-xl">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="rounded-xl">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {selectedContact.member_id && (
+                          <DropdownMenuItem onClick={() => navigate(`/members`)}>
+                            <Eye className="h-4 w-4 mr-2" /> View Profile
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+                            await supabase
+                              .from('whatsapp_messages')
+                              .delete()
+                              .eq('phone_number', selectedContact.phone_number)
+                              .eq('branch_id', selectedBranch);
+                            queryClient.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+                            queryClient.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+                            setSelectedContact(null);
+                            toast.success('Chat cleared');
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" /> Clear Chat
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" disabled>
+                          <Ban className="h-4 w-4 mr-2" /> Block Contact
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
