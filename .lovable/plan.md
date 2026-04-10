@@ -1,102 +1,64 @@
+# Root Cause Analysis & Fix Plan
 
+## Critical Finding: WHY You Can't Receive Messages
 
-# WhatsApp API Auth Fix, AI Chatbot & 2-Way CRM Inbox
+**The `whatsapp-webhook` function is MISSING from `supabase/config.toml`.**
 
-## Root Cause (from actual edge function logs)
+This means it defaults to `verify_jwt = true`. When Meta sends a POST webhook request, it does NOT include a Supabase JWT token — so Supabase's API gateway rejects the request with **401 Unauthorized** before your edge function code even runs. This is why:
 
-The error is **NOT** a missing `Authorization` header. The logs show:
+- Zero inbound messages exist in the database (all 7 messages are outbound)
+- Zero edge function logs for `whatsapp-webhook` — the code never executes
+- Sending works fine (the latest "hi" message has status "read", confirming Meta's API works)
 
-```
-"API calls from the server require an appsecret_proof argument"
-```
+**Fix:** Add `[functions.whatsapp-webhook] verify_jwt = false` to `config.toml`. This is the same pattern used for `payment-webhook`, `mips-webhook-receiver`, and other external webhook receivers.
 
-This is Meta's `appsecret_proof` security feature. When enabled in the Meta Developer Dashboard, every Graph API call must include an `appsecret_proof` query parameter — an HMAC-SHA256 hash of the `access_token` using the `app_secret`. The DB already stores `app_secret` in `credentials.app_secret` on the `custom` provider row, but **neither `send-whatsapp` nor `manage-whatsapp-templates` compute or send this proof**.
+---
 
 ## Implementation Plan
 
-### Epic 1: Fix Meta API Auth (`appsecret_proof`)
+### 1. Fix Webhook (The Critical One-Line Fix)
 
-**Files:** `send-whatsapp/index.ts`, `manage-whatsapp-templates/index.ts`, `whatsapp-webhook/index.ts` (AI auto-reply section)
+**File:** `supabase/config.toml`
 
-Changes to all three edge functions:
-- After fetching `integration_settings`, extract `credentials.app_secret` alongside `access_token`
-- Compute `appsecret_proof = HMAC-SHA256(access_token, app_secret)` using `crypto.subtle`
-- Append `?appsecret_proof=<hash>` to every `graph.facebook.com` URL
-- If `app_secret` is absent, skip the proof (backward compatible for apps without it enabled)
-- Wrap all Meta `fetch` calls in try/catch and log failures to `error_logs` table with `source: 'edge_function'`, `component_name: 'send-whatsapp'`, and the HTTP status + Meta error message
-- Also update `providerSchemas.ts` to add `app_secret` field to `whatsapp_meta_cloud` schema so users can configure it from Settings UI
+- Add `[functions.whatsapp-webhook]` with `verify_jwt = false`
+- Also add `[functions.manage-whatsapp-templates]` with `verify_jwt = false` (it's also missing, causing the template sync auth errors)
 
-### Epic 2: AI Auto-Reply — Already Working
+### 2. Fix WhatsApp FAB Phone Number
 
-The `ai-auto-reply` edge function already uses the Lovable AI Gateway with `google/gemini-3-flash-preview`. The `whatsapp-webhook` already triggers auto-reply on inbound messages using the same gateway. No rewrite to "Gemini API directly" is needed — Lovable AI Gateway already proxies to Gemini.
+**File:** `src/pages/PublicWebsite.tsx`
 
-**Minor improvement:** Update `ai-auto-reply` to also read the custom `system_prompt` from `organization_settings.whatsapp_ai_config` instead of using only its hardcoded prompt — aligning it with the webhook auto-reply behavior.
+- The FAB currently links to `https://wa.me/?text=...` with NO phone number
+- Fix: fetch the phone number from `integration_settings` config or `organization_settings`, and inject it into the `wa.me/<phone>` URL
+- If no phone configured, hide the FAB
 
-### Epic 3: Human Handoff & Bot Toggle
+### 3. WhatsApp Chat UI Improvements
 
-**Database migration:**
-- Add `bot_active` column to `whatsapp_messages` — but actually, bot state should be per-conversation (per phone number), not per message. Better approach: add a `bot_paused_contacts` JSONB array to `organization_settings.whatsapp_ai_config`, or create a lightweight `whatsapp_conversations` table with `phone_number`, `branch_id`, `bot_active` (default true).
+**File:** `src/pages/WhatsAppChat.tsx`
 
-**Chosen approach:** Add a `whatsapp_chat_settings` table:
-```sql
-CREATE TABLE whatsapp_chat_settings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  branch_id uuid REFERENCES branches(id),
-  phone_number text NOT NULL,
-  bot_active boolean DEFAULT true,
-  paused_at timestamptz,
-  paused_by uuid REFERENCES auth.users(id),
-  UNIQUE(branch_id, phone_number)
-);
-```
+- The bot toggle and core chat functionality already exist
+- Add a "Convert to Lead" quick-action button in the chat header that opens a drawer pre-filled with the contact's phone number
+- Improve auto-scroll behavior on new messages
+- Add message type indicators for non-text messages (image, template badges)
 
-**Edge function changes (`whatsapp-webhook`):**
-- Before triggering AI auto-reply, check `whatsapp_chat_settings` for the contact — if `bot_active = false`, skip auto-reply.
+### 4. Template Dashboard in Settings
 
-**UI changes (`WhatsAppChat.tsx`):**
-- Add a `Switch` toggle in the chat header area: "AI Bot Active / Paused" for the selected contact
-- When staff sends a manual message, auto-set `bot_active = false` for that contact (insert/upsert into `whatsapp_chat_settings`)
-- Toggle allows staff to re-enable the bot
+**File:** `src/components/settings/IntegrationSettings.tsx`
 
-### Epic 4: Template Sync Dashboard
-
-The `manage-whatsapp-templates` function already syncs to the `whatsapp_templates` table correctly. The auth fix from Epic 1 will make it work.
-
-**UI (`IntegrationSettings.tsx` — WhatsApp tab):**
-- Add a "Templates" sub-section showing a data table from `whatsapp_templates`: Name, Language, Category, Status badge (APPROVED/REJECTED/PENDING), Quality Score
-- "Sync Templates from Meta" button calls `manage-whatsapp-templates` with `action: 'list'`
-- Use Realtime subscription on `whatsapp_templates` for live status updates
-
-### Epic 5: WhatsApp FAB on Public Website
-
-**File:** `PublicWebsiteV1.tsx`
-
-- Add a floating action button (fixed bottom-right) with WhatsApp icon
-- Fetch the business phone number dynamically from `organization_settings` or `integration_settings` (config.phone_number_id won't work — need actual display phone number from `organization_settings.phone` or similar)
-- Link format: `https://wa.me/<phone>?text=Hi%20Incline%20Gym%2C%20I%20would%20like%20to%20know%20more!`
-- Fallback: if no phone configured, hide the FAB
-- Style: green circle with WhatsApp icon, subtle pulse animation
+- Add a "Templates" sub-tab in the WhatsApp section showing data from `whatsapp_templates` table
+- Columns: Name, Language, Category, Status badge (APPROVED/REJECTED/PENDING), Quality Score
+- "Sync Templates" button calls `manage-whatsapp-templates` with `action: 'list'`
 
 ---
 
 ## Files Changed
 
-| File | Change |
-|---|---|
-| **Migration** | Create `whatsapp_chat_settings` table |
-| `supabase/functions/send-whatsapp/index.ts` | Add `appsecret_proof` computation + error logging |
-| `supabase/functions/manage-whatsapp-templates/index.ts` | Add `appsecret_proof` computation + error logging |
-| `supabase/functions/whatsapp-webhook/index.ts` | Add `appsecret_proof` to AI auto-reply Meta calls + check `bot_active` before auto-reply |
-| `supabase/functions/ai-auto-reply/index.ts` | Read system prompt from `organization_settings.whatsapp_ai_config` |
-| `src/config/providerSchemas.ts` | Add `app_secret` field to `whatsapp_meta_cloud` schema |
-| `src/pages/WhatsAppChat.tsx` | Add bot toggle switch + auto-pause on manual send |
-| `src/components/settings/IntegrationSettings.tsx` | Add template dashboard table in WhatsApp tab |
-| `src/pages/PublicWebsiteV1.tsx` | Add WhatsApp FAB |
 
-## What Stays Unchanged
-- All existing routes, auth, role system
-- Database schema for `whatsapp_messages`, `integration_settings`, `whatsapp_templates`
-- `send-sms`, `notify-lead-created`, and other edge functions
-- WhatsApp webhook verification (GET) flow
-- Existing chat UI layout and realtime subscriptions
+| File                                              | Change                                                                           |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `supabase/config.toml`                            | Add `whatsapp-webhook` and `manage-whatsapp-templates` with `verify_jwt = false` |
+| `src/pages/PublicWebsiteV1.tsx`                   | Fix FAB to use dynamic phone number from DB                                      |
+| `src/pages/WhatsAppChat.tsx`                      | Add "Convert to Lead" button, message type badges                                |
+| `src/components/settings/IntegrationSettings.tsx` | Add template dashboard table                                                     |
 
+
+No database migrations needed. No edge function code changes needed — the webhook code is correct, it was just never reached.
