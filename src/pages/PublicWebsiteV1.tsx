@@ -331,13 +331,14 @@ function WhatsAppFAB() {
         .maybeSingle();
       const phone = (data?.config as any)?.business_phone_number || (data?.config as any)?.phone_number;
       if (phone) return phone.replace(/[^0-9]/g, '');
-      // Fallback to organization_settings
-      const { data: org } = await supabase
-        .from('organization_settings')
+      // Fallback to branches table phone
+      const { data: branch } = await supabase
+        .from('branches')
         .select('phone')
+        .eq('is_active', true)
         .limit(1)
         .maybeSingle();
-      return org?.phone?.replace(/[^0-9]/g, '') || null;
+      return branch?.phone?.replace(/[^0-9+]/g, '').replace('+', '') || null;
     },
     staleTime: 600000,
   });

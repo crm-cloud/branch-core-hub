@@ -499,6 +499,18 @@ export default function WhatsAppChatPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {/* Convert to Lead */}
+                    {!selectedContact.member_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs rounded-lg"
+                        onClick={() => setConvertLeadOpen(true)}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Convert to Lead
+                      </Button>
+                    )}
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
                       <Bot className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">AI Bot</span>
