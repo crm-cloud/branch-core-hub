@@ -862,14 +862,37 @@ function IntegrationConfigSheet({
             </div>
           )}
 
-          <Button
-            className="w-full"
-            onClick={() => saveConfig.mutate()}
-            disabled={saveConfig.isPending}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saveConfig.isPending ? 'Saving...' : 'Save Configuration'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={() => saveConfig.mutate()}
+              disabled={saveConfig.isPending}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {saveConfig.isPending ? 'Saving...' : 'Save Configuration'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const { data, error } = await supabase.functions.invoke('test-integration', {
+                    body: { type, provider, config, credentials },
+                  });
+                  if (error) throw error;
+                  if (data?.success) {
+                    toast.success(data.message || 'Connection verified ✓');
+                  } else {
+                    toast.error(data?.error || 'Connection test failed');
+                  }
+                } catch (e: any) {
+                  toast.error(e.message || 'Test failed');
+                }
+              }}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Test
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
