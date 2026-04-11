@@ -1,83 +1,95 @@
 
 
-# AI Lead Capture Reliability, WhatsApp Interactive Buttons & Razorpay Payment Links
+# GST Billing Logic, SMTP Email Routing & Global Email Overhaul
 
-## Sprint 1: AI Lead Capture Reliability & WhatsApp Buttons
+## Current State (Audit Findings)
 
-### Epic 1: Lead Insertion Reliability Fix
-
-**File:** `supabase/functions/whatsapp-webhook/index.ts`
-
-**Problem:** The AI sometimes generates a natural language confirmation instead of the required `{"status":"lead_captured","data":{...}}` JSON. Also, the `extractMessageContent` function does not handle WhatsApp interactive button replies (`button_reply.title`) or list replies (`list_reply.title`).
-
-**Changes:**
-1. **Strengthen system prompt** (line ~1027): Add explicit instruction: "When the user provides the LAST required piece of information, you MUST respond with ONLY the JSON object `{\"status\":\"lead_captured\",\"data\":{...}}`. No natural language before or after. Your failure to output valid JSON means the data is permanently lost."
-2. **Add fallback extraction** (line ~1207): After the JSON regex match, add a secondary regex that tries to extract individual fields from natural language if JSON parse fails. If at least `name` is found, insert the lead with defaults.
-3. **Fix `extractMessageContent`** (line 1493): Add handling for `message.interactive.button_reply.title` and `message.interactive.list_reply.title` so button selections are properly read and passed to AI.
-
-### Epic 2: WhatsApp Interactive Buttons for Lead Capture
-
-**Already partially implemented.** The system prompt already instructs the AI to output `{"type":"interactive","body":"...","buttons":["..."]}` JSON, and `sendAiReply` (line 1284) already parses this and builds Meta interactive payloads. 
-
-**Remaining fix:**
-1. **`extractMessageContent`** — Add `button_reply` and `list_reply` extraction so the AI receives the user's button selection text.
-2. **`processIncomingMessages`** — Set `message_type` to `interactive` for button/list reply messages.
-
-### Epic 3: Lead Audit Filter (Last 24h AI Attempts)
-
-**File:** `src/pages/Leads.tsx`
-
-**Changes:**
-1. Add a new filter option "AI Capture (24h)" to the view modes.
-2. Query `whatsapp_messages` where `content LIKE '%lead_captured%' OR direction = 'inbound'` joined with a NOT EXISTS on `leads` for that phone number, filtered to last 24 hours.
-3. Show results in a simple table: phone, contact name, last message, timestamp, with a "Create Lead" button that opens `AddLeadDrawer` pre-filled.
+1. **No GST tracking fields** on `invoices`, `branches`, `members`, or `organization_settings` tables — no `is_gst_invoice`, `gst_rate`, `customer_gstin`, or branch `gstin`
+2. **CreateInvoiceDrawer** already has GST rate selector and `includeGst` toggle, but does NOT persist GST metadata (rate, is_gst_invoice flag) to the database — only saves computed `tax_amount`
+3. **PurchaseMembershipDrawer** hardcodes `tax_amount: 0` — no GST option for membership invoices
+4. **PDF generator** already shows CGST/SGST split when `tax_amount > 0`, but lacks `is_gst_invoice` flag to show "TAX INVOICE" title and customer GSTIN
+5. **send-email Edge Function** already routes dynamically (SMTP/SendGrid/Mailgun/SES) — no hard-coding issues
+6. **test-integration Edge Function** already exists with SMS/Email/WhatsApp testing and is wired to IntegrationSettings UI
+7. **5 files** use `mailto:` links instead of the custom email dispatcher
+8. **InvoiceViewDrawer** `buildPDFData()` does NOT pass `gst_number` or `logo_url` to the PDF generator
 
 ---
 
-## Sprint 2: Razorpay Payment Link API Integration
+## Migration: Add GST Fields
 
-### Epic 1: `create-razorpay-link` Edge Function (NEW)
+```sql
+ALTER TABLE branches ADD COLUMN gstin TEXT;
+ALTER TABLE invoices ADD COLUMN is_gst_invoice BOOLEAN DEFAULT false;
+ALTER TABLE invoices ADD COLUMN gst_rate NUMERIC DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN customer_gstin TEXT;
+ALTER TABLE members ADD COLUMN gstin TEXT;
+```
 
-**File:** `supabase/functions/create-razorpay-link/index.ts`
+---
 
-**Logic:**
-1. Accept `{ invoiceId, amount, branchId }` from frontend.
-2. Fetch Razorpay `key_id` and `key_secret` from `integration_settings` (branch-specific then global).
-3. Fetch member details (name, phone, email) via invoice → member → profile join.
-4. Call `POST https://api.razorpay.com/v1/payment_links/` with:
-   - `amount` in paise, `currency: "INR"`, `accept_partial: false`
-   - `reference_id: invoiceId`
-   - `customer: { name, contact, email }`
-   - `notify: { sms: true, email: true }` (Razorpay sends SMS/Email automatically)
-   - `callback_url` and `callback_method: "get"`
-5. Return `{ short_url, plink_id }` and store in `payment_transactions`.
+## Epic 1: GST Invoicing & Tax Tracking
 
-### Epic 2: UI Refactor — SendPaymentLinkDrawer
+### CreateInvoiceDrawer.tsx
+- Persist `is_gst_invoice`, `gst_rate`, `customer_gstin` to invoice insert
+- When member is selected and has a stored GSTIN, auto-fill `customer_gstin`
+- Fetch member's GSTIN alongside profile data
+- Show CGST/SGST split (half/half) in the summary card when GST is ON
 
-**File:** `src/components/invoices/SendPaymentLinkDrawer.tsx`
+### PurchaseMembershipDrawer.tsx
+- Add GST toggle (Switch) with rate selector (5/12/18/28%)
+- Calculate and display GST breakdown before purchase
+- Persist `is_gst_invoice`, `gst_rate`, `tax_amount` to the invoice
+- Adjust `total_amount` to include tax
 
-**Changes:**
-1. Replace WhatsApp/Email manual buttons with primary "Generate & Send Official Payment Link" button.
-2. On click: call `create-razorpay-link` edge function, show loading spinner "Generating secure link..."
-3. On success: toast "Payment link sent via Razorpay SMS & Email", display `short_url` with Copy button.
-4. Keep "Copy Link" and "Share via WhatsApp" as secondary actions using the Razorpay `short_url`.
-5. Add fallback: if Razorpay not configured, show old manual link behavior.
+### InvoiceViewDrawer.tsx
+- Display "TAX INVOICE" badge when `is_gst_invoice` is true
+- Show CGST/SGST split in totals section
+- Show customer GSTIN and branch GSTIN when available
+- Pass `gst_number` and `logo_url` to `buildPDFData()`
 
-### Epic 3: Payment Webhook — Handle `payment_link.paid`
+---
 
-**File:** `supabase/functions/payment-webhook/index.ts`
+## Epic 2: Professional Tax Invoice PDF
 
-**Changes:**
-1. Add handling for Razorpay `payment_link.paid` event alongside existing `payment.captured`.
-2. Extract `reference_id` from `payload.payload.payment_link.entity.reference_id` (our `invoice_id`).
-3. On capture: use existing `record_payment` RPC for atomic invoice update + membership activation.
-4. After successful payment, check if invoice has membership items — if so, trigger `sync-to-mips` for turnstile access update.
+### pdfGenerator.ts
+- When `is_gst_invoice` is true: change title from "INVOICE" to "TAX INVOICE"
+- Show Customer GSTIN in Bill To section
+- Show branch GSTIN prominently
+- Already shows CGST/SGST split — ensure it uses the actual `gst_rate` for labels (e.g., "CGST @ 9%" instead of just "CGST")
 
-### Epic 4: Integration Settings — Webhook Secret Field
+### Thermal Receipt
+- Add GST number and CGST/SGST breakdown when `is_gst_invoice` is true
 
-**File:** `src/config/providerSchemas.ts`
+---
 
-**Already done.** The Razorpay schema already includes `webhook_secret` field (line 52). The webhook URL is already displayed via `getWebhookInfoForProvider`. No changes needed here.
+## Epic 3: Universal Email Button Refactor
+
+Replace `mailto:` links in these 5 files with calls to `send-email` Edge Function via a reusable helper:
+
+| File | Current Pattern | New Pattern |
+|---|---|---|
+| `LeadProfileDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
+| `InvoiceShareDrawer.tsx` | `window.location.href = mailto:` | Call `send-email` function |
+| `SmartAssistDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
+| `RetentionCampaignManager.tsx` | `window.open(mailto:...)` | Call `send-email` function |
+| `MemberProfileDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
+
+Create a shared utility `sendEmailViaProvider(to, subject, html, branchId)` in `communicationService.ts` that invokes the `send-email` Edge Function. Show toast on success/failure. Fallback to `mailto:` if no email provider is configured.
+
+---
+
+## Epic 4: Branch & Member GST Settings UI
+
+### BranchSettings or EditBranchDrawer
+- Add GSTIN field to branch edit form
+- Persist to `branches.gstin`
+
+### Member Profile
+- Add GSTIN field to `EditProfileDrawer.tsx`
+- Persist to `members.gstin`
+
+### OrganizationSettings
+- No changes needed — branch-level GSTIN is sufficient
 
 ---
 
@@ -85,12 +97,17 @@
 
 | File | Change |
 |---|---|
-| `supabase/functions/whatsapp-webhook/index.ts` | Fix `extractMessageContent` for button/list replies; strengthen lead capture prompt; add fallback extraction |
-| `supabase/functions/create-razorpay-link/index.ts` | **NEW** — Razorpay Payment Link API integration |
-| `supabase/functions/payment-webhook/index.ts` | Handle `payment_link.paid` event + MIPS sync trigger |
-| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Refactor to use Razorpay Payment Link API with fallback |
-| `src/pages/Leads.tsx` | Add "AI Capture (24h)" audit filter view |
-| `supabase/config.toml` | Add `create-razorpay-link` function config |
-
-No new database migrations required.
+| **Migration** | Add `gstin` to branches/members, `is_gst_invoice`/`gst_rate`/`customer_gstin` to invoices |
+| `src/components/invoices/CreateInvoiceDrawer.tsx` | Persist GST fields, auto-fill member GSTIN |
+| `src/components/members/PurchaseMembershipDrawer.tsx` | Add GST toggle + rate selector |
+| `src/components/invoices/InvoiceViewDrawer.tsx` | Display TAX INVOICE badge, GSTIN, pass data to PDF |
+| `src/utils/pdfGenerator.ts` | TAX INVOICE title, customer GSTIN, rate-labeled CGST/SGST |
+| `src/services/communicationService.ts` | Add `sendEmailViaProvider()` helper |
+| `src/components/leads/LeadProfileDrawer.tsx` | Replace mailto with sendEmailViaProvider |
+| `src/components/invoices/InvoiceShareDrawer.tsx` | Replace mailto with send-email invocation |
+| `src/components/retention/SmartAssistDrawer.tsx` | Replace mailto |
+| `src/components/settings/RetentionCampaignManager.tsx` | Replace mailto |
+| `src/components/members/MemberProfileDrawer.tsx` | Replace mailto |
+| `src/components/branches/EditBranchDrawer.tsx` | Add GSTIN field |
+| `src/components/members/EditProfileDrawer.tsx` | Add GSTIN field for members |
 
