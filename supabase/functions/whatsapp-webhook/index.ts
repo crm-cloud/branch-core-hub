@@ -1203,9 +1203,24 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
               : tc.function.arguments || {};
           } catch { parsedArgs = {}; }
 
+          const nestedStartTime = Date.now();
           const result = await executeToolCall(
             tc.function.name, parsedArgs, contactContext.memberContext!, phoneNumber, branchId,
           );
+          const nestedElapsed = Date.now() - nestedStartTime;
+          const nestedHasError = !!result.error;
+
+          await supabase.from("ai_tool_logs").insert({
+            phone_number: phoneNumber,
+            branch_id: branchId,
+            tool_name: tc.function.name,
+            arguments: parsedArgs,
+            result,
+            status: nestedHasError ? "error" : "success",
+            error_message: nestedHasError ? result.error : null,
+            execution_time_ms: nestedElapsed,
+          });
+
           nestedToolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
 
           if (tc.function.name === "transfer_to_human" && result.transferred) {
