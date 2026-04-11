@@ -241,9 +241,10 @@ export default function WhatsAppChatPage() {
     },
   });
 
-  // Enrich contacts with settings
+  // Enrich contacts with settings (normalize phone for matching)
   const enrichedContacts: ChatContact[] = contacts.map(c => {
-    const s = settingsMap.get(c.phone_number);
+    const normalized = normalizePhone(c.phone_number);
+    const s = settingsMap.get(c.phone_number) || settingsMap.get(normalized) || settingsMap.get('+' + normalized);
     return {
       ...c,
       is_unread: s?.is_unread ?? false,
@@ -522,10 +523,12 @@ export default function WhatsAppChatPage() {
   const handleSelectContact = async (contact: ChatContact) => {
     setSelectedContact(contact);
     if (contact.is_unread && selectedBranch && selectedBranch !== 'all') {
+      // Normalize phone to match both +91xxx and 91xxx formats
+      const normalized = normalizePhone(contact.phone_number);
       await supabase.from('whatsapp_chat_settings')
         .update({ is_unread: false })
-        .eq('phone_number', contact.phone_number)
-        .eq('branch_id', selectedBranch);
+        .eq('branch_id', selectedBranch)
+        .or(`phone_number.eq.${contact.phone_number},phone_number.eq.${normalized},phone_number.eq.+${normalized}`);
       queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
       queryClient.invalidateQueries({ queryKey: ['whatsapp-unread-count'] });
     }
