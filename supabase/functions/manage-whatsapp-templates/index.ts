@@ -260,11 +260,54 @@ serve(async (req) => {
         );
       });
 
+      // Build BODY component with example values for Meta approval
+      const bodyComponent: any = { type: "BODY", text: convertedBody };
+      
+      // Generate example values based on variable names
+      const exampleMap: Record<string, string> = {
+        member_name: "Rahul", name: "Rahul", trainer_name: "Coach Arjun",
+        plan_name: "Annual Premium", end_date: "31-Dec-2026", start_date: "01-Jan-2026",
+        member_code: "INC-00123", amount: "5000", invoice_number: "INV-INC-2604-0001",
+        date: "11-Apr-2026", due_date: "18-Apr-2026", time: "10:00 AM",
+        class_name: "Power Yoga", facility_name: "Sauna Room",
+        start_time: "10:00 AM", end_time: "10:30 AM",
+        freeze_start: "15-Apr-2026", freeze_end: "15-May-2026",
+        new_end_date: "30-Jun-2026", package_name: "12 Sessions Pack",
+        remaining_sessions: "4", expiry_date: "30-Jun-2026",
+        current_offer: "20% off annual plans", offer_details: "Free month on annual plans",
+        valid_till: "30-Apr-2026", gift_details: "Free PT session this month",
+        referee_name: "Priya", reward_details: "₹500 wallet credit",
+        days_absent: "7", reference_id: "REF-2604-001", payment_method: "UPI",
+        reason: "Annual maintenance", closure_date: "01-May-2026", resume_date: "02-May-2026",
+      };
+      
+      if (namedVars.length > 0) {
+        const exampleValues = namedVars.map(v => exampleMap[v] || "Sample");
+        bodyComponent.example = { body_text: [exampleValues] };
+      } else {
+        // Check for already-numbered vars like {{1}}, {{2}}
+        const numberedVarRegex = /\{\{(\d+)\}\}/g;
+        const numberedMatches: string[] = [];
+        let nm;
+        while ((nm = numberedVarRegex.exec(convertedBody)) !== null) {
+          if (!numberedMatches.includes(nm[1])) numberedMatches.push(nm[1]);
+        }
+        if (numberedMatches.length > 0) {
+          // Use template_data.variables if provided for example mapping
+          const vars = template_data.variables || [];
+          const exampleValues = numberedMatches.map((_, i) => {
+            const varName = vars[i];
+            return (varName && exampleMap[varName]) || "Sample";
+          });
+          bodyComponent.example = { body_text: [exampleValues] };
+        }
+      }
+      
       const metaPayload = {
         name: safeName,
         category,
         language,
-        components: [{ type: "BODY", text: convertedBody }],
+        components: [bodyComponent],
       };
 
       const createUrl = appendProof(`${META_API_BASE}/${wabaId}/message_templates`, proof);

@@ -101,7 +101,7 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
     <TooltipProvider delayDuration={200}>
       <aside
         className={cn(
-          'hidden lg:flex flex-col bg-sidebar border-r border-sidebar-border shadow-sm transition-all duration-200',
+          'hidden lg:flex flex-col h-screen sticky top-0 bg-sidebar border-r border-sidebar-border shadow-sm transition-all duration-200',
           collapsed ? 'w-14' : 'w-64'
         )}
       >
