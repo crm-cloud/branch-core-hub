@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -103,6 +104,7 @@ function normalizePhone(phone: string): string {
 
 export default function WhatsAppChatPage() {
   const { selectedBranch } = useBranchContext();
+  const { user } = useAuth();
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
