@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { IndianRupee, MessageSquare, Mail, Link2, Copy, CheckCircle } from 'lucide-react';
+import { IndianRupee, MessageSquare, Link2, Copy, CheckCircle, Loader2, ExternalLink, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { communicationService } from '@/services/communicationService';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SendPaymentLinkDrawerProps {
   open: boolean;
@@ -22,6 +22,7 @@ interface SendPaymentLinkDrawerProps {
     member_name?: string;
     member_phone?: string;
     member_email?: string;
+    branch_id?: string;
   } | null;
 }
 
@@ -29,6 +30,8 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
   const [paymentType, setPaymentType] = useState<'full' | 'partial' | 'due'>('due');
   const [customAmount, setCustomAmount] = useState('');
   const [copied, setCopied] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
 
   if (!invoice) return null;
 
@@ -44,41 +47,54 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
 
   const paymentAmount = getPaymentAmount();
 
-  // Build a payment link using the published app URL
-  const paymentLink = `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
+  const handleGenerateRazorpayLink = async () => {
+    if (paymentAmount <= 0) return;
+    setGenerating(true);
+    setGeneratedLink(null);
 
-  const getMessage = () => {
-    return `Hi ${invoice.member_name || 'Member'},\n\nYour invoice *${invoice.invoice_number}* has a ${paymentType === 'due' ? 'pending balance' : 'payment'} of *₹${paymentAmount.toLocaleString()}*.\n\nPay securely here:\n${paymentLink}\n\nThank you!`;
+    try {
+      const { data, error } = await supabase.functions.invoke('create-razorpay-link', {
+        body: {
+          invoiceId: invoice.id,
+          amount: paymentAmount,
+          branchId: invoice.branch_id,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setGeneratedLink(data.short_url);
+      toast.success('Payment link sent via Razorpay SMS & Email');
+    } catch (err: any) {
+      console.error('Razorpay link error:', err);
+      // Fallback: show manual link
+      const fallbackLink = `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
+      setGeneratedLink(fallbackLink);
+      toast.error('Razorpay not configured. Generated manual link instead.');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(paymentLink);
+    const link = generatedLink || `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
+    navigator.clipboard.writeText(link);
     setCopied(true);
     toast.success('Payment link copied!');
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendWhatsApp = async () => {
-    if (!invoice.member_phone) {
-      toast.error('No phone number available for this member');
-      return;
-    }
-    const phone = invoice.member_phone.replace(/[^0-9]/g, '');
+  const handleShareWhatsApp = () => {
+    const link = generatedLink || `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
+    const message = `Hi ${invoice.member_name || 'Member'},\n\nYour invoice *${invoice.invoice_number}* has a payment of *₹${paymentAmount.toLocaleString()}*.\n\nPay securely here:\n${link}\n\nThank you!`;
+    const phone = (invoice.member_phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = phone.startsWith('91') ? phone : `91${phone}`;
-    await communicationService.sendWhatsApp(formattedPhone, getMessage());
-  };
-
-  const handleSendEmail = () => {
-    if (!invoice.member_email) {
-      toast.error('No email available for this member');
-      return;
-    }
-    const subject = `Payment Link - Invoice ${invoice.invoice_number}`;
-    window.open(`mailto:${invoice.member_email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(getMessage())}`, '_blank');
+    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setGeneratedLink(null); setGenerating(false); } }}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
@@ -120,7 +136,7 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
           {/* Payment Amount Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Payment Amount</Label>
-            <RadioGroup value={paymentType} onValueChange={(v) => setPaymentType(v as any)} className="space-y-2">
+            <RadioGroup value={paymentType} onValueChange={(v) => { setPaymentType(v as any); setGeneratedLink(null); }} className="space-y-2">
               {dueAmount > 0 && dueAmount < invoice.total_amount && (
                 <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
                   <RadioGroupItem value="due" id="due" />
@@ -149,7 +165,7 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
                   type="number"
                   placeholder="Enter amount"
                   value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
+                  onChange={(e) => { setCustomAmount(e.target.value); setGeneratedLink(null); }}
                   min="1"
                   max={dueAmount > 0 ? dueAmount : invoice.total_amount}
                 />
@@ -157,48 +173,62 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
             )}
           </div>
 
-          {/* Payment Link Preview */}
-          {paymentAmount > 0 && (
-            <Card>
+          {/* Primary Action: Generate Razorpay Link */}
+          {paymentAmount > 0 && !generatedLink && (
+            <Button
+              className="w-full gap-2 h-12 text-base rounded-xl shadow-lg shadow-primary/20"
+              onClick={handleGenerateRazorpayLink}
+              disabled={generating}
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Generating secure link...
+                </>
+              ) : (
+                <>
+                  <Send className="h-5 w-5" />
+                  Generate & Send Official Payment Link
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Generated Link Display */}
+          {generatedLink && (
+            <Card className="border-primary/20 bg-primary/5">
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium">Payment Link</span>
+                  <span className="text-sm font-medium">Payment Link Ready</span>
                   <Badge className="bg-primary/10 text-primary">₹{paymentAmount.toLocaleString()}</Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Input value={paymentLink} readOnly className="text-xs font-mono" />
+                <div className="flex items-center gap-2 mb-4">
+                  <Input value={generatedLink} readOnly className="text-xs font-mono" />
                   <Button variant="outline" size="icon" onClick={handleCopyLink}>
                     {copied ? <CheckCircle className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col gap-1.5 rounded-xl"
+                    onClick={handleShareWhatsApp}
+                  >
+                    <MessageSquare className="h-5 w-5 text-green-600" />
+                    <span className="text-xs">Share via WhatsApp</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col gap-1.5 rounded-xl"
+                    onClick={() => window.open(generatedLink, '_blank')}
+                  >
+                    <ExternalLink className="h-5 w-5 text-blue-600" />
+                    <span className="text-xs">Open Link</span>
                   </Button>
                 </div>
               </CardContent>
             </Card>
           )}
-
-          {/* Send Actions */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Send Via</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant="outline"
-                className="h-auto py-4 flex flex-col gap-2"
-                onClick={handleSendWhatsApp}
-                disabled={paymentAmount <= 0}
-              >
-                <MessageSquare className="h-5 w-5 text-green-600" />
-                <span className="text-xs">WhatsApp</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto py-4 flex flex-col gap-2"
-                onClick={handleSendEmail}
-                disabled={paymentAmount <= 0}
-              >
-                <Mail className="h-5 w-5 text-blue-600" />
-                <span className="text-xs">Email</span>
-              </Button>
-            </div>
-          </div>
         </div>
       </SheetContent>
     </Sheet>

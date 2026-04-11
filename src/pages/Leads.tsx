@@ -3,11 +3,12 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X } from 'lucide-react';
+import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X, Bot } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exportToCSV } from '@/lib/csvExport';
 import { leadService, type LeadFilters } from '@/services/leadService';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, subHours } from 'date-fns';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -38,7 +39,7 @@ export default function LeadsPage() {
   const [showFollowupDrawer, setShowFollowupDrawer] = useState(false);
   const [showConvertDrawer, setShowConvertDrawer] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
-  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar' | 'analytics'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar' | 'analytics' | 'ai_audit'>('kanban');
   const [page, setPage] = useState(0);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showSaveView, setShowSaveView] = useState(false);
@@ -73,6 +74,61 @@ export default function LeadsPage() {
     queryKey: ['lead-stats', branchFilter],
     queryFn: () => leadService.getLeadStats(branchFilter),
     enabled: !!user,
+  });
+
+  // AI Capture audit: last 24h WhatsApp conversations that didn't become leads
+  const { data: aiAuditData = [], isLoading: aiAuditLoading } = useQuery({
+    queryKey: ['ai-audit-leads', branchFilter],
+    queryFn: async () => {
+      const since = subHours(new Date(), 24).toISOString();
+      // Get inbound WhatsApp messages from last 24h
+      const { data: messages } = await supabase
+        .from('whatsapp_messages')
+        .select('phone_number, contact_name, content, created_at, branch_id')
+        .eq('direction', 'inbound')
+        .gte('created_at', since)
+        .order('created_at', { ascending: false });
+
+      if (!messages) return [];
+
+      // Group by phone, get unique phones
+      const phoneMap = new Map<string, any>();
+      for (const msg of messages) {
+        if (!phoneMap.has(msg.phone_number)) {
+          phoneMap.set(msg.phone_number, {
+            phone: msg.phone_number,
+            contact_name: msg.contact_name,
+            last_message: msg.content,
+            last_at: msg.created_at,
+            branch_id: msg.branch_id,
+          });
+        }
+      }
+
+      // Check which phones already have leads
+      const phones = Array.from(phoneMap.keys());
+      if (phones.length === 0) return [];
+
+      const { data: existingLeads } = await supabase
+        .from('leads')
+        .select('phone')
+        .in('phone', phones);
+
+      const existingPhones = new Set((existingLeads || []).map(l => l.phone));
+
+      // Also check for members
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('phone')
+        .in('phone', phones);
+
+      const memberPhones = new Set((profiles || []).map(p => p.phone).filter(Boolean));
+
+      return Array.from(phoneMap.values()).filter(
+        (p) => !existingPhones.has(p.phone) && !memberPhones.has(p.phone)
+      );
+    },
+    enabled: !!user && viewMode === 'ai_audit',
   });
 
   const { data: savedViews = [] } = useQuery({
@@ -168,6 +224,9 @@ export default function LeadsPage() {
               </Button>
               <Button variant={viewMode === 'analytics' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('analytics')} className="rounded-lg" title="Analytics (A)">
                 <BarChart3 className="h-4 w-4" />
+              </Button>
+              <Button variant={viewMode === 'ai_audit' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('ai_audit')} className="rounded-lg" title="AI Capture Audit">
+                <Bot className="h-4 w-4" />
               </Button>
             </div>
 
@@ -300,6 +359,55 @@ export default function LeadsPage() {
                   );
                 })}
               </div>
+            </CardContent>
+          </Card>
+        )}
+        {viewMode === 'ai_audit' && (
+          <Card className="rounded-2xl border-border/50 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-primary" />
+                AI Capture Audit — Last 24 Hours
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                WhatsApp conversations from non-members/non-leads that may need manual follow-up
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiAuditLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading...</div>
+              ) : aiAuditData.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No uncaptured conversations in the last 24 hours ✓
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {aiAuditData.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{item.contact_name || 'Unknown'}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{item.phone}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{item.last_message}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(item.last_at), 'HH:mm')}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-lg"
+                          onClick={() => {
+                            setShowAddDrawer(true);
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Create Lead
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
