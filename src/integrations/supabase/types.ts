@@ -982,6 +982,7 @@ export type Database = {
           country: string | null
           created_at: string
           email: string | null
+          gstin: string | null
           id: string
           is_active: boolean | null
           name: string
@@ -1001,6 +1002,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           email?: string | null
+          gstin?: string | null
           id?: string
           is_active?: boolean | null
           name: string
@@ -1020,6 +1022,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           email?: string | null
+          gstin?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
@@ -2636,11 +2639,14 @@ export type Database = {
           branch_id: string
           created_at: string
           created_by: string | null
+          customer_gstin: string | null
           discount_amount: number | null
           due_date: string | null
+          gst_rate: number | null
           id: string
           invoice_number: string | null
           invoice_type: string | null
+          is_gst_invoice: boolean | null
           member_id: string | null
           next_reminder_at: string | null
           notes: string | null
@@ -2662,11 +2668,14 @@ export type Database = {
           branch_id: string
           created_at?: string
           created_by?: string | null
+          customer_gstin?: string | null
           discount_amount?: number | null
           due_date?: string | null
+          gst_rate?: number | null
           id?: string
           invoice_number?: string | null
           invoice_type?: string | null
+          is_gst_invoice?: boolean | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
@@ -2688,11 +2697,14 @@ export type Database = {
           branch_id?: string
           created_at?: string
           created_by?: string | null
+          customer_gstin?: string | null
           discount_amount?: number | null
           due_date?: string | null
+          gst_rate?: number | null
           id?: string
           invoice_number?: string | null
           invoice_type?: string | null
+          is_gst_invoice?: boolean | null
           member_id?: string | null
           next_reminder_at?: string | null
           notes?: string | null
@@ -3721,6 +3733,7 @@ export type Database = {
           created_by: string | null
           custom_welcome_message: string | null
           fitness_goals: string | null
+          gstin: string | null
           hardware_access_enabled: boolean | null
           hardware_access_status: string | null
           health_conditions: string | null
@@ -3749,6 +3762,7 @@ export type Database = {
           created_by?: string | null
           custom_welcome_message?: string | null
           fitness_goals?: string | null
+          gstin?: string | null
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
@@ -3777,6 +3791,7 @@ export type Database = {
           created_by?: string | null
           custom_welcome_message?: string | null
           fitness_goals?: string | null
+          gstin?: string | null
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
