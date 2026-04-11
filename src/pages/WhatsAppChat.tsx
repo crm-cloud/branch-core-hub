@@ -577,6 +577,10 @@ export default function WhatsAppChatPage() {
   // Triage tab counts
   const unreadCount = enrichedContacts.filter(c => c.is_unread).length;
   const needsHumanCount = enrichedContacts.filter(c => c.bot_active === false).length;
+  const myChatsCount = enrichedContacts.filter(c => {
+    const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
+    return s?.assigned_to === user?.id;
+  }).length;
 
   return (
     <AppLayout>
@@ -622,8 +626,9 @@ export default function WhatsAppChatPage() {
               <div className="flex gap-1">
                 {([
                   { key: 'all' as ChatFilter, label: 'All', count: contacts.length },
+                  { key: 'my_chats' as ChatFilter, label: 'My Chats', count: myChatsCount },
                   { key: 'unread' as ChatFilter, label: 'Unread', count: unreadCount },
-                  { key: 'needs_human' as ChatFilter, label: 'Needs Human', count: needsHumanCount },
+                  { key: 'needs_human' as ChatFilter, label: 'Human', count: needsHumanCount },
                 ]).map(tab => (
                   <button
                     key={tab.key}
