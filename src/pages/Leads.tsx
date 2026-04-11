@@ -29,7 +29,7 @@ import { CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LeadsPage() {
   const { user } = useAuth();
-  const { branchFilter } = useBranchContext();
+  const { effectiveBranchId, branchFilter } = useBranchContext();
   const queryClient = useQueryClient();
 
   // UI State
