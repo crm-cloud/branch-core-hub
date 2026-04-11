@@ -476,10 +476,16 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 You are also a lead generation assistant. Your secondary goal is to naturally collect the following information from this person during the conversation: ${fieldNames}.
 - Ask for these naturally, one or two at a time, weaving them into the conversation.
 - Do NOT ask for all fields at once.
+- When asking a question with limited choices (e.g., experience level, membership duration, preferred time), respond with ONLY this JSON format to show interactive buttons (max 3 options):
+  {"type":"interactive","body":"Your question text here","buttons":["Option 1","Option 2","Option 3"]}
+- For questions with more than 3 options, use a list format:
+  {"type":"interactive_list","body":"Your question text","button":"Select Option","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
+- For open-ended questions (name, email, budget amount), use normal text messages.
 - Once you have collected ALL the required fields, respond with ONLY this exact JSON (no other text):
 {"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"..."`).join(",")}}}
 - The phone number is already known: ${phoneNumber}
-- Until all fields are collected, continue the normal helpful conversation.`;
+- Until all fields are collected, continue the normal helpful conversation.
+- IMPORTANT: Use the exact field keys in your lead_captured JSON: ${(leadCaptureConfig!.target_fields || []).join(", ")}`;
   }
 
   // Call Lovable AI Gateway
