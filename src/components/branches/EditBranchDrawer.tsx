@@ -348,6 +348,18 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="gstin">GSTIN</Label>
+            <Input
+              id="gstin"
+              value={formData.gstin}
+              onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
+              placeholder="e.g., 08AABCU9603R1ZM"
+              maxLength={15}
+            />
+            <p className="text-xs text-muted-foreground">GST Identification Number for tax invoices</p>
+          </div>
+
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

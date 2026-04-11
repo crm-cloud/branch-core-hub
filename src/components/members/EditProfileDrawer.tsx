@@ -30,7 +30,8 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
     email: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    fitness_goals: ''
+    fitness_goals: '',
+    gstin: ''
   });
 
   useEffect(() => {
@@ -41,7 +42,8 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
         email: profile.email || '',
         emergency_contact_name: profile.emergency_contact_name || '',
         emergency_contact_phone: profile.emergency_contact_phone || '',
-        fitness_goals: member?.fitness_goals || ''
+        fitness_goals: member?.fitness_goals || '',
+        gstin: member?.gstin || ''
       });
       setAvatarUrl(profile.avatar_url || null);
     }
@@ -100,11 +102,14 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
 
       if (error) throw error;
 
-      // Update fitness goals on member record
+      // Update fitness goals and GSTIN on member record
       if (member?.id) {
         await supabase
           .from('members')
-          .update({ fitness_goals: formData.fitness_goals || null })
+          .update({ 
+            fitness_goals: formData.fitness_goals || null,
+            gstin: formData.gstin || null,
+          })
           .eq('id', member.id);
       }
 
