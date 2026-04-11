@@ -29,6 +29,8 @@ const TEMPLATE_TRIGGERS = [
   { value: 'birthday', label: 'Birthday Wishes' },
   { value: 'class_reminder', label: 'Class Reminder' },
   { value: 'pt_session', label: 'PT Session Reminder' },
+  { value: 'lead_welcome', label: 'Lead Welcome' },
+  { value: 'team_alert', label: 'Team Alert (New Lead)' },
   { value: 'custom', label: 'Custom / Broadcast' },
 ];
 
