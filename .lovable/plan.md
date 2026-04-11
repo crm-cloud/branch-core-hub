@@ -1,104 +1,83 @@
 
 
-# Universal Communications Audit & Branded Automation
+# AI Lead Capture Reliability, WhatsApp Interactive Buttons & Razorpay Payment Links
 
-## Current State (Audit Findings)
+## Sprint 1: AI Lead Capture Reliability & WhatsApp Buttons
 
-### Hard-coded Issues Found
-1. **`send-broadcast`** — Email sending is hard-coded to Resend API (`RESEND_API_KEY`). SMS and WhatsApp channels are only "logged" with no actual dispatch.
-2. **`send-sms`** — Already provider-agnostic (routes via `integration_settings`). MSG91 uses Flow API v5 correctly. No issues here.
-3. **`send-whatsapp`** — Already pulls credentials dynamically from `integration_settings`. Clean.
-4. **`send-reminders`** — Only creates notification/log records; does NOT actually dispatch SMS/email/WhatsApp. Just collects data.
-5. **Email sending** — No `send-email` edge function exists at all. The only email path is the hard-coded Resend in `send-broadcast`. No SMTP support anywhere.
-6. **PDF Generator** — `pdfGenerator.ts` generates payslips and fitness plans via `window.open()` + `print()`. No invoice PDF generator exists. The `InvoiceShareDrawer` generates an HTML print view inline but not a proper PDF.
-7. **No "Test Connection" button** on any integration card.
+### Epic 1: Lead Insertion Reliability Fix
 
----
+**File:** `supabase/functions/whatsapp-webhook/index.ts`
 
-## Epic 1: Universal SMS & Email Routing
+**Problem:** The AI sometimes generates a natural language confirmation instead of the required `{"status":"lead_captured","data":{...}}` JSON. Also, the `extractMessageContent` function does not handle WhatsApp interactive button replies (`button_reply.title`) or list replies (`list_reply.title`).
 
-### 1A: Create `send-email` Edge Function (NEW)
-A universal email dispatcher that reads the active email provider from `integration_settings` and routes accordingly:
+**Changes:**
+1. **Strengthen system prompt** (line ~1027): Add explicit instruction: "When the user provides the LAST required piece of information, you MUST respond with ONLY the JSON object `{\"status\":\"lead_captured\",\"data\":{...}}`. No natural language before or after. Your failure to output valid JSON means the data is permanently lost."
+2. **Add fallback extraction** (line ~1207): After the JSON regex match, add a secondary regex that tries to extract individual fields from natural language if JSON parse fails. If at least `name` is found, insert the lead with defaults.
+3. **Fix `extractMessageContent`** (line 1493): Add handling for `message.interactive.button_reply.title` and `message.interactive.list_reply.title` so button selections are properly read and passed to AI.
 
-| Provider | Method |
-|---|---|
-| `smtp` | Direct SMTP via Deno's `smtp` module (TLS/SSL) |
-| `sendgrid` | SendGrid v3 REST API (`api.sendgrid.com/v3/mail/send`) |
-| `ses` | AWS SES v2 REST API with SigV4 signing |
-| `mailgun` | Mailgun REST API (`api.mailgun.net/v3/{domain}/messages`) |
+### Epic 2: WhatsApp Interactive Buttons for Lead Capture
 
-Accepts: `{ to, subject, html, text?, branch_id, attachments?: [{ filename, content_base64, content_type }] }`
+**Already partially implemented.** The system prompt already instructs the AI to output `{"type":"interactive","body":"...","buttons":["..."]}` JSON, and `sendAiReply` (line 1284) already parses this and builds Meta interactive payloads. 
 
-### 1B: Fix `send-broadcast` — Remove Resend Hard-coding
-Replace the Resend block with a call to `send-email` edge function (or inline the same dynamic provider lookup). Also wire SMS channel to invoke `send-sms` and WhatsApp to invoke `send-whatsapp` instead of just logging.
+**Remaining fix:**
+1. **`extractMessageContent`** — Add `button_reply` and `list_reply` extraction so the AI receives the user's button selection text.
+2. **`processIncomingMessages`** — Set `message_type` to `interactive` for button/list reply messages.
 
-### 1C: Fix `send-reminders` — Actually Dispatch Messages
-After collecting reminders, invoke `send-sms` / `send-email` / `send-whatsapp` for each notification based on configured providers.
+### Epic 3: Lead Audit Filter (Last 24h AI Attempts)
 
-### 1D: Test Connection Button
-Add a `test-integration` edge function that accepts `{ type, provider, config, credentials }` and sends a test message:
-- SMS: sends "Incline Fitness: Test SMS ✓" to a configured test number
-- Email: sends a test email to the admin's email
-- WhatsApp: sends a test template or text message
+**File:** `src/pages/Leads.tsx`
 
-Add a "Test Connection" button in `IntegrationConfigSheet` after the Save button.
-
-### 1E: MSG91 Flow API Fix
-Current MSG91 implementation sends `message` as a raw text field to Flow API. MSG91 Flow API requires `template_id` and variable substitution — NOT raw message text. Update the schema to include `template_id` field and fix the payload structure:
-```json
-{
-  "template_id": "...",
-  "short_url": "0",
-  "recipients": [{ "mobiles": "919876543210", "var1": "value1" }]
-}
-```
+**Changes:**
+1. Add a new filter option "AI Capture (24h)" to the view modes.
+2. Query `whatsapp_messages` where `content LIKE '%lead_captured%' OR direction = 'inbound'` joined with a NOT EXISTS on `leads` for that phone number, filtered to last 24 hours.
+3. Show results in a simple table: phone, contact name, last message, timestamp, with a "Create Lead" button that opens `AddLeadDrawer` pre-filled.
 
 ---
 
-## Epic 2: Professional Branded Templates (Incline Fitness)
+## Sprint 2: Razorpay Payment Link API Integration
 
-### 2A: Branded Invoice HTML Template
-Create a `generateInvoicePDF` function in `pdfGenerator.ts` that produces a premium branded invoice with:
-- Incline Fitness logo (pulled from `organization_settings` or branch data)
-- Branch-specific address, phone, GST number
-- Clean table layout with line items, subtotal, GST breakdown (CGST/SGST), total
-- Payment status badge (Paid/Partial/Pending)
-- "Pay Now" button section for Razorpay/PhonePe (when sharing digitally)
+### Epic 1: `create-razorpay-link` Edge Function (NEW)
 
-### 2B: Branded Welcome Email HTML
-Create a rich HTML email template (stored in `messageTemplates.ts`) for welcome emails with:
-- Incline Fitness gradient header
-- Member name, plan details, branch address
-- Login link / app download CTA
-- Footer with social links
+**File:** `supabase/functions/create-razorpay-link/index.ts`
 
-### 2C: Payment Link Templates
-Update `SendPaymentLinkDrawer` and WhatsApp/email templates to include high-contrast branded "Pay Now" buttons with Razorpay/PhonePe logos.
+**Logic:**
+1. Accept `{ invoiceId, amount, branchId }` from frontend.
+2. Fetch Razorpay `key_id` and `key_secret` from `integration_settings` (branch-specific then global).
+3. Fetch member details (name, phone, email) via invoice → member → profile join.
+4. Call `POST https://api.razorpay.com/v1/payment_links/` with:
+   - `amount` in paise, `currency: "INR"`, `accept_partial: false`
+   - `reference_id: invoiceId`
+   - `customer: { name, contact, email }`
+   - `notify: { sms: true, email: true }` (Razorpay sends SMS/Email automatically)
+   - `callback_url` and `callback_method: "get"`
+5. Return `{ short_url, plink_id }` and store in `payment_transactions`.
 
----
+### Epic 2: UI Refactor — SendPaymentLinkDrawer
 
-## Epic 3: Invoice PDF & POS Receipt Generation
+**File:** `src/components/invoices/SendPaymentLinkDrawer.tsx`
 
-### 3A: Invoice PDF Generator
-Add `generateInvoicePDF(invoice, branch, orgSettings)` to `pdfGenerator.ts`:
-- Pulls gym logo URL from `organization_settings`
-- Pulls branch GST number, address from `branches` table
-- Generates A4 format with proper GST calculation display
-- Uses `window.open()` + `print()` pattern (consistent with existing code)
+**Changes:**
+1. Replace WhatsApp/Email manual buttons with primary "Generate & Send Official Payment Link" button.
+2. On click: call `create-razorpay-link` edge function, show loading spinner "Generating secure link..."
+3. On success: toast "Payment link sent via Razorpay SMS & Email", display `short_url` with Copy button.
+4. Keep "Copy Link" and "Share via WhatsApp" as secondary actions using the Razorpay `short_url`.
+5. Add fallback: if Razorpay not configured, show old manual link behavior.
 
-### 3B: Thermal Receipt Layout (80mm)
-Add `generateThermalReceipt(invoice, branch)` for POS:
-- 80mm wide format (302px)
-- Condensed font, no images (thermal printer compatible)
-- Dashed separators, left-aligned text
-- QR code placeholder for digital payment verification
+### Epic 3: Payment Webhook — Handle `payment_link.paid`
 
-### 3C: Auto-Attachment via Email
-When sharing an invoice via email, generate the HTML invoice, convert to Base64, and pass as attachment to `send-email` edge function. For WhatsApp, upload the PDF to Supabase Storage and send as document type via `send-whatsapp`.
+**File:** `supabase/functions/payment-webhook/index.ts`
 
-### 3D: Wire PDF into InvoiceViewDrawer & InvoiceShareDrawer
-- Add "Download PDF" and "Print Thermal" buttons to `InvoiceViewDrawer`
-- Update `InvoiceShareDrawer` email flow to attach the invoice PDF
+**Changes:**
+1. Add handling for Razorpay `payment_link.paid` event alongside existing `payment.captured`.
+2. Extract `reference_id` from `payload.payload.payment_link.entity.reference_id` (our `invoice_id`).
+3. On capture: use existing `record_payment` RPC for atomic invoice update + membership activation.
+4. After successful payment, check if invoice has membership items — if so, trigger `sync-to-mips` for turnstile access update.
+
+### Epic 4: Integration Settings — Webhook Secret Field
+
+**File:** `src/config/providerSchemas.ts`
+
+**Already done.** The Razorpay schema already includes `webhook_secret` field (line 52). The webhook URL is already displayed via `getWebhookInfoForProvider`. No changes needed here.
 
 ---
 
@@ -106,17 +85,12 @@ When sharing an invoice via email, generate the HTML invoice, convert to Base64,
 
 | File | Change |
 |---|---|
-| `supabase/functions/send-email/index.ts` | **NEW** — Universal email dispatcher (SMTP/SendGrid/SES/Mailgun) |
-| `supabase/functions/test-integration/index.ts` | **NEW** — Test connection for SMS/Email/WhatsApp |
-| `supabase/functions/send-broadcast/index.ts` | Remove Resend hard-coding, use dynamic provider routing |
-| `supabase/functions/send-reminders/index.ts` | Wire actual message dispatch via send-sms/send-email |
-| `supabase/functions/send-sms/index.ts` | Fix MSG91 to use proper Flow API template_id structure |
-| `src/config/providerSchemas.ts` | Add `template_id` field to MSG91 schema |
-| `src/utils/pdfGenerator.ts` | Add `generateInvoicePDF()` and `generateThermalReceipt()` |
-| `src/data/messageTemplates.ts` | Add branded HTML email templates (welcome, invoice, payment link) |
-| `src/components/invoices/InvoiceViewDrawer.tsx` | Add Download PDF / Print Thermal buttons |
-| `src/components/invoices/InvoiceShareDrawer.tsx` | Wire email attachment flow |
-| `src/components/settings/IntegrationSettings.tsx` | Add "Test Connection" button in config sheet |
+| `supabase/functions/whatsapp-webhook/index.ts` | Fix `extractMessageContent` for button/list replies; strengthen lead capture prompt; add fallback extraction |
+| `supabase/functions/create-razorpay-link/index.ts` | **NEW** — Razorpay Payment Link API integration |
+| `supabase/functions/payment-webhook/index.ts` | Handle `payment_link.paid` event + MIPS sync trigger |
+| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Refactor to use Razorpay Payment Link API with fallback |
+| `src/pages/Leads.tsx` | Add "AI Capture (24h)" audit filter view |
+| `supabase/config.toml` | Add `create-razorpay-link` function config |
 
-No new database migrations required — all provider credentials already stored in `integration_settings` JSONB columns.
+No new database migrations required.
 
