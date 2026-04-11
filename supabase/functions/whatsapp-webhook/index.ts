@@ -1,4 +1,4 @@
-// v3.0.0 — AI Brain: context hydration, structured lead extraction, tool calling scaffold
+// v4.0.0 — Transactional AI Agent: real tool calling, context hydration, human handoff
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -25,6 +25,15 @@ type WhatsAppIntegration = {
 
 const integrationCache = new Map<string, WhatsAppIntegration | null>();
 let fallbackBranchIdCache: string | null | undefined;
+
+// ─── Member context shape for tool execution ────────────────────────────────
+interface MemberContext {
+  memberId: string;
+  membershipId: string | null;
+  branchId: string;
+  planId: string | null;
+  memberName: string;
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -164,7 +173,6 @@ async function handleEvent(req: Request) {
       const value = change?.value;
       const field = change?.field;
 
-      // Handle template status updates
       if (field === "message_template_status_update") {
         await processTemplateStatusUpdate(value);
         continue;
@@ -182,7 +190,6 @@ async function handleEvent(req: Request) {
       const insertedMessageIds = await processIncomingMessages(value, resolvedBranchId);
       await processStatusUpdates(value, resolvedBranchId);
 
-      // Trigger AI auto-reply for each inbound message
       if (insertedMessageIds.length > 0 && resolvedBranchId) {
         for (const { id: msgId, phone_number } of insertedMessageIds) {
           try {
@@ -270,7 +277,6 @@ async function processIncomingMessages(value: any, branchId: string | null): Pro
       console.error("Failed to insert WhatsApp inbound message", error);
     } else if (data) {
       insertedItems.push({ id: data.id, phone_number: message.from });
-      // Mark chat as unread for staff
       await supabase.from("whatsapp_chat_settings").upsert(
         {
           branch_id: branchId,
@@ -309,9 +315,16 @@ async function processStatusUpdates(value: any, branchId: string | null) {
   }
 }
 
-// ─── Context Hydration (Epic 2) ────────────────────────────────────────────────
+// ─── Epic 1: Enhanced Context Hydration ────────────────────────────────────────
 
-async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: boolean; contextPrompt: string; memberName?: string }> {
+interface HydratedContext {
+  isMember: boolean;
+  contextPrompt: string;
+  memberName?: string;
+  memberContext?: MemberContext;
+}
+
+async function hydrateContactContext(phoneNumber: string, branchId: string): Promise<HydratedContext> {
   const cleanPhone = phoneNumber.replace(/[\s\-\+]/g, "");
   const phoneVariants = [cleanPhone, `+${cleanPhone}`, cleanPhone.replace(/^91/, "+91")];
 
@@ -325,10 +338,9 @@ async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: b
       .maybeSingle();
 
     if (profile) {
-      // Get member + membership info
       const { data: member } = await supabase
         .from("members")
-        .select("id, member_code")
+        .select("id, member_code, branch_id")
         .eq("user_id", profile.id)
         .limit(1)
         .maybeSingle();
@@ -336,13 +348,16 @@ async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: b
       if (member) {
         const { data: memberships } = await supabase
           .from("memberships")
-          .select("id, status, end_date, plan_id, membership_plans(name)")
+          .select("id, status, end_date, plan_id, branch_id, membership_plans(name)")
           .eq("member_id", member.id)
           .eq("status", "active")
           .limit(1);
 
         const activeMembership = memberships?.[0];
+        const memberBranchId = member.branch_id || branchId;
+
         let contextLines = `Context: Speaking to ${profile.full_name || "a member"}, an Active Member (Code: ${member.member_code}).`;
+
         if (activeMembership) {
           const planName = (activeMembership as any).membership_plans?.name || "Unknown Plan";
           const daysLeft = activeMembership.end_date
@@ -350,7 +365,97 @@ async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: b
             : "N/A";
           contextLines += ` Plan: ${planName}, ${daysLeft} days remaining.`;
         }
-        return { isMember: true, contextPrompt: contextLines, memberName: profile.full_name || undefined };
+
+        // Fetch PT sessions balance
+        const { data: ptPackages } = await supabase
+          .from("member_pt_packages")
+          .select("id, sessions_remaining, sessions_total, expiry_date, pt_packages(name)")
+          .eq("member_id", member.id)
+          .eq("status", "active")
+          .gt("sessions_remaining", 0);
+
+        if (ptPackages && ptPackages.length > 0) {
+          const ptSummary = ptPackages.map((p: any) =>
+            `${(p as any).pt_packages?.name || "PT"}: ${p.sessions_remaining}/${p.sessions_total} sessions left`
+          ).join(", ");
+          contextLines += ` PT Sessions: ${ptSummary}.`;
+        }
+
+        // Fetch benefit balances (sauna, ice bath, etc.)
+        if (activeMembership) {
+          const { data: planBenefits } = await supabase
+            .from("plan_benefits")
+            .select("benefit_type, benefit_type_id, limit_count, frequency, benefit_types(name, code)")
+            .eq("plan_id", activeMembership.plan_id);
+
+          if (planBenefits && planBenefits.length > 0) {
+            const benefitLines: string[] = [];
+            for (const pb of planBenefits) {
+              const benefitName = (pb as any).benefit_types?.name || pb.benefit_type || "Unknown";
+              if (pb.frequency === "unlimited" || !pb.limit_count) {
+                benefitLines.push(`${benefitName}: Unlimited`);
+              } else {
+                // Count usage
+                let usageQuery = supabase
+                  .from("benefit_usage")
+                  .select("usage_count")
+                  .eq("membership_id", activeMembership.id);
+
+                if (pb.benefit_type_id) {
+                  usageQuery = usageQuery.eq("benefit_type_id", pb.benefit_type_id);
+                } else {
+                  usageQuery = usageQuery.eq("benefit_type", pb.benefit_type);
+                }
+
+                // Apply frequency filter
+                const now = new Date();
+                if (pb.frequency === "daily") {
+                  usageQuery = usageQuery.eq("usage_date", now.toISOString().split("T")[0]);
+                } else if (pb.frequency === "weekly") {
+                  const weekStart = new Date(now);
+                  weekStart.setDate(now.getDate() - now.getDay());
+                  usageQuery = usageQuery.gte("usage_date", weekStart.toISOString().split("T")[0]);
+                } else if (pb.frequency === "monthly") {
+                  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+                  usageQuery = usageQuery.gte("usage_date", monthStart);
+                }
+                // per_membership: no date filter
+
+                const { data: usageRows } = await usageQuery;
+                const totalUsed = (usageRows || []).reduce((sum: number, u: any) => sum + (u.usage_count || 0), 0);
+                const remaining = Math.max(0, pb.limit_count - totalUsed);
+                benefitLines.push(`${benefitName}: ${remaining}/${pb.limit_count} remaining (${pb.frequency})`);
+              }
+            }
+            if (benefitLines.length > 0) {
+              contextLines += ` Benefits: ${benefitLines.join("; ")}.`;
+            }
+          }
+        }
+
+        // Fetch pending invoices
+        const { data: pendingInvoices } = await supabase
+          .from("invoices")
+          .select("id, total_amount, amount_paid, status, due_date")
+          .eq("member_id", member.id)
+          .in("status", ["pending", "partial"])
+          .limit(5);
+
+        if (pendingInvoices && pendingInvoices.length > 0) {
+          const totalDues = pendingInvoices.reduce((sum: number, inv: any) =>
+            sum + ((inv.total_amount || 0) - (inv.amount_paid || 0)), 0);
+          contextLines += ` Pending Dues: ₹${totalDues} across ${pendingInvoices.length} invoice(s).`;
+        }
+
+        const memberContext: MemberContext = {
+          memberId: member.id,
+          membershipId: activeMembership?.id || null,
+          branchId: memberBranchId,
+          planId: activeMembership?.plan_id || null,
+          memberName: profile.full_name || "Member",
+        };
+
+        return { isMember: true, contextPrompt: contextLines, memberName: profile.full_name || undefined, memberContext };
       }
     }
   }
@@ -375,7 +480,437 @@ async function hydrateContactContext(phoneNumber: string): Promise<{ isMember: b
   return { isMember: false, contextPrompt: "Context: Speaking to an unregistered contact (potential new lead)." };
 }
 
-// ─── AI Auto-Reply with Brain (Epics 2-4) ──────────────────────────────────────
+// ─── Epic 2: Production Tool Declarations ──────────────────────────────────────
+
+function getMemberTools() {
+  return [
+    {
+      type: "function",
+      function: {
+        name: "get_membership_status",
+        description: "Get the member's current membership status including plan name, expiry date, days remaining, and any pending dues.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_benefit_balance",
+        description: "Get the member's remaining benefit credits (sauna, ice bath, group classes, etc.). Optionally filter by a specific benefit type.",
+        parameters: {
+          type: "object",
+          properties: {
+            benefit_type: { type: "string", description: "Optional filter: e.g. 'sauna', 'ice_bath', 'group_classes'. Leave empty for all." },
+          },
+          required: [],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_available_slots",
+        description: "List available facility booking slots for a specific facility type and date. Returns slot IDs, times, and remaining capacity.",
+        parameters: {
+          type: "object",
+          properties: {
+            facility_type: { type: "string", description: "Type of facility: 'sauna', 'ice_bath', or other facility code" },
+            date: { type: "string", description: "Date in YYYY-MM-DD format. Defaults to today if not specified." },
+          },
+          required: ["facility_type"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "book_facility_slot",
+        description: "Book a specific facility slot for the member. Requires a slot_id from get_available_slots. Will validate credits and capacity.",
+        parameters: {
+          type: "object",
+          properties: {
+            slot_id: { type: "string", description: "The UUID of the slot to book (from get_available_slots results)" },
+          },
+          required: ["slot_id"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "cancel_facility_booking",
+        description: "Cancel an existing facility booking for the member.",
+        parameters: {
+          type: "object",
+          properties: {
+            booking_id: { type: "string", description: "The UUID of the booking to cancel" },
+          },
+          required: ["booking_id"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_pt_balance",
+        description: "Get the member's personal training (PT) session balance including remaining sessions and package expiry.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "transfer_to_human",
+        description: "Transfer the conversation to a human staff member. Use this when: the member asks for a manager, makes a complaint, requests something you cannot handle, or if you encounter repeated errors.",
+        parameters: {
+          type: "object",
+          properties: {
+            reason: { type: "string", description: "Brief reason for the transfer" },
+          },
+          required: [],
+        },
+      },
+    },
+  ];
+}
+
+// ─── Epic 3: Tool Execution Router ─────────────────────────────────────────────
+
+async function executeToolCall(
+  toolName: string,
+  args: Record<string, any>,
+  ctx: MemberContext,
+  phoneNumber: string,
+  branchId: string,
+): Promise<Record<string, any>> {
+  try {
+    switch (toolName) {
+      case "get_membership_status": {
+        const { data: memberships } = await supabase
+          .from("memberships")
+          .select("id, status, start_date, end_date, plan_id, membership_plans(name, price)")
+          .eq("member_id", ctx.memberId)
+          .order("end_date", { ascending: false })
+          .limit(3);
+
+        if (!memberships || memberships.length === 0) {
+          return { status: "no_membership", message: "No membership found." };
+        }
+
+        const active = memberships.find((m: any) => m.status === "active");
+        const current = active || memberships[0];
+        const daysLeft = current.end_date
+          ? Math.max(0, Math.ceil((new Date(current.end_date).getTime() - Date.now()) / 86400000))
+          : null;
+
+        // Pending dues
+        const { data: pendingInv } = await supabase
+          .from("invoices")
+          .select("total_amount, amount_paid")
+          .eq("member_id", ctx.memberId)
+          .in("status", ["pending", "partial"]);
+
+        const pendingDues = (pendingInv || []).reduce((s: number, i: any) =>
+          s + ((i.total_amount || 0) - (i.amount_paid || 0)), 0);
+
+        return {
+          plan: (current as any).membership_plans?.name || "Unknown",
+          status: current.status,
+          start_date: current.start_date,
+          end_date: current.end_date,
+          days_left: daysLeft,
+          pending_dues: `₹${pendingDues}`,
+        };
+      }
+
+      case "get_benefit_balance": {
+        if (!ctx.membershipId) {
+          return { error: "No active membership to check benefits." };
+        }
+
+        const { data: planBenefits } = await supabase
+          .from("plan_benefits")
+          .select("benefit_type, benefit_type_id, limit_count, frequency, benefit_types(name, code)")
+          .eq("plan_id", ctx.planId);
+
+        if (!planBenefits || planBenefits.length === 0) {
+          return { message: "No benefits found in your plan." };
+        }
+
+        const filterType = args.benefit_type?.toLowerCase();
+        const results: Record<string, any>[] = [];
+
+        for (const pb of planBenefits) {
+          const name = (pb as any).benefit_types?.name || pb.benefit_type;
+          const code = (pb as any).benefit_types?.code || pb.benefit_type;
+
+          if (filterType && !code.toLowerCase().includes(filterType) && !name.toLowerCase().includes(filterType)) {
+            continue;
+          }
+
+          if (pb.frequency === "unlimited" || !pb.limit_count) {
+            results.push({ benefit: name, remaining: "Unlimited", frequency: pb.frequency });
+            continue;
+          }
+
+          let usageQuery = supabase
+            .from("benefit_usage")
+            .select("usage_count")
+            .eq("membership_id", ctx.membershipId);
+
+          if (pb.benefit_type_id) {
+            usageQuery = usageQuery.eq("benefit_type_id", pb.benefit_type_id);
+          } else {
+            usageQuery = usageQuery.eq("benefit_type", pb.benefit_type);
+          }
+
+          const now = new Date();
+          if (pb.frequency === "daily") {
+            usageQuery = usageQuery.eq("usage_date", now.toISOString().split("T")[0]);
+          } else if (pb.frequency === "weekly") {
+            const ws = new Date(now); ws.setDate(now.getDate() - now.getDay());
+            usageQuery = usageQuery.gte("usage_date", ws.toISOString().split("T")[0]);
+          } else if (pb.frequency === "monthly") {
+            usageQuery = usageQuery.gte("usage_date", `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`);
+          }
+
+          const { data: usageRows } = await usageQuery;
+          const used = (usageRows || []).reduce((s: number, u: any) => s + (u.usage_count || 0), 0);
+
+          results.push({
+            benefit: name,
+            used,
+            limit: pb.limit_count,
+            remaining: Math.max(0, pb.limit_count - used),
+            frequency: pb.frequency,
+          });
+        }
+
+        return { benefits: results };
+      }
+
+      case "get_available_slots": {
+        const facilityType = (args.facility_type || "").toLowerCase();
+        const date = args.date || new Date().toISOString().split("T")[0];
+
+        // First ensure slots exist for this date
+        await supabase.rpc("ensure_facility_slots", {
+          p_branch_id: ctx.branchId,
+          p_start_date: date,
+          p_end_date: date,
+        });
+
+        // Find facility by code/name
+        const { data: facilities } = await supabase
+          .from("facilities")
+          .select("id, name, benefit_type_id")
+          .eq("branch_id", ctx.branchId)
+          .eq("is_active", true);
+
+        const matchedFacility = (facilities || []).find((f: any) =>
+          f.name.toLowerCase().includes(facilityType)
+        );
+
+        let slotsQuery = supabase
+          .from("benefit_slots")
+          .select("id, start_time, end_time, capacity, booked_count, facility_id, facilities(name)")
+          .eq("branch_id", ctx.branchId)
+          .eq("slot_date", date)
+          .eq("is_active", true)
+          .order("start_time", { ascending: true });
+
+        if (matchedFacility) {
+          slotsQuery = slotsQuery.eq("facility_id", matchedFacility.id);
+        }
+
+        const { data: slots } = await slotsQuery;
+
+        if (!slots || slots.length === 0) {
+          return { message: `No available slots found for ${facilityType} on ${date}.`, slots: [] };
+        }
+
+        const available = slots
+          .filter((s: any) => (s.capacity - (s.booked_count || 0)) > 0)
+          .map((s: any) => ({
+            slot_id: s.id,
+            facility: (s as any).facilities?.name || facilityType,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            spots_left: s.capacity - (s.booked_count || 0),
+          }));
+
+        return {
+          date,
+          total_slots: available.length,
+          slots: available.slice(0, 10), // Limit to 10 for readability
+        };
+      }
+
+      case "book_facility_slot": {
+        const slotId = args.slot_id;
+        if (!slotId) return { error: "slot_id is required." };
+
+        // Get slot details
+        const { data: slot, error: slotErr } = await supabase
+          .from("benefit_slots")
+          .select("id, capacity, booked_count, benefit_type, benefit_type_id, slot_date, start_time, end_time, facility_id, facilities(name)")
+          .eq("id", slotId)
+          .single();
+
+        if (slotErr || !slot) return { error: "Slot not found." };
+        if ((slot.booked_count || 0) >= slot.capacity) return { error: "This slot is fully booked. Please choose another time." };
+
+        if (!ctx.membershipId) return { error: "No active membership found. Please contact the front desk." };
+
+        // Check if member has credits for this benefit
+        const benefitTypeId = slot.benefit_type_id;
+        if (benefitTypeId) {
+          const hasCredits = await supabase
+            .from("plan_benefits")
+            .select("id, limit_count, frequency")
+            .eq("plan_id", ctx.planId)
+            .eq("benefit_type_id", benefitTypeId)
+            .limit(1)
+            .maybeSingle();
+
+          if (!hasCredits?.data) {
+            return { error: "Your plan does not include this facility. Please contact the front desk to upgrade." };
+          }
+        }
+
+        // Book via insert (the trigger will update booked_count)
+        const { data: booking, error: bookErr } = await supabase
+          .from("benefit_bookings")
+          .insert({
+            slot_id: slotId,
+            member_id: ctx.memberId,
+            membership_id: ctx.membershipId,
+            status: "booked",
+          })
+          .select("id")
+          .single();
+
+        if (bookErr) {
+          console.error("Booking insert error:", bookErr);
+          return { error: "Failed to book the slot. It may already be taken." };
+        }
+
+        // Record benefit usage
+        if (benefitTypeId) {
+          await supabase.from("benefit_usage").insert({
+            membership_id: ctx.membershipId,
+            benefit_type: slot.benefit_type,
+            benefit_type_id: benefitTypeId,
+            usage_date: slot.slot_date,
+            usage_count: 1,
+          });
+        }
+
+        return {
+          success: true,
+          booking_id: booking.id,
+          facility: (slot as any).facilities?.name || slot.benefit_type,
+          date: slot.slot_date,
+          time: `${slot.start_time} - ${slot.end_time}`,
+          message: `✅ Booked! ${(slot as any).facilities?.name || "Facility"} on ${slot.slot_date} at ${slot.start_time}.`,
+        };
+      }
+
+      case "cancel_facility_booking": {
+        const bookingId = args.booking_id;
+        if (!bookingId) return { error: "booking_id is required." };
+
+        const { data: result, error: rpcErr } = await supabase.rpc("cancel_facility_slot", {
+          p_booking_id: bookingId,
+          p_reason: "Cancelled via WhatsApp chatbot",
+        });
+
+        if (rpcErr) {
+          console.error("Cancel RPC error:", rpcErr);
+          return { error: "Failed to cancel booking. It may already be cancelled." };
+        }
+
+        if (result && !result.success) {
+          return { error: result.error || "Cancellation failed." };
+        }
+
+        return { success: true, message: "Your booking has been cancelled and credits refunded." };
+      }
+
+      case "get_pt_balance": {
+        const { data: ptPackages } = await supabase
+          .from("member_pt_packages")
+          .select("id, sessions_total, sessions_remaining, sessions_used, expiry_date, status, pt_packages(name)")
+          .eq("member_id", ctx.memberId)
+          .in("status", ["active"])
+          .order("expiry_date", { ascending: true });
+
+        if (!ptPackages || ptPackages.length === 0) {
+          return { message: "You don't have any active PT packages." };
+        }
+
+        return {
+          packages: ptPackages.map((p: any) => ({
+            name: (p as any).pt_packages?.name || "PT Package",
+            sessions_remaining: p.sessions_remaining,
+            sessions_total: p.sessions_total,
+            sessions_used: p.sessions_used,
+            expiry_date: p.expiry_date,
+          })),
+        };
+      }
+
+      case "transfer_to_human": {
+        // Epic 4: Human Handoff
+        const reason = args.reason || "Member requested human assistance";
+
+        // Update chat settings to disable bot
+        await supabase.from("whatsapp_chat_settings").upsert(
+          {
+            branch_id: branchId,
+            phone_number: phoneNumber,
+            bot_active: false,
+            paused_at: new Date().toISOString(),
+            needs_attention: true,
+          },
+          { onConflict: "branch_id,phone_number" },
+        );
+
+        // Notify staff via notifications table
+        const { data: staffUsers } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["owner", "admin", "manager", "staff"]);
+
+        if (staffUsers && staffUsers.length > 0) {
+          const notifications = staffUsers.map((s: any) => ({
+            user_id: s.user_id,
+            branch_id: branchId,
+            title: "WhatsApp: Human Assistance Needed",
+            message: `${ctx.memberName} needs help on WhatsApp. Reason: ${reason}`,
+            type: "warning",
+            category: "whatsapp",
+          }));
+
+          await supabase.from("notifications").insert(notifications);
+        }
+
+        return {
+          transferred: true,
+          message: "I'm connecting you with our front desk team. Someone will assist you shortly. 🙏",
+        };
+      }
+
+      default:
+        return { error: `Unknown tool: ${toolName}` };
+    }
+  } catch (err) {
+    console.error(`Tool execution error [${toolName}]:`, err);
+    return { error: `An error occurred while processing your request. Please try again or ask to speak with our team.` };
+  }
+}
+
+// ─── AI Auto-Reply with Transactional Agent ────────────────────────────────────
 
 async function computeAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -392,7 +927,6 @@ async function computeAppSecretProof(accessToken: string, appSecret: string): Pr
 }
 
 async function triggerAiAutoReply(messageId: string, phoneNumber: string, branchId: string) {
-  // Check org settings for AI auto-reply config
   const { data: orgSettings } = await supabase
     .from("organization_settings")
     .select("whatsapp_ai_config")
@@ -402,7 +936,7 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   const aiConfig = orgSettings?.whatsapp_ai_config as any;
   if (!aiConfig?.auto_reply_enabled) return;
 
-  // Check bot_active status for this contact
+  // Check bot_active status
   const { data: chatSettings } = await supabase
     .from("whatsapp_chat_settings")
     .select("bot_active")
@@ -410,10 +944,8 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     .eq("phone_number", phoneNumber)
     .maybeSingle();
 
-  // If explicitly paused, skip auto-reply
   if (chatSettings && chatSettings.bot_active === false) return;
 
-  // Get the inbound message
   const { data: inboundMsg } = await supabase
     .from("whatsapp_messages")
     .select("phone_number, contact_name, content")
@@ -428,17 +960,17 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     await new Promise((r) => setTimeout(r, delaySeconds * 1000));
   }
 
-  // ── Epic 2: Context Hydration ──
-  const contactContext = await hydrateContactContext(phoneNumber);
+  // Epic 1: Enhanced Context Hydration
+  const contactContext = await hydrateContactContext(phoneNumber, branchId);
 
-  // ── Epic 3: Lead Capture Config ──
+  // Lead Capture Config
   const leadCaptureConfig = aiConfig.lead_capture as {
     enabled?: boolean;
     target_fields?: string[];
     handoff_message?: string;
   } | undefined;
 
-  // Fetch recent conversation history
+  // Fetch conversation history
   const { data: recentMsgs } = await supabase
     .from("whatsapp_messages")
     .select("content, direction")
@@ -456,12 +988,32 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
 
   // Build system prompt
   let systemPrompt = aiConfig.system_prompt ||
-    "You are a helpful gym assistant. Answer questions about membership, timings, and facilities. Keep responses short and friendly.";
+    "You are a helpful gym assistant for Incline Fitness. Answer questions about membership, timings, and facilities. Keep responses short and friendly.";
 
   // Inject context
   systemPrompt = `${contactContext.contextPrompt}\n\n${systemPrompt}`;
 
-  // Epic 3: Inject lead capture instructions for non-members
+  // For members: add tool usage instructions
+  if (contactContext.isMember && contactContext.memberContext) {
+    systemPrompt += `\n\nIMPORTANT TOOL USAGE INSTRUCTIONS:
+You have access to real tools that can query and modify the member's account. USE THEM when the member asks about:
+- Membership status, expiry, dues → use get_membership_status
+- Benefit/credit balance (sauna, ice bath, classes) → use get_benefit_balance
+- Available slots for facilities → use get_available_slots (always call this BEFORE booking)
+- Booking a facility → use book_facility_slot (requires slot_id from get_available_slots)
+- Cancelling a booking → use cancel_facility_booking
+- PT session balance → use get_pt_balance
+- Speaking to a human, complaints, or anything you can't handle → use transfer_to_human
+
+RULES:
+- Always confirm the booking details (facility, date, time) with the member BEFORE calling book_facility_slot.
+- Present available slots in a clear format with times.
+- If the member asks for a manager, complains, or you encounter errors twice, IMMEDIATELY use transfer_to_human.
+- Be warm, professional, and concise. Use emoji sparingly.
+- For questions about pricing, new memberships, or complex issues, use transfer_to_human.`;
+  }
+
+  // Lead capture for non-members
   const shouldCaptureLead = !contactContext.isMember && leadCaptureConfig?.enabled && (leadCaptureConfig.target_fields?.length ?? 0) > 0;
   if (shouldCaptureLead) {
     const fieldLabels: Record<string, string> = {
@@ -495,45 +1047,13 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
     return;
   }
 
-  // Build messages array
   const aiMessages: { role: string; content: string }[] = [
     { role: "system", content: systemPrompt },
     ...conversationHistory,
   ];
 
-  // Epic 4: Tool calling for members
-  const tools = contactContext.isMember ? [
-    {
-      type: "function",
-      function: {
-        name: "get_schedule",
-        description: "Get available schedule/classes for a given date and type",
-        parameters: {
-          type: "object",
-          properties: {
-            date: { type: "string", description: "Date in YYYY-MM-DD format" },
-            type: { type: "string", description: "Type of schedule: class, pt_session, facility" },
-          },
-          required: ["date"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "book_session",
-        description: "Book a session for the member",
-        parameters: {
-          type: "object",
-          properties: {
-            type: { type: "string", description: "Type: class, pt_session, facility" },
-            datetime: { type: "string", description: "ISO datetime for the booking" },
-          },
-          required: ["type", "datetime"],
-        },
-      },
-    },
-  ] : undefined;
+  // Epic 2: Use real tools for members
+  const tools = contactContext.isMember && contactContext.memberContext ? getMemberTools() : undefined;
 
   const aiRequestBody: any = {
     model: "google/gemini-3-flash-preview",
@@ -561,23 +1081,56 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
   const aiResult = await aiResponse.json();
   const choice = aiResult.choices?.[0];
 
-  // Epic 4: Handle tool calls (mocked for now)
-  if (choice?.message?.tool_calls?.length > 0) {
+  // Epic 3: Handle real tool calls
+  if (choice?.message?.tool_calls?.length > 0 && contactContext.memberContext) {
     const toolCalls = choice.message.tool_calls;
-    console.log("AI requested tool calls:", JSON.stringify(toolCalls));
+    console.log("AI requested tool calls:", JSON.stringify(toolCalls.map((tc: any) => tc.function.name)));
 
-    // Build mocked tool responses
-    const toolMessages = toolCalls.map((tc: any) => ({
-      role: "tool",
-      tool_call_id: tc.id,
-      content: JSON.stringify({
-        success: true,
-        message: `${tc.function.name} is not yet wired up. Feature coming soon!`,
-        data: [],
-      }),
-    }));
+    // Execute each tool call
+    const toolMessages: any[] = [];
+    let humanHandoffTriggered = false;
 
-    // Follow-up call with mocked responses
+    for (const tc of toolCalls) {
+      let parsedArgs: Record<string, any> = {};
+      try {
+        parsedArgs = typeof tc.function.arguments === "string"
+          ? JSON.parse(tc.function.arguments)
+          : tc.function.arguments || {};
+      } catch {
+        parsedArgs = {};
+      }
+
+      const result = await executeToolCall(
+        tc.function.name,
+        parsedArgs,
+        contactContext.memberContext,
+        phoneNumber,
+        branchId,
+      );
+
+      toolMessages.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: JSON.stringify(result),
+      });
+
+      // Check if human handoff was triggered
+      if (tc.function.name === "transfer_to_human" && result.transferred) {
+        humanHandoffTriggered = true;
+      }
+    }
+
+    // If human handoff, send the final message directly
+    if (humanHandoffTriggered) {
+      await sendAiReply(
+        "I'm connecting you with our front desk team. Someone will assist you shortly. 🙏",
+        inboundMsg,
+        branchId,
+      );
+      return;
+    }
+
+    // Follow-up call with real tool results
     const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -597,7 +1150,49 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
 
     if (followUpResponse.ok) {
       const followUpResult = await followUpResponse.json();
-      const followUpText = followUpResult.choices?.[0]?.message?.content;
+      const followUpChoice = followUpResult.choices?.[0];
+
+      // Handle nested tool calls (AI may call another tool based on results)
+      if (followUpChoice?.message?.tool_calls?.length > 0) {
+        const nestedToolMessages: any[] = [];
+        for (const tc of followUpChoice.message.tool_calls) {
+          let parsedArgs: Record<string, any> = {};
+          try {
+            parsedArgs = typeof tc.function.arguments === "string"
+              ? JSON.parse(tc.function.arguments)
+              : tc.function.arguments || {};
+          } catch { parsedArgs = {}; }
+
+          const result = await executeToolCall(
+            tc.function.name, parsedArgs, contactContext.memberContext!, phoneNumber, branchId,
+          );
+          nestedToolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
+
+          if (tc.function.name === "transfer_to_human" && result.transferred) {
+            await sendAiReply("I'm connecting you with our front desk team. Someone will assist you shortly. 🙏", inboundMsg, branchId);
+            return;
+          }
+        }
+
+        // Third call with nested results
+        const thirdResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [...aiMessages, choice.message, ...toolMessages, followUpChoice.message, ...nestedToolMessages],
+          }),
+        });
+
+        if (thirdResponse.ok) {
+          const thirdResult = await thirdResponse.json();
+          const thirdText = thirdResult.choices?.[0]?.message?.content;
+          if (thirdText) await sendAiReply(thirdText, inboundMsg, branchId);
+        }
+        return;
+      }
+
+      const followUpText = followUpChoice?.message?.content;
       if (followUpText) {
         await sendAiReply(followUpText, inboundMsg, branchId);
       }
@@ -608,17 +1203,15 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
   let replyText = choice?.message?.content;
   if (!replyText) return;
 
-  // Epic 3: Check for lead_captured JSON
+  // Lead capture JSON check
   if (shouldCaptureLead) {
     try {
-      // Try to extract JSON from the response
       const jsonMatch = replyText.match(/\{[\s\S]*"status"\s*:\s*"lead_captured"[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.status === "lead_captured" && parsed.data) {
           console.log("AI captured lead data:", JSON.stringify(parsed.data));
 
-          // Insert into leads table
           const leadData: any = {
             phone: phoneNumber,
             source: "whatsapp_ai",
@@ -631,9 +1224,9 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
             goals: parsed.data.goal || parsed.data.fitness_goal || null,
             budget: parsed.data.budget || parsed.data.monthly_budget || null,
             fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
-            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || parsed.data.starting_date || parsed.data.when_to_start || null,
-            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || parsed.data.fitness_level || null,
-            preferred_time: parsed.data.preferred_time || parsed.data.time || parsed.data.workout_time || parsed.data.time_slot || null,
+            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
+            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
+            preferred_time: parsed.data.preferred_time || parsed.data.time || null,
             notes: `AI-captured via WhatsApp conversation`,
           };
 
@@ -646,7 +1239,6 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
           if (leadError) {
             console.error("Failed to insert AI-captured lead:", leadError);
           } else if (newLead) {
-            // Insert marker message
             await supabase.from("whatsapp_messages").insert({
               branch_id: branchId,
               phone_number: inboundMsg.phone_number,
@@ -657,7 +1249,6 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
               message_type: "text",
             });
 
-            // Set bot_active = false
             await supabase.from("whatsapp_chat_settings").upsert(
               {
                 branch_id: branchId,
@@ -669,14 +1260,12 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
             );
           }
 
-          // Send handoff message
           const handoffMessage = leadCaptureConfig?.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
           await sendAiReply(handoffMessage, inboundMsg, branchId);
           return;
         }
       }
     } catch (parseErr) {
-      // Not a lead capture JSON — continue with normal reply
       console.log("AI response is not lead_captured JSON, sending as normal reply");
     }
   }
@@ -692,7 +1281,6 @@ async function sendAiReply(
   inboundMsg: { phone_number: string; contact_name: string | null },
   branchId: string,
 ) {
-  // Check if AI reply is an interactive message JSON
   let interactivePayload: any = null;
   try {
     const trimmed = replyText.trim();
@@ -709,7 +1297,6 @@ async function sendAiReply(
             })),
           },
         };
-        // Store readable text for DB
         replyText = `${parsed.body}\n${parsed.buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`;
       } else if (parsed.type === "interactive_list" && parsed.sections?.length) {
         interactivePayload = {
@@ -728,7 +1315,6 @@ async function sendAiReply(
     // Not JSON, send as normal text
   }
 
-  // Insert AI reply as outbound message
   const { data: aiMsg, error: insertErr } = await supabase
     .from("whatsapp_messages")
     .insert({
@@ -748,7 +1334,6 @@ async function sendAiReply(
     return;
   }
 
-  // Send via Meta API directly with appsecret_proof
   const integration = await getWhatsAppIntegration(branchId);
   if (!integration) return;
 
@@ -759,14 +1344,12 @@ async function sendAiReply(
 
   const cleanPhone = inboundMsg.phone_number.replace(/[\s\-\+]/g, "");
 
-  // Compute appsecret_proof
   let metaUrl = `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`;
   if (appSecret) {
     const proof = await computeAppSecretProof(accessToken, appSecret);
     metaUrl += `?appsecret_proof=${proof}`;
   }
 
-  // Build Meta API body
   const metaBody: any = {
     messaging_product: "whatsapp",
     to: cleanPhone,
