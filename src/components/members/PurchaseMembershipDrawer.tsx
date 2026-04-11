@@ -36,6 +36,10 @@ export function PurchaseMembershipDrawer({
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [selectedLockerId, setSelectedLockerId] = useState<string>('');
   
+  // GST State
+  const [includeGst, setIncludeGst] = useState(false);
+  const [gstRate, setGstRate] = useState(18);
+  
   // Partial Payment State
   const [isPartialPayment, setIsPartialPayment] = useState(false);
   const [amountPaying, setAmountPaying] = useState(0);
@@ -124,11 +128,17 @@ export function PurchaseMembershipDrawer({
     },
   });
 
+  const calculateGstAmount = () => {
+    if (!includeGst || !selectedPlan) return 0;
+    const base = (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0) - discountAmount;
+    return Math.round(base * (gstRate / 100));
+  };
+
   const calculateTotal = () => {
     if (!selectedPlan) return 0;
     const base = selectedPlan.discounted_price || selectedPlan.price;
     const admission = selectedPlan.admission_fee || 0;
-    return base + admission - discountAmount;
+    return base + admission - discountAmount + calculateGstAmount();
   };
 
   const calculateEndDate = () => {
@@ -188,12 +198,14 @@ export function PurchaseMembershipDrawer({
           invoice_number: invoiceNumber,
           subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
           discount_amount: discountAmount,
-          tax_amount: 0,
+          tax_amount: calculateGstAmount(),
           total_amount: totalAmount,
           status: invoiceStatus as any,
           due_date: isPartialPayment ? paymentDueDate : startDate,
           amount_paid: actualAmountPaid,
           payment_due_date: isPartialPayment ? paymentDueDate : null,
+          is_gst_invoice: includeGst,
+          gst_rate: includeGst ? gstRate : 0,
         })
         .select()
         .single();
@@ -357,6 +369,8 @@ export function PurchaseMembershipDrawer({
     setDiscountReason('');
     setPaymentMethod('cash');
     setSelectedLockerId('');
+    setIncludeGst(false);
+    setGstRate(18);
     setIsPartialPayment(false);
     setAmountPaying(0);
     setPaymentDueDate(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
@@ -475,6 +489,18 @@ export function PurchaseMembershipDrawer({
                       <span>-₹{discountAmount}</span>
                     </div>
                   )}
+                  {includeGst && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span>CGST ({gstRate / 2}%)</span>
+                        <span>₹{(calculateGstAmount() / 2).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>SGST ({gstRate / 2}%)</span>
+                        <span>₹{(calculateGstAmount() / 2).toLocaleString()}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between font-bold border-t pt-2">
                     <span>Total</span>
                     <span className="flex items-center">
@@ -482,6 +508,39 @@ export function PurchaseMembershipDrawer({
                       {calculateTotal()}
                     </span>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* GST Toggle */}
+              <Card className="border-dashed">
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
+                      <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+                    </div>
+                    <Switch
+                      id="gst-toggle"
+                      checked={includeGst}
+                      onCheckedChange={setIncludeGst}
+                    />
+                  </div>
+                  {includeGst && (
+                    <div className="space-y-2">
+                      <Label>GST Rate</Label>
+                      <Select value={gstRate.toString()} onValueChange={(v) => setGstRate(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5%</SelectItem>
+                          <SelectItem value="12">12%</SelectItem>
+                          <SelectItem value="18">18%</SelectItem>
+                          <SelectItem value="28">28%</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

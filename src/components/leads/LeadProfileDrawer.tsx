@@ -149,7 +149,10 @@ export function LeadProfileDrawer({ open, onOpenChange, lead, onFollowup, onConv
               </>
             )}
             {lead.email && (
-              <Button size="sm" variant="outline" className="rounded-lg gap-1.5" onClick={() => window.open(`mailto:${lead.email}`)}>
+              <Button size="sm" variant="outline" className="rounded-lg gap-1.5" onClick={() => {
+                communicationService.sendEmailViaProvider(lead.email, `Hi ${lead.full_name}`, `<p>Hi ${lead.full_name},</p>`, lead.branch_id);
+                toast.success('Email sent');
+              }}>
                 <Mail className="h-3.5 w-3.5" /> Email
               </Button>
             )}

@@ -1,0 +1,6 @@
+
+ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS gstin TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS gstin TEXT;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS is_gst_invoice BOOLEAN DEFAULT false;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS gst_rate NUMERIC DEFAULT 0;
+ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS customer_gstin TEXT;
