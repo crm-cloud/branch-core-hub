@@ -302,7 +302,7 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                 })}
                 {paginatedLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                       <UserPlus className="h-8 w-8 mx-auto mb-2 opacity-40" />
                       No leads found matching your filters
                     </TableCell>
