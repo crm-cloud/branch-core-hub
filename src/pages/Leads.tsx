@@ -39,7 +39,7 @@ export default function LeadsPage() {
   const [showFollowupDrawer, setShowFollowupDrawer] = useState(false);
   const [showConvertDrawer, setShowConvertDrawer] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
-  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar' | 'analytics'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'list' | 'calendar' | 'analytics' | 'ai_audit'>('kanban');
   const [page, setPage] = useState(0);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showSaveView, setShowSaveView] = useState(false);
