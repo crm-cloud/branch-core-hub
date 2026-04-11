@@ -225,6 +225,9 @@ export default function LeadsPage() {
               <Button variant={viewMode === 'analytics' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('analytics')} className="rounded-lg" title="Analytics (A)">
                 <BarChart3 className="h-4 w-4" />
               </Button>
+              <Button variant={viewMode === 'ai_audit' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('ai_audit')} className="rounded-lg" title="AI Capture Audit">
+                <Bot className="h-4 w-4" />
+              </Button>
             </div>
 
             {/* Saved Views */}
