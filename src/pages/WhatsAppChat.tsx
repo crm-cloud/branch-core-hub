@@ -363,6 +363,10 @@ export default function WhatsAppChatPage() {
     if (!matchesSearch) return false;
     if (chatFilter === 'unread') return c.is_unread === true;
     if (chatFilter === 'needs_human') return c.bot_active === false;
+    if (chatFilter === 'my_chats') {
+      const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
+      return s?.assigned_to === user?.id;
+    }
     return true;
   });
 
