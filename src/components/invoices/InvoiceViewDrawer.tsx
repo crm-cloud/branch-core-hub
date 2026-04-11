@@ -28,7 +28,7 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
         .select(`
           *,
           members(member_code, profiles:user_id(full_name, email, phone)),
-          branch:branch_id(name, address, phone, email),
+          branch:branch_id(name, address, phone, email, gstin),
           invoice_items(*)
         `)
         .eq('id', invoiceId)
@@ -92,6 +92,10 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
       branch_address: invoice.branch?.address,
       branch_phone: invoice.branch?.phone,
       branch_email: invoice.branch?.email,
+      gst_number: invoice.branch?.gstin,
+      is_gst_invoice: invoice.is_gst_invoice || false,
+      gst_rate: invoice.gst_rate || 0,
+      customer_gstin: invoice.customer_gstin,
     };
   };
 
@@ -144,7 +148,10 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-xl font-bold font-mono">{invoice.invoice_number}</h2>
-              <p className="text-sm text-muted-foreground">
+              {invoice.is_gst_invoice && (
+                <Badge className="bg-primary/10 text-primary mt-1">TAX INVOICE</Badge>
+              )}
+              <p className="text-sm text-muted-foreground mt-1">
                 Date: {format(new Date(invoice.created_at), 'dd MMM yyyy')}
               </p>
               {invoice.due_date && (
@@ -168,6 +175,9 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
                 <p className="font-medium">{invoice.branch?.name}</p>
                 <p className="text-sm text-muted-foreground">{invoice.branch?.address}</p>
                 <p className="text-sm text-muted-foreground">{invoice.branch?.phone}</p>
+                {invoice.branch?.gstin && (
+                  <p className="text-xs font-mono text-muted-foreground mt-1">GSTIN: {invoice.branch.gstin}</p>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -178,6 +188,9 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
                 <p className="text-sm text-muted-foreground">{memberProfile?.phone}</p>
                 {invoice.members?.member_code && (
                   <p className="text-xs font-mono text-muted-foreground mt-1">{invoice.members.member_code}</p>
+                )}
+                {invoice.customer_gstin && (
+                  <p className="text-xs font-mono text-muted-foreground">GSTIN: {invoice.customer_gstin}</p>
                 )}
               </CardContent>
             </Card>
@@ -223,10 +236,16 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
                 </div>
               )}
               {invoice.tax_amount > 0 && (
-                <div className="flex justify-between">
-                  <span>GST</span>
-                  <span>₹{invoice.tax_amount.toLocaleString()}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span>CGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
+                    <span>₹{(invoice.tax_amount / 2).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>SGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
+                    <span>₹{(invoice.tax_amount / 2).toLocaleString()}</span>
+                  </div>
+                </>
               )}
               <Separator />
               <div className="flex justify-between font-bold text-lg">
