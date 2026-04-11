@@ -233,6 +233,47 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1.5">
+                              {lead.owner_id ? (
+                                <>
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarFallback className="text-[9px] bg-primary/10 text-primary">
+                                      {staffMembers.find((s: any) => s.id === lead.owner_id)?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="truncate max-w-[60px]">{staffMembers.find((s: any) => s.id === lead.owner_id)?.full_name || 'Assigned'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UserPlus className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-muted-foreground">Assign</span>
+                                </>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-48 p-1" align="start">
+                            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                              <Button size="sm" variant="ghost" className="w-full justify-start h-7 text-xs text-muted-foreground"
+                                onClick={() => assignMutation.mutate({ leadId: lead.id, ownerId: null })}>
+                                Unassign
+                              </Button>
+                              {staffMembers.map((staff: any) => (
+                                <Button key={staff.id} size="sm" variant={lead.owner_id === staff.id ? 'secondary' : 'ghost'}
+                                  className="w-full justify-start h-7 text-xs gap-2"
+                                  onClick={() => assignMutation.mutate({ leadId: lead.id, ownerId: staff.id })}>
+                                  <Avatar className="h-4 w-4">
+                                    <AvatarFallback className="text-[8px]">{staff.full_name?.charAt(0)?.toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="truncate">{staff.full_name}</span>
+                                </Button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                         {format(new Date(lead.created_at), 'MMM dd, yyyy')}
                       </TableCell>
