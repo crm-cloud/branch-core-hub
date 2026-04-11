@@ -273,6 +273,33 @@ export default function WhatsAppChatPage() {
     enabled: !!selectedContact,
   });
 
+  // AI Tool Logs for this contact (for thought banners)
+  const { data: aiToolLogs = [] } = useQuery({
+    queryKey: ['ai-tool-logs-chat', selectedContact?.phone_number],
+    queryFn: async () => {
+      if (!selectedContact) return [];
+      const { data, error } = await supabase
+        .from('ai_tool_logs')
+        .select('*')
+        .eq('phone_number', selectedContact.phone_number)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedContact,
+    refetchInterval: 15000,
+  });
+
+  // Helper: find tool logs near a message timestamp
+  const getToolLogsForMessage = useCallback((msgCreatedAt: string) => {
+    const msgTime = new Date(msgCreatedAt).getTime();
+    return aiToolLogs.filter((log: any) => {
+      const logTime = new Date(log.created_at).getTime();
+      return Math.abs(logTime - msgTime) < 10000; // within 10 seconds
+    });
+  }, [aiToolLogs]);
+
   // Send message mutation
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
@@ -901,6 +928,51 @@ export default function WhatsAppChatPage() {
                                   {msg.direction === 'outbound' && getStatusIcon(msg.status)}
                                 </div>
                               </div>
+                              {/* AI Thought Banner */}
+                              {msg.direction === 'outbound' && (() => {
+                                const toolLogsForMsg = getToolLogsForMessage(msg.created_at);
+                                if (toolLogsForMsg.length === 0) return null;
+                                return (
+                                  <div className="mt-1 space-y-0.5">
+                                    {toolLogsForMsg.map((log: any) => (
+                                      <div
+                                        key={log.id}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] max-w-[85%] ml-auto ${
+                                          log.status === 'success'
+                                            ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                                            : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                                        }`}
+                                      >
+                                        {log.status === 'success' ? (
+                                          <Sparkles className="h-3 w-3 flex-shrink-0" />
+                                        ) : (
+                                          <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                        )}
+                                        <span>
+                                          AI used <span className="font-mono font-semibold">{log.tool_name}</span>
+                                          {' — '}
+                                          {log.status === 'success' ? 'Success' : 'Failed'}
+                                          {log.execution_time_ms ? ` (${log.execution_time_ms}ms)` : ''}
+                                        </span>
+                                        {log.status === 'error' && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-4 px-1.5 text-[10px] text-amber-600 hover:text-amber-700 ml-auto"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigate(`/whatsapp-chat?phone=${encodeURIComponent(selectedContact?.phone_number || '')}`);
+                                              setNewMessage(`Re: ${log.tool_name} — ${log.error_message || 'Error'}. How can I help?`);
+                                            }}
+                                          >
+                                            Handle
+                                          </Button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })}

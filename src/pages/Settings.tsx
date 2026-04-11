@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -15,11 +15,13 @@ import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryMan
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { RetentionCampaignManager } from '@/components/settings/RetentionCampaignManager';
+import { AIAgentControlCenter } from '@/components/settings/AIAgentControlCenter';
 
 const SETTINGS_MENU = [
   { value: 'organization', label: 'Organization', icon: SettingsIcon },
   { value: 'branches', label: 'Branches', icon: Building2 },
   { value: 'appearance', label: 'Appearance', icon: Palette },
+  { value: 'ai-agent', label: 'AI Agent', icon: Bot },
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'templates', label: 'Templates', icon: MessageSquare },
@@ -36,6 +38,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   organization: <OrganizationSettings />,
   branches: <BranchSettings />,
   appearance: <ThemePicker />,
+  'ai-agent': <AIAgentControlCenter />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
   templates: <TemplateManager />,
