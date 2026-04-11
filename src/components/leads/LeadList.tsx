@@ -36,6 +36,35 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
   const paginatedLeads = leads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(leads.length / PAGE_SIZE);
 
+  const { data: staffMembers = [] } = useQuery({
+    queryKey: ['staff-for-assignment'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('user_id, role, profiles:user_id(id, full_name, avatar_url)')
+        .in('role', ['owner', 'admin', 'manager', 'staff'] as any);
+      if (!data) return [];
+      const unique = new Map<string, any>();
+      data.forEach((r: any) => {
+        if (r.profiles && !unique.has(r.user_id)) {
+          unique.set(r.user_id, { id: r.user_id, full_name: r.profiles.full_name, avatar_url: r.profiles.avatar_url });
+        }
+      });
+      return Array.from(unique.values());
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: ({ leadId, ownerId }: { leadId: string; ownerId: string | null }) =>
+      leadService.assignLead(leadId, ownerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead assigned');
+    },
+    onError: () => toast.error('Failed to assign lead'),
+  });
+  const totalPages = Math.ceil(leads.length / PAGE_SIZE);
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       leadService.updateLeadStatus(id, status),
