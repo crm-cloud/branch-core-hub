@@ -1,120 +1,74 @@
 
 
-# AI Tool Management UI & Observability Dashboard
+# Settings Reorganization: AI Hub, Template Consolidation & Ice Bath Tool
 
-## Database Migration
+## Audit Summary
 
-Create `ai_tool_logs` table:
-
-```sql
-CREATE TABLE public.ai_tool_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  chat_id TEXT,
-  phone_number TEXT,
-  branch_id UUID REFERENCES branches(id),
-  message_id UUID,
-  tool_name TEXT NOT NULL,
-  arguments JSONB DEFAULT '{}',
-  result JSONB DEFAULT '{}',
-  status TEXT NOT NULL DEFAULT 'success',
-  error_message TEXT,
-  execution_time_ms INTEGER,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_ai_tool_logs_created ON ai_tool_logs(created_at DESC);
-CREATE INDEX idx_ai_tool_logs_phone ON ai_tool_logs(phone_number);
-CREATE INDEX idx_ai_tool_logs_status ON ai_tool_logs(status);
-
-ALTER TABLE ai_tool_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Staff can view AI tool logs" ON ai_tool_logs
-  FOR SELECT TO authenticated
-  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[]));
-```
-
-Add `ai_tool_config` JSONB column to `organization_settings` for storing enabled/disabled tool toggles.
-
-```sql
-ALTER TABLE organization_settings ADD COLUMN ai_tool_config JSONB DEFAULT '{}';
-```
+Current mess:
+- **AI settings scattered across 5 places**: AIAgentControlCenter (Settings > AI Agent), WhatsAppAISettings (Integrations > WhatsApp), AIFlowBuilderSettings (Integrations > Lead Capture), LeadNurtureConfig (inside RetentionCampaignManager), WhatsAppAutomations (inside RetentionCampaignManager)
+- **Templates duplicated in 3 places**: TemplateManager (Settings > Templates), LeadNotificationSettings message templates (inside NotificationSettings), RetentionCampaignManager inline message editors
+- **WhatsApp Automations** lives inside Marketing & Retention instead of Integrations > WhatsApp
 
 ---
 
-## Epic 1: Tool Logging in Edge Function
+## Module 1: AI Agent Hub (Tabbed)
 
-**File:** `supabase/functions/whatsapp-webhook/index.ts`
+Rebuild `AIAgentControlCenter.tsx` as a tabbed hub consolidating all AI features:
 
-In the tool execution loop (~line 1098), after each `executeToolCall`, insert a row into `ai_tool_logs`:
+| Tab | Content (moved from) |
+|---|---|
+| **Dashboard** | Current activity feed + stats (already here) |
+| **Tools & Testing** | Tool toggles + Manual Test Lab (already here) |
+| **Auto-Reply** | WhatsAppAISettings (from IntegrationSettings) |
+| **Lead Capture** | AIFlowBuilderSettings (from IntegrationSettings) |
+| **Lead Nurture** | LeadNurtureConfig (from RetentionCampaignManager) |
 
-```typescript
-const startTime = Date.now();
-const result = await executeToolCall(...);
-const elapsed = Date.now() - startTime;
-const hasError = !!result.error;
+Each tab gets a clean card layout. The existing components are moved as-is into tab panels.
 
-await supabase.from("ai_tool_logs").insert({
-  phone_number: phoneNumber,
-  branch_id: branchId,
-  message_id: messageId,
-  tool_name: tc.function.name,
-  arguments: parsedArgs,
-  result,
-  status: hasError ? "error" : "success",
-  error_message: hasError ? result.error : null,
-  execution_time_ms: elapsed,
-});
-```
-
-Also apply to nested tool calls (~line 1163).
-
-**Tool Toggle:** Before passing tools to Gemini, fetch `ai_tool_config` from `organization_settings` and filter out disabled tools from the `getMemberTools()` array.
+**Remove** WhatsAppAISettings and AIFlowBuilderSettings from IntegrationSettings.
+**Remove** LeadNurtureConfig from RetentionCampaignManager.
 
 ---
 
-## Epic 2: AI Agent Control Center (Settings Tab)
+## Module 2: WhatsApp Automations to Integrations
 
-**New file:** `src/components/settings/AIAgentControlCenter.tsx`
+Move `WhatsAppAutomations` component from RetentionCampaignManager into IntegrationSettings under the WhatsApp tab.
 
-Three sections in a single settings tab (`/settings?tab=ai-agent`):
-
-### Section A: Live Activity Feed
-- Query `ai_tool_logs` ordered by `created_at DESC`, limit 50
-- Table columns: Time, Phone, Tool Name, Status (green/red badge), Duration (ms), Actions (expand)
-- Expandable row shows full `arguments` and `result` JSON
-- Auto-refresh via React Query `refetchInterval: 10000`
-
-### Section B: Tool Toggle Panel
-- List all 7 tools from `getMemberTools()` with Switch toggles
-- Load/save from `organization_settings.ai_tool_config`
-- Each tool shows name + description
-- Disabled tools get filtered out in the edge function before calling Gemini
-
-### Section C: Manual Test Lab
-- Dropdown to select a tool name
-- JSON textarea for arguments input
-- "Execute" button calls a new edge function `test-ai-tool` that runs `executeToolCall` directly
-- Displays result JSON with success/error styling
-
-**Wire into Settings page:** Add `ai-agent` to `SETTINGS_MENU` with a `Bot` icon and map to the new component.
+**Remove** the `<WhatsAppAutomations />` render from RetentionCampaignManager's LeadNurtureConfig.
 
 ---
 
-## Epic 3: WhatsApp Chat "AI Thought" Integration
+## Module 3: Template Consolidation
 
-**File:** `src/pages/WhatsAppChat.tsx`
+### Move Lead Notification Templates to Template Manager
+- Add new trigger types in TemplateManager: `lead_welcome_sms`, `lead_welcome_whatsapp`, `team_alert_sms`, `team_alert_whatsapp`
+- The LeadNotificationSettings component keeps its channel toggle switches but **removes** the inline Textarea template editors
+- Instead, show a link/note: "Edit message templates in Settings > Templates"
 
-- When rendering messages in the chat view, for each outbound AI message, query `ai_tool_logs` where `phone_number` matches and `created_at` is within ±5 seconds of the message timestamp
-- Display a subtle indigo banner below the AI message bubble: "✨ AI used `get_membership_status` — Success (42ms)"
-- For errors, show a red-tinted banner with "⚠ AI tool `book_facility_slot` failed — Slot full"
+### Retention Campaign Templates
+- RetentionCampaignManager already stores templates in `retention_templates` table (separate from `templates`)
+- Keep the inline editors there since they're stage-specific and tightly coupled to the retention flow
+- But replace the `mailto:` test send with the provider-based email utility (already done in previous sprint)
+
+### Remove LeadNotificationSettings from NotificationSettings
+- Move `<LeadNotificationSettings />` out of `RunRemindersButton` (currently nested awkwardly inside it)
+- Place it as its own section within NotificationSettings, properly separated
 
 ---
 
-## Epic 4: Error Recovery — "Retry as Human"
+## Module 4: Ice Bath / Sauna Booking Tool
 
-In the Activity Feed (Epic 2) and the WhatsApp Chat thought banners (Epic 3):
-- For rows with `status = 'error'`, show a "Handle Manually" button
-- Clicking navigates to `/whatsapp-chat` and sets the contact phone as the active chat
-- Pre-fills the message input with a contextual message: "Re: [tool_name] — [error_message]. How can I help?"
+The system already has `book_facility_slot` RPC and the AI tool `book_facility_slot` registered in the webhook. The user's proposed SQL function is redundant since the existing RPC handles capacity checks, benefit validation, and atomic booking.
+
+**No new SQL function needed.** The existing `book_facility_slot(p_slot_id, p_member_id, p_membership_id)` RPC already handles ice bath and sauna bookings. The AI agent already has `get_available_slots` + `book_facility_slot` + `cancel_facility_booking` tools registered.
+
+Verify the tool is enabled in the AI Agent Control Center's toggle panel.
+
+---
+
+## Module 5: Clean Up NotificationSettings
+
+Fix the awkward nesting where `LeadNotificationSettings` is rendered inside `RunRemindersButton`. Move it to be a proper sibling section.
 
 ---
 
@@ -122,10 +76,13 @@ In the Activity Feed (Epic 2) and the WhatsApp Chat thought banners (Epic 3):
 
 | File | Change |
 |---|---|
-| **Migration** | Create `ai_tool_logs` table + add `ai_tool_config` to `organization_settings` |
-| `supabase/functions/whatsapp-webhook/index.ts` | Log tool calls, filter disabled tools |
-| `src/components/settings/AIAgentControlCenter.tsx` | **NEW** — Activity feed, tool toggles, test lab |
-| `src/pages/Settings.tsx` | Add `ai-agent` tab |
-| `src/pages/WhatsAppChat.tsx` | Show AI thought banners on messages |
-| `supabase/functions/test-ai-tool/index.ts` | **NEW** — Manual tool execution endpoint |
+| `src/components/settings/AIAgentControlCenter.tsx` | Add tabs: Dashboard, Tools, Auto-Reply, Lead Capture, Lead Nurture. Import and embed WhatsAppAISettings, AIFlowBuilderSettings, LeadNurtureConfig |
+| `src/components/settings/RetentionCampaignManager.tsx` | Remove LeadNurtureConfig section and WhatsAppAutomations import |
+| `src/components/settings/IntegrationSettings.tsx` | Remove WhatsAppAISettings and AIFlowBuilderSettings. Add WhatsAppAutomations to WhatsApp tab |
+| `src/components/settings/NotificationSettings.tsx` | Move LeadNotificationSettings out of RunRemindersButton into its own card section. Remove inline template editors, add note pointing to Template Manager |
+| `src/components/settings/LeadNotificationSettings.tsx` | Remove inline message template Textareas. Keep channel toggle switches only. Add info banner linking to Templates |
+| `src/components/settings/TemplateManager.tsx` | Add lead notification trigger types (lead_welcome, team_alert) to TEMPLATE_TRIGGERS |
+| `src/pages/Settings.tsx` | No menu changes needed (AI Agent tab already exists) |
+
+No database migrations required.
 
