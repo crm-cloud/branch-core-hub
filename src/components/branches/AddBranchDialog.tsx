@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
@@ -251,10 +252,9 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
                 <Phone className="h-4 w-4" />
                 Phone
               </Label>
-              <Input
+              <PhoneInput
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+91 9876543210"
+                onChange={(value) => setFormData({ ...formData, phone: value })}
               />
             </div>
             <div className="space-y-2">

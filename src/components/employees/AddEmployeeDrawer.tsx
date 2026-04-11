@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -400,10 +401,9 @@ export function AddEmployeeDrawer({ open, onOpenChange }: AddEmployeeDrawerProps
                 </div>
                 <div className="space-y-2">
                   <Label>Phone</Label>
-                  <Input
+                  <PhoneInput
                     value={newUserFormData.phone}
-                    onChange={(e) => setNewUserFormData({ ...newUserFormData, phone: e.target.value })}
-                    placeholder="+91 98765 43210"
+                    onChange={(value) => setNewUserFormData({ ...newUserFormData, phone: value })}
                   />
                 </div>
               </div>
