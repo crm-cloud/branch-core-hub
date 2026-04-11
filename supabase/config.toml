@@ -78,3 +78,6 @@ verify_jwt = false
 [functions.test-integration]
 verify_jwt = false
 
+[functions.create-razorpay-link]
+verify_jwt = true
+

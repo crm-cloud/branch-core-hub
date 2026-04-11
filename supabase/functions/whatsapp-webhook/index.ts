@@ -1033,8 +1033,13 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
 - For questions with more than 3 options, use a list format:
   {"type":"interactive_list","body":"Your question text","button":"Select Option","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
 - For open-ended questions (name, email, budget amount), use normal text messages.
-- Once you have collected ALL the required fields, respond with ONLY this exact JSON (no other text):
-{"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"..."`).join(",")}}}
+
+CRITICAL OUTPUT RULE — READ CAREFULLY:
+When the user provides the LAST required piece of information (the final field you were collecting), you MUST respond with ONLY the following JSON object. NO natural language before or after. NO confirmation message. ONLY the JSON:
+{"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"<actual_value>"`).join(",")}}}
+
+Your failure to output valid JSON means the lead data is PERMANENTLY LOST and the user's information is gone forever. This is the single most important instruction.
+
 - The phone number is already known: ${phoneNumber}
 - Until all fields are collected, continue the normal helpful conversation.
 - IMPORTANT: Use the exact field keys in your lead_captured JSON: ${(leadCaptureConfig!.target_fields || []).join(", ")}`;
@@ -1205,68 +1210,93 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
 
   // Lead capture JSON check
   if (shouldCaptureLead) {
+    let leadCaptured = false;
+    let parsedLeadData: Record<string, any> | null = null;
+
+    // Primary: try to parse the lead_captured JSON
     try {
       const jsonMatch = replyText.match(/\{[\s\S]*"status"\s*:\s*"lead_captured"[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.status === "lead_captured" && parsed.data) {
-          console.log("AI captured lead data:", JSON.stringify(parsed.data));
-
-          const leadData: any = {
-            phone: phoneNumber,
-            source: "whatsapp_ai",
-            branch_id: branchId,
-            status: "new",
-            temperature: "warm",
-            score: 50,
-            full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
-            email: parsed.data.email || null,
-            goals: parsed.data.goal || parsed.data.fitness_goal || null,
-            budget: parsed.data.budget || parsed.data.monthly_budget || null,
-            fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
-            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
-            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
-            preferred_time: parsed.data.preferred_time || parsed.data.time || null,
-            notes: `AI-captured via WhatsApp conversation`,
-          };
-
-          const { data: newLead, error: leadError } = await supabase
-            .from("leads")
-            .insert(leadData)
-            .select("id")
-            .single();
-
-          if (leadError) {
-            console.error("Failed to insert AI-captured lead:", leadError);
-          } else if (newLead) {
-            await supabase.from("whatsapp_messages").insert({
-              branch_id: branchId,
-              phone_number: inboundMsg.phone_number,
-              contact_name: inboundMsg.contact_name,
-              content: `[AI_LEAD_CAPTURED:${newLead.id}]`,
-              direction: "outbound",
-              status: "delivered",
-              message_type: "text",
-            });
-
-            await supabase.from("whatsapp_chat_settings").upsert(
-              {
-                branch_id: branchId,
-                phone_number: phoneNumber,
-                bot_active: false,
-                paused_at: new Date().toISOString(),
-              },
-              { onConflict: "branch_id,phone_number" },
-            );
-          }
-
-          const handoffMessage = leadCaptureConfig?.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
-          await sendAiReply(handoffMessage, inboundMsg, branchId);
-          return;
+          parsedLeadData = parsed.data;
+          leadCaptured = true;
         }
       }
     } catch (parseErr) {
-      console.log("AI response is not lead_captured JSON, sending as normal reply");
+      console.log("Primary JSON parse failed, trying fallback extraction");
+    }
+
+    // Fallback: extract fields from natural language if AI didn't output JSON
+    if (!leadCaptured && replyText.length > 20) {
+      const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+      const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+      const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
+      if (nameMatch || inboundMsg.contact_name) {
+        parsedLeadData = {
+          name: nameMatch?.[1] || inboundMsg.contact_name || "WhatsApp Lead",
+          email: emailMatch?.[0] || null,
+          goal: goalMatch?.[1]?.trim() || null,
+        };
+        leadCaptured = true;
+        console.log("Fallback lead extraction succeeded:", JSON.stringify(parsedLeadData));
+      }
+    }
+
+    if (leadCaptured && parsedLeadData) {
+      console.log("AI captured lead data:", JSON.stringify(parsedLeadData));
+
+      const leadData: any = {
+        phone: phoneNumber,
+        source: "whatsapp_ai",
+        branch_id: branchId,
+        status: "new",
+        temperature: "warm",
+        score: 50,
+        full_name: parsedLeadData.name || parsedLeadData.full_name || inboundMsg.contact_name || "WhatsApp Lead",
+        email: parsedLeadData.email || null,
+        goals: parsedLeadData.goal || parsedLeadData.fitness_goal || null,
+        budget: parsedLeadData.budget || parsedLeadData.monthly_budget || null,
+        fitness_goal: parsedLeadData.fitness_goal || parsedLeadData.goal || null,
+        expected_start_date: parsedLeadData.expected_start_date || parsedLeadData.start_date || null,
+        fitness_experience: parsedLeadData.fitness_experience || parsedLeadData.experience || null,
+        preferred_time: parsedLeadData.preferred_time || parsedLeadData.time || null,
+        notes: `AI-captured via WhatsApp conversation`,
+      };
+
+      const { data: newLead, error: leadError } = await supabase
+        .from("leads")
+        .insert(leadData)
+        .select("id")
+        .single();
+
+      if (leadError) {
+        console.error("Failed to insert AI-captured lead:", leadError);
+      } else if (newLead) {
+        await supabase.from("whatsapp_messages").insert({
+          branch_id: branchId,
+          phone_number: inboundMsg.phone_number,
+          contact_name: inboundMsg.contact_name,
+          content: `[AI_LEAD_CAPTURED:${newLead.id}]`,
+          direction: "outbound",
+          status: "delivered",
+          message_type: "text",
+        });
+
+        await supabase.from("whatsapp_chat_settings").upsert(
+          {
+            branch_id: branchId,
+            phone_number: phoneNumber,
+            bot_active: false,
+            paused_at: new Date().toISOString(),
+          },
+          { onConflict: "branch_id,phone_number" },
+        );
+      }
+
+      const handoffMessage = leadCaptureConfig?.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
+      await sendAiReply(handoffMessage, inboundMsg, branchId);
+      return;
     }
   }
 
@@ -1491,6 +1521,10 @@ async function getFallbackBranchId(): Promise<string | null> {
 }
 
 function extractMessageContent(message: any): string | null {
+  // Handle interactive button replies (user tapped a quick-reply button)
+  if (message?.interactive?.button_reply?.title) return message.interactive.button_reply.title;
+  // Handle interactive list replies (user selected from a list)
+  if (message?.interactive?.list_reply?.title) return message.interactive.list_reply.title;
   if (message?.text?.body) return message.text.body;
   if (message?.caption) return message.caption;
   if (message?.image?.caption) return message.image.caption;

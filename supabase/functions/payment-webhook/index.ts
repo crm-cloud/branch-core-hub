@@ -178,6 +178,87 @@ serve(async (req: Request) => {
       }
 
       const event = payload.event;
+
+      // Handle payment_link.paid event
+      if (event === "payment_link.paid") {
+        const plinkEntity = payload.payload?.payment_link?.entity;
+        const paymentEntity = payload.payload?.payment?.entity;
+        const referenceId = plinkEntity?.reference_id;
+        const rzpAmount = (paymentEntity?.amount || plinkEntity?.amount || 0) / 100;
+        const paymentId = paymentEntity?.id || plinkEntity?.id;
+
+        console.log("payment_link.paid received, reference_id:", referenceId, "amount:", rzpAmount);
+
+        if (referenceId && isValidUUID(referenceId)) {
+          // Use record_payment RPC for atomic invoice update + membership activation
+          const { data: invoice } = await supabase
+            .from("invoices")
+            .select("id, member_id, branch_id")
+            .eq("id", referenceId)
+            .single();
+
+          if (invoice) {
+            const { data: payResult } = await supabase.rpc("record_payment", {
+              p_branch_id: invoice.branch_id,
+              p_invoice_id: invoice.id,
+              p_member_id: invoice.member_id,
+              p_amount: rzpAmount,
+              p_payment_method: "online",
+              p_transaction_id: paymentId,
+              p_notes: "Auto-recorded via Razorpay Payment Link",
+            });
+
+            console.log("record_payment result:", JSON.stringify(payResult));
+
+            // Update existing payment_transaction if exists
+            await supabase
+              .from("payment_transactions")
+              .update({
+                gateway_payment_id: paymentId,
+                status: "captured",
+                webhook_data: payload,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("gateway_order_id", plinkEntity?.id)
+              .eq("gateway", "razorpay");
+
+            // If invoice has membership items, trigger MIPS sync
+            const { data: membershipItems } = await supabase
+              .from("invoice_items")
+              .select("reference_id")
+              .eq("invoice_id", referenceId)
+              .in("reference_type", ["membership", "membership_renewal"]);
+
+            if (membershipItems && membershipItems.length > 0 && invoice.member_id) {
+              try {
+                const syncUrl = `${supabaseUrl}/functions/v1/sync-to-mips`;
+                await fetch(syncUrl, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${supabaseServiceKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    action: "sync_member",
+                    member_id: invoice.member_id,
+                    branch_id: invoice.branch_id,
+                  }),
+                });
+                console.log("MIPS sync triggered for member:", invoice.member_id);
+              } catch (syncErr) {
+                console.error("MIPS sync trigger failed:", syncErr);
+              }
+            }
+          }
+        }
+
+        return new Response(
+          JSON.stringify({ status: "success" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Handle standard payment.captured / payment.authorized / payment.failed
       const paymentEntity = payload.payload?.payment?.entity as RazorpayPaymentEntity;
 
       if (!paymentEntity) {
@@ -194,7 +275,7 @@ serve(async (req: Request) => {
       transactionData = {
         gateway_order_id: paymentEntity.order_id,
         gateway_payment_id: paymentEntity.id,
-        amount: paymentEntity.amount / 100, // Razorpay sends in paise
+        amount: paymentEntity.amount / 100,
         status,
         webhook_data: payload,
       };
@@ -233,7 +314,7 @@ serve(async (req: Request) => {
       transactionData = {
         gateway_order_id: data.merchantTransactionId,
         gateway_payment_id: data.transactionId,
-        amount: data.amount / 100, // PhonePe sends in paise
+        amount: data.amount / 100,
         status,
         webhook_data: payload,
       };
