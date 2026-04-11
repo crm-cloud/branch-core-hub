@@ -4254,6 +4254,7 @@ export type Database = {
           currency: string | null
           fiscal_year_start: string | null
           id: string
+          lead_nurture_config: Json | null
           logo_url: string | null
           name: string | null
           session_timeout_hours: number | null
@@ -4269,6 +4270,7 @@ export type Database = {
           currency?: string | null
           fiscal_year_start?: string | null
           id?: string
+          lead_nurture_config?: Json | null
           logo_url?: string | null
           name?: string | null
           session_timeout_hours?: number | null
@@ -4284,6 +4286,7 @@ export type Database = {
           currency?: string | null
           fiscal_year_start?: string | null
           id?: string
+          lead_nurture_config?: Json | null
           logo_url?: string | null
           name?: string | null
           session_timeout_hours?: number | null
@@ -6211,6 +6214,8 @@ export type Database = {
           created_at: string | null
           id: string
           is_unread: boolean | null
+          last_nurture_at: string | null
+          nurture_retry_count: number | null
           paused_at: string | null
           paused_by: string | null
           phone_number: string
@@ -6223,6 +6228,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_unread?: boolean | null
+          last_nurture_at?: string | null
+          nurture_retry_count?: number | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number: string
@@ -6235,6 +6242,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_unread?: boolean | null
+          last_nurture_at?: string | null
+          nurture_retry_count?: number | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number?: string
