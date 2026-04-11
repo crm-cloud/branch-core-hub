@@ -273,6 +273,33 @@ export default function WhatsAppChatPage() {
     enabled: !!selectedContact,
   });
 
+  // AI Tool Logs for this contact (for thought banners)
+  const { data: aiToolLogs = [] } = useQuery({
+    queryKey: ['ai-tool-logs-chat', selectedContact?.phone_number],
+    queryFn: async () => {
+      if (!selectedContact) return [];
+      const { data, error } = await supabase
+        .from('ai_tool_logs')
+        .select('*')
+        .eq('phone_number', selectedContact.phone_number)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedContact,
+    refetchInterval: 15000,
+  });
+
+  // Helper: find tool logs near a message timestamp
+  const getToolLogsForMessage = useCallback((msgCreatedAt: string) => {
+    const msgTime = new Date(msgCreatedAt).getTime();
+    return aiToolLogs.filter((log: any) => {
+      const logTime = new Date(log.created_at).getTime();
+      return Math.abs(logTime - msgTime) < 10000; // within 10 seconds
+    });
+  }, [aiToolLogs]);
+
   // Send message mutation
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
