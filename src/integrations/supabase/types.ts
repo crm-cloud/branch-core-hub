@@ -247,6 +247,59 @@ export type Database = {
           },
         ]
       }
+      ai_tool_logs: {
+        Row: {
+          arguments: Json | null
+          branch_id: string | null
+          chat_id: string | null
+          created_at: string
+          error_message: string | null
+          execution_time_ms: number | null
+          id: string
+          message_id: string | null
+          phone_number: string | null
+          result: Json | null
+          status: string
+          tool_name: string
+        }
+        Insert: {
+          arguments?: Json | null
+          branch_id?: string | null
+          chat_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          id?: string
+          message_id?: string | null
+          phone_number?: string | null
+          result?: Json | null
+          status?: string
+          tool_name: string
+        }
+        Update: {
+          arguments?: Json | null
+          branch_id?: string | null
+          chat_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          id?: string
+          message_id?: string | null
+          phone_number?: string | null
+          result?: Json | null
+          status?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       announcements: {
         Row: {
           branch_id: string | null
@@ -4264,6 +4317,7 @@ export type Database = {
       }
       organization_settings: {
         Row: {
+          ai_tool_config: Json | null
           branch_id: string | null
           created_at: string
           currency: string | null
@@ -4280,6 +4334,7 @@ export type Database = {
           whatsapp_ai_config: Json | null
         }
         Insert: {
+          ai_tool_config?: Json | null
           branch_id?: string | null
           created_at?: string
           currency?: string | null
@@ -4296,6 +4351,7 @@ export type Database = {
           whatsapp_ai_config?: Json | null
         }
         Update: {
+          ai_tool_config?: Json | null
           branch_id?: string | null
           created_at?: string
           currency?: string | null
