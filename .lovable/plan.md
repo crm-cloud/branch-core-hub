@@ -1,109 +1,88 @@
 
 
-# WhatsApp WABA ID, Lead Data Mapping, Branch Filter Fix & Chat UX
+# WhatsApp Templates Audit, Unread Badge Fix, Attachments, Lead Retention & Staff Handoff
 
-## Summary of Issues Found
+## Findings
 
-1. **WABA ID field exists** as "Business Account ID" in the schema — but the label is unclear. User's value `4028095467334645` is being used but Meta rejects it. Need to rename the label to explicitly say "WABA ID" and add validation hint.
+### 1. Template Rejection Root Cause: INVALID_FORMAT
+Meta requires **numbered placeholders** (`{{1}}`, `{{2}}`) — NOT named ones (`{{member_name}}`). All 3 rejected templates used `{{member_name}}`, `{{member_code}}`, `{{end_date}}`, etc. The edge function `manage-whatsapp-templates` sends `body_text` directly with these named vars. Meta rejects them instantly.
 
-2. **AI lead data gaps**: The AI captured `fitness_goal` and `fitness_experience` correctly, but `budget`, `expected_start_date`, `preferred_time` are null. The AI asked about "Preferred Membership Duration" instead of these fields because the system prompt field IDs don't match well. The field mapping in the prompt uses `start_date` and `budget` but the AI interprets them loosely.
+**Fix:** Delete all existing templates. Re-create them with proper Meta-compatible format using `{{1}}`, `{{2}}`, `{{3}}` numbered params. Also update the edge function template create to auto-convert named vars to numbered ones before submission.
 
-3. **"All Branches" shows wrong count**: `effectiveBranchId` returns `branches[0]?.id` when "All Branches" is selected. The `fetchLeads` call filters by this single branch ID, so it shows 23 (BRANCH 2) instead of all 24. Fix: pass `undefined` when "All Branches" is selected, so no branch filter is applied.
+### 2. Sidebar Unread Badge — Actually Working Correctly
+The DB shows 1 record with `is_unread: true` (`+919887601200`). The badge is correct. However, the **auto-read mutation** may not be triggering properly when you select this chat, OR this is a stale phone number variant (`+919887601200` vs `919887601200`). Need to normalize phone number matching in the auto-read logic and ensure it fires.
 
-4. **No lead assignment UI**: The Kanban/List views show leads but there's no way to assign an owner from the main list. Need a quick-assign dropdown.
+### 3. Attachment/Document Sending
+The `send-whatsapp` edge function handles `image` type but **NOT `document`** type. When a PDF/DOCX is uploaded, the frontend sets `message_type: 'document'` but the edge function falls through to `text` type (the else branch). Need to add a `document` payload branch in the edge function.
 
-5. **WhatsApp contact list styling**: `text-xs text-muted-foreground truncate mt-0.5` on last message preview is fine functionally, but user wants it improved visually.
+### 4. Lead Retention (AI Follow-up After Silence)
+Need a configurable "Lead Nurture Timer" — if a lead doesn't reply within X hours (configurable), the AI sends a gentle follow-up. This requires:
+- A new `lead_followup_rules` config in `organization_settings`
+- A scheduled edge function (or cron) that checks for stale conversations and sends follow-ups
+- Configurable delay (e.g., 2h, 6h, 12h) and max retries (e.g., 2 attempts within 24h)
 
-6. **Interactive WhatsApp buttons**: Meta Cloud API supports Interactive Messages (buttons with max 3 options, or list messages with up to 10 options). The AI can send these instead of plain text questions.
+### 5. Staff Chat Handoff — Currently Working But Limited
+Transfer to Staff **does work** — it updates `assigned_to` and sets `bot_active: false`. However:
+- No notification is sent to the assigned staff member
+- No filtering by "My Chats" for the assigned staff
+- Staff can't see which chats are assigned to them specifically
+
+### 6. Professional Meta-Compatible Templates for Incline Fitness
+Will create ~15 WhatsApp templates using UTILITY and MARKETING categories with proper `{{1}}` numbered placeholders.
 
 ---
 
-## Epic 1: WABA ID Label Fix + Validation
+## Implementation Plan
 
-**File:** `src/config/providerSchemas.ts`
+### Epic 1: Delete All Templates & Re-create Meta-Compatible Ones
+**Migration SQL:**
+- DELETE all rows from `templates` table
+- INSERT professional templates with proper `{{1}}`, `{{2}}` numbered placeholders
+- Templates categorized: UTILITY (payment, booking, freeze/unfreeze, welcome) and MARKETING (birthday, referral, renewal, missed workout)
 
-Change line 74 from:
+**Template Examples:**
 ```
-{ key: 'business_account_id', label: 'Business Account ID', ...}
+Welcome (UTILITY):
+"Welcome to Incline Fitness, {{1}}! 🏋️ Your membership ({{2}}) is active until {{3}}. Member ID: {{4}}. We're excited to have you! Visit us anytime — our team is here to support your fitness journey."
+
+Payment Received (UTILITY):
+"Hi {{1}}, your payment of ₹{{2}} has been received. Invoice: {{3}}. Date: {{4}}. Thank you for staying active with Incline Fitness! 💪"
 ```
-To:
-```
-{ key: 'business_account_id', label: 'WhatsApp Business Account ID (WABA ID)', placeholder: 'From Meta Business Suite → Business Settings → WhatsApp Accounts', ...}
-```
 
-## Epic 2: Fix "All Branches" Lead Count Bug
+**Edge function fix:** Update `manage-whatsapp-templates` create action to auto-map named vars to numbered before sending to Meta.
 
-**File:** `src/pages/Leads.tsx` (lines 66-75)
+### Epic 2: Fix Unread Badge Sync
+- Normalize phone numbers in auto-read mutation (strip `+` prefix)
+- Add `refetchInterval: 30000` to the sidebar unread query as backup
+- Fix the auto-read in `WhatsAppChat.tsx` to match both `+91xxx` and `91xxx` formats
 
-The query passes `effectiveBranchId` which resolves to the first branch when "All Branches" is selected. Change to use `branchFilter` (which is `undefined` for "All Branches") instead of `effectiveBranchId`:
-
+### Epic 3: Add Document Type to send-whatsapp
+Add `document` branch in the edge function:
 ```typescript
-const { data: leads = [] } = useQuery({
-  queryKey: ['leads', branchFilter],
-  queryFn: () => leadService.fetchLeads(branchFilter || undefined),
-  ...
-});
-const { data: stats } = useQuery({
-  queryKey: ['lead-stats', branchFilter],
-  queryFn: () => leadService.getLeadStats(branchFilter || undefined),
-  ...
-});
+} else if (message_type === "document") {
+  metaPayload.type = "document";
+  metaPayload.document = {
+    link: media_url,
+    ...(caption ? { caption } : { filename: "document" }),
+  };
+}
 ```
 
-This ensures "All Branches" shows ALL leads (24), and selecting "INCLINE" shows 1.
+### Epic 4: Lead Retention — Configurable AI Follow-up
+- Add `lead_nurture_config` JSONB column to `organization_settings` with defaults: `{ enabled: true, delay_hours: 4, max_retries: 2, message_template: "..." }`
+- Create `lead-nurture-followup` edge function that:
+  1. Queries `whatsapp_messages` for leads where last inbound > X hours ago AND outbound was last (AI asked a question)
+  2. Sends a gentle nudge via the AI
+  3. Tracks retry count in `whatsapp_chat_settings` metadata
+- Add UI in Settings > Marketing & Retention tab with configurable delay, max retries, and follow-up message
 
-## Epic 3: Improve AI Lead Capture Field Mapping
+### Epic 5: Staff Handoff Improvements
+- Add "My Chats" filter tab (filters by `assigned_to = current_user_id`)
+- Send in-app notification to assigned staff when chat is transferred
+- Show "Assigned to: [Name]" badge in the chat list card (not just header)
 
-**File:** `supabase/functions/whatsapp-webhook/index.ts` (lines 467-480)
-
-The system prompt field labels don't align with what the AI collects. Fix the field label mapping and the JSON extraction mapping:
-
-- Map `budget` → "Monthly Budget (in ₹)"
-- Map `start_date` → "When do you plan to start? (date)"
-- Map `preferred_time` → "Preferred workout time slot"
-- Map `experience` → "Fitness Experience Level (Beginner/Intermediate/Advanced)"
-
-Also improve the extraction mapping (line 623-628) to catch more variations:
-```typescript
-budget: parsed.data.budget || parsed.data.monthly_budget || null,
-expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || parsed.data.starting_date || null,
-preferred_time: parsed.data.preferred_time || parsed.data.time || parsed.data.workout_time || null,
-```
-
-## Epic 4: Lead Assignment UI in Kanban/List
-
-**File:** `src/components/leads/LeadKanban.tsx` and `src/components/leads/LeadList.tsx`
-
-Add an "Assign" quick-action button on each lead card/row. On click, show a small dropdown of staff members (from `user_roles` where role in owner/admin/manager/staff joined with profiles). On select, call `leadService.assignLead(leadId, staffId)`.
-
-Also show the assigned owner's avatar/initials on each lead card when `owner_id` is set.
-
-## Epic 5: WhatsApp Contact List Styling
-
-**File:** `src/pages/WhatsAppChat.tsx` (line 687)
-
-Change the last message preview from truncated single-line to a more polished two-line preview:
-```
-className="text-[13px] text-muted-foreground line-clamp-1 mt-0.5 leading-snug"
-```
-
-Also improve contact name styling (line 680) — remove conflicting `truncate break-words` (these conflict), use just `truncate`.
-
-## Epic 6: Interactive WhatsApp Buttons (Scaffold)
-
-Meta Cloud API supports Interactive Messages. When the AI wants to ask multiple-choice questions, instead of sending plain text, send an interactive message with buttons or a list.
-
-**Approach:**
-- Update the AI system prompt to output a special JSON format when it wants to present options:
-  ```json
-  {"type":"interactive","body":"How would you describe your fitness experience?","buttons":["Beginner","Intermediate","Advanced"]}
-  ```
-- In `whatsapp-webhook/index.ts`, detect this JSON in the AI reply, and send it via Meta's interactive message API instead of plain text
-- Meta allows max 3 buttons per interactive message, or a list message with up to 10 items
-
-**File changes:**
-- `supabase/functions/whatsapp-webhook/index.ts`: Add interactive message detection and Meta API call with `type: "interactive"` payload
-- Update `sendAiReply` to check for interactive JSON and dispatch accordingly
+### Epic 6: Template Variable Mapping in Edge Function
+Update `manage-whatsapp-templates` to store a `variable_mapping` alongside each template so the system knows `{{1}} = member_name`, `{{2}} = plan_name`, etc. This mapping is used when sending templates via `send-whatsapp`.
 
 ---
 
@@ -111,10 +90,12 @@ Meta Cloud API supports Interactive Messages. When the AI wants to ask multiple-
 
 | File | Change |
 |---|---|
-| `src/config/providerSchemas.ts` | Rename WABA ID label |
-| `src/pages/Leads.tsx` | Use `branchFilter` instead of `effectiveBranchId` for queries |
-| `supabase/functions/whatsapp-webhook/index.ts` | Fix field labels in prompt, improve extraction mapping, add interactive message support |
-| `src/components/leads/LeadKanban.tsx` | Add owner assignment dropdown + avatar display |
-| `src/components/leads/LeadList.tsx` | Add owner assignment column |
-| `src/pages/WhatsAppChat.tsx` | Improve contact list text styling |
+| **Migration** | Delete all templates, insert 15+ Meta-compatible templates with `{{1}}` format |
+| **Migration** | Add `lead_nurture_config` to `organization_settings`, add `nurture_retry_count` to `whatsapp_chat_settings` |
+| `supabase/functions/send-whatsapp/index.ts` | Add `document` message type support |
+| `supabase/functions/manage-whatsapp-templates/index.ts` | Auto-convert named vars to numbered on create |
+| `supabase/functions/lead-nurture-followup/index.ts` | **New** — scheduled follow-up for silent leads |
+| `src/pages/WhatsAppChat.tsx` | Fix phone normalization in auto-read, add "My Chats" tab |
+| `src/components/layout/AppSidebar.tsx` | Add refetchInterval backup for unread count |
+| `src/components/settings/RetentionCampaignManager.tsx` | Add Lead Nurture config UI section |
 
