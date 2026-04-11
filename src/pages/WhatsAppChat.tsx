@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +65,7 @@ interface ChatSettingsRow {
   phone_number: string;
   bot_active: boolean | null;
   is_unread: boolean | null;
+  assigned_to: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,12 +95,17 @@ function isAiNotConfiguredError(msg: string): boolean {
   );
 }
 
-type ChatFilter = 'all' | 'unread' | 'needs_human';
+type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats';
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/^\+/, '');
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function WhatsAppChatPage() {
   const { selectedBranch } = useBranchContext();
+  const { user } = useAuth();
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
@@ -165,7 +172,7 @@ export default function WhatsAppChatPage() {
       if (!selectedBranch || selectedBranch === 'all') return [];
       const { data, error } = await supabase
         .from('whatsapp_chat_settings')
-        .select('phone_number, bot_active, is_unread')
+        .select('phone_number, bot_active, is_unread, assigned_to')
         .eq('branch_id', selectedBranch);
       if (error) throw error;
       return (data ?? []) as ChatSettingsRow[];
@@ -237,9 +244,10 @@ export default function WhatsAppChatPage() {
     },
   });
 
-  // Enrich contacts with settings
+  // Enrich contacts with settings (normalize phone for matching)
   const enrichedContacts: ChatContact[] = contacts.map(c => {
-    const s = settingsMap.get(c.phone_number);
+    const normalized = normalizePhone(c.phone_number);
+    const s = settingsMap.get(c.phone_number) || settingsMap.get(normalized) || settingsMap.get('+' + normalized);
     return {
       ...c,
       is_unread: s?.is_unread ?? false,
@@ -355,6 +363,10 @@ export default function WhatsAppChatPage() {
     if (!matchesSearch) return false;
     if (chatFilter === 'unread') return c.is_unread === true;
     if (chatFilter === 'needs_human') return c.bot_active === false;
+    if (chatFilter === 'my_chats') {
+      const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
+      return s?.assigned_to === user?.id;
+    }
     return true;
   });
 
@@ -518,10 +530,12 @@ export default function WhatsAppChatPage() {
   const handleSelectContact = async (contact: ChatContact) => {
     setSelectedContact(contact);
     if (contact.is_unread && selectedBranch && selectedBranch !== 'all') {
+      // Normalize phone to match both +91xxx and 91xxx formats
+      const normalized = normalizePhone(contact.phone_number);
       await supabase.from('whatsapp_chat_settings')
         .update({ is_unread: false })
-        .eq('phone_number', contact.phone_number)
-        .eq('branch_id', selectedBranch);
+        .eq('branch_id', selectedBranch)
+        .or(`phone_number.eq.${contact.phone_number},phone_number.eq.${normalized},phone_number.eq.+${normalized}`);
       queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
       queryClient.invalidateQueries({ queryKey: ['whatsapp-unread-count'] });
     }
@@ -563,6 +577,10 @@ export default function WhatsAppChatPage() {
   // Triage tab counts
   const unreadCount = enrichedContacts.filter(c => c.is_unread).length;
   const needsHumanCount = enrichedContacts.filter(c => c.bot_active === false).length;
+  const myChatsCount = enrichedContacts.filter(c => {
+    const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
+    return s?.assigned_to === user?.id;
+  }).length;
 
   return (
     <AppLayout>
@@ -608,8 +626,9 @@ export default function WhatsAppChatPage() {
               <div className="flex gap-1">
                 {([
                   { key: 'all' as ChatFilter, label: 'All', count: contacts.length },
+                  { key: 'my_chats' as ChatFilter, label: 'My Chats', count: myChatsCount },
                   { key: 'unread' as ChatFilter, label: 'Unread', count: unreadCount },
-                  { key: 'needs_human' as ChatFilter, label: 'Needs Human', count: needsHumanCount },
+                  { key: 'needs_human' as ChatFilter, label: 'Human', count: needsHumanCount },
                 ]).map(tab => (
                   <button
                     key={tab.key}
@@ -1103,6 +1122,15 @@ export default function WhatsAppChatPage() {
                       },
                       { onConflict: 'branch_id,phone_number' }
                     );
+                    // Send in-app notification to assigned staff
+                    await supabase.from('notifications').insert({
+                      user_id: staff.id,
+                      branch_id: selectedBranch,
+                      title: 'WhatsApp Chat Assigned',
+                      message: `A chat with ${selectedContact.contact_name || selectedContact.phone_number} has been assigned to you.`,
+                      type: 'info',
+                      category: 'communication',
+                    });
                     setBotActive(false);
                     queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
                     setTransferStaffOpen(false);

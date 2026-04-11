@@ -51,6 +51,7 @@ function useWhatsAppUnreadCount() {
       return count ?? 0;
     },
     staleTime: 30 * 1000,
+    refetchInterval: 30000,
   });
 }
 

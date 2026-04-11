@@ -148,6 +148,12 @@ serve(async (req) => {
         link: media_url,
         ...(caption ? { caption } : {}),
       };
+    } else if (message_type === "document") {
+      metaPayload.type = "document";
+      metaPayload.document = {
+        link: media_url,
+        ...(caption ? { caption } : { filename: body.filename || "document" }),
+      };
     } else if (message_type === "template") {
       metaPayload.type = "template";
       metaPayload.template = {
