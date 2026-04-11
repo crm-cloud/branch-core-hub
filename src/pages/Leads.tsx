@@ -362,6 +362,55 @@ export default function LeadsPage() {
             </CardContent>
           </Card>
         )}
+        {viewMode === 'ai_audit' && (
+          <Card className="rounded-2xl border-border/50 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-primary" />
+                AI Capture Audit — Last 24 Hours
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                WhatsApp conversations from non-members/non-leads that may need manual follow-up
+              </p>
+            </CardHeader>
+            <CardContent>
+              {aiAuditLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading...</div>
+              ) : aiAuditData.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No uncaptured conversations in the last 24 hours ✓
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {aiAuditData.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{item.contact_name || 'Unknown'}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{item.phone}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{item.last_message}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-3">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(item.last_at), 'HH:mm')}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-lg"
+                          onClick={() => {
+                            setShowAddDrawer(true);
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Create Lead
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Drawers */}
