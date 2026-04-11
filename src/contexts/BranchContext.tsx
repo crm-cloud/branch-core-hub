@@ -30,8 +30,15 @@ const BranchContext = createContext<BranchContextType | undefined>(undefined);
 export function BranchProvider({ children }: { children: ReactNode }) {
   const { data: allBranches = [], isLoading: branchesLoading, error: branchesError, refetch: refetchBranches } = useBranches();
   const { user, roles, hasAnyRole } = useAuth();
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedBranch, setSelectedBranchState] = useState<string>(() => {
+    return localStorage.getItem('incline-selected-branch') || 'all';
+  });
   const [initialized, setInitialized] = useState(false);
+
+  const setSelectedBranch = (id: string) => {
+    setSelectedBranchState(id);
+    localStorage.setItem('incline-selected-branch', id);
+  };
 
   const isOwnerOrAdmin = hasAnyRole(['owner', 'admin']);
   const isManager = hasAnyRole(['manager']);

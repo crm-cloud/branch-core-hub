@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { WhatsAppAutomations } from '@/components/settings/WhatsAppAutomations';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -364,6 +365,7 @@ function LeadNurtureConfig() {
   if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
 
   return (
+    <>
     <Card className="rounded-2xl shadow-lg shadow-primary/5">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -413,5 +415,8 @@ function LeadNurtureConfig() {
         </Button>
       </CardContent>
     </Card>
+
+    <WhatsAppAutomations />
+    </>
   );
 }
