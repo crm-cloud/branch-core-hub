@@ -63,7 +63,6 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
     },
     onError: () => toast.error('Failed to assign lead'),
   });
-  const totalPages = Math.ceil(leads.length / PAGE_SIZE);
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
