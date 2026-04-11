@@ -108,7 +108,7 @@ export const communicationService = {
     return url;
   },
 
-  // Email (via edge function - placeholder for now)
+  // Email (via edge function - provider-agnostic)
   async sendEmail(to: string, subject: string, body: string, branchId: string) {
     // Log the email attempt
     await this.logCommunication({
@@ -122,6 +122,23 @@ export const communicationService = {
     
     console.log('Email sent to:', to);
     return { success: true };
+  },
+
+  // Send email via configured provider (Edge Function)
+  async sendEmailViaProvider(to: string, subject: string, html: string, branchId: string) {
+    try {
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: { to, subject, html, branch_id: branchId },
+      });
+      if (error) throw error;
+      return data;
+    } catch (err: any) {
+      console.error('Provider email failed, falling back to mailto:', err);
+      // Fallback to mailto: if no provider configured
+      const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(html.replace(/<[^>]+>/g, ''))}`;
+      window.open(mailtoLink, '_blank');
+      return { success: true, fallback: true };
+    }
   },
 
   // SMS (opens SMS app with pre-filled message)

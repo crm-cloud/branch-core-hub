@@ -128,8 +128,12 @@ export function SmartAssistDrawer({ open, onOpenChange, member, branchId }: Smar
           setSending(false);
           return;
         }
-        const subject = encodeURIComponent('We miss you at the gym!');
-        window.open(`mailto:${member.email}?subject=${subject}&body=${encodeURIComponent(message)}`, '_blank');
+        await communicationService.sendEmailViaProvider(
+          member.email,
+          'We miss you at the gym!',
+          `<p>${message.replace(/\n/g, '<br>')}</p>`,
+          branchId || ''
+        );
       }
 
       // Log nudge

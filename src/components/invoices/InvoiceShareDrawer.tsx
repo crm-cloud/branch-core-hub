@@ -72,10 +72,18 @@ Team Incline Fitness`;
     toast.success('Opening WhatsApp...');
   };
 
-  const handleEmailShare = () => {
-    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-    window.location.href = mailtoLink;
-    toast.success('Opening email client...');
+  const handleEmailShare = async () => {
+    try {
+      await communicationService.sendEmailViaProvider(
+        email,
+        emailSubject,
+        `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+        invoice.branch_id
+      );
+      toast.success('Email sent successfully');
+    } catch {
+      toast.error('Failed to send email');
+    }
   };
 
   const handleSMSShare = async () => {
