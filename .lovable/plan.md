@@ -1,88 +1,129 @@
 
 
-# WhatsApp Templates Audit, Unread Badge Fix, Attachments, Lead Retention & Staff Handoff
+# Deep Audit & Comprehensive Upgrade: Templates, Phone Formatting, Sidebar, Branch/Theme Persistence & Member Self-Service
 
-## Findings
+## Summary
 
-### 1. Template Rejection Root Cause: INVALID_FORMAT
-Meta requires **numbered placeholders** (`{{1}}`, `{{2}}`) — NOT named ones (`{{member_name}}`). All 3 rejected templates used `{{member_name}}`, `{{member_code}}`, `{{end_date}}`, etc. The edge function `manage-whatsapp-templates` sends `body_text` directly with these named vars. Meta rejects them instantly.
-
-**Fix:** Delete all existing templates. Re-create them with proper Meta-compatible format using `{{1}}`, `{{2}}`, `{{3}}` numbered params. Also update the edge function template create to auto-convert named vars to numbered ones before submission.
-
-### 2. Sidebar Unread Badge — Actually Working Correctly
-The DB shows 1 record with `is_unread: true` (`+919887601200`). The badge is correct. However, the **auto-read mutation** may not be triggering properly when you select this chat, OR this is a stale phone number variant (`+919887601200` vs `919887601200`). Need to normalize phone number matching in the auto-read logic and ensure it fires.
-
-### 3. Attachment/Document Sending
-The `send-whatsapp` edge function handles `image` type but **NOT `document`** type. When a PDF/DOCX is uploaded, the frontend sets `message_type: 'document'` but the edge function falls through to `text` type (the else branch). Need to add a `document` payload branch in the edge function.
-
-### 4. Lead Retention (AI Follow-up After Silence)
-Need a configurable "Lead Nurture Timer" — if a lead doesn't reply within X hours (configurable), the AI sends a gentle follow-up. This requires:
-- A new `lead_followup_rules` config in `organization_settings`
-- A scheduled edge function (or cron) that checks for stale conversations and sends follow-ups
-- Configurable delay (e.g., 2h, 6h, 12h) and max retries (e.g., 2 attempts within 24h)
-
-### 5. Staff Chat Handoff — Currently Working But Limited
-Transfer to Staff **does work** — it updates `assigned_to` and sets `bot_active: false`. However:
-- No notification is sent to the assigned staff member
-- No filtering by "My Chats" for the assigned staff
-- Staff can't see which chats are assigned to them specifically
-
-### 6. Professional Meta-Compatible Templates for Incline Fitness
-Will create ~15 WhatsApp templates using UTILITY and MARKETING categories with proper `{{1}}` numbered placeholders.
+Address 8 major areas: expand WhatsApp/email templates for all business operations, auto-prefix +91 on phone inputs, fix branch/theme persistence on refresh, improve sidebar scrollability, plan WhatsApp automation triggers, and scaffold member self-service chatbot.
 
 ---
 
-## Implementation Plan
+## Epic 1: Comprehensive WhatsApp Template Library
 
-### Epic 1: Delete All Templates & Re-create Meta-Compatible Ones
-**Migration SQL:**
-- DELETE all rows from `templates` table
-- INSERT professional templates with proper `{{1}}`, `{{2}}` numbered placeholders
-- Templates categorized: UTILITY (payment, booking, freeze/unfreeze, welcome) and MARKETING (birthday, referral, renewal, missed workout)
+**Problem:** Only ~15 templates exist. Missing critical ones for classes, sauna/ice bath, PT sessions, orders, leads, etc. Meta requires numbered `{{1}}` placeholders and **sample text** for each variable — the rejection screenshot shows "Template variables without sample text."
 
-**Template Examples:**
-```
-Welcome (UTILITY):
-"Welcome to Incline Fitness, {{1}}! 🏋️ Your membership ({{2}}) is active until {{3}}. Member ID: {{4}}. We're excited to have you! Visit us anytime — our team is here to support your fitness journey."
+**Action — Migration SQL:**
+Delete existing templates from `templates` table (local CRM templates) and re-insert a comprehensive set of ~25+ professional templates covering:
 
-Payment Received (UTILITY):
-"Hi {{1}}, your payment of ₹{{2}} has been received. Invoice: {{3}}. Date: {{4}}. Thank you for staying active with Incline Fitness! 💪"
-```
+| Category | Templates |
+|---|---|
+| **Welcome** | New Member Welcome, Trial Day Welcome |
+| **Payments** | Payment Received, Payment Reminder, Payment Overdue, Refund Processed |
+| **Invoices** | Invoice Share, Invoice Reminder |
+| **Membership** | Renewal Reminder (7d), Renewal Reminder (1d), Membership Expired, Freeze Confirmation, Unfreeze Confirmation |
+| **Classes** | Class Booking Confirmed, Class Booking Cancelled, Class Reminder (1hr before) |
+| **Facilities** | Sauna Booking Confirmed, Ice Bath Booking Confirmed, Facility Slot Reminder |
+| **PT Sessions** | PT Session Booked, PT Session Reminder, PT Pack Expiring |
+| **Leads** | Lead Welcome, Lead Follow-up, Lead Offer |
+| **General** | Birthday Wish, Referral Reward, Missed Workout Nudge, Feedback Request |
 
-**Edge function fix:** Update `manage-whatsapp-templates` create action to auto-map named vars to numbered before sending to Meta.
+Each template will use `{{1}}`, `{{2}}` numbered placeholders with a `variables` JSON mapping (e.g., `["member_name", "plan_name", "end_date"]`).
 
-### Epic 2: Fix Unread Badge Sync
-- Normalize phone numbers in auto-read mutation (strip `+` prefix)
-- Add `refetchInterval: 30000` to the sidebar unread query as backup
-- Fix the auto-read in `WhatsAppChat.tsx` to match both `+91xxx` and `91xxx` formats
+**Edge Function Fix:** Update `manage-whatsapp-templates` to include **example values** in the Meta API `components` payload — Meta requires sample text per variable or it rejects.
 
-### Epic 3: Add Document Type to send-whatsapp
-Add `document` branch in the edge function:
-```typescript
-} else if (message_type === "document") {
-  metaPayload.type = "document";
-  metaPayload.document = {
-    link: media_url,
-    ...(caption ? { caption } : { filename: "document" }),
-  };
+```json
+{
+  "type": "BODY",
+  "text": "Hi {{1}}, your payment of ₹{{2}} received.",
+  "example": { "body_text": [["Rahul", "5000"]] }
 }
 ```
 
-### Epic 4: Lead Retention — Configurable AI Follow-up
-- Add `lead_nurture_config` JSONB column to `organization_settings` with defaults: `{ enabled: true, delay_hours: 4, max_retries: 2, message_template: "..." }`
-- Create `lead-nurture-followup` edge function that:
-  1. Queries `whatsapp_messages` for leads where last inbound > X hours ago AND outbound was last (AI asked a question)
-  2. Sends a gentle nudge via the AI
-  3. Tracks retry count in `whatsapp_chat_settings` metadata
-- Add UI in Settings > Marketing & Retention tab with configurable delay, max retries, and follow-up message
+## Epic 2: Matching Email Templates
 
-### Epic 5: Staff Handoff Improvements
-- Add "My Chats" filter tab (filters by `assigned_to = current_user_id`)
-- Send in-app notification to assigned staff when chat is transferred
-- Show "Assigned to: [Name]" badge in the chat list card (not just header)
+Create email equivalents for every WhatsApp template in `src/data/messageTemplates.ts`. These are local CRM templates used for sending via SMTP (not Lovable transactional emails). Add email templates for:
+- Payment Received, Payment Reminder, Renewal Reminder, Class Booking, Facility Booking, PT Session, Birthday, Referral, etc.
+- Each with `subject` and `content` fields, using `{{name}}`, `{{amount}}` style placeholders.
 
-### Epic 6: Template Variable Mapping in Edge Function
-Update `manage-whatsapp-templates` to store a `variable_mapping` alongside each template so the system knows `{{1}} = member_name`, `{{2}} = plan_name`, etc. This mapping is used when sending templates via `send-whatsapp`.
+## Epic 3: India Phone Number Auto-Prefix (+91)
+
+**Problem:** Phone inputs across the app don't auto-prefix `+91`. Users must type it manually.
+
+**Action:** Create a reusable `PhoneInput` component with:
+- A fixed `+91` prefix badge/label before the input
+- Auto-strip leading `+91`/`91`/`0` when pasting
+- Store the clean 10-digit number; format with `+91` only when sending
+
+**Files to update** (replace raw `<Input>` for phone fields):
+- `AddMemberDrawer.tsx`, `AddLeadDrawer.tsx`, `AddEmployeeDrawer.tsx`, `AddTrainerDrawer.tsx`, `EditProfileDrawer.tsx`, `MemberRegistrationForm.tsx`, `RegisterModal.tsx`, `WhatsAppChat.tsx` (new chat input), `ConvertMemberDrawer.tsx`
+
+Also normalize phone in services (`sendWhatsApp`, `send-whatsapp` edge function) to always prepend `91` if missing.
+
+## Epic 4: Fix Branch Selection Persistence on Refresh
+
+**Root Cause:** `BranchContext` uses `useState('all')` — no localStorage persistence. On page refresh, it resets to `'all'`.
+
+**Fix in `BranchContext.tsx`:**
+```typescript
+const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+  return localStorage.getItem('incline-selected-branch') || 'all';
+});
+
+// In setSelectedBranch wrapper:
+const handleSetBranch = (id: string) => {
+  setSelectedBranch(id);
+  localStorage.setItem('incline-selected-branch', id);
+};
+```
+
+## Epic 5: Fix Theme Persistence on Login
+
+**Root Cause:** `ThemeContext` already reads from localStorage on init, so the theme SHOULD persist. The likely issue is that the `ThemeProvider` mounts before localStorage is populated, or there's a race condition on login redirect.
+
+**Fix:** Ensure `ThemeProvider` reads localStorage synchronously in the initial state (it already does — verify no clearing on login). Also check if `AuthContext` or login flow clears localStorage. If `signOut` clears all localStorage, make it selective.
+
+**Files:** `AuthContext.tsx` — audit `signOut` for `localStorage.clear()` calls. If found, change to only clear auth-related keys.
+
+## Epic 6: Sidebar Scroll & Fixed Layout
+
+**Problem:** On smaller screens, sidebar items may overflow without proper scrolling.
+
+**Current state:** Sidebar already uses `<ScrollArea className="flex-1 py-4">` which should handle scrolling. The issue may be that `h-screen` or `min-h-screen` isn't set on the sidebar.
+
+**Fix in `AppSidebar.tsx`:**
+```
+className="hidden lg:flex flex-col h-screen sticky top-0 bg-sidebar ..."
+```
+This makes the sidebar fixed on scroll and internally scrollable. Same for mobile: ensure `SheetContent` uses full viewport height with `ScrollArea`.
+
+## Epic 7: WhatsApp Automation Trigger System
+
+**Plan:** Create a `whatsapp_triggers` table that maps events to template IDs:
+
+| event | template_id | delay_minutes | is_active |
+|---|---|---|---|
+| `member_created` | (welcome template UUID) | 0 | true |
+| `payment_received` | (payment template UUID) | 0 | true |
+| `class_booked` | (class confirm UUID) | 0 | true |
+| `membership_expiring_7d` | (renewal reminder UUID) | 0 | true |
+| `missed_workout_3d` | (nudge UUID) | 0 | true |
+
+Add a Settings UI tab "WhatsApp Automations" where admins can enable/disable triggers and map templates.
+
+Create a `send-automated-whatsapp` edge function that accepts an event name + context data, looks up the trigger config, renders the template, and sends via `send-whatsapp`.
+
+## Epic 8: Member Self-Service WhatsApp Bot (Future Scaffold)
+
+**Plan for later implementation:** Extend the existing AI chatbot (in `whatsapp-webhook`) to handle member queries:
+- "What's my membership status?" → query `members` + `memberships`
+- "Book sauna at 3 PM" → call `book_facility_slot` RPC
+- "Cancel my class booking" → delete from `class_bookings`
+- "How many PT sessions left?" → query `pt_sessions`
+- "Show my payment history" → query `invoices`
+
+This requires adding tool-calling capability to the AI system prompt with function definitions that map to Supabase RPCs. The AI would use structured tool calls, and the webhook would execute them.
+
+**This is a large feature — scaffold the architecture now, implement in next sprint.**
 
 ---
 
@@ -90,12 +131,15 @@ Update `manage-whatsapp-templates` to store a `variable_mapping` alongside each 
 
 | File | Change |
 |---|---|
-| **Migration** | Delete all templates, insert 15+ Meta-compatible templates with `{{1}}` format |
-| **Migration** | Add `lead_nurture_config` to `organization_settings`, add `nurture_retry_count` to `whatsapp_chat_settings` |
-| `supabase/functions/send-whatsapp/index.ts` | Add `document` message type support |
-| `supabase/functions/manage-whatsapp-templates/index.ts` | Auto-convert named vars to numbered on create |
-| `supabase/functions/lead-nurture-followup/index.ts` | **New** — scheduled follow-up for silent leads |
-| `src/pages/WhatsAppChat.tsx` | Fix phone normalization in auto-read, add "My Chats" tab |
-| `src/components/layout/AppSidebar.tsx` | Add refetchInterval backup for unread count |
-| `src/components/settings/RetentionCampaignManager.tsx` | Add Lead Nurture config UI section |
+| **Migration** | Delete old templates, insert 25+ comprehensive templates with variable mappings |
+| `supabase/functions/manage-whatsapp-templates/index.ts` | Add `example` field to Meta API create payload |
+| `src/data/messageTemplates.ts` | Add ~20 email template equivalents |
+| `src/components/ui/PhoneInput.tsx` | **New** — reusable +91 prefixed phone input |
+| ~9 drawer/form components | Replace phone `<Input>` with `<PhoneInput>` |
+| `src/contexts/BranchContext.tsx` | Persist `selectedBranch` to localStorage |
+| `src/contexts/AuthContext.tsx` | Audit signOut — prevent clearing theme/branch keys |
+| `src/contexts/ThemeContext.tsx` | Verify persistence (likely already working, fix if needed) |
+| `src/components/layout/AppSidebar.tsx` | Add `h-screen sticky top-0` for fixed sidebar |
+| **Migration** | Create `whatsapp_triggers` table |
+| `src/components/settings/WhatsAppAutomations.tsx` | **New** — trigger mapping UI |
 
