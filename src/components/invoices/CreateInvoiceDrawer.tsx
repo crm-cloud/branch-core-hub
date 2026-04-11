@@ -41,7 +41,7 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
     queryFn: async () => {
       const { data, error } = await supabase
         .from('members')
-        .select('id, member_code, profiles:user_id(full_name)')
+        .select('id, member_code, gstin, profiles:user_id(full_name)')
         .eq('branch_id', branchId)
         .eq('status', 'active')
         .limit(100);
@@ -50,6 +50,10 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
     },
     enabled: !!branchId,
   });
+
+  // Auto-fill member GSTIN when member is selected
+  const selectedMember = members.find((m: any) => m.id === memberId);
+  const memberGstin = selectedMember?.gstin || '';
 
   const addItem = () => {
     setItems([...items, { description: '', quantity: 1, unit_price: 0 }]);
@@ -106,6 +110,9 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
           status: 'pending',
           due_date: dueDate,
           notes: notes || null,
+          is_gst_invoice: includeGst,
+          gst_rate: includeGst ? gstRate : 0,
+          customer_gstin: includeGst ? memberGstin || null : null,
         })
         .select()
         .single();
@@ -307,10 +314,16 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
                 </div>
               )}
               {includeGst && (
-                <div className="flex justify-between">
-                  <span>GST ({gstRate}%)</span>
-                  <span>₹{calculateTax().toLocaleString()}</span>
-                </div>
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span>CGST ({gstRate / 2}%)</span>
+                    <span>₹{(calculateTax() / 2).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>SGST ({gstRate / 2}%)</span>
+                    <span>₹{(calculateTax() / 2).toLocaleString()}</span>
+                  </div>
+                </>
               )}
               <div className="flex justify-between font-bold text-lg border-t pt-2">
                 <span>Total</span>
