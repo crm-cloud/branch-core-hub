@@ -1057,8 +1057,28 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
     ...conversationHistory,
   ];
 
-  // Epic 2: Use real tools for members
-  const tools = contactContext.isMember && contactContext.memberContext ? getMemberTools() : undefined;
+  // Epic 2: Use real tools for members — filtered by ai_tool_config
+  let tools = contactContext.isMember && contactContext.memberContext ? getMemberTools() : undefined;
+
+  // Filter disabled tools based on org settings
+  if (tools) {
+    try {
+      const { data: orgSettings } = await supabase
+        .from("organization_settings")
+        .select("ai_tool_config")
+        .limit(1)
+        .maybeSingle();
+
+      const toolConfig = (orgSettings?.ai_tool_config as Record<string, boolean>) || {};
+      tools = tools.filter((t: any) => {
+        const name = t.function?.name;
+        return name ? toolConfig[name] !== false : true; // default enabled
+      });
+      if (tools.length === 0) tools = undefined;
+    } catch (e) {
+      console.warn("Failed to fetch ai_tool_config, using all tools:", e);
+    }
+  }
 
   const aiRequestBody: any = {
     model: "google/gemini-3-flash-preview",
@@ -1105,6 +1125,7 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
         parsedArgs = {};
       }
 
+      const toolStartTime = Date.now();
       const result = await executeToolCall(
         tc.function.name,
         parsedArgs,
@@ -1112,6 +1133,20 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
         phoneNumber,
         branchId,
       );
+      const toolElapsed = Date.now() - toolStartTime;
+      const hasToolError = !!result.error;
+
+      // Log tool execution
+      await supabase.from("ai_tool_logs").insert({
+        phone_number: phoneNumber,
+        branch_id: branchId,
+        tool_name: tc.function.name,
+        arguments: parsedArgs,
+        result,
+        status: hasToolError ? "error" : "success",
+        error_message: hasToolError ? result.error : null,
+        execution_time_ms: toolElapsed,
+      });
 
       toolMessages.push({
         role: "tool",
