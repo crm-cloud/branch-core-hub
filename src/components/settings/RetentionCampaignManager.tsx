@@ -118,10 +118,8 @@ export function RetentionCampaignManager() {
     } else if (channel === 'sms') {
       window.open(`sms:?body=${encoded}`, '_blank');
     } else if (channel === 'email') {
-      const subject = `Stage ${template.stage_level}: ${template.stage_name}`;
-      // Use provider email for test sends too - fallback to mailto if not configured
-      const { communicationService } = await import('@/services/communicationService');
-      communicationService.sendEmailViaProvider('', subject, `<p>${text.replace(/\n/g, '<br>')}</p>`, '');
+      const subject = encodeURIComponent(`Stage ${template.stage_level}: ${template.stage_name}`);
+      window.open(`mailto:?subject=${subject}&body=${encoded}`, '_blank');
     }
     toast({ title: 'Test message opened', description: `${channel.charAt(0).toUpperCase() + channel.slice(1)} opened with preview text.` });
   };
