@@ -365,6 +365,7 @@ function LeadNurtureConfig() {
   if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
 
   return (
+    <>
     <Card className="rounded-2xl shadow-lg shadow-primary/5">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
