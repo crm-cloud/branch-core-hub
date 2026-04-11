@@ -71,7 +71,7 @@ const PROVIDER_SCHEMAS: Record<string, ProviderFieldDef[]> = {
   // ── WhatsApp ──
   whatsapp_meta_cloud: [
     { key: 'phone_number_id', label: 'Phone Number ID', placeholder: 'From Meta API Setup page', type: 'text', section: 'config' },
-    { key: 'business_account_id', label: 'Business Account ID', placeholder: 'From Meta Business Settings', type: 'text', section: 'config' },
+    { key: 'business_account_id', label: 'WhatsApp Business Account ID (WABA ID)', placeholder: 'From Meta Business Suite → Business Settings → WhatsApp Accounts', type: 'text', section: 'config' },
     { key: 'webhook_verify_token', label: 'Webhook Verify Token', placeholder: 'Any secret string you choose', type: 'text', section: 'config' },
     { key: 'access_token', label: 'Permanent Access Token', placeholder: 'Enter Meta permanent access token', type: 'password', section: 'credentials' },
     { key: 'app_secret', label: 'App Secret', placeholder: 'From Meta App Dashboard → Settings → Basic', type: 'password', section: 'credentials' },

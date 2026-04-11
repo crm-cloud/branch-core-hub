@@ -29,7 +29,7 @@ import { CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LeadsPage() {
   const { user } = useAuth();
-  const { effectiveBranchId } = useBranchContext();
+  const { branchFilter } = useBranchContext();
   const queryClient = useQueryClient();
 
   // UI State
@@ -64,14 +64,14 @@ export default function LeadsPage() {
 
   // Data
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['leads', effectiveBranchId],
-    queryFn: () => leadService.fetchLeads(effectiveBranchId || undefined),
+    queryKey: ['leads', branchFilter],
+    queryFn: () => leadService.fetchLeads(branchFilter),
     enabled: !!user,
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['lead-stats', effectiveBranchId],
-    queryFn: () => leadService.getLeadStats(effectiveBranchId || undefined),
+    queryKey: ['lead-stats', branchFilter],
+    queryFn: () => leadService.getLeadStats(branchFilter),
     enabled: !!user,
   });
 

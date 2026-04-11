@@ -677,14 +677,14 @@ export default function WhatsAppChatPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm text-foreground truncate break-words">
+                        <span className="font-semibold text-sm text-foreground truncate">
                           {contact.contact_name || contact.phone_number}
                         </span>
                         <span className="text-[11px] text-muted-foreground flex-shrink-0">
                           {formatContactTime(contact.last_message_time)}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.last_message}</p>
+                      <p className="text-[13px] text-muted-foreground line-clamp-1 mt-0.5 leading-snug">{contact.last_message}</p>
                     </div>
 
                     {contact.unread_count > 0 && (
