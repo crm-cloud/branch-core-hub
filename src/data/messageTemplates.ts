@@ -290,3 +290,142 @@ export const getTemplatesByType = (type: 'sms' | 'email' | 'whatsapp') => {
 export const getTemplatesByCategory = (category: MessageTemplate['category']) => {
   return messageTemplates.filter((t) => t.category === category);
 };
+
+// ── Branded HTML Email Templates ──
+
+export function getWelcomeEmailHTML(vars: {
+  name: string; member_code: string; plan_name: string; end_date: string;
+  branch_name: string; branch_address: string; login_url?: string;
+}) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <tr><td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:40px 32px;text-align:center;">
+    <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">Welcome to Incline Fitness</h1>
+    <p style="color:#e0e0ff;margin:8px 0 0;font-size:15px;">Your fitness journey starts here 💪</p>
+  </td></tr>
+  <tr><td style="padding:32px;">
+    <p style="font-size:16px;color:#1e293b;margin:0 0 20px;">Hi <strong>${vars.name}</strong>,</p>
+    <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 24px;">
+      We're thrilled to have you join the Incline Fitness family! Here are your membership details:
+    </p>
+    <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:0 0 24px;">
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;">Member ID</td><td style="padding:8px 12px;font-size:13px;font-weight:600;color:#1e293b;">${vars.member_code}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;">Plan</td><td style="padding:8px 12px;font-size:13px;font-weight:600;color:#1e293b;">${vars.plan_name}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;">Valid Until</td><td style="padding:8px 12px;font-size:13px;font-weight:600;color:#1e293b;">${vars.end_date}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;">Branch</td><td style="padding:8px 12px;font-size:13px;font-weight:600;color:#1e293b;">${vars.branch_name}</td></tr>
+    </table>
+    <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 16px;">What you can enjoy:</p>
+    <ul style="font-size:14px;color:#475569;line-height:2;padding-left:20px;margin:0 0 24px;">
+      <li>State-of-the-art equipment</li><li>Group fitness classes</li>
+      <li>Sauna & Ice Bath facilities</li><li>Personal training sessions</li>
+    </ul>
+    ${vars.login_url ? `<div style="text-align:center;margin:24px 0;">
+      <a href="${vars.login_url}" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">Login to Your Account</a>
+    </div>` : ''}
+    <p style="font-size:13px;color:#94a3b8;margin:24px 0 0;">📍 ${vars.branch_address}</p>
+  </td></tr>
+  <tr><td style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:12px;color:#94a3b8;">© ${new Date().getFullYear()} Incline Fitness. All rights reserved.</p>
+  </td></tr>
+</table>
+</td></tr></table></body></html>`;
+}
+
+export function getInvoiceEmailHTML(vars: {
+  name: string; invoice_number: string; date: string; due_date?: string;
+  items: Array<{ description: string; qty: number; rate: number; amount: number }>;
+  subtotal: number; tax_amount: number; discount: number; total: number;
+  amount_paid: number; status: string;
+  branch_name: string; branch_address: string; branch_phone: string; gst_number?: string;
+  payment_link?: string;
+}) {
+  const due = vars.total - vars.amount_paid;
+  const statusColor = vars.status === 'paid' ? '#22c55e' : vars.status === 'partial' ? '#3b82f6' : '#ef4444';
+  const itemRows = vars.items.map(i => `
+    <tr><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #f1f5f9;">${i.description}</td>
+    <td style="padding:10px 12px;font-size:13px;text-align:center;border-bottom:1px solid #f1f5f9;">${i.qty}</td>
+    <td style="padding:10px 12px;font-size:13px;text-align:right;border-bottom:1px solid #f1f5f9;">₹${i.rate.toLocaleString('en-IN')}</td>
+    <td style="padding:10px 12px;font-size:13px;text-align:right;border-bottom:1px solid #f1f5f9;">₹${i.amount.toLocaleString('en-IN')}</td></tr>
+  `).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:40px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:28px 32px;">
+    <table width="100%"><tr>
+      <td><h1 style="color:#ffffff;margin:0;font-size:22px;">Incline Fitness</h1>
+        <p style="color:#94a3b8;margin:4px 0 0;font-size:12px;">${vars.branch_name} · ${vars.branch_phone}</p></td>
+      <td style="text-align:right;"><span style="background:${statusColor};color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;text-transform:uppercase;">${vars.status}</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:32px;">
+    <table width="100%" style="margin-bottom:24px;"><tr>
+      <td><p style="margin:0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Invoice</p>
+        <p style="margin:4px 0;font-size:18px;font-weight:700;color:#1e293b;">${vars.invoice_number}</p></td>
+      <td style="text-align:right;"><p style="margin:0;font-size:12px;color:#94a3b8;">Date: ${vars.date}</p>
+        ${vars.due_date ? `<p style="margin:2px 0;font-size:12px;color:#94a3b8;">Due: ${vars.due_date}</p>` : ''}</td>
+    </tr></table>
+    <p style="font-size:14px;color:#1e293b;margin:0 0 20px;">Dear <strong>${vars.name}</strong>,</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+      <tr style="background:#f8fafc;">
+        <th style="padding:10px 12px;font-size:12px;text-align:left;color:#64748b;text-transform:uppercase;">Description</th>
+        <th style="padding:10px 12px;font-size:12px;text-align:center;color:#64748b;text-transform:uppercase;">Qty</th>
+        <th style="padding:10px 12px;font-size:12px;text-align:right;color:#64748b;text-transform:uppercase;">Rate</th>
+        <th style="padding:10px 12px;font-size:12px;text-align:right;color:#64748b;text-transform:uppercase;">Amount</th>
+      </tr>
+      ${itemRows}
+    </table>
+    <table width="100%" style="margin-bottom:24px;">
+      <tr><td style="text-align:right;padding:4px 0;font-size:13px;color:#64748b;">Subtotal</td><td style="text-align:right;padding:4px 0;font-size:13px;width:120px;">₹${vars.subtotal.toLocaleString('en-IN')}</td></tr>
+      ${vars.discount > 0 ? `<tr><td style="text-align:right;padding:4px 0;font-size:13px;color:#22c55e;">Discount</td><td style="text-align:right;padding:4px 0;font-size:13px;color:#22c55e;">-₹${vars.discount.toLocaleString('en-IN')}</td></tr>` : ''}
+      ${vars.tax_amount > 0 ? `<tr><td style="text-align:right;padding:4px 0;font-size:13px;color:#64748b;">GST</td><td style="text-align:right;padding:4px 0;font-size:13px;">₹${vars.tax_amount.toLocaleString('en-IN')}</td></tr>` : ''}
+      <tr><td colspan="2"><hr style="border:none;border-top:1px solid #e2e8f0;margin:8px 0;"></td></tr>
+      <tr><td style="text-align:right;padding:4px 0;font-size:16px;font-weight:700;color:#1e293b;">Total</td><td style="text-align:right;padding:4px 0;font-size:16px;font-weight:700;color:#1e293b;">₹${vars.total.toLocaleString('en-IN')}</td></tr>
+      ${vars.amount_paid > 0 ? `<tr><td style="text-align:right;padding:4px 0;font-size:13px;color:#22c55e;">Paid</td><td style="text-align:right;padding:4px 0;font-size:13px;color:#22c55e;">₹${vars.amount_paid.toLocaleString('en-IN')}</td></tr>` : ''}
+      ${due > 0 ? `<tr><td style="text-align:right;padding:4px 0;font-size:14px;font-weight:600;color:#ef4444;">Balance Due</td><td style="text-align:right;padding:4px 0;font-size:14px;font-weight:600;color:#ef4444;">₹${due.toLocaleString('en-IN')}</td></tr>` : ''}
+    </table>
+    ${vars.payment_link && due > 0 ? `<div style="text-align:center;margin:24px 0;">
+      <a href="${vars.payment_link}" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-size:16px;font-weight:700;display:inline-block;">💳 Pay Now — ₹${due.toLocaleString('en-IN')}</a>
+    </div>` : ''}
+    ${vars.gst_number ? `<p style="font-size:11px;color:#94a3b8;margin:20px 0 0;">GSTIN: ${vars.gst_number}</p>` : ''}
+  </td></tr>
+  <tr><td style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:12px;color:#94a3b8;">${vars.branch_name} · ${vars.branch_address}</p>
+    <p style="margin:4px 0 0;font-size:11px;color:#cbd5e1;">© ${new Date().getFullYear()} Incline Fitness</p>
+  </td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+export function getPaymentLinkHTML(vars: {
+  name: string; amount: number; description: string; payment_link: string;
+  branch_name: string;
+}) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:40px 0;">
+<tr><td align="center">
+<table width="500" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <tr><td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:32px;text-align:center;">
+    <h1 style="color:#ffffff;margin:0;font-size:24px;">Incline Fitness</h1>
+    <p style="color:#e0e0ff;margin:8px 0 0;font-size:14px;">${vars.branch_name}</p>
+  </td></tr>
+  <tr><td style="padding:32px;text-align:center;">
+    <p style="font-size:16px;color:#1e293b;margin:0 0 8px;">Hi <strong>${vars.name}</strong>,</p>
+    <p style="font-size:14px;color:#64748b;margin:0 0 24px;">${vars.description}</p>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#64748b;">Amount Due</p>
+      <p style="margin:8px 0 0;font-size:36px;font-weight:800;color:#1e293b;">₹${vars.amount.toLocaleString('en-IN')}</p>
+    </div>
+    <a href="${vars.payment_link}" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;padding:16px 48px;border-radius:8px;font-size:17px;font-weight:700;display:inline-block;box-shadow:0 4px 14px rgba(99,102,241,0.4);">💳 Pay Now</a>
+    <p style="font-size:12px;color:#94a3b8;margin:20px 0 0;">Secure payment via Razorpay / PhonePe</p>
+  </td></tr>
+  <tr><td style="background:#f8fafc;padding:16px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${new Date().getFullYear()} Incline Fitness</p>
+  </td></tr>
+</table></td></tr></table></body></html>`;
+}
