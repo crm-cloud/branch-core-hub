@@ -465,19 +465,27 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   const shouldCaptureLead = !contactContext.isMember && leadCaptureConfig?.enabled && (leadCaptureConfig.target_fields?.length ?? 0) > 0;
   if (shouldCaptureLead) {
     const fieldLabels: Record<string, string> = {
-      name: "Full Name", phone: "Phone Number", email: "Email", goal: "Fitness Goal",
-      budget: "Budget", start_date: "Expected Start Date", experience: "Fitness Experience",
-      preferred_time: "Preferred Time",
+      name: "Full Name", phone: "Phone Number", email: "Email Address",
+      goal: "Fitness Goal (e.g., Weight Loss, Muscle Gain, General Fitness)",
+      budget: "Monthly Budget (in ₹)", start_date: "When do you plan to start? (exact date or timeframe)",
+      experience: "Fitness Experience Level (Beginner, Intermediate, or Advanced)",
+      preferred_time: "Preferred workout time slot (e.g., Morning 6-8 AM, Evening 5-7 PM)",
     };
     const fieldNames = (leadCaptureConfig!.target_fields || []).map(f => fieldLabels[f] || f).join(", ");
     systemPrompt += `\n\nIMPORTANT LEAD CAPTURE INSTRUCTIONS:
 You are also a lead generation assistant. Your secondary goal is to naturally collect the following information from this person during the conversation: ${fieldNames}.
 - Ask for these naturally, one or two at a time, weaving them into the conversation.
 - Do NOT ask for all fields at once.
+- When asking a question with limited choices (e.g., experience level, membership duration, preferred time), respond with ONLY this JSON format to show interactive buttons (max 3 options):
+  {"type":"interactive","body":"Your question text here","buttons":["Option 1","Option 2","Option 3"]}
+- For questions with more than 3 options, use a list format:
+  {"type":"interactive_list","body":"Your question text","button":"Select Option","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
+- For open-ended questions (name, email, budget amount), use normal text messages.
 - Once you have collected ALL the required fields, respond with ONLY this exact JSON (no other text):
 {"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"..."`).join(",")}}}
 - The phone number is already known: ${phoneNumber}
-- Until all fields are collected, continue the normal helpful conversation.`;
+- Until all fields are collected, continue the normal helpful conversation.
+- IMPORTANT: Use the exact field keys in your lead_captured JSON: ${(leadCaptureConfig!.target_fields || []).join(", ")}`;
   }
 
   // Call Lovable AI Gateway
@@ -621,11 +629,11 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
             full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
             email: parsed.data.email || null,
             goals: parsed.data.goal || parsed.data.fitness_goal || null,
-            budget: parsed.data.budget || null,
+            budget: parsed.data.budget || parsed.data.monthly_budget || null,
             fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
-            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
-            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
-            preferred_time: parsed.data.preferred_time || null,
+            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || parsed.data.starting_date || parsed.data.when_to_start || null,
+            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || parsed.data.fitness_level || null,
+            preferred_time: parsed.data.preferred_time || parsed.data.time || parsed.data.workout_time || parsed.data.time_slot || null,
             notes: `AI-captured via WhatsApp conversation`,
           };
 
@@ -684,6 +692,42 @@ async function sendAiReply(
   inboundMsg: { phone_number: string; contact_name: string | null },
   branchId: string,
 ) {
+  // Check if AI reply is an interactive message JSON
+  let interactivePayload: any = null;
+  try {
+    const trimmed = replyText.trim();
+    if (trimmed.startsWith("{") && trimmed.includes('"type"')) {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.type === "interactive" && parsed.buttons?.length) {
+        interactivePayload = {
+          type: "button",
+          body: { text: parsed.body || "Please select an option:" },
+          action: {
+            buttons: parsed.buttons.slice(0, 3).map((btn: string, i: number) => ({
+              type: "reply",
+              reply: { id: `btn_${i}`, title: btn.substring(0, 20) },
+            })),
+          },
+        };
+        // Store readable text for DB
+        replyText = `${parsed.body}\n${parsed.buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`;
+      } else if (parsed.type === "interactive_list" && parsed.sections?.length) {
+        interactivePayload = {
+          type: "list",
+          body: { text: parsed.body || "Please select an option:" },
+          action: {
+            button: (parsed.button || "Select").substring(0, 20),
+            sections: parsed.sections,
+          },
+        };
+        const allRows = parsed.sections.flatMap((s: any) => s.rows || []);
+        replyText = `${parsed.body}\n${allRows.map((r: any) => `• ${r.title}`).join("\n")}`;
+      }
+    }
+  } catch {
+    // Not JSON, send as normal text
+  }
+
   // Insert AI reply as outbound message
   const { data: aiMsg, error: insertErr } = await supabase
     .from("whatsapp_messages")
@@ -694,7 +738,7 @@ async function sendAiReply(
       content: replyText,
       direction: "outbound",
       status: "pending",
-      message_type: "text",
+      message_type: interactivePayload ? "interactive" : "text",
     })
     .select("id")
     .single();
@@ -722,18 +766,27 @@ async function sendAiReply(
     metaUrl += `?appsecret_proof=${proof}`;
   }
 
+  // Build Meta API body
+  const metaBody: any = {
+    messaging_product: "whatsapp",
+    to: cleanPhone,
+  };
+
+  if (interactivePayload) {
+    metaBody.type = "interactive";
+    metaBody.interactive = interactivePayload;
+  } else {
+    metaBody.type = "text";
+    metaBody.text = { body: replyText };
+  }
+
   const metaResponse = await fetch(metaUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: cleanPhone,
-      type: "text",
-      text: { body: replyText },
-    }),
+    body: JSON.stringify(metaBody),
   });
 
   const metaData = await metaResponse.json();

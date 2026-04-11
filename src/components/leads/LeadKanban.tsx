@@ -4,14 +4,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Phone, MessageSquare, Calendar, ArrowRight, Flame, Sun, Snowflake } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Phone, MessageSquare, Calendar, ArrowRight, Flame, Sun, Snowflake, UserPlus } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { leadService } from '@/services/leadService';
 import { communicationService } from '@/services/communicationService';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { STATUS_CONFIG, LEAD_STATUSES } from './LeadFilters';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface LeadKanbanProps {
   leads: any[];
@@ -23,6 +27,24 @@ interface LeadKanbanProps {
 export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadKanbanProps) {
   const queryClient = useQueryClient();
   const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, string>>({});
+
+  const { data: staffMembers = [] } = useQuery({
+    queryKey: ['staff-for-assignment'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('user_id, role, profiles:user_id(id, full_name, avatar_url)')
+        .in('role', ['owner', 'admin', 'manager', 'staff'] as any);
+      if (!data) return [];
+      const unique = new Map<string, any>();
+      data.forEach((r: any) => {
+        if (r.profiles && !unique.has(r.user_id)) {
+          unique.set(r.user_id, { id: r.user_id, full_name: r.profiles.full_name, avatar_url: r.profiles.avatar_url });
+        }
+      });
+      return Array.from(unique.values());
+    },
+  });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -37,6 +59,16 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
       setOptimisticUpdates(prev => { const n = { ...prev }; delete n[id]; return n; });
       toast.error('Failed to update status');
     },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: ({ leadId, ownerId }: { leadId: string; ownerId: string | null }) =>
+      leadService.assignLead(leadId, ownerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead assigned');
+    },
+    onError: () => toast.error('Failed to assign lead'),
   });
 
   const handleDragEnd = (result: DropResult) => {
@@ -56,6 +88,11 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
   const handleWhatsApp = (e: React.MouseEvent, phone: string, name: string) => {
     e.stopPropagation();
     communicationService.sendWhatsApp(phone, `Hi ${name}, thanks for your interest!`);
+  };
+
+  const getOwnerInfo = (ownerId: string | null) => {
+    if (!ownerId) return null;
+    return staffMembers.find((s: any) => s.id === ownerId);
   };
 
   return (
@@ -81,6 +118,7 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                       const TempIcon = lead.temperature === 'hot' ? Flame : lead.temperature === 'cold' ? Snowflake : Sun;
                       const tempColor = lead.temperature === 'hot' ? 'text-red-500' : lead.temperature === 'cold' ? 'text-blue-500' : 'text-amber-500';
                       const isOverdue = lead.next_action_at && new Date(lead.next_action_at) < new Date();
+                      const owner = getOwnerInfo(lead.owner_id);
 
                       return (
                         <Draggable key={lead.id} draggableId={lead.id} index={index}>
@@ -127,25 +165,76 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                                   </p>
                                 )}
 
-                                <div className="flex items-center gap-1 pt-1">
-                                  {lead.phone && (
-                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => handleWhatsApp(e, lead.phone, lead.full_name)}>
-                                      <MessageSquare className="h-3 w-3 text-emerald-500" />
+                                {/* Owner + Assign */}
+                                <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                                  <Popover>
+                                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] gap-1">
+                                        {owner ? (
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Avatar className="h-4 w-4">
+                                                  <AvatarFallback className="text-[8px] bg-primary/10 text-primary">
+                                                    {owner.full_name?.charAt(0)?.toUpperCase() || '?'}
+                                                  </AvatarFallback>
+                                                </Avatar>
+                                              </TooltipTrigger>
+                                              <TooltipContent>{owner.full_name}</TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        ) : (
+                                          <>
+                                            <UserPlus className="h-3 w-3 text-muted-foreground" />
+                                            <span className="text-muted-foreground">Assign</span>
+                                          </>
+                                        )}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-48 p-1" align="start" onClick={(e) => e.stopPropagation()}>
+                                      <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                                        <Button
+                                          size="sm" variant="ghost" className="w-full justify-start h-7 text-xs text-muted-foreground"
+                                          onClick={() => assignMutation.mutate({ leadId: lead.id, ownerId: null })}
+                                        >
+                                          Unassign
+                                        </Button>
+                                        {staffMembers.map((staff: any) => (
+                                          <Button
+                                            key={staff.id} size="sm" variant={lead.owner_id === staff.id ? 'secondary' : 'ghost'}
+                                            className="w-full justify-start h-7 text-xs gap-2"
+                                            onClick={() => assignMutation.mutate({ leadId: lead.id, ownerId: staff.id })}
+                                          >
+                                            <Avatar className="h-4 w-4">
+                                              <AvatarFallback className="text-[8px]">{staff.full_name?.charAt(0)?.toUpperCase()}</AvatarFallback>
+                                            </Avatar>
+                                            <span className="truncate">{staff.full_name}</span>
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+
+                                  <div className="flex items-center gap-1">
+                                    {lead.phone && (
+                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => handleWhatsApp(e, lead.phone, lead.full_name)}>
+                                        <MessageSquare className="h-3 w-3 text-emerald-500" />
+                                      </Button>
+                                    )}
+                                    {lead.phone && (
+                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); window.open(`tel:${lead.phone}`); }}>
+                                        <Phone className="h-3 w-3 text-sky-500" />
+                                      </Button>
+                                    )}
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onFollowup(lead); }}>
+                                      <Calendar className="h-3 w-3" />
                                     </Button>
-                                  )}
-                                  {lead.phone && (
-                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); window.open(`tel:${lead.phone}`); }}>
-                                      <Phone className="h-3 w-3 text-sky-500" />
-                                    </Button>
-                                  )}
-                                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onFollowup(lead); }}>
-                                    <Calendar className="h-3 w-3" />
-                                  </Button>
-                                  {lead.status !== 'converted' && (
-                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onConvert(lead); }}>
-                                      <ArrowRight className="h-3 w-3 text-primary" />
-                                    </Button>
-                                  )}
+                                    {lead.status !== 'converted' && (
+                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onConvert(lead); }}>
+                                        <ArrowRight className="h-3 w-3 text-primary" />
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                               </CardContent>
                             </Card>
