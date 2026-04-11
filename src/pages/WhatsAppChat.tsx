@@ -1122,6 +1122,15 @@ export default function WhatsAppChatPage() {
                       },
                       { onConflict: 'branch_id,phone_number' }
                     );
+                    // Send in-app notification to assigned staff
+                    await supabase.from('notifications').insert({
+                      user_id: staff.id,
+                      branch_id: selectedBranch,
+                      title: 'WhatsApp Chat Assigned',
+                      message: `A chat with ${selectedContact.contact_name || selectedContact.phone_number} has been assigned to you.`,
+                      type: 'info',
+                      category: 'communication',
+                    });
                     setBotActive(false);
                     queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
                     setTransferStaffOpen(false);
