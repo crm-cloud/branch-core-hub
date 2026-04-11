@@ -35,6 +35,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     capacity: 50,
     is_active: true,
     managerId: '',
+    gstin: '',
   });
 
   // Fetch the current primary manager for this branch
@@ -71,6 +72,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
         capacity: branch.capacity || 50,
         is_active: branch.is_active ?? true,
         managerId: currentManager?.user_id || '',
+        gstin: branch.gstin || '',
       });
     }
   }, [branch, currentManager]);
@@ -119,6 +121,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           closing_time: formData.closing_time,
           capacity: formData.capacity,
           is_active: formData.is_active,
+          gstin: formData.gstin || null,
         })
         .eq('id', branch.id);
 

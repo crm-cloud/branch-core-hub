@@ -683,6 +683,9 @@ interface InvoicePDFData {
   branch_email?: string;
   gst_number?: string;
   logo_url?: string;
+  is_gst_invoice?: boolean;
+  gst_rate?: number;
+  customer_gstin?: string;
 }
 
 export function generateInvoicePDF(data: InvoicePDFData): void {
@@ -694,7 +697,11 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
     paid: '#22c55e', pending: '#f59e0b', partial: '#3b82f6', overdue: '#ef4444', cancelled: '#94a3b8',
   };
   const statusColor = statusColors[data.status] || '#94a3b8';
+  const gstRate = data.gst_rate || 0;
+  const cgstRate = gstRate / 2;
+  const sgstRate = gstRate / 2;
   const taxHalf = (data.tax_amount || 0) / 2;
+  const invoiceTitle = data.is_gst_invoice ? 'TAX INVOICE' : 'INVOICE';
 
   const itemRows = data.items.map(i => `
     <tr>
@@ -723,7 +730,7 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
         ${data.gst_number ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${data.gst_number}</p>` : ''}
       </div>
       <div style="text-align:right;">
-        <h2 style="font-size:28px;font-weight:800;color:#1e293b;">INVOICE</h2>
+        <h2 style="font-size:28px;font-weight:800;color:#1e293b;">${invoiceTitle}</h2>
         <p style="font-size:14px;font-family:monospace;color:#64748b;margin-top:4px;">${data.invoice_number}</p>
         <span style="display:inline-block;background:${statusColor};color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;margin-top:8px;">${data.status}</span>
       </div>
@@ -736,6 +743,7 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
         ${data.member_code ? `<p style="font-size:12px;color:#64748b;font-family:monospace;">${data.member_code}</p>` : ''}
         ${data.member_email ? `<p style="font-size:12px;color:#64748b;">${data.member_email}</p>` : ''}
         ${data.member_phone ? `<p style="font-size:12px;color:#64748b;">${data.member_phone}</p>` : ''}
+        ${data.customer_gstin ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${data.customer_gstin}</p>` : ''}
       </div>
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:right;">
         <p style="font-size:12px;color:#64748b;">Date: <strong>${new Date(data.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</strong></p>
@@ -758,8 +766,8 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
         <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;"><span style="color:#64748b;">Subtotal</span><span>₹${data.subtotal.toLocaleString('en-IN')}</span></div>
         ${(data.discount_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#22c55e;"><span>Discount</span><span>-₹${(data.discount_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
         ${(data.tax_amount || 0) > 0 ? `
-          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>CGST</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>SGST</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>CGST${cgstRate ? ' @ ' + cgstRate + '%' : ''}</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>SGST${sgstRate ? ' @ ' + sgstRate + '%' : ''}</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
         ` : ''}
         <hr style="border:none;border-top:2px solid #1e293b;margin:8px 0;">
         <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:18px;font-weight:800;"><span>Total</span><span>₹${data.total_amount.toLocaleString('en-IN')}</span></div>
@@ -822,7 +830,10 @@ export function generateThermalReceipt(data: InvoicePDFData): void {
     <div class="dash"></div>
     <div style="display:flex;justify-content:space-between;font-size:12px;"><span>Subtotal</span><span>₹${data.subtotal.toLocaleString('en-IN')}</span></div>
     ${(data.discount_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Discount</span><span>-₹${(data.discount_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
-    ${(data.tax_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>GST</span><span>₹${(data.tax_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
+    ${(data.tax_amount || 0) > 0 ? `
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span>CGST${data.gst_rate ? ' @' + (data.gst_rate/2) + '%' : ''}</span><span>₹${((data.tax_amount||0)/2).toLocaleString('en-IN')}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;"><span>SGST${data.gst_rate ? ' @' + (data.gst_rate/2) + '%' : ''}</span><span>₹${((data.tax_amount||0)/2).toLocaleString('en-IN')}</span></div>
+    ` : ''}
     <div class="dash"></div>
     <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:bold;"><span>TOTAL</span><span>₹${data.total_amount.toLocaleString('en-IN')}</span></div>
     ${data.amount_paid > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Paid</span><span>₹${data.amount_paid.toLocaleString('en-IN')}</span></div>` : ''}
