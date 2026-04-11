@@ -184,6 +184,7 @@ export function NotificationSettings() {
         </Card>
       </div>
 
+      {/* Automated Reminders */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -192,7 +193,6 @@ export function NotificationSettings() {
           </div>
           <CardDescription>
             Manually trigger all pending reminders (payments, birthdays, membership expiry, class/PT/benefit bookings).
-            For automated daily execution, set up an external cron service to call the reminders endpoint.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -207,6 +207,9 @@ export function NotificationSettings() {
           <RunRemindersButton />
         </CardContent>
       </Card>
+
+      {/* Lead Notification Rules — separate section */}
+      <LeadNotificationSettings />
 
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
@@ -263,9 +266,6 @@ function RunRemindersButton() {
           )}
         </div>
       )}
-
-      {/* Lead Notification Rules */}
-      <LeadNotificationSettings />
     </div>
   );
 }

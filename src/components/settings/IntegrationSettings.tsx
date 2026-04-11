@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LeadNotificationSettings } from '@/components/settings/LeadNotificationSettings';
-import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
-import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
+import { WhatsAppAutomations } from '@/components/settings/WhatsAppAutomations';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -172,13 +170,12 @@ export function IntegrationSettings() {
       </div>
 
       <Tabs defaultValue="payment" className="space-y-4">
-        <TabsList className="grid grid-cols-6 w-full max-w-4xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-4xl">
           <TabsTrigger value="payment">Payment</TabsTrigger>
           <TabsTrigger value="sms">SMS</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="google">Google</TabsTrigger>
-          <TabsTrigger value="leads">Lead Capture</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payment" className="space-y-4">
@@ -394,8 +391,8 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
-          {/* AI Auto-Reply Settings */}
-          <WhatsAppAISettings />
+          {/* WhatsApp Automations */}
+          <WhatsAppAutomations />
 
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
@@ -613,9 +610,7 @@ export function IntegrationSettings() {
             </Card>
           </Collapsible>
         </TabsContent>
-        <TabsContent value="leads" className="space-y-4">
-          <LeadCaptureTab />
-        </TabsContent>
+        {/* Lead Capture tab removed — now in AI Agent Hub */}
       </Tabs>
 
       <IntegrationConfigSheet 
@@ -1208,10 +1203,6 @@ function LeadCaptureTab() {
 
   return (
     <div className="space-y-6">
-      {/* AI Lead Capture Rules */}
-      <AIFlowBuilderSettings />
-
-      {/* Lead Notification Rules moved to Notifications tab */}
 
       {/* Webhook Configuration */}
       <Card>

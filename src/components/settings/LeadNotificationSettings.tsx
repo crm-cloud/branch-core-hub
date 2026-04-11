@@ -3,26 +3,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Bell, MessageSquare, Phone, Save, Users, UserCheck, Info } from 'lucide-react';
-
-const PLACEHOLDERS = ['{{lead_name}}', '{{lead_phone}}', '{{lead_source}}', '{{branch_name}}'];
+import { Bell, MessageSquare, Phone, Save, Users, UserCheck, Info, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export function LeadNotificationSettings() {
   const { selectedBranch } = useBranchContext();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const branchId = selectedBranch !== 'all' ? selectedBranch : null;
 
   const { data: rules, isLoading } = useQuery({
     queryKey: ['lead-notification-rules', branchId],
     queryFn: async () => {
-      // Try branch-specific first, then global
       if (branchId) {
         const { data } = await supabase
           .from('lead_notification_rules')
@@ -31,7 +29,6 @@ export function LeadNotificationSettings() {
           .maybeSingle();
         if (data) return data;
       }
-      // Global fallback
       const { data } = await supabase
         .from('lead_notification_rules')
         .select('*')
@@ -79,7 +76,6 @@ export function LeadNotificationSettings() {
       };
 
       if (rules?.id) {
-        // Check if we should update existing or create branch-specific
         const isMatchingBranch = rules.branch_id === branchId;
         if (isMatchingBranch || (!branchId && !rules.branch_id)) {
           const { error } = await supabase
@@ -88,7 +84,6 @@ export function LeadNotificationSettings() {
             .eq('id', rules.id);
           if (error) throw error;
         } else {
-          // Creating branch-specific override
           const { error } = await supabase
             .from('lead_notification_rules')
             .upsert(payload, { onConflict: 'branch_id' });
@@ -141,18 +136,31 @@ export function LeadNotificationSettings() {
             )}
           </CardTitle>
           <CardDescription>
-            Configure automated SMS and WhatsApp notifications when a new lead is captured from any source
-            (manual entry, website form, webhook, or API).
+            Configure automated SMS and WhatsApp notifications when a new lead is captured.
             {branchId ? ' Settings apply to the selected branch.' : ' These are global default settings.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Info banner */}
+          {/* Info banners */}
           <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 flex gap-2">
             <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
             <p className="text-xs text-muted-foreground">
               Notifications require an active SMS or WhatsApp provider configured in the Integrations tab.
               Notification failures will never block lead creation.
+            </p>
+          </div>
+
+          <div className="p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/10 flex items-center gap-2">
+            <ExternalLink className="h-4 w-4 text-indigo-600 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              Message templates for lead notifications can be managed in{' '}
+              <button
+                onClick={() => navigate('/settings?tab=templates')}
+                className="text-primary font-medium hover:underline"
+              >
+                Settings → Templates
+              </button>
+              {' '}(look for "Lead Welcome" and "Team Alert" trigger types).
             </p>
           </div>
 
@@ -225,81 +233,6 @@ export function LeadNotificationSettings() {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Message Templates */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Message Templates</CardTitle>
-          <CardDescription>
-            Customize the messages sent when a lead is captured. Available placeholders:
-          </CardDescription>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {PLACEHOLDERS.map(p => (
-              <Badge key={p} variant="outline" className="font-mono text-xs rounded-full">{p}</Badge>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {(form.sms_to_lead || form.sms_to_admins || form.sms_to_managers) && (
-            <>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5" />
-                  Lead Welcome SMS
-                </Label>
-                <Textarea
-                  rows={2}
-                  value={form.lead_welcome_sms}
-                  onChange={(e) => setForm(prev => ({ ...prev, lead_welcome_sms: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5" />
-                  Team Alert SMS
-                </Label>
-                <Textarea
-                  rows={2}
-                  value={form.team_alert_sms}
-                  onChange={(e) => setForm(prev => ({ ...prev, team_alert_sms: e.target.value }))}
-                />
-              </div>
-            </>
-          )}
-          {(form.whatsapp_to_lead || form.whatsapp_to_admins || form.whatsapp_to_managers) && (
-            <>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-3.5 w-3.5 text-green-600" />
-                  Lead Welcome WhatsApp
-                </Label>
-                <Textarea
-                  rows={3}
-                  value={form.lead_welcome_whatsapp}
-                  onChange={(e) => setForm(prev => ({ ...prev, lead_welcome_whatsapp: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-3.5 w-3.5 text-green-600" />
-                  Team Alert WhatsApp
-                </Label>
-                <Textarea
-                  rows={3}
-                  value={form.team_alert_whatsapp}
-                  onChange={(e) => setForm(prev => ({ ...prev, team_alert_whatsapp: e.target.value }))}
-                />
-              </div>
-            </>
-          )}
-
-          {!form.sms_to_lead && !form.sms_to_admins && !form.sms_to_managers && !form.whatsapp_to_lead && !form.whatsapp_to_admins && !form.whatsapp_to_managers && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Enable at least one notification channel above to configure message templates.
-            </p>
-          )}
         </CardContent>
       </Card>
 
