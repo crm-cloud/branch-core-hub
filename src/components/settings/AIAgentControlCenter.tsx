@@ -9,14 +9,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   Activity, ToggleLeft, FlaskConical, ChevronDown, ChevronRight,
   Phone, Clock, RefreshCw, Play, Loader2, ExternalLink, AlertTriangle,
+  Bot, Brain, MessageSquare,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
+import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
+import { LeadNurtureSettings } from '@/components/settings/LeadNurtureSettings';
 
 // Tool definitions matching the edge function
 const AI_TOOLS = [
@@ -30,15 +35,74 @@ const AI_TOOLS = [
 ];
 
 export function AIAgentControlCenter() {
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="bg-gradient-to-br from-violet-500 to-indigo-600 text-white p-2.5 rounded-xl shadow-lg shadow-violet-500/20">
+          <Bot className="h-6 w-6" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-foreground">AI Agent Hub</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage all AI capabilities — monitoring, tools, auto-reply, and lead intelligence
+          </p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="dashboard" className="space-y-6">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl h-auto p-1">
+          <TabsTrigger value="dashboard" className="text-xs sm:text-sm gap-1.5 py-2">
+            <Activity className="h-3.5 w-3.5 hidden sm:block" />
+            Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="tools" className="text-xs sm:text-sm gap-1.5 py-2">
+            <ToggleLeft className="h-3.5 w-3.5 hidden sm:block" />
+            Tools
+          </TabsTrigger>
+          <TabsTrigger value="auto-reply" className="text-xs sm:text-sm gap-1.5 py-2">
+            <MessageSquare className="h-3.5 w-3.5 hidden sm:block" />
+            Auto-Reply
+          </TabsTrigger>
+          <TabsTrigger value="lead-capture" className="text-xs sm:text-sm gap-1.5 py-2">
+            <Brain className="h-3.5 w-3.5 hidden sm:block" />
+            Lead Capture
+          </TabsTrigger>
+          <TabsTrigger value="lead-nurture" className="text-xs sm:text-sm gap-1.5 py-2">
+            <Clock className="h-3.5 w-3.5 hidden sm:block" />
+            Lead Nurture
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="dashboard">
+          <DashboardTab />
+        </TabsContent>
+
+        <TabsContent value="tools">
+          <ToolsTab />
+        </TabsContent>
+
+        <TabsContent value="auto-reply">
+          <WhatsAppAISettings />
+        </TabsContent>
+
+        <TabsContent value="lead-capture">
+          <AIFlowBuilderSettings />
+        </TabsContent>
+
+        <TabsContent value="lead-nurture">
+          <LeadNurtureSettings />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function DashboardTab() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [testTool, setTestTool] = useState('');
-  const [testArgs, setTestArgs] = useState('{}');
-  const [testResult, setTestResult] = useState<any>(null);
-  const [testRunning, setTestRunning] = useState(false);
 
-  // ─── Section A: Activity Feed ────────────────────────────────────────────────
   const { data: toolLogs, isLoading: logsLoading } = useQuery({
     queryKey: ['ai-tool-logs'],
     queryFn: async () => {
@@ -53,64 +117,6 @@ export function AIAgentControlCenter() {
     refetchInterval: 10000,
   });
 
-  // ─── Section B: Tool Config ──────────────────────────────────────────────────
-  const { data: orgSettings, isLoading: configLoading } = useQuery({
-    queryKey: ['ai-tool-config'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('organization_settings')
-        .select('id, ai_tool_config')
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const toolConfig = (orgSettings?.ai_tool_config as Record<string, boolean>) || {};
-
-  const toggleTool = useMutation({
-    mutationFn: async ({ toolName, enabled }: { toolName: string; enabled: boolean }) => {
-      const newConfig = { ...toolConfig, [toolName]: enabled };
-      if (!orgSettings?.id) throw new Error('Organization settings not found');
-      const { error } = await supabase
-        .from('organization_settings')
-        .update({ ai_tool_config: newConfig })
-        .eq('id', orgSettings.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ai-tool-config'] });
-      toast.success('Tool config updated');
-    },
-    onError: () => toast.error('Failed to update tool config'),
-  });
-
-  // ─── Section C: Manual Test Lab ──────────────────────────────────────────────
-  const handleTestExecute = async () => {
-    if (!testTool) { toast.error('Select a tool first'); return; }
-    try {
-      JSON.parse(testArgs);
-    } catch {
-      toast.error('Invalid JSON arguments');
-      return;
-    }
-    setTestRunning(true);
-    setTestResult(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('test-ai-tool', {
-        body: { tool_name: testTool, arguments: JSON.parse(testArgs) },
-      });
-      if (error) throw error;
-      setTestResult(data);
-    } catch (e: any) {
-      setTestResult({ error: e.message || 'Execution failed' });
-    } finally {
-      setTestRunning(false);
-    }
-  };
-
-  // ─── Stats ───────────────────────────────────────────────────────────────────
   const totalCalls = toolLogs?.length || 0;
   const errorCalls = toolLogs?.filter(l => l.status === 'error').length || 0;
   const successRate = totalCalls > 0 ? Math.round(((totalCalls - errorCalls) / totalCalls) * 100) : 100;
@@ -151,7 +157,7 @@ export function AIAgentControlCenter() {
         </Card>
       </div>
 
-      {/* Section A: Live Activity Feed */}
+      {/* Live Activity Feed */}
       <Card className="rounded-xl shadow-lg shadow-slate-200/50">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -273,8 +279,75 @@ export function AIAgentControlCenter() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {/* Section B: Tool Toggle Panel */}
+function ToolsTab() {
+  const queryClient = useQueryClient();
+  const [testTool, setTestTool] = useState('');
+  const [testArgs, setTestArgs] = useState('{}');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testRunning, setTestRunning] = useState(false);
+
+  const { data: orgSettings, isLoading: configLoading } = useQuery({
+    queryKey: ['ai-tool-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organization_settings')
+        .select('id, ai_tool_config')
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const toolConfig = (orgSettings?.ai_tool_config as Record<string, boolean>) || {};
+
+  const toggleTool = useMutation({
+    mutationFn: async ({ toolName, enabled }: { toolName: string; enabled: boolean }) => {
+      const newConfig = { ...toolConfig, [toolName]: enabled };
+      if (!orgSettings?.id) throw new Error('Organization settings not found');
+      const { error } = await supabase
+        .from('organization_settings')
+        .update({ ai_tool_config: newConfig })
+        .eq('id', orgSettings.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-tool-config'] });
+      toast.success('Tool config updated');
+    },
+    onError: () => toast.error('Failed to update tool config'),
+  });
+
+  const handleTestExecute = async () => {
+    if (!testTool) { toast.error('Select a tool first'); return; }
+    try {
+      JSON.parse(testArgs);
+    } catch {
+      toast.error('Invalid JSON arguments');
+      return;
+    }
+    setTestRunning(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-ai-tool', {
+        body: { tool_name: testTool, arguments: JSON.parse(testArgs) },
+      });
+      if (error) throw error;
+      setTestResult(data);
+    } catch (e: any) {
+      setTestResult({ error: e.message || 'Execution failed' });
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Tool Toggle Panel */}
       <Card className="rounded-xl shadow-lg shadow-slate-200/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -313,7 +386,7 @@ export function AIAgentControlCenter() {
         </CardContent>
       </Card>
 
-      {/* Section C: Manual Test Lab */}
+      {/* Manual Test Lab */}
       <Card className="rounded-xl shadow-lg shadow-slate-200/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
