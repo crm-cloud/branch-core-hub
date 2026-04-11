@@ -6381,6 +6381,54 @@ export type Database = {
           },
         ]
       }
+      whatsapp_triggers: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          delay_minutes: number
+          event_name: string
+          id: string
+          is_active: boolean
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          delay_minutes?: number
+          event_name: string
+          id?: string
+          is_active?: boolean
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          delay_minutes?: number
+          event_name?: string
+          id?: string
+          is_active?: boolean
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_triggers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_triggers_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workout_plans: {
         Row: {
           created_at: string
