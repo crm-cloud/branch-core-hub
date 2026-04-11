@@ -158,9 +158,10 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                   <TableHead>Status</TableHead>
                   <TableHead>Temp</TableHead>
                   <TableHead>Source</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
+                   <TableHead>Score</TableHead>
+                   <TableHead>Owner</TableHead>
+                   <TableHead>Created</TableHead>
+                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
