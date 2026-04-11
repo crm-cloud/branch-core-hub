@@ -195,7 +195,7 @@ const ScrollOverlay = () => {
             <Instagram className="w-5 h-5 group-hover:scale-110 transition-transform" />
             <span className="text-sm tracking-wider font-medium">@theinclinelife</span>
           </a>
-          <p className="text-muted-foreground/50 text-xs tracking-wider">© 2026 The Incline Life. All rights reserved.</p>
+          <p className="text-muted-foreground/50 text-xs tracking-wider">© 2026 The Incline Life by Incline. All rights reserved.</p>
         </footer>
       </section>
     </div>
