@@ -465,9 +465,11 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   const shouldCaptureLead = !contactContext.isMember && leadCaptureConfig?.enabled && (leadCaptureConfig.target_fields?.length ?? 0) > 0;
   if (shouldCaptureLead) {
     const fieldLabels: Record<string, string> = {
-      name: "Full Name", phone: "Phone Number", email: "Email", goal: "Fitness Goal",
-      budget: "Budget", start_date: "Expected Start Date", experience: "Fitness Experience",
-      preferred_time: "Preferred Time",
+      name: "Full Name", phone: "Phone Number", email: "Email Address",
+      goal: "Fitness Goal (e.g., Weight Loss, Muscle Gain, General Fitness)",
+      budget: "Monthly Budget (in ₹)", start_date: "When do you plan to start? (exact date or timeframe)",
+      experience: "Fitness Experience Level (Beginner, Intermediate, or Advanced)",
+      preferred_time: "Preferred workout time slot (e.g., Morning 6-8 AM, Evening 5-7 PM)",
     };
     const fieldNames = (leadCaptureConfig!.target_fields || []).map(f => fieldLabels[f] || f).join(", ");
     systemPrompt += `\n\nIMPORTANT LEAD CAPTURE INSTRUCTIONS:
@@ -621,11 +623,11 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
             full_name: parsed.data.name || parsed.data.full_name || inboundMsg.contact_name || "WhatsApp Lead",
             email: parsed.data.email || null,
             goals: parsed.data.goal || parsed.data.fitness_goal || null,
-            budget: parsed.data.budget || null,
+            budget: parsed.data.budget || parsed.data.monthly_budget || null,
             fitness_goal: parsed.data.fitness_goal || parsed.data.goal || null,
-            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || null,
-            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || null,
-            preferred_time: parsed.data.preferred_time || null,
+            expected_start_date: parsed.data.expected_start_date || parsed.data.start_date || parsed.data.starting_date || parsed.data.when_to_start || null,
+            fitness_experience: parsed.data.fitness_experience || parsed.data.experience || parsed.data.fitness_level || null,
+            preferred_time: parsed.data.preferred_time || parsed.data.time || parsed.data.workout_time || parsed.data.time_slot || null,
             notes: `AI-captured via WhatsApp conversation`,
           };
 
