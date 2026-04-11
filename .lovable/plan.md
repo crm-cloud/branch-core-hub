@@ -1,95 +1,120 @@
 
 
-# GST Billing Logic, SMTP Email Routing & Global Email Overhaul
+# AI Tool Management UI & Observability Dashboard
 
-## Current State (Audit Findings)
+## Database Migration
 
-1. **No GST tracking fields** on `invoices`, `branches`, `members`, or `organization_settings` tables — no `is_gst_invoice`, `gst_rate`, `customer_gstin`, or branch `gstin`
-2. **CreateInvoiceDrawer** already has GST rate selector and `includeGst` toggle, but does NOT persist GST metadata (rate, is_gst_invoice flag) to the database — only saves computed `tax_amount`
-3. **PurchaseMembershipDrawer** hardcodes `tax_amount: 0` — no GST option for membership invoices
-4. **PDF generator** already shows CGST/SGST split when `tax_amount > 0`, but lacks `is_gst_invoice` flag to show "TAX INVOICE" title and customer GSTIN
-5. **send-email Edge Function** already routes dynamically (SMTP/SendGrid/Mailgun/SES) — no hard-coding issues
-6. **test-integration Edge Function** already exists with SMS/Email/WhatsApp testing and is wired to IntegrationSettings UI
-7. **5 files** use `mailto:` links instead of the custom email dispatcher
-8. **InvoiceViewDrawer** `buildPDFData()` does NOT pass `gst_number` or `logo_url` to the PDF generator
-
----
-
-## Migration: Add GST Fields
+Create `ai_tool_logs` table:
 
 ```sql
-ALTER TABLE branches ADD COLUMN gstin TEXT;
-ALTER TABLE invoices ADD COLUMN is_gst_invoice BOOLEAN DEFAULT false;
-ALTER TABLE invoices ADD COLUMN gst_rate NUMERIC DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN customer_gstin TEXT;
-ALTER TABLE members ADD COLUMN gstin TEXT;
+CREATE TABLE public.ai_tool_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id TEXT,
+  phone_number TEXT,
+  branch_id UUID REFERENCES branches(id),
+  message_id UUID,
+  tool_name TEXT NOT NULL,
+  arguments JSONB DEFAULT '{}',
+  result JSONB DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'success',
+  error_message TEXT,
+  execution_time_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_ai_tool_logs_created ON ai_tool_logs(created_at DESC);
+CREATE INDEX idx_ai_tool_logs_phone ON ai_tool_logs(phone_number);
+CREATE INDEX idx_ai_tool_logs_status ON ai_tool_logs(status);
+
+ALTER TABLE ai_tool_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Staff can view AI tool logs" ON ai_tool_logs
+  FOR SELECT TO authenticated
+  USING (public.has_any_role(auth.uid(), ARRAY['owner','admin','manager','staff']::app_role[]));
+```
+
+Add `ai_tool_config` JSONB column to `organization_settings` for storing enabled/disabled tool toggles.
+
+```sql
+ALTER TABLE organization_settings ADD COLUMN ai_tool_config JSONB DEFAULT '{}';
 ```
 
 ---
 
-## Epic 1: GST Invoicing & Tax Tracking
+## Epic 1: Tool Logging in Edge Function
 
-### CreateInvoiceDrawer.tsx
-- Persist `is_gst_invoice`, `gst_rate`, `customer_gstin` to invoice insert
-- When member is selected and has a stored GSTIN, auto-fill `customer_gstin`
-- Fetch member's GSTIN alongside profile data
-- Show CGST/SGST split (half/half) in the summary card when GST is ON
+**File:** `supabase/functions/whatsapp-webhook/index.ts`
 
-### PurchaseMembershipDrawer.tsx
-- Add GST toggle (Switch) with rate selector (5/12/18/28%)
-- Calculate and display GST breakdown before purchase
-- Persist `is_gst_invoice`, `gst_rate`, `tax_amount` to the invoice
-- Adjust `total_amount` to include tax
+In the tool execution loop (~line 1098), after each `executeToolCall`, insert a row into `ai_tool_logs`:
 
-### InvoiceViewDrawer.tsx
-- Display "TAX INVOICE" badge when `is_gst_invoice` is true
-- Show CGST/SGST split in totals section
-- Show customer GSTIN and branch GSTIN when available
-- Pass `gst_number` and `logo_url` to `buildPDFData()`
+```typescript
+const startTime = Date.now();
+const result = await executeToolCall(...);
+const elapsed = Date.now() - startTime;
+const hasError = !!result.error;
 
----
+await supabase.from("ai_tool_logs").insert({
+  phone_number: phoneNumber,
+  branch_id: branchId,
+  message_id: messageId,
+  tool_name: tc.function.name,
+  arguments: parsedArgs,
+  result,
+  status: hasError ? "error" : "success",
+  error_message: hasError ? result.error : null,
+  execution_time_ms: elapsed,
+});
+```
 
-## Epic 2: Professional Tax Invoice PDF
+Also apply to nested tool calls (~line 1163).
 
-### pdfGenerator.ts
-- When `is_gst_invoice` is true: change title from "INVOICE" to "TAX INVOICE"
-- Show Customer GSTIN in Bill To section
-- Show branch GSTIN prominently
-- Already shows CGST/SGST split — ensure it uses the actual `gst_rate` for labels (e.g., "CGST @ 9%" instead of just "CGST")
-
-### Thermal Receipt
-- Add GST number and CGST/SGST breakdown when `is_gst_invoice` is true
+**Tool Toggle:** Before passing tools to Gemini, fetch `ai_tool_config` from `organization_settings` and filter out disabled tools from the `getMemberTools()` array.
 
 ---
 
-## Epic 3: Universal Email Button Refactor
+## Epic 2: AI Agent Control Center (Settings Tab)
 
-Replace `mailto:` links in these 5 files with calls to `send-email` Edge Function via a reusable helper:
+**New file:** `src/components/settings/AIAgentControlCenter.tsx`
 
-| File | Current Pattern | New Pattern |
-|---|---|---|
-| `LeadProfileDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
-| `InvoiceShareDrawer.tsx` | `window.location.href = mailto:` | Call `send-email` function |
-| `SmartAssistDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
-| `RetentionCampaignManager.tsx` | `window.open(mailto:...)` | Call `send-email` function |
-| `MemberProfileDrawer.tsx` | `window.open(mailto:...)` | Call `send-email` function |
+Three sections in a single settings tab (`/settings?tab=ai-agent`):
 
-Create a shared utility `sendEmailViaProvider(to, subject, html, branchId)` in `communicationService.ts` that invokes the `send-email` Edge Function. Show toast on success/failure. Fallback to `mailto:` if no email provider is configured.
+### Section A: Live Activity Feed
+- Query `ai_tool_logs` ordered by `created_at DESC`, limit 50
+- Table columns: Time, Phone, Tool Name, Status (green/red badge), Duration (ms), Actions (expand)
+- Expandable row shows full `arguments` and `result` JSON
+- Auto-refresh via React Query `refetchInterval: 10000`
+
+### Section B: Tool Toggle Panel
+- List all 7 tools from `getMemberTools()` with Switch toggles
+- Load/save from `organization_settings.ai_tool_config`
+- Each tool shows name + description
+- Disabled tools get filtered out in the edge function before calling Gemini
+
+### Section C: Manual Test Lab
+- Dropdown to select a tool name
+- JSON textarea for arguments input
+- "Execute" button calls a new edge function `test-ai-tool` that runs `executeToolCall` directly
+- Displays result JSON with success/error styling
+
+**Wire into Settings page:** Add `ai-agent` to `SETTINGS_MENU` with a `Bot` icon and map to the new component.
 
 ---
 
-## Epic 4: Branch & Member GST Settings UI
+## Epic 3: WhatsApp Chat "AI Thought" Integration
 
-### BranchSettings or EditBranchDrawer
-- Add GSTIN field to branch edit form
-- Persist to `branches.gstin`
+**File:** `src/pages/WhatsAppChat.tsx`
 
-### Member Profile
-- Add GSTIN field to `EditProfileDrawer.tsx`
-- Persist to `members.gstin`
+- When rendering messages in the chat view, for each outbound AI message, query `ai_tool_logs` where `phone_number` matches and `created_at` is within ±5 seconds of the message timestamp
+- Display a subtle indigo banner below the AI message bubble: "✨ AI used `get_membership_status` — Success (42ms)"
+- For errors, show a red-tinted banner with "⚠ AI tool `book_facility_slot` failed — Slot full"
 
-### OrganizationSettings
-- No changes needed — branch-level GSTIN is sufficient
+---
+
+## Epic 4: Error Recovery — "Retry as Human"
+
+In the Activity Feed (Epic 2) and the WhatsApp Chat thought banners (Epic 3):
+- For rows with `status = 'error'`, show a "Handle Manually" button
+- Clicking navigates to `/whatsapp-chat` and sets the contact phone as the active chat
+- Pre-fills the message input with a contextual message: "Re: [tool_name] — [error_message]. How can I help?"
 
 ---
 
@@ -97,17 +122,10 @@ Create a shared utility `sendEmailViaProvider(to, subject, html, branchId)` in `
 
 | File | Change |
 |---|---|
-| **Migration** | Add `gstin` to branches/members, `is_gst_invoice`/`gst_rate`/`customer_gstin` to invoices |
-| `src/components/invoices/CreateInvoiceDrawer.tsx` | Persist GST fields, auto-fill member GSTIN |
-| `src/components/members/PurchaseMembershipDrawer.tsx` | Add GST toggle + rate selector |
-| `src/components/invoices/InvoiceViewDrawer.tsx` | Display TAX INVOICE badge, GSTIN, pass data to PDF |
-| `src/utils/pdfGenerator.ts` | TAX INVOICE title, customer GSTIN, rate-labeled CGST/SGST |
-| `src/services/communicationService.ts` | Add `sendEmailViaProvider()` helper |
-| `src/components/leads/LeadProfileDrawer.tsx` | Replace mailto with sendEmailViaProvider |
-| `src/components/invoices/InvoiceShareDrawer.tsx` | Replace mailto with send-email invocation |
-| `src/components/retention/SmartAssistDrawer.tsx` | Replace mailto |
-| `src/components/settings/RetentionCampaignManager.tsx` | Replace mailto |
-| `src/components/members/MemberProfileDrawer.tsx` | Replace mailto |
-| `src/components/branches/EditBranchDrawer.tsx` | Add GSTIN field |
-| `src/components/members/EditProfileDrawer.tsx` | Add GSTIN field for members |
+| **Migration** | Create `ai_tool_logs` table + add `ai_tool_config` to `organization_settings` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Log tool calls, filter disabled tools |
+| `src/components/settings/AIAgentControlCenter.tsx` | **NEW** — Activity feed, tool toggles, test lab |
+| `src/pages/Settings.tsx` | Add `ai-agent` tab |
+| `src/pages/WhatsAppChat.tsx` | Show AI thought banners on messages |
+| `supabase/functions/test-ai-tool/index.ts` | **NEW** — Manual tool execution endpoint |
 
