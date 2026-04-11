@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -205,11 +206,10 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone *</Label>
-              <Input
+              <PhoneInput
                 id="phone"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                required
+                onChange={(value) => setFormData({ ...formData, phone: value })}
               />
             </div>
             <div className="space-y-2">
@@ -332,11 +332,10 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
             </div>
             <div className="space-y-2">
               <Label htmlFor="emergencyContactPhone">Emergency Phone</Label>
-              <Input
+              <PhoneInput
                 id="emergencyContactPhone"
-                placeholder="Phone"
                 value={formData.emergencyContactPhone}
-                onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, emergencyContactPhone: value })}
               />
             </div>
           </div>

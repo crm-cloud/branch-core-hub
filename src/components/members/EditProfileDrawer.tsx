@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
@@ -186,16 +187,11 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="Enter phone number"
-                    className="pl-10"
-                  />
-                </div>
+                <PhoneInput
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(value) => setFormData({ ...formData, phone: value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -258,16 +254,11 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
               </div>
               <div className="space-y-2">
                 <Label htmlFor="emergency_contact_phone">Contact Phone</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="emergency_contact_phone"
-                    value={formData.emergency_contact_phone}
-                    onChange={(e) => setFormData({ ...formData, emergency_contact_phone: e.target.value })}
-                    placeholder="Emergency contact phone"
-                    className="pl-10"
-                  />
-                </div>
+                <PhoneInput
+                  id="emergency_contact_phone"
+                  value={formData.emergency_contact_phone}
+                  onChange={(value) => setFormData({ ...formData, emergency_contact_phone: value })}
+                />
               </div>
             </div>
           </div>

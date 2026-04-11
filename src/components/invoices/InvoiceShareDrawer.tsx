@@ -1,5 +1,6 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -225,10 +226,9 @@ Team Incline Fitness`;
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Phone Number</Label>
-              <Input
+              <PhoneInput
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Enter phone number"
+                onChange={(value) => setPhone(value)}
               />
             </div>
             <div className="space-y-2">
