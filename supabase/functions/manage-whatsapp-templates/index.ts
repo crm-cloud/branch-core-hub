@@ -242,11 +242,29 @@ serve(async (req) => {
 
       const safeName = name.toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
 
+      // Auto-convert named variables like {{member_name}} to numbered {{1}}, {{2}}, etc.
+      let convertedBody = body_text;
+      const namedVarRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+      const namedVars: string[] = [];
+      let match;
+      while ((match = namedVarRegex.exec(body_text)) !== null) {
+        if (!namedVars.includes(match[1])) {
+          namedVars.push(match[1]);
+        }
+      }
+      // Replace named vars with numbered ones
+      namedVars.forEach((varName, index) => {
+        convertedBody = convertedBody.replace(
+          new RegExp(`\\{\\{${varName}\\}\\}`, "g"),
+          `{{${index + 1}}}`
+        );
+      });
+
       const metaPayload = {
         name: safeName,
         category,
         language,
-        components: [{ type: "BODY", text: body_text }],
+        components: [{ type: "BODY", text: convertedBody }],
       };
 
       const createUrl = appendProof(`${META_API_BASE}/${wabaId}/message_templates`, proof);

@@ -93,7 +93,11 @@ function isAiNotConfiguredError(msg: string): boolean {
   );
 }
 
-type ChatFilter = 'all' | 'unread' | 'needs_human';
+type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats';
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/^\+/, '');
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
