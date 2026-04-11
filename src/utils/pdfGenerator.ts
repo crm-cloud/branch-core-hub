@@ -652,3 +652,189 @@ export function generatePayslipPDF(data: PayslipData): void {
   printWindow.document.close();
   printWindow.onload = () => { printWindow.print(); };
 }
+
+// ========== INVOICE PDF ==========
+interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total_amount: number;
+}
+
+interface InvoicePDFData {
+  invoice_number: string;
+  created_at: string;
+  due_date?: string;
+  status: string;
+  subtotal: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  total_amount: number;
+  amount_paid: number;
+  notes?: string;
+  items: InvoiceItem[];
+  member_name: string;
+  member_code?: string;
+  member_email?: string;
+  member_phone?: string;
+  branch_name: string;
+  branch_address?: string;
+  branch_phone?: string;
+  branch_email?: string;
+  gst_number?: string;
+  logo_url?: string;
+}
+
+export function generateInvoicePDF(data: InvoicePDFData): void {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Please allow popups to download PDF'); return; }
+
+  const due = data.total_amount - (data.amount_paid || 0);
+  const statusColors: Record<string, string> = {
+    paid: '#22c55e', pending: '#f59e0b', partial: '#3b82f6', overdue: '#ef4444', cancelled: '#94a3b8',
+  };
+  const statusColor = statusColors[data.status] || '#94a3b8';
+  const taxHalf = (data.tax_amount || 0) / 2;
+
+  const itemRows = data.items.map(i => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(i.description)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:center;">${i.quantity || 1}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;">₹${i.unit_price.toLocaleString('en-IN')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;">₹${i.total_amount.toLocaleString('en-IN')}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>Invoice ${data.invoice_number}</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; padding:40px; color:#1e293b; max-width:800px; margin:0 auto; background:#fff; }
+      @media print { body { padding:20px; } .no-print { display:none; } }
+    </style>
+  </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #6366f1;">
+      <div>
+        ${data.logo_url ? `<img src="${data.logo_url}" alt="Logo" style="height:50px;margin-bottom:8px;">` : ''}
+        <h1 style="font-size:24px;color:#6366f1;font-weight:800;">Incline Fitness</h1>
+        <p style="font-size:12px;color:#64748b;margin-top:4px;">${data.branch_name}</p>
+        <p style="font-size:12px;color:#64748b;">${data.branch_address || ''}</p>
+        <p style="font-size:12px;color:#64748b;">${data.branch_phone || ''} ${data.branch_email ? '· ' + data.branch_email : ''}</p>
+        ${data.gst_number ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${data.gst_number}</p>` : ''}
+      </div>
+      <div style="text-align:right;">
+        <h2 style="font-size:28px;font-weight:800;color:#1e293b;">INVOICE</h2>
+        <p style="font-size:14px;font-family:monospace;color:#64748b;margin-top:4px;">${data.invoice_number}</p>
+        <span style="display:inline-block;background:${statusColor};color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;margin-top:8px;">${data.status}</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
+        <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bill To</p>
+        <p style="font-weight:600;">${escapeHtml(data.member_name)}</p>
+        ${data.member_code ? `<p style="font-size:12px;color:#64748b;font-family:monospace;">${data.member_code}</p>` : ''}
+        ${data.member_email ? `<p style="font-size:12px;color:#64748b;">${data.member_email}</p>` : ''}
+        ${data.member_phone ? `<p style="font-size:12px;color:#64748b;">${data.member_phone}</p>` : ''}
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:right;">
+        <p style="font-size:12px;color:#64748b;">Date: <strong>${new Date(data.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</strong></p>
+        ${data.due_date ? `<p style="font-size:12px;color:#64748b;margin-top:4px;">Due: <strong>${new Date(data.due_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</strong></p>` : ''}
+      </div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+      <thead><tr style="background:#f1f5f9;">
+        <th style="padding:10px 12px;font-size:11px;text-align:left;color:#64748b;text-transform:uppercase;">Description</th>
+        <th style="padding:10px 12px;font-size:11px;text-align:center;color:#64748b;text-transform:uppercase;">Qty</th>
+        <th style="padding:10px 12px;font-size:11px;text-align:right;color:#64748b;text-transform:uppercase;">Rate</th>
+        <th style="padding:10px 12px;font-size:11px;text-align:right;color:#64748b;text-transform:uppercase;">Amount</th>
+      </tr></thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:30px;">
+      <div style="width:280px;">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;"><span style="color:#64748b;">Subtotal</span><span>₹${data.subtotal.toLocaleString('en-IN')}</span></div>
+        ${(data.discount_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#22c55e;"><span>Discount</span><span>-₹${(data.discount_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
+        ${(data.tax_amount || 0) > 0 ? `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>CGST</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748b;"><span>SGST</span><span>₹${taxHalf.toLocaleString('en-IN')}</span></div>
+        ` : ''}
+        <hr style="border:none;border-top:2px solid #1e293b;margin:8px 0;">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:18px;font-weight:800;"><span>Total</span><span>₹${data.total_amount.toLocaleString('en-IN')}</span></div>
+        ${data.amount_paid > 0 ? `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#22c55e;"><span>Paid</span><span>₹${data.amount_paid.toLocaleString('en-IN')}</span></div>` : ''}
+        ${due > 0 ? `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;font-weight:600;color:#ef4444;"><span>Balance Due</span><span>₹${due.toLocaleString('en-IN')}</span></div>` : ''}
+      </div>
+    </div>
+
+    ${data.notes ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:20px;"><p style="font-size:12px;color:#64748b;">${escapeHtml(data.notes)}</p></div>` : ''}
+
+    <div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:11px;color:#94a3b8;">Thank you for choosing Incline Fitness!</p>
+      <p style="font-size:10px;color:#cbd5e1;margin-top:4px;">Generated on ${new Date().toLocaleDateString('en-IN')}</p>
+    </div>
+  </body></html>`;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}
+
+// ========== THERMAL RECEIPT (80mm) ==========
+export function generateThermalReceipt(data: InvoicePDFData): void {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Please allow popups'); return; }
+
+  const due = data.total_amount - (data.amount_paid || 0);
+  const itemRows = data.items.map(i =>
+    `<tr><td style="font-size:11px;padding:2px 0;">${escapeHtml(i.description)}</td>
+     <td style="font-size:11px;text-align:center;padding:2px 0;">${i.quantity || 1}</td>
+     <td style="font-size:11px;text-align:right;padding:2px 0;">₹${i.total_amount.toLocaleString('en-IN')}</td></tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html><html><head>
+    <title>Receipt ${data.invoice_number}</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:'Courier New',Courier,monospace; width:302px; margin:0 auto; padding:10px; color:#000; font-size:12px; }
+      .dash { border-top:1px dashed #000; margin:6px 0; }
+      @media print { body { width:80mm; padding:4mm; } @page { size:80mm auto; margin:0; } }
+    </style>
+  </head><body>
+    <div style="text-align:center;margin-bottom:6px;">
+      <strong style="font-size:14px;">INCLINE FITNESS</strong><br>
+      <span style="font-size:10px;">${data.branch_name}</span><br>
+      ${data.branch_phone ? `<span style="font-size:10px;">Tel: ${data.branch_phone}</span><br>` : ''}
+      ${data.gst_number ? `<span style="font-size:9px;">GSTIN: ${data.gst_number}</span>` : ''}
+    </div>
+    <div class="dash"></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;">
+      <span>${data.invoice_number}</span>
+      <span>${new Date(data.created_at).toLocaleDateString('en-IN')}</span>
+    </div>
+    <div style="font-size:11px;margin:2px 0;">Customer: ${escapeHtml(data.member_name)}</div>
+    <div class="dash"></div>
+    <table style="width:100%;border-collapse:collapse;">
+      <tr><th style="font-size:10px;text-align:left;padding:2px 0;">ITEM</th><th style="font-size:10px;text-align:center;">QTY</th><th style="font-size:10px;text-align:right;">AMT</th></tr>
+      ${itemRows}
+    </table>
+    <div class="dash"></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;"><span>Subtotal</span><span>₹${data.subtotal.toLocaleString('en-IN')}</span></div>
+    ${(data.discount_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Discount</span><span>-₹${(data.discount_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
+    ${(data.tax_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>GST</span><span>₹${(data.tax_amount || 0).toLocaleString('en-IN')}</span></div>` : ''}
+    <div class="dash"></div>
+    <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:bold;"><span>TOTAL</span><span>₹${data.total_amount.toLocaleString('en-IN')}</span></div>
+    ${data.amount_paid > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Paid</span><span>₹${data.amount_paid.toLocaleString('en-IN')}</span></div>` : ''}
+    ${due > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;"><span>DUE</span><span>₹${due.toLocaleString('en-IN')}</span></div>` : ''}
+    <div class="dash"></div>
+    <div style="text-align:center;font-size:10px;margin-top:6px;">
+      <p>Thank you! Visit again.</p>
+      <p style="margin-top:4px;">${new Date().toLocaleString('en-IN')}</p>
+    </div>
+  </body></html>`;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => { printWindow.print(); };
+}

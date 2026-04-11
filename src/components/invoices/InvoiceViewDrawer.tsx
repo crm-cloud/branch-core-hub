@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { FileText, Printer, Download, IndianRupee, CreditCard, Link2 } from 'lucide-react';
+import { FileText, Printer, Download, IndianRupee, CreditCard, Link2, Receipt } from 'lucide-react';
+import { generateInvoicePDF, generateThermalReceipt } from '@/utils/pdfGenerator';
 
 interface InvoiceViewDrawerProps {
   open: boolean;
@@ -64,9 +65,38 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
     return colors[status] || 'bg-muted';
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = () => { window.print(); };
+
+  const buildPDFData = () => {
+    const memberProfile = (invoice.members as any)?.profiles;
+    return {
+      invoice_number: invoice.invoice_number,
+      created_at: invoice.created_at,
+      due_date: invoice.due_date,
+      status: invoice.status,
+      subtotal: invoice.subtotal || invoice.total_amount,
+      discount_amount: invoice.discount_amount || 0,
+      tax_amount: invoice.tax_amount || 0,
+      total_amount: invoice.total_amount,
+      amount_paid: invoice.amount_paid || 0,
+      notes: invoice.notes,
+      items: (invoice.invoice_items || []).map((i: any) => ({
+        description: i.description, quantity: i.quantity || 1,
+        unit_price: i.unit_price, total_amount: i.total_amount,
+      })),
+      member_name: memberProfile?.full_name || 'Walk-in',
+      member_code: invoice.members?.member_code,
+      member_email: memberProfile?.email,
+      member_phone: memberProfile?.phone,
+      branch_name: invoice.branch?.name || '',
+      branch_address: invoice.branch?.address,
+      branch_phone: invoice.branch?.phone,
+      branch_email: invoice.branch?.email,
+    };
   };
+
+  const handleDownloadPDF = () => { if (invoice) generateInvoicePDF(buildPDFData()); };
+  const handleThermalPrint = () => { if (invoice) generateThermalReceipt(buildPDFData()); };
 
   if (isLoading || !invoice) {
     return (
@@ -96,7 +126,13 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
               Invoice Details
             </SheetTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="icon" onClick={handlePrint}>
+              <Button variant="outline" size="icon" onClick={handleDownloadPDF} title="Download PDF">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={handleThermalPrint} title="Print Thermal Receipt">
+                <Receipt className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={handlePrint} title="Print">
                 <Printer className="h-4 w-4" />
               </Button>
             </div>

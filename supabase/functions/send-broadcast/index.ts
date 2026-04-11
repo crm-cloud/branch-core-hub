@@ -1,3 +1,4 @@
+// v2.0.0 — Provider-agnostic broadcast via send-email / send-sms / send-whatsapp
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -21,7 +22,6 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Verify caller
     const authClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -33,7 +33,6 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Role check: only staff+ can send broadcasts
     const { data: roleData } = await adminClient
       .from("user_roles")
       .select("role")
@@ -47,59 +46,46 @@ Deno.serve(async (req) => {
 
     if (!channel || !message || !branch_id) {
       return new Response(JSON.stringify({ error: "Missing required fields: channel, message, branch_id" }), {
-        status: 400,
-        headers: corsHeaders,
+        status: 400, headers: corsHeaders,
       });
     }
 
-    // Resolve recipients based on audience
+    // Resolve recipients
     let membersQuery = adminClient
       .from("members")
       .select("id, user_id, member_code, profiles:user_id (full_name, phone, email)")
       .eq("branch_id", branch_id);
 
     if (audience === "active") {
-      // Get members with active memberships
       const { data: activeMemberIds } = await adminClient
-        .from("memberships")
-        .select("member_id")
-        .eq("status", "active")
-        .eq("branch_id", branch_id)
+        .from("memberships").select("member_id").eq("status", "active").eq("branch_id", branch_id)
         .gte("end_date", new Date().toISOString().split("T")[0]);
       const ids = [...new Set((activeMemberIds || []).map((m: any) => m.member_id))];
       if (ids.length > 0) membersQuery = membersQuery.in("id", ids);
-      else return new Response(JSON.stringify({ success: true, sent: 0, message: "No active members found" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      else return json({ success: true, sent: 0, message: "No active members found" });
     } else if (audience === "expiring") {
       const today = new Date();
       const sevenDays = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
       const { data: expiringIds } = await adminClient
-        .from("memberships")
-        .select("member_id")
-        .eq("status", "active")
-        .eq("branch_id", branch_id)
-        .lte("end_date", sevenDays.toISOString().split("T")[0])
-        .gte("end_date", today.toISOString().split("T")[0]);
+        .from("memberships").select("member_id").eq("status", "active").eq("branch_id", branch_id)
+        .lte("end_date", sevenDays.toISOString().split("T")[0]).gte("end_date", today.toISOString().split("T")[0]);
       const ids = [...new Set((expiringIds || []).map((m: any) => m.member_id))];
       if (ids.length > 0) membersQuery = membersQuery.in("id", ids);
-      else return new Response(JSON.stringify({ success: true, sent: 0, message: "No expiring members found" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      else return json({ success: true, sent: 0, message: "No expiring members found" });
     } else if (audience === "expired") {
       const { data: expiredIds } = await adminClient
-        .from("memberships")
-        .select("member_id")
-        .eq("branch_id", branch_id)
+        .from("memberships").select("member_id").eq("branch_id", branch_id)
         .lt("end_date", new Date().toISOString().split("T")[0]);
       const ids = [...new Set((expiredIds || []).map((m: any) => m.member_id))];
       if (ids.length > 0) membersQuery = membersQuery.in("id", ids);
-      else return new Response(JSON.stringify({ success: true, sent: 0, message: "No expired members found" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      else return json({ success: true, sent: 0, message: "No expired members found" });
     }
 
     const { data: members, error: membersError } = await membersQuery;
     if (membersError) throw membersError;
 
     if (!members || members.length === 0) {
-      return new Response(JSON.stringify({ success: true, sent: 0, message: "No recipients found" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: true, sent: 0, message: "No recipients found" });
     }
 
     let sent = 0;
@@ -110,7 +96,6 @@ Deno.serve(async (req) => {
       const profile = (member as any).profiles;
       if (!profile) continue;
 
-      // Personalize message
       const personalizedMsg = message
         .replace(/\{\{member_name\}\}/g, profile.full_name || "Member")
         .replace(/\{\{member_code\}\}/g, member.member_code || "");
@@ -118,78 +103,97 @@ Deno.serve(async (req) => {
       let recipient = "";
       let status = "logged";
 
-      if (channel === "email" && profile.email) {
-        recipient = profile.email;
-        // Check if RESEND_API_KEY is configured for actual sending
-        const resendKey = Deno.env.get("RESEND_API_KEY");
-        if (resendKey) {
-          try {
-            const res = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                from: "Gym <noreply@updates.gym.com>",
-                to: [profile.email],
-                subject: subject || "Message from your gym",
-                html: personalizedMsg.replace(/\n/g, "<br>"),
-              }),
-            });
-            status = res.ok ? "sent" : "failed";
-          } catch {
-            status = "failed";
-          }
+      try {
+        if (channel === "email" && profile.email) {
+          recipient = profile.email;
+          // Dispatch via send-email edge function
+          const emailResp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              to: profile.email,
+              subject: subject || "Message from Incline Fitness",
+              html: personalizedMsg.replace(/\n/g, "<br>"),
+              branch_id,
+            }),
+          });
+          const emailResult = await emailResp.json();
+          status = emailResult.success ? "sent" : "failed";
+        } else if (channel === "sms" && profile.phone) {
+          recipient = profile.phone;
+          const smsResp = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              action: "send",
+              phone: profile.phone,
+              message: personalizedMsg,
+              branch_id,
+            }),
+          });
+          const smsResult = await smsResp.json();
+          status = smsResult.success ? "sent" : "failed";
+        } else if (channel === "whatsapp" && profile.phone) {
+          recipient = profile.phone;
+          const waResp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              phone: profile.phone,
+              message: personalizedMsg,
+              type: "text",
+            }),
+          });
+          const waResult = await waResp.json();
+          status = waResult.success ? "sent" : "failed";
+        } else {
+          continue;
         }
-      } else if (channel === "sms" && profile.phone) {
-        recipient = profile.phone;
-        // SMS sending requires provider API key - logged only for now
-        status = "logged";
-      } else if (channel === "whatsapp" && profile.phone) {
-        recipient = profile.phone;
-        // WhatsApp Business API requires setup - logged only for now
-        status = "logged";
-      } else {
-        continue; // No valid contact info for this channel
+      } catch (e) {
+        console.error(`Broadcast dispatch error for ${recipient}:`, e);
+        status = "failed";
       }
 
-      if (status === "sent" || status === "logged") sent++;
+      if (status === "sent") sent++;
       else failed++;
 
       logs.push({
-        branch_id,
-        type: channel,
-        recipient,
-        subject: subject || null,
-        content: personalizedMsg,
-        status,
-        member_id: member.id,
-        sent_at: new Date().toISOString(),
+        branch_id, type: channel, recipient,
+        subject: subject || null, content: personalizedMsg,
+        status, member_id: member.id, sent_at: new Date().toISOString(),
       });
     }
 
-    // Bulk insert communication logs
     if (logs.length > 0) {
       await adminClient.from("communication_logs").insert(logs);
     }
 
-    // Create a notification for the sender
     await adminClient.from("notifications").insert({
-      user_id: userId,
-      branch_id,
-      title: "Broadcast Sent",
-      message: `${channel.toUpperCase()} broadcast sent to ${sent} recipients (${audience} audience)`,
-      type: "info",
-      category: "communication",
+      user_id: userId, branch_id, title: "Broadcast Sent",
+      message: `${channel.toUpperCase()} broadcast: ${sent} sent, ${failed} failed (${audience} audience)`,
+      type: "info", category: "communication",
     });
 
-    return new Response(
-      JSON.stringify({ success: true, sent, failed, total: members.length }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ success: true, sent, failed, total: members.length });
   } catch (error: any) {
     console.error("Broadcast error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
