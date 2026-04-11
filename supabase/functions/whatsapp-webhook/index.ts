@@ -692,6 +692,42 @@ async function sendAiReply(
   inboundMsg: { phone_number: string; contact_name: string | null },
   branchId: string,
 ) {
+  // Check if AI reply is an interactive message JSON
+  let interactivePayload: any = null;
+  try {
+    const trimmed = replyText.trim();
+    if (trimmed.startsWith("{") && trimmed.includes('"type"')) {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.type === "interactive" && parsed.buttons?.length) {
+        interactivePayload = {
+          type: "button",
+          body: { text: parsed.body || "Please select an option:" },
+          action: {
+            buttons: parsed.buttons.slice(0, 3).map((btn: string, i: number) => ({
+              type: "reply",
+              reply: { id: `btn_${i}`, title: btn.substring(0, 20) },
+            })),
+          },
+        };
+        // Store readable text for DB
+        replyText = `${parsed.body}\n${parsed.buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`;
+      } else if (parsed.type === "interactive_list" && parsed.sections?.length) {
+        interactivePayload = {
+          type: "list",
+          body: { text: parsed.body || "Please select an option:" },
+          action: {
+            button: (parsed.button || "Select").substring(0, 20),
+            sections: parsed.sections,
+          },
+        };
+        const allRows = parsed.sections.flatMap((s: any) => s.rows || []);
+        replyText = `${parsed.body}\n${allRows.map((r: any) => `• ${r.title}`).join("\n")}`;
+      }
+    }
+  } catch {
+    // Not JSON, send as normal text
+  }
+
   // Insert AI reply as outbound message
   const { data: aiMsg, error: insertErr } = await supabase
     .from("whatsapp_messages")
@@ -702,7 +738,7 @@ async function sendAiReply(
       content: replyText,
       direction: "outbound",
       status: "pending",
-      message_type: "text",
+      message_type: interactivePayload ? "interactive" : "text",
     })
     .select("id")
     .single();
@@ -730,18 +766,27 @@ async function sendAiReply(
     metaUrl += `?appsecret_proof=${proof}`;
   }
 
+  // Build Meta API body
+  const metaBody: any = {
+    messaging_product: "whatsapp",
+    to: cleanPhone,
+  };
+
+  if (interactivePayload) {
+    metaBody.type = "interactive";
+    metaBody.interactive = interactivePayload;
+  } else {
+    metaBody.type = "text";
+    metaBody.text = { body: replyText };
+  }
+
   const metaResponse = await fetch(metaUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: cleanPhone,
-      type: "text",
-      text: { body: replyText },
-    }),
+    body: JSON.stringify(metaBody),
   });
 
   const metaData = await metaResponse.json();
