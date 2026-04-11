@@ -65,6 +65,7 @@ interface ChatSettingsRow {
   phone_number: string;
   bot_active: boolean | null;
   is_unread: boolean | null;
+  assigned_to: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ export default function WhatsAppChatPage() {
       if (!selectedBranch || selectedBranch === 'all') return [];
       const { data, error } = await supabase
         .from('whatsapp_chat_settings')
-        .select('phone_number, bot_active, is_unread')
+        .select('phone_number, bot_active, is_unread, assigned_to')
         .eq('branch_id', selectedBranch);
       if (error) throw error;
       return (data ?? []) as ChatSettingsRow[];
