@@ -1010,7 +1010,14 @@ RULES:
 - Present available slots in a clear format with times.
 - If the member asks for a manager, complains, or you encounter errors twice, IMMEDIATELY use transfer_to_human.
 - Be warm, professional, and concise. Use emoji sparingly.
-- For questions about pricing, new memberships, or complex issues, use transfer_to_human.`;
+- For questions about pricing, new memberships, or complex issues, use transfer_to_human.
+
+INTERACTIVE RESPONSE FORMAT:
+When presenting options to the member (e.g., available time slots, facility choices, yes/no confirmations), respond with ONLY this JSON:
+  {"type":"interactive","body":"Your question text","buttons":["Option 1","Option 2","Option 3"]}
+For lists with more than 3 options:
+  {"type":"interactive_list","body":"Your question text","button":"Select","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
+Use normal text for confirmations and informational replies.`;
   }
 
   // Lead capture for non-members
@@ -1033,6 +1040,13 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
 - For questions with more than 3 options, use a list format:
   {"type":"interactive_list","body":"Your question text","button":"Select Option","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
 - For open-ended questions (name, email, budget amount), use normal text messages.
+
+ABSOLUTELY CRITICAL — DO NOT CAPTURE A LEAD UNTIL YOU HAVE COLLECTED ALL REQUIRED FIELDS:
+1. You MUST collect the person's full name (NOT their WhatsApp profile name — ask them to confirm or provide their real name).
+2. You MUST collect their email address.
+3. You MUST collect at least one more field from the target list.
+4. Do NOT output the lead_captured JSON until ALL of the above are confirmed. If any field is missing, KEEP ASKING.
+5. The minimum required fields before you can output lead_captured are: full name + email + at least 1 other field.
 
 CRITICAL OUTPUT RULE — READ CAREFULLY:
 When the user provides the LAST required piece of information (the final field you were collecting), you MUST respond with ONLY the following JSON object. NO natural language before or after. NO confirmation message. ONLY the JSON:
@@ -1278,7 +1292,7 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
     }
 
     // Fallback: extract fields from natural language if AI didn't output JSON
-    // Requires: at least 4 messages in conversation (2 inbound) AND at least 2 extracted fields
+    // Requires: at least 4 messages (2 inbound) AND name + email at minimum
     if (!leadCaptured && replyText.length > 20) {
       // Check conversation length — prevent premature capture
       const { count: msgCount } = await supabase
@@ -1290,30 +1304,44 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
 
       const inboundCount = msgCount || 0;
 
-      if (inboundCount >= 2) {
-        const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
-        const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-        const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
-        const phoneMatch = replyText.match(/(?:phone|Phone|mobile|Mobile)[:\s]+([\d\s+()-]{7,})/);
-        const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
+      const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+      const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+      const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
+      const phoneMatch = replyText.match(/(?:phone|Phone|mobile|Mobile)[:\s]+([\d\s+()-]{7,})/);
+      const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
 
-        // Count how many real data fields we extracted (contact_name alone doesn't count)
+      // Store partial lead data for nurture follow-up even if we can't capture yet
+      const partialData: Record<string, any> = {};
+      if (nameMatch) partialData.name = nameMatch[1];
+      if (emailMatch) partialData.email = emailMatch[0];
+      if (goalMatch) partialData.goal = goalMatch[1]?.trim();
+      if (timeMatch) partialData.preferred_time = timeMatch[1]?.trim();
+      if (inboundMsg.contact_name) partialData.whatsapp_name = inboundMsg.contact_name;
+
+      if (Object.keys(partialData).length > 0) {
+        await supabase.from("whatsapp_chat_settings").upsert(
+          {
+            branch_id: branchId,
+            phone_number: phoneNumber,
+            partial_lead_data: partialData,
+          },
+          { onConflict: "branch_id,phone_number" },
+        );
+      }
+
+      // Only capture if we have name + email AND at least 2 inbound messages
+      if (inboundCount >= 2 && nameMatch && emailMatch) {
         const extractedFields = [nameMatch, emailMatch, goalMatch, phoneMatch, timeMatch].filter(Boolean).length;
-
-        if (extractedFields >= 2) {
-          parsedLeadData = {
-            name: nameMatch?.[1] || inboundMsg.contact_name || "WhatsApp Lead",
-            email: emailMatch?.[0] || null,
-            goal: goalMatch?.[1]?.trim() || null,
-            preferred_time: timeMatch?.[1]?.trim() || null,
-          };
-          leadCaptured = true;
-          console.log("Fallback lead extraction succeeded (fields:", extractedFields, "):", JSON.stringify(parsedLeadData));
-        } else {
-          console.log("Fallback skipped: only", extractedFields, "fields extracted, need at least 2. Inbound msgs:", inboundCount);
-        }
+        parsedLeadData = {
+          name: nameMatch[1],
+          email: emailMatch[0],
+          goal: goalMatch?.[1]?.trim() || null,
+          preferred_time: timeMatch?.[1]?.trim() || null,
+        };
+        leadCaptured = true;
+        console.log("Fallback lead extraction succeeded (fields:", extractedFields, "):", JSON.stringify(parsedLeadData));
       } else {
-        console.log("Fallback skipped: only", inboundCount, "inbound messages, need at least 2");
+        console.log("Fallback skipped: inbound=", inboundCount, "name=", !!nameMatch, "email=", !!emailMatch);
       }
     }
 
