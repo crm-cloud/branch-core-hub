@@ -1,74 +1,73 @@
 
 
-# Settings Reorganization: AI Hub, Template Consolidation & Ice Bath Tool
+# Audit Report & Fix Plan: WhatsApp Lead Capture, Email, Invoice Sharing
 
-## Audit Summary
+## Audit Findings
 
-Current mess:
-- **AI settings scattered across 5 places**: AIAgentControlCenter (Settings > AI Agent), WhatsAppAISettings (Integrations > WhatsApp), AIFlowBuilderSettings (Integrations > Lead Capture), LeadNurtureConfig (inside RetentionCampaignManager), WhatsAppAutomations (inside RetentionCampaignManager)
-- **Templates duplicated in 3 places**: TemplateManager (Settings > Templates), LeadNotificationSettings message templates (inside NotificationSettings), RetentionCampaignManager inline message editors
-- **WhatsApp Automations** lives inside Marketing & Retention instead of Integrations > WhatsApp
+### Issue 1: AI Captures Leads Without Asking Questions
+**Root Cause:** The fallback extraction logic (lines 1280-1294 of whatsapp-webhook) is too aggressive. When `shouldCaptureLead` is true for non-members, the fallback triggers if `replyText.length > 20` AND either `nameMatch` or `inboundMsg.contact_name` exists. Since Meta always provides `contact_name` from WhatsApp profile ("Jack"), the fallback fires on the AI's FIRST response — before any data is collected. With just "Hi" + "I want to join", the AI replies with a welcome message (>20 chars), the contact_name "Jack" is available, and boom — lead is captured with zero questions asked.
 
----
+**Fix:** Add a minimum field threshold. The fallback should only trigger if at least 2 required fields from `target_fields` are detected in the conversation, NOT just the contact name. Also add a conversation length check — require at least 3 exchanges before fallback fires.
 
-## Module 1: AI Agent Hub (Tabbed)
+### Issue 2: SMTP Email Not Working
+**Root Cause:** The SMTP config uses port `465` (SSL/implicit TLS), but the `sendViaSMTP` function only handles STARTTLS on port `587` and plain SMTP otherwise. Port 465 requires connecting with TLS from the start (implicit TLS), not STARTTLS upgrade. The code falls through to the plain SMTP path, which attempts AUTH LOGIN without encryption on a TLS-only port — this silently fails. Additionally, `send-email` logs show zero invocations, meaning emails may never reach the edge function at all.
 
-Rebuild `AIAgentControlCenter.tsx` as a tabbed hub consolidating all AI features:
+**Fix:** Add SSL/TLS support for port 465 using `Deno.connectTls()` instead of `Deno.connect()` + STARTTLS upgrade. This is the correct approach for Hostinger SMTP.
 
-| Tab | Content (moved from) |
-|---|---|
-| **Dashboard** | Current activity feed + stats (already here) |
-| **Tools & Testing** | Tool toggles + Manual Test Lab (already here) |
-| **Auto-Reply** | WhatsAppAISettings (from IntegrationSettings) |
-| **Lead Capture** | AIFlowBuilderSettings (from IntegrationSettings) |
-| **Lead Nurture** | LeadNurtureConfig (from RetentionCampaignManager) |
+### Issue 3: No "Share/Email Invoice" Button in Invoice Actions
+**Root Cause:** The `InvoiceShareDrawer` component exists but is NEVER imported or used anywhere. The Invoices page action dropdown only has View, Download, and Send Payment Link. The InvoiceViewDrawer has no share/email button either. The component is orphaned.
 
-Each tab gets a clean card layout. The existing components are moved as-is into tab panels.
+**Fix:** Add a "Share Invoice" option to the invoice action dropdown that opens `InvoiceShareDrawer`. Also add a share button inside `InvoiceViewDrawer`.
 
-**Remove** WhatsAppAISettings and AIFlowBuilderSettings from IntegrationSettings.
-**Remove** LeadNurtureConfig from RetentionCampaignManager.
+### Issue 4: All Notification Channels Disabled for Leads
+**Data:** `lead_notification_rules` shows ALL toggles are `false` (sms_to_lead, whatsapp_to_lead, sms_to_admins, whatsapp_to_admins, sms_to_managers, whatsapp_to_managers). This is a configuration issue, not a code bug. No notifications fire because the admin disabled them all.
 
----
+**Recommendation:** This is user configuration. No code fix needed, but we should make the disabled state more visible in the UI with a warning banner.
 
-## Module 2: WhatsApp Automations to Integrations
-
-Move `WhatsAppAutomations` component from RetentionCampaignManager into IntegrationSettings under the WhatsApp tab.
-
-**Remove** the `<WhatsAppAutomations />` render from RetentionCampaignManager's LeadNurtureConfig.
+### Issue 5: Error Logs from System Health
+**Errors found:**
+1. `Invalid ID format` — Settings page querying `organization_settings` with malformed ID
+2. `invoiceId, amount, and branchId are required` — Razorpay link creation missing required fields
+3. `Cannot coerce the result to a single JSON object` — `notification_preferences` query returning multiple rows when `.single()` is used
 
 ---
 
-## Module 3: Template Consolidation
+## Implementation Plan
 
-### Move Lead Notification Templates to Template Manager
-- Add new trigger types in TemplateManager: `lead_welcome_sms`, `lead_welcome_whatsapp`, `team_alert_sms`, `team_alert_whatsapp`
-- The LeadNotificationSettings component keeps its channel toggle switches but **removes** the inline Textarea template editors
-- Instead, show a link/note: "Edit message templates in Settings > Templates"
+### Module 1: Fix Lead Capture Fallback Logic
+**File:** `supabase/functions/whatsapp-webhook/index.ts` (lines 1280-1294)
 
-### Retention Campaign Templates
-- RetentionCampaignManager already stores templates in `retention_templates` table (separate from `templates`)
-- Keep the inline editors there since they're stage-specific and tightly coupled to the retention flow
-- But replace the `mailto:` test send with the provider-based email utility (already done in previous sprint)
+- Add minimum conversation length check: require at least 4 messages (2 inbound) before fallback fires
+- Require at least 2 extracted fields (not just contact_name) for fallback to trigger
+- Move the `contact_name` fallback to only populate the `name` field AFTER other fields are confirmed
 
-### Remove LeadNotificationSettings from NotificationSettings
-- Move `<LeadNotificationSettings />` out of `RunRemindersButton` (currently nested awkwardly inside it)
-- Place it as its own section within NotificationSettings, properly separated
+### Module 2: Fix SMTP Port 465 (Implicit TLS)
+**File:** `supabase/functions/send-email/index.ts` (sendViaSMTP function)
 
----
+- Detect port 465 and use `Deno.connectTls()` for implicit TLS connection
+- Keep existing STARTTLS path for port 587
+- Keep plain path for port 25
 
-## Module 4: Ice Bath / Sauna Booking Tool
+### Module 3: Wire InvoiceShareDrawer Into UI
+**File:** `src/pages/Invoices.tsx`
+- Import `InvoiceShareDrawer`
+- Add state `shareInvoice` 
+- Add "Share Invoice" menu item (with Mail icon) in the action dropdown
+- Render `<InvoiceShareDrawer>` at bottom of component
 
-The system already has `book_facility_slot` RPC and the AI tool `book_facility_slot` registered in the webhook. The user's proposed SQL function is redundant since the existing RPC handles capacity checks, benefit validation, and atomic booking.
+**File:** `src/components/invoices/InvoiceViewDrawer.tsx`
+- Add a "Share / Email" button in the actions section
 
-**No new SQL function needed.** The existing `book_facility_slot(p_slot_id, p_member_id, p_membership_id)` RPC already handles ice bath and sauna bookings. The AI agent already has `get_available_slots` + `book_facility_slot` + `cancel_facility_booking` tools registered.
+### Module 4: Fix Error Log Issues
+**File:** `src/components/settings/NotificationSettings.tsx`
+- Fix `notification_preferences` query to use `.maybeSingle()` instead of `.single()`
 
-Verify the tool is enabled in the AI Agent Control Center's toggle panel.
+**File:** `src/components/invoices/SendPaymentLinkDrawer.tsx`  
+- Add validation guard before calling `create-razorpay-link` to prevent sending empty fields
 
----
-
-## Module 5: Clean Up NotificationSettings
-
-Fix the awkward nesting where `LeadNotificationSettings` is rendered inside `RunRemindersButton`. Move it to be a proper sibling section.
+### Module 5: Lead Notification Warning Banner
+**File:** `src/components/settings/LeadNotificationSettings.tsx`
+- Add a visible amber warning banner when all notification channels are disabled
 
 ---
 
@@ -76,13 +75,11 @@ Fix the awkward nesting where `LeadNotificationSettings` is rendered inside `Run
 
 | File | Change |
 |---|---|
-| `src/components/settings/AIAgentControlCenter.tsx` | Add tabs: Dashboard, Tools, Auto-Reply, Lead Capture, Lead Nurture. Import and embed WhatsAppAISettings, AIFlowBuilderSettings, LeadNurtureConfig |
-| `src/components/settings/RetentionCampaignManager.tsx` | Remove LeadNurtureConfig section and WhatsAppAutomations import |
-| `src/components/settings/IntegrationSettings.tsx` | Remove WhatsAppAISettings and AIFlowBuilderSettings. Add WhatsAppAutomations to WhatsApp tab |
-| `src/components/settings/NotificationSettings.tsx` | Move LeadNotificationSettings out of RunRemindersButton into its own card section. Remove inline template editors, add note pointing to Template Manager |
-| `src/components/settings/LeadNotificationSettings.tsx` | Remove inline message template Textareas. Keep channel toggle switches only. Add info banner linking to Templates |
-| `src/components/settings/TemplateManager.tsx` | Add lead notification trigger types (lead_welcome, team_alert) to TEMPLATE_TRIGGERS |
-| `src/pages/Settings.tsx` | No menu changes needed (AI Agent tab already exists) |
-
-No database migrations required.
+| `supabase/functions/whatsapp-webhook/index.ts` | Fix aggressive fallback lead extraction |
+| `supabase/functions/send-email/index.ts` | Add port 465 implicit TLS support |
+| `src/pages/Invoices.tsx` | Wire InvoiceShareDrawer into action menu |
+| `src/components/invoices/InvoiceViewDrawer.tsx` | Add Share button |
+| `src/components/settings/NotificationSettings.tsx` | Fix `.single()` → `.maybeSingle()` |
+| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Add field validation |
+| `src/components/settings/LeadNotificationSettings.tsx` | Add disabled-channels warning |
 
