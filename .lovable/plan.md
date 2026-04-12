@@ -1,85 +1,94 @@
 
 
-# Audit Report & Fix Plan: WhatsApp Lead Capture, Email, Invoice Sharing
+# Plan: Lead Capture Fix, GST Reports, Dynamic GST Rates & AI Chat Enhancements
 
-## Audit Findings
+## Module 1: Fix AI Lead Capture — Must Collect All Fields Before Capturing
 
-### Issue 1: AI Captures Leads Without Asking Questions
-**Root Cause:** The fallback extraction logic (lines 1280-1294 of whatsapp-webhook) is too aggressive. When `shouldCaptureLead` is true for non-members, the fallback triggers if `replyText.length > 20` AND either `nameMatch` or `inboundMsg.contact_name` exists. Since Meta always provides `contact_name` from WhatsApp profile ("Jack"), the fallback fires on the AI's FIRST response — before any data is collected. With just "Hi" + "I want to join", the AI replies with a welcome message (>20 chars), the contact_name "Jack" is available, and boom — lead is captured with zero questions asked.
+**Problem:** The AI captures a lead immediately with just a greeting + WhatsApp profile name, skipping required fields (email, goal, etc.). The lead nurture system can only follow up with *existing* leads, but if leads are captured incomplete, there's nothing to nurture.
 
-**Fix:** Add a minimum field threshold. The fallback should only trigger if at least 2 required fields from `target_fields` are detected in the conversation, NOT just the contact name. Also add a conversation length check — require at least 3 exchanges before fallback fires.
+**Root Cause:** The system prompt tells the AI to collect fields "naturally, one at a time" but the fallback extraction (line 1282-1318) fires too early. Also, the lead nurture function only nudges leads that *already exist* — it doesn't help incomplete conversations that were never captured.
 
-### Issue 2: SMTP Email Not Working
-**Root Cause:** The SMTP config uses port `465` (SSL/implicit TLS), but the `sendViaSMTP` function only handles STARTTLS on port `587` and plain SMTP otherwise. Port 465 requires connecting with TLS from the start (implicit TLS), not STARTTLS upgrade. The code falls through to the plain SMTP path, which attempts AUTH LOGIN without encryption on a TLS-only port — this silently fails. Additionally, `send-email` logs show zero invocations, meaning emails may never reach the edge function at all.
+**Fix (whatsapp-webhook/index.ts):**
+1. **Strengthen system prompt** — Add explicit instruction: "Do NOT output the lead_captured JSON until ALL required fields have been collected. If any field is still missing, continue asking. The minimum required fields are: full name, phone (already known), and email. Without these, the lead is useless."
+2. **Fix fallback extraction threshold** — Change from requiring 2 extracted fields to requiring **name + email at minimum** (phone is already known). The fallback should only fire when `nameMatch && emailMatch` are both present.
+3. **Add "incomplete lead" tracking** — When the AI has started collecting but user goes silent, store a partial record in `whatsapp_chat_settings.partial_lead_data` (JSONB) so the nurture function can reference it.
+4. **Upgrade lead-nurture-followup** — Currently it only nudges existing leads. Update it to also handle chats where `partial_lead_data` exists but no lead was created yet. The nurture message should ask for the specific missing fields (e.g., "Could you share your email so we can send you our plans? 📧").
 
-**Fix:** Add SSL/TLS support for port 465 using `Deno.connectTls()` instead of `Deno.connect()` + STARTTLS upgrade. This is the correct approach for Hostinger SMTP.
-
-### Issue 3: No "Share/Email Invoice" Button in Invoice Actions
-**Root Cause:** The `InvoiceShareDrawer` component exists but is NEVER imported or used anywhere. The Invoices page action dropdown only has View, Download, and Send Payment Link. The InvoiceViewDrawer has no share/email button either. The component is orphaned.
-
-**Fix:** Add a "Share Invoice" option to the invoice action dropdown that opens `InvoiceShareDrawer`. Also add a share button inside `InvoiceViewDrawer`.
-
-### Issue 4: All Notification Channels Disabled for Leads
-**Data:** `lead_notification_rules` shows ALL toggles are `false` (sms_to_lead, whatsapp_to_lead, sms_to_admins, whatsapp_to_admins, sms_to_managers, whatsapp_to_managers). This is a configuration issue, not a code bug. No notifications fire because the admin disabled them all.
-
-**Recommendation:** This is user configuration. No code fix needed, but we should make the disabled state more visible in the UI with a warning banner.
-
-### Issue 5: Error Logs from System Health
-**Errors found:**
-1. `Invalid ID format` — Settings page querying `organization_settings` with malformed ID
-2. `invoiceId, amount, and branchId are required` — Razorpay link creation missing required fields
-3. `Cannot coerce the result to a single JSON object` — `notification_preferences` query returning multiple rows when `.single()` is used
+**Files:**
+- `supabase/functions/whatsapp-webhook/index.ts` — System prompt + fallback logic
+- `supabase/functions/lead-nurture-followup/index.ts` — Handle incomplete leads
+- Migration: Add `partial_lead_data JSONB` to `whatsapp_chat_settings`
 
 ---
 
-## Implementation Plan
+## Module 2: GST vs Non-GST Finance Report
 
-### Module 1: Fix Lead Capture Fallback Logic
-**File:** `supabase/functions/whatsapp-webhook/index.ts` (lines 1280-1294)
+**Problem:** No way to separate GST income from non-GST income in the Finance dashboard for GST return filing.
 
-- Add minimum conversation length check: require at least 4 messages (2 inbound) before fallback fires
-- Require at least 2 extracted fields (not just contact_name) for fallback to trigger
-- Move the `contact_name` fallback to only populate the `name` field AFTER other fields are confirmed
+**Fix (src/pages/Finance.tsx):**
+1. Add a new **"GST Report"** tab alongside existing Income/Expenses tabs
+2. Query invoices with `is_gst_invoice = true` and group by GST rate to show:
+   - **GST Income**: Total taxable value (subtotal), CGST collected, SGST collected, total tax, gross amount
+   - **Non-GST Income**: All payments linked to non-GST invoices
+   - **Summary card**: Total tax liability, profit ex-GST
+3. Add **"Download GST Report"** button that exports CSV with columns: Invoice Number, Date, Customer GSTIN, Taxable Value, GST Rate, CGST, SGST, Total
+4. Add date range filter (reuse existing DateRangeFilter)
 
-### Module 2: Fix SMTP Port 465 (Implicit TLS)
-**File:** `supabase/functions/send-email/index.ts` (sendViaSMTP function)
-
-- Detect port 465 and use `Deno.connectTls()` for implicit TLS connection
-- Keep existing STARTTLS path for port 587
-- Keep plain path for port 25
-
-### Module 3: Wire InvoiceShareDrawer Into UI
-**File:** `src/pages/Invoices.tsx`
-- Import `InvoiceShareDrawer`
-- Add state `shareInvoice` 
-- Add "Share Invoice" menu item (with Mail icon) in the action dropdown
-- Render `<InvoiceShareDrawer>` at bottom of component
-
-**File:** `src/components/invoices/InvoiceViewDrawer.tsx`
-- Add a "Share / Email" button in the actions section
-
-### Module 4: Fix Error Log Issues
-**File:** `src/components/settings/NotificationSettings.tsx`
-- Fix `notification_preferences` query to use `.maybeSingle()` instead of `.single()`
-
-**File:** `src/components/invoices/SendPaymentLinkDrawer.tsx`  
-- Add validation guard before calling `create-razorpay-link` to prevent sending empty fields
-
-### Module 5: Lead Notification Warning Banner
-**File:** `src/components/settings/LeadNotificationSettings.tsx`
-- Add a visible amber warning banner when all notification channels are disabled
+**Files:**
+- `src/pages/Finance.tsx` — New GST Report tab with query and table
 
 ---
 
-## Files Changed
+## Module 3: Dynamic GST Rates in Settings
+
+**Problem:** GST rate is hardcoded to 18% (default) in CreateInvoiceDrawer and PurchaseMembershipDrawer. India has multiple GST slabs (0%, 5%, 12%, 18%, 28%).
+
+**Fix:**
+1. **Migration**: Add `gst_rates JSONB DEFAULT '[5, 12, 18, 28]'` column to `organization_settings`
+2. **New settings UI** in Organization Settings — Allow admin to configure available GST rate options (e.g., add custom rates like 6% for specific services)
+3. **Update CreateInvoiceDrawer** — Replace hardcoded `gstRate` state with a Select dropdown populated from org settings' `gst_rates` array
+4. **Update PurchaseMembershipDrawer** — Same dropdown approach
+5. **Update membership_plans** — The `gst_rate` column on plans should also use the dynamic rates dropdown in AddPlanDrawer/EditPlanDrawer
+
+**Files:**
+- Migration: Add `gst_rates` to `organization_settings`
+- `src/components/settings/OrganizationSettings.tsx` — GST rates editor
+- `src/components/invoices/CreateInvoiceDrawer.tsx` — Dynamic rate selector
+- `src/components/members/PurchaseMembershipDrawer.tsx` — Dynamic rate selector
+- `src/components/plans/AddPlanDrawer.tsx` / `EditPlanDrawer.tsx` — Dynamic rate selector
+
+---
+
+## Module 4: Smarter AI Chat — Quick Reply Buttons & Nurture Training
+
+**Problem:** The AI responds with plain text only. WhatsApp supports interactive buttons and lists for quick responses. Also, the nurture follow-up uses a hardcoded generic message instead of being configurable.
+
+**Current state:** The `sendAiReply` function (line 1388) already parses JSON for interactive buttons and lists. The system prompt already instructs the AI to use `{"type":"interactive","buttons":[...]}` format. This is already working for lead capture questions.
+
+**Enhancements:**
+1. **Extend interactive prompt to member conversations** — Currently only lead capture gets button instructions. Add similar instructions for members: "When presenting options (e.g., available slots, facility types), use the interactive button format."
+2. **Configurable nurture messages** — Add a `nurture_messages` array field to `lead_nurture_config` in the LeadNurtureSettings UI, allowing admins to write custom follow-up templates with placeholders (`{{name}}`, `{{missing_fields}}`).
+3. **Nurture context awareness** — Update `lead-nurture-followup` to use the AI gateway to generate contextual follow-ups based on `partial_lead_data` instead of a static message. This makes the nurture feel like a natural continuation of the conversation.
+4. **Add nurture system prompt** — In LeadNurtureSettings, add a "Nurture AI Prompt" textarea so admins can customize the tone/context of follow-up messages (e.g., mention current offers, gym USPs).
+
+**Files:**
+- `supabase/functions/whatsapp-webhook/index.ts` — Add interactive button instructions for member tools
+- `supabase/functions/lead-nurture-followup/index.ts` — AI-powered contextual follow-ups
+- `src/components/settings/LeadNurtureSettings.tsx` — Add custom nurture message templates and system prompt fields
+
+---
+
+## Summary of Files Changed
 
 | File | Change |
 |---|---|
-| `supabase/functions/whatsapp-webhook/index.ts` | Fix aggressive fallback lead extraction |
-| `supabase/functions/send-email/index.ts` | Add port 465 implicit TLS support |
-| `src/pages/Invoices.tsx` | Wire InvoiceShareDrawer into action menu |
-| `src/components/invoices/InvoiceViewDrawer.tsx` | Add Share button |
-| `src/components/settings/NotificationSettings.tsx` | Fix `.single()` → `.maybeSingle()` |
-| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Add field validation |
-| `src/components/settings/LeadNotificationSettings.tsx` | Add disabled-channels warning |
+| Migration | Add `partial_lead_data` to `whatsapp_chat_settings`, `gst_rates` to `organization_settings` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Fix lead capture prompt, strengthen fallback, add interactive buttons for members |
+| `supabase/functions/lead-nurture-followup/index.ts` | Handle incomplete leads, AI-powered contextual nudges |
+| `src/pages/Finance.tsx` | New GST Report tab with breakdown and CSV export |
+| `src/components/settings/OrganizationSettings.tsx` | GST rates configuration UI |
+| `src/components/settings/LeadNurtureSettings.tsx` | Custom nurture messages and AI prompt config |
+| `src/components/invoices/CreateInvoiceDrawer.tsx` | Dynamic GST rate selector |
+| `src/components/members/PurchaseMembershipDrawer.tsx` | Dynamic GST rate selector |
+| `src/components/plans/AddPlanDrawer.tsx` | Dynamic GST rate selector |
 
