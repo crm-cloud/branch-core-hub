@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Upload, X, Loader2, ImageIcon, Receipt, Plus } from 'lucide-react';
+import { Building2, Upload, X, Loader2, ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -261,8 +261,6 @@ export function OrganizationSettings() {
         </CardContent>
       </Card>
 
-      {/* GST Rates Configuration */}
-      <GstRatesEditor orgSettingsId={orgSettings?.id} currentRates={orgSettings?.gst_rates as number[] | null} />
     </div>
   );
 }
