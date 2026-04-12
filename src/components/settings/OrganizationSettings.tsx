@@ -260,6 +260,9 @@ export function OrganizationSettings() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* GST Rates Configuration */}
+      <GstRatesEditor orgSettingsId={orgSettings?.id} currentRates={orgSettings?.gst_rates as number[] | null} />
     </div>
   );
 }
