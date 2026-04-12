@@ -1034,6 +1034,13 @@ You are also a lead generation assistant. Your secondary goal is to naturally co
   {"type":"interactive_list","body":"Your question text","button":"Select Option","sections":[{"title":"Section","rows":[{"id":"1","title":"Option 1","description":"Details"}]}]}
 - For open-ended questions (name, email, budget amount), use normal text messages.
 
+ABSOLUTELY CRITICAL — DO NOT CAPTURE A LEAD UNTIL YOU HAVE COLLECTED ALL REQUIRED FIELDS:
+1. You MUST collect the person's full name (NOT their WhatsApp profile name — ask them to confirm or provide their real name).
+2. You MUST collect their email address.
+3. You MUST collect at least one more field from the target list.
+4. Do NOT output the lead_captured JSON until ALL of the above are confirmed. If any field is missing, KEEP ASKING.
+5. The minimum required fields before you can output lead_captured are: full name + email + at least 1 other field.
+
 CRITICAL OUTPUT RULE — READ CAREFULLY:
 When the user provides the LAST required piece of information (the final field you were collecting), you MUST respond with ONLY the following JSON object. NO natural language before or after. NO confirmation message. ONLY the JSON:
 {"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map(f => `"${f}":"<actual_value>"`).join(",")}}}
