@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   TrendingUp, TrendingDown, Wallet, 
   ArrowUpRight, ArrowDownRight, Plus, Clock, CheckCircle, XCircle, Download,
-  CreditCard, Banknote, Smartphone, Receipt
+  CreditCard, Banknote, Smartphone, Receipt, FileText
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
