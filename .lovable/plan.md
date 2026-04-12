@@ -1,94 +1,97 @@
 
+# Audit + fix plan
 
-# Plan: Lead Capture Fix, GST Reports, Dynamic GST Rates & AI Chat Enhancements
+## What I found
+- The raw JSON leak is real. In `supabase/functions/whatsapp-webhook/index.ts`, the AI is told to return pure JSON for interactive replies, but `sendAiReply()` only parses replies that are exactly JSON. In your example the model returned normal text plus a fenced JSON block, so the parser missed it and the JSON was stored/sent as plain text.
+- Your live WhatsApp AI “brain” is already `whatsapp-webhook`, not `ai-auto-reply`. `ai-auto-reply` is only the manual staff suggestion helper used from `WhatsAppChat.tsx`, so it is not the blocker here.
+- Lead nurture likely is not running automatically. The `lead-nurture-followup` function exists, but I could not find a scheduler/invoker path for it in the repo. So “more than 4 hours” can still mean “nothing ever executed”.
+- Lead capture is still inconsistent: the UI allows target fields without email, while the backend prompt later says email is mandatory. That mismatch can create incomplete or confusing flows.
+- The current lead-capture behavior is too aggressive and too gated: it keeps pushing “registration” instead of first answering simple questions like location and fees.
+- Dynamic GST rates already exist, but they are placed inside `OrganizationSettings`; HSN/HSN-SAC support is missing from schema/UI/export.
+- Logo upload is using the `avatars` bucket with a path like `org-logo-...`; the current storage policy only allows uploads inside a user-id folder, so the RLS error is expected.
+- System Health already has bulk buttons, but `error_logs` has no DELETE policy, so “Clear Resolved” cannot work. “Resolve All Open” also needs stronger backend feedback and real log triage.
 
-## Module 1: Fix AI Lead Capture — Must Collect All Fields Before Capturing
+## Implementation plan
 
-**Problem:** The AI captures a lead immediately with just a greeting + WhatsApp profile name, skipping required fields (email, goal, etc.). The lead nurture system can only follow up with *existing* leads, but if leads are captured incomplete, there's nothing to nurture.
+### 1) Fix WhatsApp reply formatting so users never see raw JSON
+- Harden `whatsapp-webhook` reply handling to:
+  - strip markdown fences,
+  - extract interactive JSON even if the model wraps it in prose,
+  - send/store a clean display message,
+  - keep interactive payload separate from human-readable content.
+- Tighten the AI prompt so it does not mix prose and JSON in the same reply.
+- Add recovery logic for free-text replies like “ok” / “ok maam” after button prompts, so the bot rephrases clearly instead of looping the same question.
 
-**Root Cause:** The system prompt tells the AI to collect fields "naturally, one at a time" but the fallback extraction (line 1282-1318) fires too early. Also, the lead nurture function only nudges leads that *already exist* — it doesn't help incomplete conversations that were never captured.
+### 2) Rework lead capture so it answers first, qualifies second
+- Update the WhatsApp AI system prompt so the bot:
+  - answers direct questions first (location, timings, pricing context),
+  - then collects lead details naturally,
+  - stops gatekeeping every answer behind “registration”.
+- Make required lead fields consistent everywhere:
+  - full name,
+  - phone (already known),
+  - email,
+  - at least one additional qualifier.
+- Update `AIFlowBuilderSettings` so required fields are locked in the UI instead of optional.
+- Save partial lead progress from the conversation state itself, not only from regex over AI-generated replies.
 
-**Fix (whatsapp-webhook/index.ts):**
-1. **Strengthen system prompt** — Add explicit instruction: "Do NOT output the lead_captured JSON until ALL required fields have been collected. If any field is still missing, continue asking. The minimum required fields are: full name, phone (already known), and email. Without these, the lead is useless."
-2. **Fix fallback extraction threshold** — Change from requiring 2 extracted fields to requiring **name + email at minimum** (phone is already known). The fallback should only fire when `nameMatch && emailMatch` are both present.
-3. **Add "incomplete lead" tracking** — When the AI has started collecting but user goes silent, store a partial record in `whatsapp_chat_settings.partial_lead_data` (JSONB) so the nurture function can reference it.
-4. **Upgrade lead-nurture-followup** — Currently it only nudges existing leads. Update it to also handle chats where `partial_lead_data` exists but no lead was created yet. The nurture message should ask for the specific missing fields (e.g., "Could you share your email so we can send you our plans? 📧").
+### 3) Make lead nurture actually run and make it visible
+- Wire `lead-nurture-followup` into a real scheduled execution path.
+- Add proper cooldown logic using:
+  - last outbound AI question,
+  - delay threshold,
+  - max retries,
+  - last nurture timestamp.
+- Improve follow-up generation so it asks for the exact missing field.
+- Add observability in the AI Agent Hub:
+  - last nurture run,
+  - eligible stale chats,
+  - last nudge time,
+  - manual “Run now” test action.
 
-**Files:**
-- `supabase/functions/whatsapp-webhook/index.ts` — System prompt + fallback logic
-- `supabase/functions/lead-nurture-followup/index.ts` — Handle incomplete leads
-- Migration: Add `partial_lead_data JSONB` to `whatsapp_chat_settings`
+### 4) Move GST/HSN into proper tax settings
+- Move GST slab management out of `OrganizationSettings` into a dedicated tax/settings area.
+- Keep the existing dynamic GST rates, but present them in a cleaner finance/tax settings UI.
+- Add HSN/HSN-SAC support:
+  - configurable code catalog/defaults,
+  - saved code on invoice items,
+  - defaults on memberships/products where needed.
+- Update GST report/export so HSN appears in downloaded output.
 
----
+### 5) Fix organization logo upload correctly
+- Stop using the `avatars` bucket for org branding.
+- Create a dedicated organization-branding bucket/policies for staff/admin uploads.
+- Store logos with branch-safe paths.
+- Harden `OrganizationSettings` for multi-branch “all branches” state so it does not rely on `.maybeSingle()` across multiple rows.
 
-## Module 2: GST vs Non-GST Finance Report
+### 6) Repair System Health actions and clear the current backlog
+- First audit the current open `error_logs` records so fixes target the real 25 errors, not guesses.
+- Add a reliable bulk-action path for:
+  - resolve all open,
+  - clear resolved.
+- Prefer secured backend bulk actions / proper RLS support so the buttons are reliable.
+- Fix the likely recurring root causes first:
+  - organization settings multi-row/single-row issues,
+  - logo upload/storage RLS failures,
+  - remaining payment/integration validation issues,
+  - any notification/settings query errors still showing in logs.
 
-**Problem:** No way to separate GST income from non-GST income in the Finance dashboard for GST return filing.
+## Files likely involved
+- `supabase/functions/whatsapp-webhook/index.ts`
+- `supabase/functions/lead-nurture-followup/index.ts`
+- `src/components/settings/AIFlowBuilderSettings.tsx`
+- `src/components/settings/LeadNurtureSettings.tsx`
+- `src/components/settings/WhatsAppAISettings.tsx`
+- `src/components/settings/AIAgentControlCenter.tsx`
+- `src/components/settings/OrganizationSettings.tsx`
+- `src/pages/Settings.tsx`
+- `src/pages/Finance.tsx`
+- `src/components/invoices/CreateInvoiceDrawer.tsx`
+- `src/components/members/PurchaseMembershipDrawer.tsx`
+- `src/pages/SystemHealth.tsx`
+- migration(s) for branding storage, HSN support, and error-log bulk actions/RLS
 
-**Fix (src/pages/Finance.tsx):**
-1. Add a new **"GST Report"** tab alongside existing Income/Expenses tabs
-2. Query invoices with `is_gst_invoice = true` and group by GST rate to show:
-   - **GST Income**: Total taxable value (subtotal), CGST collected, SGST collected, total tax, gross amount
-   - **Non-GST Income**: All payments linked to non-GST invoices
-   - **Summary card**: Total tax liability, profit ex-GST
-3. Add **"Download GST Report"** button that exports CSV with columns: Invoice Number, Date, Customer GSTIN, Taxable Value, GST Rate, CGST, SGST, Total
-4. Add date range filter (reuse existing DateRangeFilter)
-
-**Files:**
-- `src/pages/Finance.tsx` — New GST Report tab with query and table
-
----
-
-## Module 3: Dynamic GST Rates in Settings
-
-**Problem:** GST rate is hardcoded to 18% (default) in CreateInvoiceDrawer and PurchaseMembershipDrawer. India has multiple GST slabs (0%, 5%, 12%, 18%, 28%).
-
-**Fix:**
-1. **Migration**: Add `gst_rates JSONB DEFAULT '[5, 12, 18, 28]'` column to `organization_settings`
-2. **New settings UI** in Organization Settings — Allow admin to configure available GST rate options (e.g., add custom rates like 6% for specific services)
-3. **Update CreateInvoiceDrawer** — Replace hardcoded `gstRate` state with a Select dropdown populated from org settings' `gst_rates` array
-4. **Update PurchaseMembershipDrawer** — Same dropdown approach
-5. **Update membership_plans** — The `gst_rate` column on plans should also use the dynamic rates dropdown in AddPlanDrawer/EditPlanDrawer
-
-**Files:**
-- Migration: Add `gst_rates` to `organization_settings`
-- `src/components/settings/OrganizationSettings.tsx` — GST rates editor
-- `src/components/invoices/CreateInvoiceDrawer.tsx` — Dynamic rate selector
-- `src/components/members/PurchaseMembershipDrawer.tsx` — Dynamic rate selector
-- `src/components/plans/AddPlanDrawer.tsx` / `EditPlanDrawer.tsx` — Dynamic rate selector
-
----
-
-## Module 4: Smarter AI Chat — Quick Reply Buttons & Nurture Training
-
-**Problem:** The AI responds with plain text only. WhatsApp supports interactive buttons and lists for quick responses. Also, the nurture follow-up uses a hardcoded generic message instead of being configurable.
-
-**Current state:** The `sendAiReply` function (line 1388) already parses JSON for interactive buttons and lists. The system prompt already instructs the AI to use `{"type":"interactive","buttons":[...]}` format. This is already working for lead capture questions.
-
-**Enhancements:**
-1. **Extend interactive prompt to member conversations** — Currently only lead capture gets button instructions. Add similar instructions for members: "When presenting options (e.g., available slots, facility types), use the interactive button format."
-2. **Configurable nurture messages** — Add a `nurture_messages` array field to `lead_nurture_config` in the LeadNurtureSettings UI, allowing admins to write custom follow-up templates with placeholders (`{{name}}`, `{{missing_fields}}`).
-3. **Nurture context awareness** — Update `lead-nurture-followup` to use the AI gateway to generate contextual follow-ups based on `partial_lead_data` instead of a static message. This makes the nurture feel like a natural continuation of the conversation.
-4. **Add nurture system prompt** — In LeadNurtureSettings, add a "Nurture AI Prompt" textarea so admins can customize the tone/context of follow-up messages (e.g., mention current offers, gym USPs).
-
-**Files:**
-- `supabase/functions/whatsapp-webhook/index.ts` — Add interactive button instructions for member tools
-- `supabase/functions/lead-nurture-followup/index.ts` — AI-powered contextual follow-ups
-- `src/components/settings/LeadNurtureSettings.tsx` — Add custom nurture message templates and system prompt fields
-
----
-
-## Summary of Files Changed
-
-| File | Change |
-|---|---|
-| Migration | Add `partial_lead_data` to `whatsapp_chat_settings`, `gst_rates` to `organization_settings` |
-| `supabase/functions/whatsapp-webhook/index.ts` | Fix lead capture prompt, strengthen fallback, add interactive buttons for members |
-| `supabase/functions/lead-nurture-followup/index.ts` | Handle incomplete leads, AI-powered contextual nudges |
-| `src/pages/Finance.tsx` | New GST Report tab with breakdown and CSV export |
-| `src/components/settings/OrganizationSettings.tsx` | GST rates configuration UI |
-| `src/components/settings/LeadNurtureSettings.tsx` | Custom nurture messages and AI prompt config |
-| `src/components/invoices/CreateInvoiceDrawer.tsx` | Dynamic GST rate selector |
-| `src/components/members/PurchaseMembershipDrawer.tsx` | Dynamic GST rate selector |
-| `src/components/plans/AddPlanDrawer.tsx` | Dynamic GST rate selector |
-
+## Technical notes
+- I will not rebuild the AI tool registry from scratch; the live tool-calling layer already exists in `whatsapp-webhook`.
+- I will refine the existing GST system rather than replace it; the main gap is HSN support and better settings placement.
+- The nurture issue looks architectural, not cosmetic: the function exists, but the repo does not show a reliable automatic runner for it.
