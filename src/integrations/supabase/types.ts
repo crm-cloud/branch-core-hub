@@ -2640,6 +2640,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string
+          hsn_code: string | null
           id: string
           invoice_id: string
           quantity: number | null
@@ -2653,6 +2654,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description: string
+          hsn_code?: string | null
           id?: string
           invoice_id: string
           quantity?: number | null
@@ -2666,6 +2668,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string
+          hsn_code?: string | null
           id?: string
           invoice_id?: string
           quantity?: number | null
@@ -4323,6 +4326,7 @@ export type Database = {
           currency: string | null
           fiscal_year_start: string | null
           gst_rates: Json | null
+          hsn_defaults: Json | null
           id: string
           lead_nurture_config: Json | null
           logo_url: string | null
@@ -4341,6 +4345,7 @@ export type Database = {
           currency?: string | null
           fiscal_year_start?: string | null
           gst_rates?: Json | null
+          hsn_defaults?: Json | null
           id?: string
           lead_nurture_config?: Json | null
           logo_url?: string | null
@@ -4359,6 +4364,7 @@ export type Database = {
           currency?: string | null
           fiscal_year_start?: string | null
           gst_rates?: Json | null
+          hsn_defaults?: Json | null
           id?: string
           lead_nurture_config?: Json | null
           logo_url?: string | null

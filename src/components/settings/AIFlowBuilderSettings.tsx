@@ -10,15 +10,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Brain, Save, Loader2, X } from 'lucide-react';
 
+const REQUIRED_FIELDS = ['name', 'email']; // Always required, cannot be deselected
+
 const AVAILABLE_FIELDS = [
-  { id: 'name', label: 'Name' },
-  { id: 'phone', label: 'Phone' },
-  { id: 'email', label: 'Email' },
-  { id: 'goal', label: 'Fitness Goal' },
-  { id: 'budget', label: 'Budget' },
-  { id: 'start_date', label: 'Expected Start Date' },
-  { id: 'experience', label: 'Fitness Experience' },
-  { id: 'preferred_time', label: 'Preferred Time' },
+  { id: 'name', label: 'Name', required: true },
+  { id: 'phone', label: 'Phone', required: false },
+  { id: 'email', label: 'Email', required: true },
+  { id: 'goal', label: 'Fitness Goal', required: false },
+  { id: 'budget', label: 'Budget', required: false },
+  { id: 'start_date', label: 'Expected Start Date', required: false },
+  { id: 'experience', label: 'Fitness Experience', required: false },
+  { id: 'preferred_time', label: 'Preferred Time', required: false },
 ];
 
 const DEFAULT_HANDOFF = "Thanks for sharing! Our team will reach out to you shortly. 💪";
@@ -82,6 +84,8 @@ export function AIFlowBuilderSettings() {
   });
 
   const toggleField = (fieldId: string) => {
+    // Prevent deselecting required fields
+    if (REQUIRED_FIELDS.includes(fieldId) && config.target_fields.includes(fieldId)) return;
     setConfig(prev => ({
       ...prev,
       target_fields: prev.target_fields.includes(fieldId)
@@ -135,19 +139,20 @@ export function AIFlowBuilderSettings() {
           <div className="flex flex-wrap gap-2 mt-2">
             {AVAILABLE_FIELDS.map(field => {
               const isSelected = config.target_fields.includes(field.id);
+              const isRequired = REQUIRED_FIELDS.includes(field.id);
               return (
                 <Badge
                   key={field.id}
                   variant={isSelected ? 'default' : 'outline'}
                   className={`cursor-pointer transition-all text-xs px-3 py-1.5 rounded-lg ${
                     isSelected
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      ? isRequired ? 'bg-indigo-600 text-white cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                       : 'hover:bg-muted'
                   }`}
                   onClick={() => toggleField(field.id)}
                 >
-                  {field.label}
-                  {isSelected && <X className="h-3 w-3 ml-1" />}
+                  {field.label}{isRequired ? ' *' : ''}
+                  {isSelected && !isRequired && <X className="h-3 w-3 ml-1" />}
                 </Badge>
               );
             })}

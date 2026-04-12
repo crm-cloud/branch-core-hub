@@ -993,6 +993,17 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   // Inject context
   systemPrompt = `${contactContext.contextPrompt}\n\n${systemPrompt}`;
 
+  // Global instruction: answer first, qualify second
+  systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
+- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly first.
+- Do NOT gatekeep answers behind "registration" or "sign up first".
+- After answering their question, you may then naturally transition into collecting their details.
+- Never repeat the same question more than twice. If the user ignores a question, move on to the next topic.
+- If the user sends short replies like "ok", "ok maam", "hmm", or "yes", treat it as acknowledgment and ask a NEW question — do NOT repeat the same one.
+
+INTERACTIVE JSON RULE:
+When you want to show interactive buttons or lists, output ONLY the JSON object with NO additional text before or after. Do not mix prose and JSON in the same message.`;
+
   // For members: add tool usage instructions
   if (contactContext.isMember && contactContext.memberContext) {
     systemPrompt += `\n\nIMPORTANT TOOL USAGE INSTRUCTIONS:
@@ -1414,37 +1425,69 @@ async function sendAiReply(
   branchId: string,
 ) {
   let interactivePayload: any = null;
-  try {
-    const trimmed = replyText.trim();
+
+  // Extract interactive JSON from mixed prose — handle markdown fences too
+  function tryExtractInteractiveJson(text: string): { parsed: any; cleanText: string } | null {
+    // Try 1: exact JSON string
+    const trimmed = text.trim();
     if (trimmed.startsWith("{") && trimmed.includes('"type"')) {
-      const parsed = JSON.parse(trimmed);
-      if (parsed.type === "interactive" && parsed.buttons?.length) {
-        interactivePayload = {
-          type: "button",
-          body: { text: parsed.body || "Please select an option:" },
-          action: {
-            buttons: parsed.buttons.slice(0, 3).map((btn: string, i: number) => ({
-              type: "reply",
-              reply: { id: `btn_${i}`, title: btn.substring(0, 20) },
-            })),
-          },
-        };
-        replyText = `${parsed.body}\n${parsed.buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`;
-      } else if (parsed.type === "interactive_list" && parsed.sections?.length) {
-        interactivePayload = {
-          type: "list",
-          body: { text: parsed.body || "Please select an option:" },
-          action: {
-            button: (parsed.button || "Select").substring(0, 20),
-            sections: parsed.sections,
-          },
-        };
-        const allRows = parsed.sections.flatMap((s: any) => s.rows || []);
-        replyText = `${parsed.body}\n${allRows.map((r: any) => `• ${r.title}`).join("\n")}`;
-      }
+      try {
+        const p = JSON.parse(trimmed);
+        if (p.type === "interactive" || p.type === "interactive_list") return { parsed: p, cleanText: p.body || "" };
+      } catch {}
     }
-  } catch {
-    // Not JSON, send as normal text
+    // Try 2: JSON block in markdown fences
+    const fenceMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (fenceMatch) {
+      try {
+        const p = JSON.parse(fenceMatch[1]);
+        if (p.type === "interactive" || p.type === "interactive_list") {
+          const prose = text.replace(fenceMatch[0], "").trim();
+          return { parsed: p, cleanText: prose || p.body || "" };
+        }
+      } catch {}
+    }
+    // Try 3: inline JSON block in prose
+    const inlineMatch = text.match(/(\{[^{}]*"type"\s*:\s*"interactive[^{}]*\})/);
+    if (inlineMatch) {
+      try {
+        const p = JSON.parse(inlineMatch[1]);
+        if (p.type === "interactive" || p.type === "interactive_list") {
+          const prose = text.replace(inlineMatch[0], "").trim();
+          return { parsed: p, cleanText: prose || p.body || "" };
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  const extraction = tryExtractInteractiveJson(replyText);
+  if (extraction) {
+    const parsed = extraction.parsed;
+    if (parsed.type === "interactive" && parsed.buttons?.length) {
+      interactivePayload = {
+        type: "button",
+        body: { text: parsed.body || "Please select an option:" },
+        action: {
+          buttons: parsed.buttons.slice(0, 3).map((btn: string, i: number) => ({
+            type: "reply",
+            reply: { id: `btn_${i}`, title: btn.substring(0, 20) },
+          })),
+        },
+      };
+      replyText = `${parsed.body}\n${parsed.buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join("\n")}`;
+    } else if (parsed.type === "interactive_list" && parsed.sections?.length) {
+      interactivePayload = {
+        type: "list",
+        body: { text: parsed.body || "Please select an option:" },
+        action: {
+          button: (parsed.button || "Select").substring(0, 20),
+          sections: parsed.sections,
+        },
+      };
+      const allRows = parsed.sections.flatMap((s: any) => s.rows || []);
+      replyText = `${parsed.body}\n${allRows.map((r: any) => `• ${r.title}`).join("\n")}`;
+    }
   }
 
   const { data: aiMsg, error: insertErr } = await supabase
