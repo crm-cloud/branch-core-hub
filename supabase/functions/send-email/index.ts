@@ -190,13 +190,64 @@ async function sendViaSMTP(
   }
 
   try {
-    // Use Deno's native TCP for SMTP
-    const conn = await Deno.connect({ hostname: host, port: parseInt(port) });
+    const portNum = parseInt(port);
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
+    // Helper to build email message body
+    const buildMessage = () => [
+      `From: ${fromName} <${fromEmail}>`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=UTF-8`,
+      ``,
+      html,
+      `.`,
+    ].join("\r\n");
+
+    // Port 465: Implicit TLS — connect with TLS from the start
+    if (port === "465") {
+      const tlsConn = await Deno.connectTls({ hostname: host, port: portNum });
+
+      const read = async () => {
+        const buf = new Uint8Array(4096);
+        const n = await tlsConn.read(buf);
+        return n ? decoder.decode(buf.subarray(0, n)) : "";
+      };
+      const write = async (cmd: string) => {
+        await tlsConn.write(encoder.encode(cmd + "\r\n"));
+        return await read();
+      };
+
+      await read(); // greeting
+      await write(`EHLO inclinefitness.in`);
+      await write("AUTH LOGIN");
+      await write(btoa(username));
+      const authResp = await write(btoa(password));
+
+      if (!authResp.startsWith("235")) {
+        tlsConn.close();
+        return { success: false, error: `SMTP auth failed (port 465): ${authResp}` };
+      }
+
+      await write(`MAIL FROM:<${fromEmail}>`);
+      await write(`RCPT TO:<${to}>`);
+      await write("DATA");
+      const dataResp = await write(buildMessage());
+      await write("QUIT");
+      tlsConn.close();
+
+      return dataResp.startsWith("250")
+        ? { success: true, message_id: `smtp-${Date.now()}` }
+        : { success: false, error: `SMTP DATA error (465): ${dataResp}` };
+    }
+
+    // Port 587 / 25: plain TCP first
+    const conn = await Deno.connect({ hostname: host, port: portNum });
+
     const read = async () => {
-      const buf = new Uint8Array(1024);
+      const buf = new Uint8Array(4096);
       const n = await conn.read(buf);
       return n ? decoder.decode(buf.subarray(0, n)) : "";
     };
