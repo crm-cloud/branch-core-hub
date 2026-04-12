@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, Upload, X, Loader2, ImageIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Building2, Upload, X, Loader2, ImageIcon, Receipt, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
