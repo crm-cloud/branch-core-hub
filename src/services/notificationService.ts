@@ -82,8 +82,8 @@ export async function fetchPreferences(userId: string) {
     .from('notification_preferences')
     .select('*')
     .eq('user_id', userId)
-    .single();
-  if (error && error.code !== 'PGRST116') throw error;
+    .maybeSingle();
+  if (error) throw error;
   return data as NotificationPreferences | null;
 }
 

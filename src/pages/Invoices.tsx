@@ -12,8 +12,9 @@ import { InvoiceViewDrawer } from '@/components/invoices/InvoiceViewDrawer';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { SendPaymentLinkDrawer } from '@/components/invoices/SendPaymentLinkDrawer';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { InvoiceShareDrawer } from '@/components/invoices/InvoiceShareDrawer';
 import { 
-  FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send,
+  FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send, Mail,
   ChevronLeft, ChevronRight, ShoppingCart, ClipboardList, Dumbbell, PlusCircle, ReceiptText, Undo2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +32,7 @@ export default function InvoicesPage() {
   const [viewInvoice, setViewInvoice] = useState<any>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
   const [paymentLinkInvoice, setPaymentLinkInvoice] = useState<any>(null);
+  const [shareInvoice, setShareInvoice] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
@@ -349,10 +351,15 @@ export default function InvoicesPage() {
                                       member_name: memberProfile?.full_name,
                                       member_phone: memberProfile?.phone,
                                       member_email: memberProfile?.email,
+                                      branch_id: invoice.branch_id,
                                     });
                                   }}>
                                     <Send className="mr-2 h-4 w-4" />
                                     Send Payment Link
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setShareInvoice(invoice)}>
+                                    <Mail className="mr-2 h-4 w-4" />
+                                    Share Invoice
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -454,6 +461,12 @@ export default function InvoicesPage() {
         open={!!paymentLinkInvoice}
         onOpenChange={(open) => !open && setPaymentLinkInvoice(null)}
         invoice={paymentLinkInvoice}
+      />
+
+      <InvoiceShareDrawer
+        open={!!shareInvoice}
+        onOpenChange={(open) => !open && setShareInvoice(null)}
+        invoice={shareInvoice}
       />
     </AppLayout>
   );

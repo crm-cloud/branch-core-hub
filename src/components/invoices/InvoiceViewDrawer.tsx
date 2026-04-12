@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { FileText, Printer, Download, IndianRupee, CreditCard, Link2, Receipt } from 'lucide-react';
+import { FileText, Printer, Download, IndianRupee, CreditCard, Link2, Receipt, Mail } from 'lucide-react';
+import { InvoiceShareDrawer } from './InvoiceShareDrawer';
 import { generateInvoicePDF, generateThermalReceipt } from '@/utils/pdfGenerator';
 
 interface InvoiceViewDrawerProps {
@@ -19,6 +21,7 @@ interface InvoiceViewDrawerProps {
 }
 
 export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayment, onSendPaymentLink }: InvoiceViewDrawerProps) {
+  const [shareOpen, setShareOpen] = useState(false);
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: async () => {
@@ -315,7 +318,18 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
               </Button>
             </div>
           )}
+
+          <Button variant="outline" className="w-full" onClick={() => setShareOpen(true)}>
+            <Mail className="h-4 w-4 mr-2" />
+            Share Invoice
+          </Button>
         </div>
+
+        <InvoiceShareDrawer
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          invoice={invoice}
+        />
       </SheetContent>
     </Sheet>
   );

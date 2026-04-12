@@ -1278,18 +1278,42 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
     }
 
     // Fallback: extract fields from natural language if AI didn't output JSON
+    // Requires: at least 4 messages in conversation (2 inbound) AND at least 2 extracted fields
     if (!leadCaptured && replyText.length > 20) {
-      const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
-      const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-      const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
-      if (nameMatch || inboundMsg.contact_name) {
-        parsedLeadData = {
-          name: nameMatch?.[1] || inboundMsg.contact_name || "WhatsApp Lead",
-          email: emailMatch?.[0] || null,
-          goal: goalMatch?.[1]?.trim() || null,
-        };
-        leadCaptured = true;
-        console.log("Fallback lead extraction succeeded:", JSON.stringify(parsedLeadData));
+      // Check conversation length — prevent premature capture
+      const { count: msgCount } = await supabase
+        .from("whatsapp_messages")
+        .select("*", { count: "exact", head: true })
+        .eq("phone_number", phoneNumber)
+        .eq("branch_id", branchId)
+        .eq("direction", "inbound");
+
+      const inboundCount = msgCount || 0;
+
+      if (inboundCount >= 2) {
+        const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+        const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+        const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
+        const phoneMatch = replyText.match(/(?:phone|Phone|mobile|Mobile)[:\s]+([\d\s+()-]{7,})/);
+        const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
+
+        // Count how many real data fields we extracted (contact_name alone doesn't count)
+        const extractedFields = [nameMatch, emailMatch, goalMatch, phoneMatch, timeMatch].filter(Boolean).length;
+
+        if (extractedFields >= 2) {
+          parsedLeadData = {
+            name: nameMatch?.[1] || inboundMsg.contact_name || "WhatsApp Lead",
+            email: emailMatch?.[0] || null,
+            goal: goalMatch?.[1]?.trim() || null,
+            preferred_time: timeMatch?.[1]?.trim() || null,
+          };
+          leadCaptured = true;
+          console.log("Fallback lead extraction succeeded (fields:", extractedFields, "):", JSON.stringify(parsedLeadData));
+        } else {
+          console.log("Fallback skipped: only", extractedFields, "fields extracted, need at least 2. Inbound msgs:", inboundCount);
+        }
+      } else {
+        console.log("Fallback skipped: only", inboundCount, "inbound messages, need at least 2");
       }
     }
 

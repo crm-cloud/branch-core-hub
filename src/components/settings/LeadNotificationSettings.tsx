@@ -141,6 +141,17 @@ export function LeadNotificationSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Warning when all channels disabled */}
+          {enabledCount === 0 && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-2">
+              <Bell className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
+                All notification channels are disabled. No automated notifications will be sent when new leads are captured.
+                Enable at least one channel below to start notifying.
+              </p>
+            </div>
+          )}
+
           {/* Info banners */}
           <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 flex gap-2">
             <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />

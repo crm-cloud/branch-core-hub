@@ -49,6 +49,10 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
 
   const handleGenerateRazorpayLink = async () => {
     if (paymentAmount <= 0) return;
+    if (!invoice.id || !invoice.branch_id) {
+      toast.error('Invoice ID and branch are required to generate a payment link.');
+      return;
+    }
     setGenerating(true);
     setGeneratedLink(null);
 
