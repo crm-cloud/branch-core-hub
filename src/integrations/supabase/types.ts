@@ -4322,6 +4322,7 @@ export type Database = {
           created_at: string
           currency: string | null
           fiscal_year_start: string | null
+          gst_rates: Json | null
           id: string
           lead_nurture_config: Json | null
           logo_url: string | null
@@ -4339,6 +4340,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           fiscal_year_start?: string | null
+          gst_rates?: Json | null
           id?: string
           lead_nurture_config?: Json | null
           logo_url?: string | null
@@ -4356,6 +4358,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           fiscal_year_start?: string | null
+          gst_rates?: Json | null
           id?: string
           lead_nurture_config?: Json | null
           logo_url?: string | null
@@ -6287,6 +6290,7 @@ export type Database = {
           is_unread: boolean | null
           last_nurture_at: string | null
           nurture_retry_count: number | null
+          partial_lead_data: Json | null
           paused_at: string | null
           paused_by: string | null
           phone_number: string
@@ -6301,6 +6305,7 @@ export type Database = {
           is_unread?: boolean | null
           last_nurture_at?: string | null
           nurture_retry_count?: number | null
+          partial_lead_data?: Json | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number: string
@@ -6315,6 +6320,7 @@ export type Database = {
           is_unread?: boolean | null
           last_nurture_at?: string | null
           nurture_retry_count?: number | null
+          partial_lead_data?: Json | null
           paused_at?: string | null
           paused_by?: string | null
           phone_number?: string
