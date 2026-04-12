@@ -680,6 +680,11 @@ export default function FinancePage() {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {/* GST Report Tab */}
+              <TabsContent value="gst">
+                <GstReportTab invoices={gstInvoices} formatCurrency={formatCurrency} />
+              </TabsContent>
             </Tabs>
           </div>
         </div>
