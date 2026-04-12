@@ -700,11 +700,13 @@ export default function FinancePage() {
 }
 
 // GST Report sub-component
+type GstBucket = { taxable: number; tax: number; total: number; count: number };
+
 function GstReportTab({ invoices, formatCurrency }: { invoices: any[]; formatCurrency: (v: number) => string }) {
   const gstInvoices = invoices.filter((inv: any) => inv.is_gst_invoice === true);
   const nonGstInvoices = invoices.filter((inv: any) => !inv.is_gst_invoice);
 
-  const gstByRate = gstInvoices.reduce((acc: Record<number, { taxable: number; tax: number; total: number; count: number }>, inv: any) => {
+  const gstByRate: Record<number, GstBucket> = gstInvoices.reduce((acc: Record<number, GstBucket>, inv: any) => {
     const rate = inv.gst_rate || 18;
     if (!acc[rate]) acc[rate] = { taxable: 0, tax: 0, total: 0, count: 0 };
     const subtotal = inv.subtotal || (inv.total_amount / (1 + rate / 100));
@@ -714,12 +716,12 @@ function GstReportTab({ invoices, formatCurrency }: { invoices: any[]; formatCur
     acc[rate].total += inv.total_amount;
     acc[rate].count += 1;
     return acc;
-  }, {});
+  }, {} as Record<number, GstBucket>);
 
   const totalGstIncome = gstInvoices.reduce((s: number, inv: any) => s + (inv.total_amount || 0), 0);
   const totalNonGstIncome = nonGstInvoices.reduce((s: number, inv: any) => s + (inv.total_amount || 0), 0);
-  const totalTax = Object.values(gstByRate).reduce((s, r) => s + r.tax, 0);
-  const totalTaxable = Object.values(gstByRate).reduce((s, r) => s + r.taxable, 0);
+  const totalTax = (Object.values(gstByRate) as GstBucket[]).reduce((s, r) => s + r.tax, 0);
+  const totalTaxable = (Object.values(gstByRate) as GstBucket[]).reduce((s, r) => s + r.taxable, 0);
 
   const exportGstReport = () => {
     const headers = ['Invoice Number', 'Date', 'Customer GSTIN', 'Taxable Value', 'GST Rate %', 'CGST', 'SGST', 'Total'];
