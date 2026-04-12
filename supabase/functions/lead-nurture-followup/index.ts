@@ -1,4 +1,4 @@
-// v1.0.0 — Scheduled AI follow-up for silent leads
+// v2.0.0 — AI-powered contextual lead nurture follow-up
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -16,16 +16,16 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get nurture config from organization_settings
     const { data: orgSettings } = await supabase
       .from("organization_settings")
       .select("lead_nurture_config")
       .limit(1)
       .maybeSingle();
 
-    const config = orgSettings?.lead_nurture_config ?? {
+    const config = (orgSettings?.lead_nurture_config as any) ?? {
       enabled: true,
       delay_hours: 4,
       max_retries: 2,
@@ -40,6 +40,7 @@ serve(async (req) => {
 
     const delayHours = config.delay_hours || 4;
     const maxRetries = config.max_retries || 2;
+    const nurturePrompt = config.nurture_prompt || "";
     const cutoffTime = new Date(Date.now() - delayHours * 60 * 60 * 1000).toISOString();
 
     // Find chats where:
@@ -49,7 +50,7 @@ serve(async (req) => {
     // 4. Retry count < max
     const { data: staleChats, error: chatErr } = await supabase
       .from("whatsapp_chat_settings")
-      .select("id, phone_number, branch_id, nurture_retry_count")
+      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data")
       .eq("bot_active", true)
       .lt("nurture_retry_count", maxRetries);
 
@@ -64,7 +65,6 @@ serve(async (req) => {
     let nudgedCount = 0;
 
     for (const chat of staleChats || []) {
-      // Get the last message for this chat
       const { data: lastMsg } = await supabase
         .from("whatsapp_messages")
         .select("direction, created_at")
@@ -74,12 +74,11 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      // Only nudge if last message was outbound and older than cutoff
       if (!lastMsg || lastMsg.direction !== "outbound" || lastMsg.created_at > cutoffTime) {
         continue;
       }
 
-      // Check if there's a lead for this phone
+      // Check if there's an existing lead
       const cleanPhone = chat.phone_number.replace(/^\+/, "");
       const { data: lead } = await supabase
         .from("leads")
@@ -89,17 +88,73 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (!lead) continue; // Only nudge known leads
+      const partialData = chat.partial_lead_data as Record<string, any> | null;
 
-      const nudgeMessage = `Hi ${lead.full_name || "there"}! 👋 Just checking in — we'd love to help you get started on your fitness journey at Incline Fitness. Feel free to reply anytime with your questions! 💪`;
+      // Generate contextual nudge message
+      let nudgeMessage: string;
 
-      // Insert the nudge message
+      if (LOVABLE_API_KEY && (partialData || lead)) {
+        // AI-powered contextual follow-up
+        const missingFields: string[] = [];
+        if (!partialData?.email && !lead) missingFields.push("email address");
+        if (!partialData?.name && !lead?.full_name) missingFields.push("full name");
+        if (!partialData?.goal) missingFields.push("fitness goal");
+
+        const contextInfo = partialData
+          ? `Partial data collected so far: ${JSON.stringify(partialData)}. Missing: ${missingFields.join(", ") || "none"}.`
+          : lead
+          ? `Lead exists: ${lead.full_name}. This is a re-engagement nudge.`
+          : "No data collected yet.";
+
+        const systemPrompt = `You are a friendly gym assistant for Incline Fitness. Write a single short WhatsApp follow-up message (max 2 sentences) to re-engage a lead who stopped responding.
+${nurturePrompt ? `Additional context from admin: ${nurturePrompt}` : ""}
+${contextInfo}
+${missingFields.length > 0 ? `Naturally ask for their ${missingFields[0]} in the message.` : "Just encourage them to visit or reply."}
+Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replying.`;
+
+        try {
+          const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: "Generate the follow-up message." },
+              ],
+            }),
+          });
+
+          if (aiRes.ok) {
+            const aiResult = await aiRes.json();
+            const generated = aiResult.choices?.[0]?.message?.content?.trim();
+            if (generated) nudgeMessage = generated;
+          }
+        } catch (aiErr) {
+          console.warn("AI nudge generation failed, using fallback:", aiErr);
+        }
+      }
+
+      // Fallback message
+      if (!nudgeMessage!) {
+        const name = lead?.full_name || partialData?.name || partialData?.whatsapp_name || "there";
+        nudgeMessage = `Hi ${name}! 👋 Just checking in — we'd love to help you get started on your fitness journey at Incline Fitness. Feel free to reply anytime with your questions! 💪`;
+      }
+
+      // Skip if no lead AND no partial data (nothing to nurture)
+      if (!lead && !partialData) continue;
+
+      const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
+
       const { data: msgData, error: msgErr } = await supabase
         .from("whatsapp_messages")
         .insert({
           branch_id: chat.branch_id,
           phone_number: chat.phone_number,
-          contact_name: lead.full_name,
+          contact_name: contactName,
           content: nudgeMessage,
           direction: "outbound",
           status: "pending",
@@ -113,7 +168,6 @@ serve(async (req) => {
         continue;
       }
 
-      // Send via WhatsApp
       try {
         const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
           method: "POST",
@@ -136,7 +190,6 @@ serve(async (req) => {
         console.error(`Send error for ${chat.phone_number}:`, sendErr);
       }
 
-      // Update retry count
       await supabase
         .from("whatsapp_chat_settings")
         .update({
