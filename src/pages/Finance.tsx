@@ -800,7 +800,7 @@ function GstReportTab({ invoices, formatCurrency }: { invoices: any[]; formatCur
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(gstByRate).sort(([a], [b]) => Number(a) - Number(b)).map(([rate, data]) => (
+                {(Object.entries(gstByRate) as [string, GstBucket][]).sort(([a], [b]) => Number(a) - Number(b)).map(([rate, data]) => (
                   <TableRow key={rate}>
                     <TableCell><Badge variant="outline">{rate}%</Badge></TableCell>
                     <TableCell>{data.count}</TableCell>
