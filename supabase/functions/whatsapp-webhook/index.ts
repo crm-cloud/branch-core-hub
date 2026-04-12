@@ -1285,7 +1285,7 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
     }
 
     // Fallback: extract fields from natural language if AI didn't output JSON
-    // Requires: at least 4 messages in conversation (2 inbound) AND at least 2 extracted fields
+    // Requires: at least 4 messages (2 inbound) AND name + email at minimum
     if (!leadCaptured && replyText.length > 20) {
       // Check conversation length — prevent premature capture
       const { count: msgCount } = await supabase
@@ -1297,30 +1297,44 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
 
       const inboundCount = msgCount || 0;
 
-      if (inboundCount >= 2) {
-        const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
-        const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-        const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
-        const phoneMatch = replyText.match(/(?:phone|Phone|mobile|Mobile)[:\s]+([\d\s+()-]{7,})/);
-        const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
+      const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+      const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+      const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
+      const phoneMatch = replyText.match(/(?:phone|Phone|mobile|Mobile)[:\s]+([\d\s+()-]{7,})/);
+      const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
 
-        // Count how many real data fields we extracted (contact_name alone doesn't count)
+      // Store partial lead data for nurture follow-up even if we can't capture yet
+      const partialData: Record<string, any> = {};
+      if (nameMatch) partialData.name = nameMatch[1];
+      if (emailMatch) partialData.email = emailMatch[0];
+      if (goalMatch) partialData.goal = goalMatch[1]?.trim();
+      if (timeMatch) partialData.preferred_time = timeMatch[1]?.trim();
+      if (inboundMsg.contact_name) partialData.whatsapp_name = inboundMsg.contact_name;
+
+      if (Object.keys(partialData).length > 0) {
+        await supabase.from("whatsapp_chat_settings").upsert(
+          {
+            branch_id: branchId,
+            phone_number: phoneNumber,
+            partial_lead_data: partialData,
+          },
+          { onConflict: "branch_id,phone_number" },
+        );
+      }
+
+      // Only capture if we have name + email AND at least 2 inbound messages
+      if (inboundCount >= 2 && nameMatch && emailMatch) {
         const extractedFields = [nameMatch, emailMatch, goalMatch, phoneMatch, timeMatch].filter(Boolean).length;
-
-        if (extractedFields >= 2) {
-          parsedLeadData = {
-            name: nameMatch?.[1] || inboundMsg.contact_name || "WhatsApp Lead",
-            email: emailMatch?.[0] || null,
-            goal: goalMatch?.[1]?.trim() || null,
-            preferred_time: timeMatch?.[1]?.trim() || null,
-          };
-          leadCaptured = true;
-          console.log("Fallback lead extraction succeeded (fields:", extractedFields, "):", JSON.stringify(parsedLeadData));
-        } else {
-          console.log("Fallback skipped: only", extractedFields, "fields extracted, need at least 2. Inbound msgs:", inboundCount);
-        }
+        parsedLeadData = {
+          name: nameMatch[1],
+          email: emailMatch[0],
+          goal: goalMatch?.[1]?.trim() || null,
+          preferred_time: timeMatch?.[1]?.trim() || null,
+        };
+        leadCaptured = true;
+        console.log("Fallback lead extraction succeeded (fields:", extractedFields, "):", JSON.stringify(parsedLeadData));
       } else {
-        console.log("Fallback skipped: only", inboundCount, "inbound messages, need at least 2");
+        console.log("Fallback skipped: inbound=", inboundCount, "name=", !!nameMatch, "email=", !!emailMatch);
       }
     }
 
