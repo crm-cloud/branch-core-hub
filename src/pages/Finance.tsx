@@ -503,6 +503,10 @@ export default function FinancePage() {
                   <ArrowDownRight className="h-4 w-4 text-red-500" />
                   Expenses ({expenseData.length})
                 </TabsTrigger>
+                <TabsTrigger value="gst" className="gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  GST Report
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="income">
