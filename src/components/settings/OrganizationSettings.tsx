@@ -77,10 +77,10 @@ export function OrganizationSettings() {
   const uploadLogoMutation = useMutation({
     mutationFn: async (file: File) => {
       const ext = file.name.split('.').pop();
-      const path = `org-logo-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+      const path = `logo-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('org-assets').upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      const { data: { publicUrl } } = supabase.storage.from('org-assets').getPublicUrl(path);
 
       // Upsert org settings with logo
       const payload = {
