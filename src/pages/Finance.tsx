@@ -110,6 +110,27 @@ export default function FinancePage() {
     },
   });
 
+  // GST Report Data
+  const { data: gstInvoices = [] } = useQuery({
+    queryKey: ['finance-gst-invoices', selectedBranch, dateRange],
+    queryFn: async () => {
+      let query = supabase
+        .from('invoices')
+        .select('id, invoice_number, created_at, total_amount, subtotal, gst_rate, is_gst_invoice, customer_gstin, amount_paid, status, member:members(member_code, gstin, profiles:user_id(full_name))')
+        .order('created_at', { ascending: false });
+
+      if (selectedBranch && selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
+      if (dateRange) {
+        query = query.gte('created_at', dateRange.from.toISOString())
+                     .lte('created_at', dateRange.to.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Monthly revenue report data (last 6 months for bar chart)
   const { data: monthlyReportData = [] } = useQuery({
     queryKey: ['finance-monthly-report', selectedBranch],
