@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
 import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock, Wallet } from 'lucide-react';
+import { useGstRates } from '@/hooks/useGstRates';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -47,6 +48,7 @@ export function PurchaseMembershipDrawer({
   const [sendReminders, setSendReminders] = useState(true);
   
   const queryClient = useQueryClient();
+  const { data: gstRates = [5, 12, 18, 28] } = useGstRates();
 
   const { data: plans = [] } = usePlans(branchId);
   const selectedPlan = plans.find((p: any) => p.id === selectedPlanId);
@@ -533,10 +535,9 @@ export function PurchaseMembershipDrawer({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="5">5%</SelectItem>
-                          <SelectItem value="12">12%</SelectItem>
-                          <SelectItem value="18">18%</SelectItem>
-                          <SelectItem value="28">28%</SelectItem>
+                          {gstRates.map((rate: number) => (
+                            <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Plus, Trash2, FileText, IndianRupee } from 'lucide-react';
+import { useGstRates } from '@/hooks/useGstRates';
 
 interface CreateInvoiceDrawerProps {
   open: boolean;
@@ -26,6 +27,7 @@ interface LineItem {
 
 export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvoiceDrawerProps) {
   const queryClient = useQueryClient();
+  const { data: gstRates = [5, 12, 18, 28] } = useGstRates();
   const [memberId, setMemberId] = useState<string>('');
   const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
@@ -280,10 +282,9 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="0">No GST</SelectItem>
-                  <SelectItem value="5">5%</SelectItem>
-                  <SelectItem value="12">12%</SelectItem>
-                  <SelectItem value="18">18%</SelectItem>
-                  <SelectItem value="28">28%</SelectItem>
+                  {gstRates.map((rate: number) => (
+                    <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
