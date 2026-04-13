@@ -750,6 +750,15 @@ export default function WhatsAppChatPage() {
                           {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
                         </AvatarFallback>
                       </Avatar>
+                      {/* Platform badge */}
+                      {contact.platform && contact.platform !== 'whatsapp' && (
+                        <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-0.5">
+                          <PlatformIcon platform={contact.platform} className="h-3 w-3" />
+                        </span>
+                      )}
+                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                        </AvatarFallback>
+                      </Avatar>
                       {/* Visual indicators */}
                       {contact.is_unread && (
                         <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
@@ -797,9 +806,12 @@ export default function WhatsAppChatPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                        {selectedContact.contact_name || selectedContact.phone_number}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
+                        <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
+                          {selectedContact.contact_name || selectedContact.phone_number}
+                        </h3>
+                      </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
                         {selectedContact.phone_number}
