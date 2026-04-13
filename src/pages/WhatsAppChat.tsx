@@ -756,9 +756,6 @@ export default function WhatsAppChatPage() {
                           <PlatformIcon platform={contact.platform} className="h-3 w-3" />
                         </span>
                       )}
-                          {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
-                        </AvatarFallback>
-                      </Avatar>
                       {/* Visual indicators */}
                       {contact.is_unread && (
                         <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
