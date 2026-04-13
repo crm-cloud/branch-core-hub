@@ -623,6 +623,8 @@ export default function WhatsAppChatPage() {
     const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
     return s?.assigned_to === user?.id;
   }).length;
+  const igCount = enrichedContacts.filter(c => c.platform === 'instagram').length;
+  const fbCount = enrichedContacts.filter(c => c.platform === 'messenger').length;
 
   return (
     <AppLayout>
@@ -635,10 +637,10 @@ export default function WhatsAppChatPage() {
             <div className="p-4 border-b border-border/30">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/10">
-                    <MessageSquare className="h-4 w-4 text-emerald-500" />
+                  <div className="p-1.5 rounded-lg bg-primary/10">
+                    <MessageSquare className="h-4 w-4 text-primary" />
                   </div>
-                  Chats
+                  Inbox
                 </h2>
                 <div className="flex items-center gap-1">
                   <Badge variant="secondary" className="rounded-full text-xs">{contacts.length}</Badge>
