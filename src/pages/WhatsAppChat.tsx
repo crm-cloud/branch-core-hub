@@ -395,7 +395,7 @@ export default function WhatsAppChatPage() {
     }
   }, [messages]);
 
-  // Filter contacts by search + triage tab
+  // Filter contacts by search + triage tab + platform
   const filteredContacts = enrichedContacts.filter((c: ChatContact) => {
     const matchesSearch = c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.phone_number.includes(searchQuery);
@@ -406,6 +406,9 @@ export default function WhatsAppChatPage() {
       const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
       return s?.assigned_to === user?.id;
     }
+    if (chatFilter === 'whatsapp') return (c.platform || 'whatsapp') === 'whatsapp';
+    if (chatFilter === 'instagram') return c.platform === 'instagram';
+    if (chatFilter === 'messenger') return c.platform === 'messenger';
     return true;
   });
 
