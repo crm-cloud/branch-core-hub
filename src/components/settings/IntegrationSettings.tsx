@@ -19,10 +19,11 @@ import { toast } from 'sonner';
 import { 
   CreditCard, MessageSquare, Mail, Phone,
   Settings, CheckCircle, XCircle, Save, Globe, Webhook, Copy, ExternalLink,
-  RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send
+  RefreshCw, ChevronDown, ChevronRight, Clock, PauseCircle, Send,
+  Instagram, Facebook,
 } from 'lucide-react';
 
-type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business';
+type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
 const GOOGLE_PROVIDERS = [
   { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
@@ -76,6 +77,14 @@ const WHATSAPP_PROVIDERS = [
   { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
   { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
+];
+
+const INSTAGRAM_PROVIDERS = [
+  { id: 'instagram_meta', name: 'Instagram Direct (Meta)', description: 'Receive and reply to Instagram DMs' },
+];
+
+const MESSENGER_PROVIDERS = [
+  { id: 'messenger_meta', name: 'Facebook Messenger (Meta)', description: 'Receive and reply to Messenger messages' },
 ];
 
 const SUPABASE_FUNCTION_BASE = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
