@@ -515,6 +515,150 @@ export function IntegrationSettings() {
           </Collapsible>
         </TabsContent>
 
+        {/* ── Instagram Tab ── */}
+        <TabsContent value="instagram" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Instagram className="h-5 w-5 text-pink-500" />
+                Instagram Direct Messages
+              </CardTitle>
+              <CardDescription>
+                Receive and reply to Instagram DMs through the unified inbox
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Webhook URL */}
+              <div className="p-4 rounded-lg bg-pink-500/5 border border-pink-500/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-pink-500" />
+                  <h4 className="font-semibold text-sm">Instagram Webhook URL</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Instagram → Webhooks → Callback URL.</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {SUPABASE_FUNCTION_BASE}/meta-webhook
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
+                    toast.success('Instagram webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {INSTAGRAM_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('instagram').find(
+                    (i: any) => i.provider === provider.id
+                  );
+                  return (
+                    <Card key={provider.id}>
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                              <Instagram className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{provider.name}</h3>
+                              <p className="text-sm text-muted-foreground">{provider.description}</p>
+                            </div>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'}>
+                            {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                            {config?.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <Button 
+                          className="w-full mt-4" 
+                          variant={config?.is_active ? 'outline' : 'default'}
+                          onClick={() => openConfig('instagram', provider.id)}
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          {config ? 'Configure' : 'Setup'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Messenger Tab ── */}
+        <TabsContent value="messenger" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Facebook className="h-5 w-5 text-blue-500" />
+                Facebook Messenger
+              </CardTitle>
+              <CardDescription>
+                Receive and reply to Facebook Messenger messages through the unified inbox
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Webhook URL */}
+              <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-blue-500" />
+                  <h4 className="font-semibold text-sm">Messenger Webhook URL</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Messenger → Webhooks → Callback URL.</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {SUPABASE_FUNCTION_BASE}/meta-webhook
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
+                    toast.success('Messenger webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {MESSENGER_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('messenger').find(
+                    (i: any) => i.provider === provider.id
+                  );
+                  return (
+                    <Card key={provider.id}>
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-blue-500 flex items-center justify-center">
+                              <Facebook className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{provider.name}</h3>
+                              <p className="text-sm text-muted-foreground">{provider.description}</p>
+                            </div>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'}>
+                            {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                            {config?.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <Button 
+                          className="w-full mt-4" 
+                          variant={config?.is_active ? 'outline' : 'default'}
+                          onClick={() => openConfig('messenger', provider.id)}
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          {config ? 'Configure' : 'Setup'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="google" className="space-y-4">
           <Card>
             <CardHeader>
