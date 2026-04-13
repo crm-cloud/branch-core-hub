@@ -17,10 +17,10 @@ import { toast } from 'sonner';
 import { getProviderSchema, getProviderDisplayName, getWebhookInfoForProvider, getDefaultConfigForProvider, type ProviderFieldDef } from '@/config/providerSchemas';
 import { 
   CreditCard, MessageSquare, Mail, Phone, Webhook, Copy,
-  Settings, CheckCircle, XCircle, Plus, Save
+  Settings, CheckCircle, XCircle, Globe, Instagram, Facebook, MessageCircle
 } from 'lucide-react';
 
-type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp';
+type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
 const PAYMENT_PROVIDERS = [
   { id: 'razorpay', name: 'Razorpay', abbr: 'Rp', bgColor: 'bg-blue-600', textColor: 'text-white' },
@@ -50,6 +50,40 @@ const WHATSAPP_PROVIDERS = [
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
+const INSTAGRAM_PROVIDERS = [
+  { id: 'instagram_meta', name: 'Instagram Direct (Meta)', description: 'Receive and reply to Instagram DMs' },
+];
+
+const MESSENGER_PROVIDERS = [
+  { id: 'messenger_meta', name: 'Facebook Messenger (Meta)', description: 'Receive and reply to Messenger messages' },
+];
+
+const GOOGLE_PROVIDERS = [
+  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+];
+
+const IntegrationCard = ({ title, description, icon: Icon, activeCount, children }: { title: string; description: string; icon: any; activeCount: number; children: React.ReactNode }) => (
+  <Card className="border-border/60 shadow-sm hover:shadow-md transition-shadow">
+    <CardHeader className="pb-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Icon className="h-4 w-4" />
+            </span>
+            {title}
+          </CardTitle>
+          <CardDescription className="mt-1">{description}</CardDescription>
+        </div>
+        <Badge variant={activeCount > 0 ? 'default' : 'secondary'} className="rounded-full px-2.5 py-1">
+          {activeCount} active
+        </Badge>
+      </div>
+    </CardHeader>
+    <CardContent>{children}</CardContent>
+  </Card>
+);
+
 export default function IntegrationsPage() {
   const { selectedBranch, branchFilter } = useBranchContext();
   const [configSheet, setConfigSheet] = useState<{
@@ -78,165 +112,222 @@ export default function IntegrationsPage() {
     },
   });
 
-  const getIntegrationsByType = (type: IntegrationType) => 
-    integrations.filter((i: any) => i.integration_type === type);
-
-  const activePaymentGateways = getIntegrationsByType('payment_gateway').filter((i: any) => i.is_active).length;
-  const activeSmsProviders = getIntegrationsByType('sms').filter((i: any) => i.is_active).length;
-  const activeEmailProviders = getIntegrationsByType('email').filter((i: any) => i.is_active).length;
-  const activeWhatsApp = getIntegrationsByType('whatsapp').filter((i: any) => i.is_active).length;
+  const getIntegrationsByType = (type: IntegrationType) => integrations.filter((i: any) => i.integration_type === type);
+  const activeCount = (type: IntegrationType) => getIntegrationsByType(type).filter((i: any) => i.is_active).length;
 
   const openConfig = (type: IntegrationType, provider: string) => {
-    const existing = integrations.find(
-      (i: any) => i.integration_type === type && i.provider === provider
-    );
+    const existing = integrations.find((i: any) => i.integration_type === type && i.provider === provider);
     setConfigSheet({ open: true, type, provider, existing });
   };
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-2xl font-bold">Integrations</h1>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
+            <p className="text-muted-foreground mt-1">Configure payment, SMS, email, and social messaging channels.</p>
+          </div>
         </div>
 
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard title="Payment Gateways" value={activePaymentGateways} icon={CreditCard} variant={activePaymentGateways > 0 ? 'success' : 'default'} />
-          <StatCard title="SMS Providers" value={activeSmsProviders} icon={Phone} variant={activeSmsProviders > 0 ? 'success' : 'default'} />
-          <StatCard title="Email Providers" value={activeEmailProviders} icon={Mail} variant={activeEmailProviders > 0 ? 'success' : 'default'} />
-          <StatCard title="WhatsApp" value={activeWhatsApp} icon={MessageSquare} variant={activeWhatsApp > 0 ? 'success' : 'default'} />
+        <div className="grid gap-4 grid-cols-2 xl:grid-cols-5">
+          <StatCard title="Payment" value={activeCount('payment_gateway')} icon={CreditCard} variant={activeCount('payment_gateway') > 0 ? 'success' : 'default'} />
+          <StatCard title="SMS" value={activeCount('sms')} icon={Phone} variant={activeCount('sms') > 0 ? 'success' : 'default'} />
+          <StatCard title="Email" value={activeCount('email')} icon={Mail} variant={activeCount('email') > 0 ? 'success' : 'default'} />
+          <StatCard title="WhatsApp" value={activeCount('whatsapp')} icon={MessageSquare} variant={activeCount('whatsapp') > 0 ? 'success' : 'default'} />
+          <StatCard title="Google" value={activeCount('google_business')} icon={Globe} variant={activeCount('google_business') > 0 ? 'success' : 'default'} />
         </div>
 
         <Tabs defaultValue="payment" className="space-y-4">
-          <TabsList className="grid grid-cols-4 w-full max-w-2xl">
-            <TabsTrigger value="payment">Payment</TabsTrigger>
-            <TabsTrigger value="sms">SMS</TabsTrigger>
-            <TabsTrigger value="email">Email</TabsTrigger>
-            <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-2xl bg-muted/70 p-1.5">
+            <TabsTrigger value="payment" className="rounded-xl px-4">Payment</TabsTrigger>
+            <TabsTrigger value="sms" className="rounded-xl px-4">SMS</TabsTrigger>
+            <TabsTrigger value="email" className="rounded-xl px-4">Email</TabsTrigger>
+            <TabsTrigger value="whatsapp" className="rounded-xl px-4 gap-1.5"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+            <TabsTrigger value="instagram" className="rounded-xl px-4 gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
+            <TabsTrigger value="messenger" className="rounded-xl px-4 gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
+            <TabsTrigger value="google" className="rounded-xl px-4 gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
           </TabsList>
 
           <TabsContent value="payment" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5" />Payment Gateways</CardTitle>
-                <CardDescription>Configure payment gateways with webhook support for automatic payment reconciliation</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {PAYMENT_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('payment_gateway').find((i: any) => i.provider === provider.id);
-                    return (
-                      <Card key={provider.id} className="relative">
-                        <CardContent className="pt-6">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-bold text-sm`}>{provider.abbr}</div>
-                              <div>
-                                <h3 className="font-semibold">{provider.name}</h3>
-                                <p className="text-sm text-muted-foreground">{config?.is_active ? 'Active' : 'Not configured'}</p>
-                              </div>
+            <IntegrationCard title="Payment Gateways" description="Connect gateways with webhook support and automatic reconciliation." icon={CreditCard} activeCount={activeCount('payment_gateway')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {PAYMENT_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('payment_gateway').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60 bg-gradient-to-br from-background to-muted/30">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-11 h-11 rounded-2xl ${provider.bgColor} ${provider.textColor} flex items-center justify-center font-semibold shadow-sm`}>{provider.abbr}</div>
+                            <div>
+                              <h3 className="font-semibold">{provider.name}</h3>
+                              <p className="text-sm text-muted-foreground">{config?.is_active ? 'Active' : 'Not configured'}</p>
                             </div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                              {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-                              {config?.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
                           </div>
-                          <Button className="w-full mt-4" variant={config?.is_active ? 'outline' : 'default'} onClick={() => openConfig('payment_gateway', provider.id)}>
-                            <Settings className="h-4 w-4 mr-2" />{config ? 'Configure' : 'Setup'}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">
+                            {config?.is_active ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}
+                            {config?.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant={config?.is_active ? 'outline' : 'default'} onClick={() => openConfig('payment_gateway', provider.id)}>
+                          <Settings className="mr-2 h-4 w-4" />{config ? 'Configure' : 'Setup'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
           </TabsContent>
 
           <TabsContent value="sms" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" />SMS Providers</CardTitle>
-                <CardDescription>Configure SMS providers with DLT registration for India</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {SMS_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('sms').find((i: any) => i.provider === provider.id);
-                    return (
-                      <Card key={provider.id}>
-                        <CardContent className="pt-6">
-                          <div className="flex items-start justify-between">
-                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+            <IntegrationCard title="SMS Providers" description="Configure DLT-ready SMS providers for transactional and promotional messaging." icon={Phone} activeCount={activeCount('sms')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {SMS_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('sms').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
                           </div>
-                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('sms', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('sms', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
           </TabsContent>
 
           <TabsContent value="email" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" />Email Providers</CardTitle>
-                <CardDescription>Configure email sending with custom SMTP or API providers</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {EMAIL_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('email').find((i: any) => i.provider === provider.id);
-                    return (
-                      <Card key={provider.id}>
-                        <CardContent className="pt-6">
-                          <div className="flex items-start justify-between">
-                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+            <IntegrationCard title="Email Providers" description="Send receipts, invoices, alerts, and automated email flows." icon={Mail} activeCount={activeCount('email')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {EMAIL_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('email').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
                           </div>
-                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('email', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('email', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
           </TabsContent>
 
           <TabsContent value="whatsapp" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />WhatsApp Business API</CardTitle>
-                <CardDescription>Configure WhatsApp for chat and automated messaging</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {WHATSAPP_PROVIDERS.map((provider) => {
-                    const config = getIntegrationsByType('whatsapp').find((i: any) => i.provider === provider.id);
-                    return (
-                      <Card key={provider.id}>
-                        <CardContent className="pt-6">
-                          <div className="flex items-start justify-between">
-                            <div><h3 className="font-semibold">{provider.name}</h3><p className="text-sm text-muted-foreground">{provider.description}</p></div>
-                            <Badge variant={config?.is_active ? 'default' : 'secondary'}>{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+            <IntegrationCard title="WhatsApp" description="Connect messaging providers for chat and automation." icon={MessageSquare} activeCount={activeCount('whatsapp')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {WHATSAPP_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('whatsapp').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
                           </div>
-                          <Button className="w-full mt-4" variant="outline" onClick={() => openConfig('whatsapp', provider.id)}><Settings className="h-4 w-4 mr-2" />Configure</Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('whatsapp', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
+          </TabsContent>
+
+          <TabsContent value="instagram" className="space-y-4">
+            <IntegrationCard title="Instagram Direct Messages" description="Receive and reply to Instagram DMs through the unified inbox." icon={Instagram} activeCount={activeCount('instagram')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {INSTAGRAM_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('instagram').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('instagram', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
+          </TabsContent>
+
+          <TabsContent value="messenger" className="space-y-4">
+            <IntegrationCard title="Messenger" description="Connect Facebook Messenger for unified inbox support." icon={Facebook} activeCount={activeCount('messenger')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {MESSENGER_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('messenger').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('messenger', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
+          </TabsContent>
+
+          <TabsContent value="google" className="space-y-4">
+            <IntegrationCard title="Google Business" description="Sync reviews and manage Google Business profile settings." icon={Globe} activeCount={activeCount('google_business')}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {GOOGLE_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('google_business').find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('google_business', provider.id)}><Settings className="mr-2 h-4 w-4" />Configure</Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
           </TabsContent>
         </Tabs>
 
-        <IntegrationConfigSheet 
-          {...configSheet} 
+        <IntegrationConfigSheet
+          {...configSheet}
           onOpenChange={(open) => setConfigSheet({ ...configSheet, open })}
           branchId={branchFilter}
         />
@@ -245,9 +336,7 @@ export default function IntegrationsPage() {
   );
 }
 
-function IntegrationConfigSheet({ 
-  open, onOpenChange, type, provider, existing, branchId
-}: {
+function IntegrationConfigSheet({ open, onOpenChange, type, provider, existing, branchId }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: IntegrationType;
@@ -342,14 +431,14 @@ function IntegrationConfigSheet({
           </div>
 
           {webhookInfo && (
-            <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
+            <div className="space-y-2 rounded-xl border border-primary/10 bg-primary/5 p-4">
               <div className="flex items-center gap-2">
                 <Webhook className="h-4 w-4 text-primary" />
-                <h4 className="font-semibold text-sm">{webhookInfo.label}</h4>
+                <h4 className="text-sm font-semibold">{webhookInfo.label}</h4>
               </div>
               {webhookInfo.description && <p className="text-xs text-muted-foreground">{webhookInfo.description}</p>}
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">{webhookInfo.url}</code>
+                <code className="flex-1 break-all rounded bg-muted px-3 py-2 font-mono text-xs">{webhookInfo.url}</code>
                 <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(webhookInfo.url); toast.success(`${webhookInfo.label} copied!`); }}>
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
@@ -380,7 +469,7 @@ function IntegrationConfigSheet({
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button className="flex-1" onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending}>
-              <Save className="h-4 w-4 mr-2" />{saveConfig.isPending ? 'Saving...' : 'Save'}
+              <Settings className="mr-2 h-4 w-4" />{saveConfig.isPending ? 'Saving...' : 'Save'}
             </Button>
           </div>
         </div>
