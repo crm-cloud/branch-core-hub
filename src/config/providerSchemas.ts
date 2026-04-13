@@ -30,6 +30,20 @@ export const getWebhookInfoForProvider = (type: string, provider: string): Provi
       description: 'Paste this URL in your Meta Developer Portal → WhatsApp → Configuration → Webhook Callback URL.',
     };
   }
+  if (type === 'instagram') {
+    return {
+      label: 'Instagram Webhook URL',
+      url: `${SUPABASE_FUNCTION_BASE}/meta-webhook`,
+      description: 'Paste this URL in your Meta Developer Portal → Instagram → Webhooks → Callback URL. Subscribe to "messages" field.',
+    };
+  }
+  if (type === 'messenger') {
+    return {
+      label: 'Messenger Webhook URL',
+      url: `${SUPABASE_FUNCTION_BASE}/meta-webhook`,
+      description: 'Paste this URL in your Meta Developer Portal → Messenger → Webhooks → Callback URL. Subscribe to "messages" field.',
+    };
+  }
   return null;
 };
 
@@ -39,6 +53,8 @@ export const getProviderDisplayName = (type: string, provider: string): string =
     sms: { roundsms: 'RoundSMS', msg91: 'MSG91', gupshup: 'Gupshup', twilio: 'Twilio', textlocal: 'TextLocal', fast2sms: 'Fast2SMS', custom: 'Custom API' },
     email: { smtp: 'Custom SMTP', sendgrid: 'SendGrid', ses: 'Amazon SES', mailgun: 'Mailgun' },
     whatsapp: { meta_cloud: 'Meta Cloud API', wati: 'WATI', interakt: 'Interakt', gupshup: 'Gupshup', aisensy: 'AiSensy', custom: 'Custom API' },
+    instagram: { instagram_meta: 'Instagram Direct (Meta)' },
+    messenger: { messenger_meta: 'Facebook Messenger (Meta)' },
     google_business: { google_business: 'Google Business Profile' },
   };
   return map[type]?.[provider] || provider.replace(/_/g, ' ');
@@ -176,6 +192,23 @@ const PROVIDER_SCHEMAS: Record<string, ProviderFieldDef[]> = {
     { key: 'from_email', label: 'From Email', placeholder: 'noreply@yourgym.com', type: 'text', section: 'config' },
     { key: 'from_name', label: 'From Name', placeholder: 'Your Gym Name', type: 'text', section: 'config' },
     { key: 'api_key', label: 'API Key', placeholder: 'Enter Mailgun API key', type: 'password', section: 'credentials' },
+  ],
+
+  // ── Instagram ──
+  instagram_instagram_meta: [
+    { key: 'instagram_account_id', label: 'Instagram Business Account ID', placeholder: 'From Meta Business Suite → Instagram Accounts', type: 'text', section: 'config' },
+    { key: 'page_id', label: 'Linked Facebook Page ID', placeholder: 'The Facebook Page linked to your IG account', type: 'text', section: 'config' },
+    { key: 'webhook_verify_token', label: 'Webhook Verify Token', placeholder: 'Any secret string you choose', type: 'text', section: 'config' },
+    { key: 'access_token', label: 'Page Access Token', placeholder: 'Enter Meta permanent page access token', type: 'password', section: 'credentials' },
+    { key: 'app_secret', label: 'App Secret', placeholder: 'From Meta App Dashboard → Settings → Basic', type: 'password', section: 'credentials' },
+  ],
+
+  // ── Messenger ──
+  messenger_messenger_meta: [
+    { key: 'page_id', label: 'Facebook Page ID', placeholder: 'From Facebook Page → About → Page ID', type: 'text', section: 'config' },
+    { key: 'webhook_verify_token', label: 'Webhook Verify Token', placeholder: 'Any secret string you choose', type: 'text', section: 'config' },
+    { key: 'access_token', label: 'Page Access Token', placeholder: 'Enter Meta permanent page access token', type: 'password', section: 'credentials' },
+    { key: 'app_secret', label: 'App Secret', placeholder: 'From Meta App Dashboard → Settings → Basic', type: 'password', section: 'credentials' },
   ],
 
   // ── Google Business ──

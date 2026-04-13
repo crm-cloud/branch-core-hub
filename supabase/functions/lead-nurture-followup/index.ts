@@ -1,4 +1,4 @@
-// v2.0.0 — AI-powered contextual lead nurture follow-up
+// v3.0.0 — AI-powered contextual lead nurture follow-up with retry reset + cooldown
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -41,18 +41,14 @@ serve(async (req) => {
     const delayHours = config.delay_hours || 4;
     const maxRetries = config.max_retries || 2;
     const nurturePrompt = config.nurture_prompt || "";
+    const cooldownHours = config.cooldown_hours || delayHours;
     const cutoffTime = new Date(Date.now() - delayHours * 60 * 60 * 1000).toISOString();
 
-    // Find chats where:
-    // 1. Bot is active (AI is handling)
-    // 2. Last message was outbound (AI asked a question) 
-    // 3. No reply from user since cutoff
-    // 4. Retry count < max
+    // Find chats where bot is active
     const { data: staleChats, error: chatErr } = await supabase
       .from("whatsapp_chat_settings")
-      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data")
-      .eq("bot_active", true)
-      .lt("nurture_retry_count", maxRetries);
+      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data, last_nurture_at")
+      .eq("bot_active", true);
 
     if (chatErr) {
       console.error("Failed to query stale chats:", chatErr);
@@ -63,6 +59,7 @@ serve(async (req) => {
     }
 
     let nudgedCount = 0;
+    let resetCount = 0;
 
     for (const chat of staleChats || []) {
       const { data: lastMsg } = await supabase
@@ -74,8 +71,32 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (!lastMsg || lastMsg.direction !== "outbound" || lastMsg.created_at > cutoffTime) {
+      if (!lastMsg) continue;
+
+      // If last message is INBOUND, the user has re-engaged — reset retry counter
+      if (lastMsg.direction === "inbound") {
+        if ((chat.nurture_retry_count || 0) > 0) {
+          await supabase
+            .from("whatsapp_chat_settings")
+            .update({ nurture_retry_count: 0 })
+            .eq("id", chat.id);
+          resetCount++;
+        }
+        // User replied, no need to nudge
         continue;
+      }
+
+      // Last message is outbound — check if we should nudge
+      // Skip if retry count maxed
+      if ((chat.nurture_retry_count || 0) >= maxRetries) continue;
+
+      // Skip if last message is too recent (not past cutoff)
+      if (lastMsg.created_at > cutoffTime) continue;
+
+      // Cooldown: skip if last nurture was within cooldown window
+      if (chat.last_nurture_at) {
+        const cooldownCutoff = new Date(Date.now() - cooldownHours * 60 * 60 * 1000).toISOString();
+        if (chat.last_nurture_at > cooldownCutoff) continue;
       }
 
       // Check if there's an existing lead
@@ -90,11 +111,13 @@ serve(async (req) => {
 
       const partialData = chat.partial_lead_data as Record<string, any> | null;
 
+      // Skip if no lead AND no partial data (nothing to nurture)
+      if (!lead && !partialData) continue;
+
       // Generate contextual nudge message
-      let nudgeMessage: string;
+      let nudgeMessage: string | undefined;
 
       if (LOVABLE_API_KEY && (partialData || lead)) {
-        // AI-powered contextual follow-up
         const missingFields: string[] = [];
         if (!partialData?.email && !lead) missingFields.push("email address");
         if (!partialData?.name && !lead?.full_name) missingFields.push("full name");
@@ -139,13 +162,10 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
       }
 
       // Fallback message
-      if (!nudgeMessage!) {
+      if (!nudgeMessage) {
         const name = lead?.full_name || partialData?.name || partialData?.whatsapp_name || "there";
         nudgeMessage = `Hi ${name}! 👋 Just checking in — we'd love to help you get started on your fitness journey at Incline Fitness. Feel free to reply anytime with your questions! 💪`;
       }
-
-      // Skip if no lead AND no partial data (nothing to nurture)
-      if (!lead && !partialData) continue;
 
       const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
 
@@ -202,7 +222,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
     }
 
     return new Response(
-      JSON.stringify({ success: true, nudged: nudgedCount }),
+      JSON.stringify({ success: true, nudged: nudgedCount, retries_reset: resetCount }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
