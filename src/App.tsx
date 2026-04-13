@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { BranchProvider } from "@/contexts/BranchContext";
@@ -11,6 +11,7 @@ import { GymLoader } from "@/components/ui/gym-loader";
 
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { DashboardRedirect } from "@/components/auth/DashboardRedirect";
+import WhatsAppWidget from "@/components/common/WhatsAppWidget";
 
 // Critical auth pages — loaded eagerly (small bundles)
 import SetupPage from "./pages/Setup";
@@ -110,6 +111,17 @@ function PageLoader() {
   );
 }
 
+const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/lead-form"];
+
+function PublicWhatsAppWidget() {
+  const location = useLocation();
+  const isPublic = PUBLIC_PATHS.some(
+    (p) => location.pathname === p || location.pathname.startsWith("/embed/")
+  );
+  if (!isPublic) return null;
+  return <WhatsAppWidget />;
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -132,6 +144,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <BranchProvider>
+          <PublicWhatsAppWidget />
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public Website */}
