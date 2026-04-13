@@ -143,7 +143,7 @@ export function IntegrationSettings() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Integrations</h2>
-          <p className="text-sm text-muted-foreground">Configure payment gateways, SMS, email and WhatsApp</p>
+          <p className="text-sm text-muted-foreground">Configure payment, SMS, email, WhatsApp, Instagram, Messenger and Google</p>
         </div>
       </div>
 
@@ -182,13 +182,13 @@ export function IntegrationSettings() {
 
       <Tabs defaultValue="payment" className="space-y-4">
         <TabsList className="flex flex-wrap gap-1 h-auto p-1 w-full max-w-5xl">
-          <TabsTrigger value="payment">Payment</TabsTrigger>
-          <TabsTrigger value="sms">SMS</TabsTrigger>
-          <TabsTrigger value="email">Email</TabsTrigger>
+          <TabsTrigger value="payment" className="gap-1.5"><CreditCard className="h-3.5 w-3.5" />Payment</TabsTrigger>
+          <TabsTrigger value="sms" className="gap-1.5"><Phone className="h-3.5 w-3.5" />SMS</TabsTrigger>
+          <TabsTrigger value="email" className="gap-1.5"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
           <TabsTrigger value="whatsapp" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="instagram" className="gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
           <TabsTrigger value="messenger" className="gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
-          <TabsTrigger value="google">Google</TabsTrigger>
+          <TabsTrigger value="google" className="gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
         </TabsList>
 
         <TabsContent value="payment" className="space-y-4">

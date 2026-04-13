@@ -640,7 +640,7 @@ export default function WhatsAppChatPage() {
                   <div className="p-1.5 rounded-lg bg-primary/10">
                     <MessageSquare className="h-4 w-4 text-primary" />
                   </div>
-                  Inbox
+                  Chats
                 </h2>
                 <div className="flex items-center gap-1">
                   <Badge variant="secondary" className="rounded-full text-xs">{contacts.length}</Badge>
@@ -692,29 +692,27 @@ export default function WhatsAppChatPage() {
                   </button>
                 ))}
               </div>
-              {/* Platform filter row */}
-              {(igCount > 0 || fbCount > 0) && (
-                <div className="flex gap-1 mt-1.5">
-                  {[
-                    { key: 'whatsapp' as ChatFilter, icon: <MessageSquare className="h-3 w-3" />, label: 'WA' },
-                    ...(igCount > 0 ? [{ key: 'instagram' as ChatFilter, icon: <Instagram className="h-3 w-3" />, label: 'IG' }] : []),
-                    ...(fbCount > 0 ? [{ key: 'messenger' as ChatFilter, icon: <Facebook className="h-3 w-3" />, label: 'FB' }] : []),
-                  ].map(tab => (
-                    <button
-                      key={tab.key}
-                      onClick={() => setChatFilter(prev => prev === tab.key ? 'all' : tab.key)}
-                      className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                        chatFilter === tab.key
-                          ? 'bg-accent text-accent-foreground shadow-sm'
-                          : 'text-muted-foreground hover:bg-muted/80'
-                      }`}
-                    >
-                      {tab.icon}
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Platform filter badges — always visible */}
+              <div className="flex gap-1 mt-1.5">
+                {[
+                  { key: 'whatsapp' as ChatFilter, icon: <MessageSquare className="h-3 w-3" />, label: 'WhatsApp', color: 'text-emerald-500', activeBg: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 ring-1 ring-emerald-500/30' },
+                  { key: 'instagram' as ChatFilter, icon: <Instagram className="h-3 w-3" />, label: 'Instagram', color: 'text-pink-500', activeBg: 'bg-pink-500/15 text-pink-700 dark:text-pink-400 ring-1 ring-pink-500/30' },
+                  { key: 'messenger' as ChatFilter, icon: <Facebook className="h-3 w-3" />, label: 'Messenger', color: 'text-blue-500', activeBg: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 ring-1 ring-blue-500/30' },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setChatFilter(prev => prev === tab.key ? 'all' : tab.key)}
+                    className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-all ${
+                      chatFilter === tab.key
+                        ? tab.activeBg
+                        : 'text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    <span className={chatFilter === tab.key ? '' : tab.color}>{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Contact List */}
@@ -746,22 +744,32 @@ export default function WhatsAppChatPage() {
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
                       <Avatar className="h-11 w-11 ring-2 ring-background">
-                        <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold text-sm">
+                        <AvatarFallback className={`font-bold text-sm ${
+                          contact.platform === 'instagram'
+                            ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
+                            : contact.platform === 'messenger'
+                            ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
+                            : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
+                        }`}>
                           {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
                         </AvatarFallback>
                       </Avatar>
-                      {/* Platform badge */}
-                      {contact.platform && contact.platform !== 'whatsapp' && (
-                        <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-0.5">
-                          <PlatformIcon platform={contact.platform} className="h-3 w-3" />
-                        </span>
-                      )}
+                      {/* Platform badge — always shown */}
+                      <span className={`absolute -bottom-0.5 -right-0.5 rounded-full p-0.5 ${
+                        contact.platform === 'instagram'
+                          ? 'bg-pink-500'
+                          : contact.platform === 'messenger'
+                          ? 'bg-blue-500'
+                          : 'bg-emerald-500'
+                      }`}>
+                        <PlatformIcon platform={contact.platform} className="h-3 w-3 !text-white" />
+                      </span>
                       {/* Visual indicators */}
                       {contact.is_unread && (
-                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
+                        <span className="absolute -top-0.5 -left-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
                       )}
                       {contact.bot_active === false && !contact.is_unread && (
-                        <span className="absolute -top-0.5 -right-0.5">
+                        <span className="absolute -top-0.5 -left-0.5">
                           <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
                         </span>
                       )}
@@ -769,10 +777,21 @@ export default function WhatsAppChatPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm text-foreground truncate">
-                          {contact.contact_name || contact.phone_number}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-sm text-foreground truncate">
+                            {contact.contact_name || contact.phone_number}
+                          </span>
+                          <Badge variant="outline" className={`text-[9px] h-4 px-1 flex-shrink-0 rounded-md font-medium ${
+                            contact.platform === 'instagram'
+                              ? 'border-pink-300 text-pink-600 bg-pink-50 dark:bg-pink-500/10 dark:border-pink-500/30'
+                              : contact.platform === 'messenger'
+                              ? 'border-blue-300 text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/30'
+                              : 'border-emerald-300 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/30'
+                          }`}>
+                            {contact.platform === 'instagram' ? 'IG' : contact.platform === 'messenger' ? 'FB' : 'WA'}
+                          </Badge>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground flex-shrink-0 ml-2">
                           {formatContactTime(contact.last_message_time)}
                         </span>
                       </div>
@@ -827,14 +846,16 @@ export default function WhatsAppChatPage() {
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
                           {selectedContact.contact_name || selectedContact.phone_number}
                         </h3>
-                        {/* Lead source badge */}
-                        {selectedContact.platform && selectedContact.platform !== 'whatsapp' && (
-                          <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ml-1 ${
-                            selectedContact.platform === 'instagram' ? 'border-pink-300 text-pink-600' : 'border-blue-300 text-blue-600'
-                          }`}>
-                            via {selectedContact.platform === 'instagram' ? 'Instagram' : 'Messenger'}
-                          </Badge>
-                        )}
+                        {/* Platform badge */}
+                        <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ml-1 ${
+                          selectedContact.platform === 'instagram'
+                            ? 'border-pink-300 text-pink-600 bg-pink-50 dark:bg-pink-500/10'
+                            : selectedContact.platform === 'messenger'
+                            ? 'border-blue-300 text-blue-600 bg-blue-50 dark:bg-blue-500/10'
+                            : 'border-emerald-300 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10'
+                        }`}>
+                          {selectedContact.platform === 'instagram' ? 'Instagram' : selectedContact.platform === 'messenger' ? 'Messenger' : 'WhatsApp'}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
@@ -983,7 +1004,11 @@ export default function WhatsAppChatPage() {
                               <div
                                 className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm break-words overflow-hidden ${
                                   msg.direction === 'outbound'
-                                    ? 'bg-emerald-600 text-white rounded-br-md'
+                                    ? selectedContact.platform === 'instagram'
+                                      ? 'bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-br-md'
+                                      : selectedContact.platform === 'messenger'
+                                      ? 'bg-blue-500 text-white rounded-br-md'
+                                      : 'bg-emerald-600 text-white rounded-br-md'
                                     : 'bg-card border border-border/50 text-foreground rounded-bl-md'
                                 }`}
                               >
@@ -1117,7 +1142,13 @@ export default function WhatsAppChatPage() {
                       onClick={handleSend}
                       disabled={!newMessage.trim() || sendMessage.isPending || isBranchUnselected}
                       size="icon"
-                      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+                      className={`rounded-xl text-white flex-shrink-0 ${
+                        selectedContact?.platform === 'instagram'
+                          ? 'bg-pink-500 hover:bg-pink-600'
+                          : selectedContact?.platform === 'messenger'
+                          ? 'bg-blue-500 hover:bg-blue-600'
+                          : 'bg-emerald-600 hover:bg-emerald-700'
+                      }`}
                       data-testid="button-send-message"
                     >
                       <Send className="h-4 w-4" />
@@ -1129,12 +1160,20 @@ export default function WhatsAppChatPage() {
               /* Empty state */
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-4">
-                    <MessageSquare className="h-10 w-10 text-emerald-500/50" />
+                  <div className="mx-auto flex items-center justify-center gap-3 mb-4">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                      <MessageSquare className="h-7 w-7 text-emerald-500" />
+                    </div>
+                    <div className="w-14 h-14 rounded-2xl bg-pink-500/10 flex items-center justify-center">
+                      <Instagram className="h-7 w-7 text-pink-500" />
+                    </div>
+                    <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                      <Facebook className="h-7 w-7 text-blue-500" />
+                    </div>
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">WhatsApp Chat</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-1">Unified Inbox</h3>
                   <p className="text-sm text-muted-foreground max-w-xs mb-4">
-                    Select a conversation from the sidebar, or start a new one with the + button.
+                    All your WhatsApp, Instagram and Messenger conversations in one place. Select a chat or start a new one.
                   </p>
                   {!isBranchUnselected && (
                     <Button

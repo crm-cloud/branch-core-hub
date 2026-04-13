@@ -136,7 +136,7 @@ export const staffMenuConfig: MenuSection[] = [
   {
     title: 'Communication',
     items: [
-      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['staff'] },
+      { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['staff'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['staff'] },
     ],
   },
@@ -200,7 +200,7 @@ export const adminMenuConfig: MenuSection[] = [
   {
     title: 'Operations & Comm',
     items: [
-      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
@@ -274,7 +274,7 @@ export const managerMenuConfig: MenuSection[] = [
   {
     title: 'Operations & Comm',
     items: [
-      { label: 'WhatsApp Chat', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
+      { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
