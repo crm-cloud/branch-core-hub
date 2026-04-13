@@ -795,19 +795,46 @@ export default function WhatsAppChatPage() {
             {selectedContact ? (
               <>
                 {/* Chat Header */}
-                <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between bg-card flex-shrink-0">
+                <div className={`px-5 py-3 border-b flex items-center justify-between bg-card flex-shrink-0 ${
+                  selectedContact.platform === 'instagram' 
+                    ? 'border-b-pink-500/30' 
+                    : selectedContact.platform === 'messenger'
+                    ? 'border-b-blue-500/30'
+                    : 'border-b-border/30'
+                }`}>
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700 font-bold">
-                        {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className={`font-bold ${
+                          selectedContact.platform === 'instagram'
+                            ? 'bg-gradient-to-br from-pink-100 to-purple-100 text-pink-700'
+                            : selectedContact.platform === 'messenger'
+                            ? 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700'
+                            : 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-700'
+                        }`}>
+                          {selectedContact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
+                        </AvatarFallback>
+                      </Avatar>
+                      {selectedContact.platform && selectedContact.platform !== 'whatsapp' && (
+                        <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-0.5">
+                          <PlatformIcon platform={selectedContact.platform} className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
                           {selectedContact.contact_name || selectedContact.phone_number}
                         </h3>
+                        {/* Lead source badge */}
+                        {selectedContact.platform && selectedContact.platform !== 'whatsapp' && (
+                          <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ml-1 ${
+                            selectedContact.platform === 'instagram' ? 'border-pink-300 text-pink-600' : 'border-blue-300 text-blue-600'
+                          }`}>
+                            via {selectedContact.platform === 'instagram' ? 'Instagram' : 'Messenger'}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />

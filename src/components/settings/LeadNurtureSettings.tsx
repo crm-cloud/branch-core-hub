@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Clock, Brain, Play, CheckCircle } from 'lucide-react';
+import { Clock, Brain, Play, CheckCircle, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export function LeadNurtureSettings() {
@@ -104,10 +104,25 @@ export function LeadNurtureSettings() {
       return data;
     },
     onSuccess: (data: any) => {
-      toast.success(`Nurture run complete: ${data?.nudged || 0} leads nudged`);
+      toast.success(`Nurture run complete: ${data?.nudged || 0} nudged, ${data?.retries_reset || 0} counters reset`);
       queryClient.invalidateQueries({ queryKey: ['lead-nurture-stats'] });
     },
     onError: (e: any) => toast.error(e.message || 'Failed to run nurture'),
+  });
+
+  const resetCountersMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('whatsapp_chat_settings')
+        .update({ nurture_retry_count: 0 })
+        .gt('nurture_retry_count', 0);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('All retry counters reset — leads are eligible for nurture again');
+      queryClient.invalidateQueries({ queryKey: ['lead-nurture-stats'] });
+    },
+    onError: (e: any) => toast.error(e.message || 'Failed to reset counters'),
   });
 
   if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
@@ -137,16 +152,28 @@ export function LeadNurtureSettings() {
                 Scheduled hourly via cron
               </Badge>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => runNowMutation.mutate()}
-              disabled={runNowMutation.isPending}
-              className="gap-1.5"
-            >
-              <Play className="h-3.5 w-3.5" />
-              {runNowMutation.isPending ? 'Running...' : 'Run Now'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runNowMutation.mutate()}
+                disabled={runNowMutation.isPending}
+                className="gap-1.5"
+              >
+                <Play className="h-3.5 w-3.5" />
+                {runNowMutation.isPending ? 'Running...' : 'Run Now'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => resetCountersMutation.mutate()}
+                disabled={resetCountersMutation.isPending}
+                className="gap-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${resetCountersMutation.isPending ? 'animate-spin' : ''}`} />
+                Reset Counters
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
