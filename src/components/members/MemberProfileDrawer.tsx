@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,8 @@ import {
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
   Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -448,6 +449,13 @@ export function MemberProfileDrawer({
   const [registrationFormOpen, setRegistrationFormOpen] = useState(false);
   const [transferBranchOpen, setTransferBranchOpen] = useState(false);
   const [transferMembershipOpen, setTransferMembershipOpen] = useState(false);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollTabs = (dir: 'left' | 'right') => {
+    if (tabsScrollRef.current) {
+      tabsScrollRef.current.scrollBy({ left: dir === 'left' ? -120 : 120, behavior: 'smooth' });
+    }
+  };
 
   const toggleMemberStatus = async () => {
     if (!member?.id) return;
@@ -931,46 +939,64 @@ export function MemberProfileDrawer({
           <Separator />
 
           <Tabs defaultValue="overview" className="w-full">
-            <div className="relative">
-              <TabsList className="flex w-full overflow-x-auto scrollbar-hide h-auto p-1 gap-0.5 pr-8 sm:pr-1">
-                <TabsTrigger value="overview" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <User className="h-4 w-4" />
-                  <span className="text-xs">Overview</span>
-                </TabsTrigger>
-                <TabsTrigger value="membership" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <CreditCard className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Plan</span>
-                </TabsTrigger>
-                <TabsTrigger value="benefits" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <Heart className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Benefits</span>
-                </TabsTrigger>
-                <TabsTrigger value="measurements" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <Ruler className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Body</span>
-                </TabsTrigger>
-                <TabsTrigger value="payments" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <IndianRupee className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Pay</span>
-                </TabsTrigger>
-                <TabsTrigger value="rewards" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <Award className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Rewards</span>
-                </TabsTrigger>
-                <TabsTrigger value="documents" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Docs</span>
-                </TabsTrigger>
-                <TabsTrigger value="hardware" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <IdCard className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Access</span>
-                </TabsTrigger>
-                <TabsTrigger value="activity" className="flex items-center gap-1.5 shrink-0 px-2.5 py-2 min-w-[44px]">
-                  <Activity className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">Activity</span>
-                </TabsTrigger>
-              </TabsList>
-              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-muted to-transparent pointer-events-none sm:hidden rounded-r-md" />
+            <div className="relative flex items-center gap-1">
+              <button
+                onClick={() => scrollTabs('left')}
+                className="flex-shrink-0 h-8 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                aria-label="Scroll tabs left"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div
+                ref={tabsScrollRef}
+                className="flex-1 overflow-x-auto scrollbar-hide"
+              >
+                <TabsList className="inline-flex w-auto min-w-full h-auto p-1 gap-0.5">
+                  <TabsTrigger value="overview" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <User className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Overview</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="membership" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <CreditCard className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Plan</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="benefits" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <Heart className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Benefits</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="measurements" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <Ruler className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Body</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="payments" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <IndianRupee className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Pay</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="rewards" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <Award className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Rewards</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="documents" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Docs</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="hardware" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <IdCard className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Access</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="activity" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <Activity className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Activity</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              <button
+                onClick={() => scrollTabs('right')}
+                className="flex-shrink-0 h-8 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                aria-label="Scroll tabs right"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
