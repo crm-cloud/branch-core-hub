@@ -33,8 +33,17 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye, CircleDot, AlertCircle,
+  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook,
 } from 'lucide-react';
+
+// Platform icon helper
+const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: string; className?: string }) => {
+  switch (platform) {
+    case 'instagram': return <Instagram className={`${className} text-pink-500`} />;
+    case 'messenger': return <Facebook className={`${className} text-blue-500`} />;
+    default: return <MessageSquare className={`${className} text-emerald-500`} />;
+  }
+};
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -50,6 +59,7 @@ interface ChatContact {
   unread_count: number;
   is_unread?: boolean;
   bot_active?: boolean;
+  platform?: string;
 }
 
 interface Message {
@@ -95,7 +105,7 @@ function isAiNotConfiguredError(msg: string): boolean {
   );
 }
 
-type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats';
+type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats' | 'whatsapp' | 'instagram' | 'messenger';
 
 function normalizePhone(phone: string): string {
   return phone.replace(/^\+/, '');
