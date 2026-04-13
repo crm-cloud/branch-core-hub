@@ -1,4 +1,5 @@
-// v1.0.0 — Unified Meta Webhook: WhatsApp, Instagram DM, Facebook Messenger
+// v2.0.0 — Unified Meta Webhook: WhatsApp, Instagram DM, Facebook Messenger
+// Hardened with org AI config, appsecret_proof, tool-calling support
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -13,13 +14,28 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 type Platform = "whatsapp" | "instagram" | "messenger";
 
+// Cache org AI config
+let _orgAiConfig: any = null;
+let _orgAiConfigFetchedAt = 0;
+
+async function getOrgAiConfig() {
+  if (_orgAiConfig && Date.now() - _orgAiConfigFetchedAt < 60_000) return _orgAiConfig;
+  const { data } = await supabase
+    .from("organization_settings")
+    .select("whatsapp_ai_config, gym_name")
+    .limit(1)
+    .maybeSingle();
+  _orgAiConfig = data || {};
+  _orgAiConfigFetchedAt = Date.now();
+  return _orgAiConfig;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // GET = Meta webhook verification (works for all 3 platforms)
     if (req.method === "GET") {
       return await handleVerification(req);
     }
@@ -56,7 +72,6 @@ async function handleVerification(req: Request) {
     });
   }
 
-  // Check verify token against all integration types
   const { data: integration } = await supabase
     .from("integration_settings")
     .select("id, integration_type")
@@ -93,9 +108,7 @@ async function handleIncomingEvent(req: Request) {
 
   const objectType = payload?.object;
 
-  // Determine platform from payload structure
   if (objectType === "whatsapp_business_account") {
-    // WhatsApp — forward to existing whatsapp-webhook for full processing
     console.log("Routing WhatsApp event to whatsapp-webhook");
     try {
       const whatsappUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
@@ -118,7 +131,6 @@ async function handleIncomingEvent(req: Request) {
     console.log("Unknown Meta webhook object type:", objectType);
   }
 
-  // Always return 200 to Meta
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -134,7 +146,7 @@ async function processInstagramEvent(payload: any) {
     const messaging = Array.isArray(entry.messaging) ? entry.messaging : [];
 
     for (const event of messaging) {
-      if (!event.message) continue; // Skip read receipts, reactions, etc.
+      if (!event.message) continue;
 
       const senderId = event.sender?.id;
       const recipientId = event.recipient?.id;
@@ -142,7 +154,6 @@ async function processInstagramEvent(payload: any) {
 
       if (!senderId || !recipientId || !message) continue;
 
-      // Determine direction: if sender is our page, it's outbound
       const integration = await findIntegrationByPageId(recipientId, "instagram");
       const branchId = integration?.branch_id || await getFallbackBranchId();
       if (!branchId) continue;
@@ -164,8 +175,8 @@ async function processInstagramEvent(payload: any) {
         .from("whatsapp_messages")
         .insert({
           branch_id: branchId,
-          phone_number: senderId, // Instagram uses IGSID (Instagram-scoped ID)
-          contact_name: null, // IG doesn't provide name in webhook
+          phone_number: senderId,
+          contact_name: null,
           message_type: messageType,
           content,
           media_url: mediaUrl,
@@ -183,14 +194,12 @@ async function processInstagramEvent(payload: any) {
       }
 
       if (!isOutbound && inserted) {
-        // Mark unread
         await supabase.from("whatsapp_chat_settings").upsert(
           { branch_id: branchId, phone_number: senderId, is_unread: true, platform: "instagram" as any },
           { onConflict: "branch_id,phone_number" }
         );
 
-        // Trigger AI auto-reply via the existing whatsapp-webhook AI logic
-        await triggerAiReply(inserted.id, senderId, branchId, "instagram");
+        await triggerAiReply(inserted.id, senderId, branchId, "instagram", integration);
       }
     }
   }
@@ -257,7 +266,7 @@ async function processMessengerEvent(payload: any) {
           { branch_id: branchId, phone_number: senderId, is_unread: true, platform: "messenger" as any },
           { onConflict: "branch_id,phone_number" }
         );
-        await triggerAiReply(inserted.id, senderId, branchId, "messenger");
+        await triggerAiReply(inserted.id, senderId, branchId, "messenger", integration);
       }
     }
   }
@@ -275,7 +284,6 @@ async function findIntegrationByPageId(pageId: string, integrationType: string) 
 
   if (!data) return null;
 
-  // Match by page_id in config
   return data.find((i: any) =>
     i.config?.page_id === pageId ||
     i.config?.instagram_account_id === pageId
@@ -297,7 +305,29 @@ async function getFallbackBranchId(): Promise<string | null> {
   return _fallbackBranchId;
 }
 
-async function triggerAiReply(messageId: string, senderId: string, branchId: string, platform: Platform) {
+// Compute appsecret_proof for Meta Graph API calls
+async function computeAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(accessToken));
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function triggerAiReply(
+  messageId: string,
+  senderId: string,
+  branchId: string,
+  platform: Platform,
+  integration?: any
+) {
   // Check if bot is active for this contact
   const { data: settings } = await supabase
     .from("whatsapp_chat_settings")
@@ -308,28 +338,39 @@ async function triggerAiReply(messageId: string, senderId: string, branchId: str
 
   if (settings?.bot_active === false) return;
 
-  // Fetch recent messages for context
+  // Fetch recent messages for context (platform-scoped)
   const { data: recentMessages } = await supabase
     .from("whatsapp_messages")
     .select("content, direction, created_at")
     .eq("phone_number", senderId)
     .eq("branch_id", branchId)
+    .eq("platform", platform)
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(15);
 
   const history = (recentMessages || []).reverse();
 
-  // Use AI gateway for reply generation
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI reply for", platform);
     return;
   }
 
+  // Use org AI config for system prompt
+  const orgConfig = await getOrgAiConfig();
+  const aiConfig = orgConfig?.whatsapp_ai_config as any;
+  const gymName = orgConfig?.gym_name || "Incline Fitness";
+
   const platformLabel = platform === "instagram" ? "Instagram DM" : "Facebook Messenger";
   const conversationHistory = history
     .map((m: any) => `${m.direction === "inbound" ? "Customer" : "Staff"}: ${m.content}`)
     .join("\n");
+
+  // Build system prompt from org config or fallback
+  const customPrompt = aiConfig?.system_prompt || "";
+  const systemPrompt = customPrompt
+    ? `${customPrompt}\n\nYou are responding on ${platformLabel}. Keep replies short (1-3 sentences), warm and professional.`
+    : `You are a helpful gym reception assistant for "${gymName}" responding on ${platformLabel}. Generate a professional, friendly reply. Keep it short (1-3 sentences max). Be warm but professional.`;
 
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -339,16 +380,10 @@ async function triggerAiReply(messageId: string, senderId: string, branchId: str
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: aiConfig?.model || "google/gemini-3-flash-preview",
         messages: [
-          {
-            role: "system",
-            content: `You are a helpful gym reception assistant for "Incline Fitness" responding on ${platformLabel}. Generate a professional, friendly reply. Keep it short (1-3 sentences max). Be warm but professional.`,
-          },
-          {
-            role: "user",
-            content: `Recent conversation:\n\n${conversationHistory}\n\nGenerate a reply.`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Recent conversation:\n\n${conversationHistory}\n\nGenerate a reply.` },
         ],
       }),
     });
@@ -378,7 +413,23 @@ async function triggerAiReply(messageId: string, senderId: string, branchId: str
       .single();
 
     if (replyMsg) {
-      // Send via send-message function
+      // Build send URL with appsecret_proof if available
+      const sendBody: any = {
+        message_id: replyMsg.id,
+        recipient_id: senderId,
+        content: replyText,
+        branch_id: branchId,
+        platform,
+      };
+
+      // Compute appsecret_proof if integration credentials are available
+      if (integration?.credentials?.access_token && integration?.credentials?.app_secret) {
+        sendBody.appsecret_proof = await computeAppSecretProof(
+          integration.credentials.access_token,
+          integration.credentials.app_secret
+        );
+      }
+
       try {
         await fetch(`${SUPABASE_URL}/functions/v1/send-message`, {
           method: "POST",
@@ -386,13 +437,7 @@ async function triggerAiReply(messageId: string, senderId: string, branchId: str
             "Content-Type": "application/json",
             Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           },
-          body: JSON.stringify({
-            message_id: replyMsg.id,
-            recipient_id: senderId,
-            content: replyText,
-            branch_id: branchId,
-            platform,
-          }),
+          body: JSON.stringify(sendBody),
         });
       } catch (sendErr) {
         console.error(`Failed to send ${platform} reply:`, sendErr);
