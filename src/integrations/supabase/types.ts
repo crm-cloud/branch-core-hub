@@ -6300,6 +6300,7 @@ export type Database = {
           paused_at: string | null
           paused_by: string | null
           phone_number: string
+          platform: Database["public"]["Enums"]["messaging_platform"]
           updated_at: string | null
         }
         Insert: {
@@ -6315,6 +6316,7 @@ export type Database = {
           paused_at?: string | null
           paused_by?: string | null
           phone_number: string
+          platform?: Database["public"]["Enums"]["messaging_platform"]
           updated_at?: string | null
         }
         Update: {
@@ -6330,6 +6332,7 @@ export type Database = {
           paused_at?: string | null
           paused_by?: string | null
           phone_number?: string
+          platform?: Database["public"]["Enums"]["messaging_platform"]
           updated_at?: string | null
         }
         Relationships: [
@@ -6354,6 +6357,8 @@ export type Database = {
           member_id: string | null
           message_type: string
           phone_number: string
+          platform: Database["public"]["Enums"]["messaging_platform"]
+          platform_message_id: string | null
           sent_by: string | null
           status: string | null
           updated_at: string | null
@@ -6370,6 +6375,8 @@ export type Database = {
           member_id?: string | null
           message_type?: string
           phone_number: string
+          platform?: Database["public"]["Enums"]["messaging_platform"]
+          platform_message_id?: string | null
           sent_by?: string | null
           status?: string | null
           updated_at?: string | null
@@ -6386,6 +6393,8 @@ export type Database = {
           member_id?: string | null
           message_type?: string
           phone_number?: string
+          platform?: Database["public"]["Enums"]["messaging_platform"]
+          platform_message_id?: string | null
           sent_by?: string | null
           status?: string | null
           updated_at?: string | null
@@ -6648,6 +6657,72 @@ export type Database = {
       }
     }
     Views: {
+      crm_messages: {
+        Row: {
+          branch_id: string | null
+          contact_name: string | null
+          content: string | null
+          created_at: string | null
+          direction: string | null
+          id: string | null
+          member_id: string | null
+          message_type: string | null
+          phone_number: string | null
+          platform: Database["public"]["Enums"]["messaging_platform"] | null
+          platform_message_id: string | null
+          status: string | null
+          updated_at: string | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          contact_name?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction?: string | null
+          id?: string | null
+          member_id?: string | null
+          message_type?: string | null
+          phone_number?: string | null
+          platform?: Database["public"]["Enums"]["messaging_platform"] | null
+          platform_message_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          contact_name?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction?: string | null
+          id?: string | null
+          member_id?: string | null
+          message_type?: string | null
+          phone_number?: string | null
+          platform?: Database["public"]["Enums"]["messaging_platform"] | null
+          platform_message_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mips_connections_safe: {
         Row: {
           branch_id: string | null
@@ -6936,6 +7011,7 @@ export type Database = {
         | "expired"
         | "cancelled"
         | "transferred"
+      messaging_platform: "whatsapp" | "instagram" | "messenger"
       no_show_policy: "mark_used" | "allow_reschedule" | "charge_penalty"
       order_status:
         | "pending"
@@ -7186,6 +7262,7 @@ export const Constants = {
         "cancelled",
         "transferred",
       ],
+      messaging_platform: ["whatsapp", "instagram", "messenger"],
       no_show_policy: ["mark_used", "allow_reschedule", "charge_penalty"],
       order_status: [
         "pending",

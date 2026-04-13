@@ -33,8 +33,17 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye, CircleDot, AlertCircle,
+  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook,
 } from 'lucide-react';
+
+// Platform icon helper
+const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: string; className?: string }) => {
+  switch (platform) {
+    case 'instagram': return <Instagram className={`${className} text-pink-500`} />;
+    case 'messenger': return <Facebook className={`${className} text-blue-500`} />;
+    default: return <MessageSquare className={`${className} text-emerald-500`} />;
+  }
+};
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -50,6 +59,7 @@ interface ChatContact {
   unread_count: number;
   is_unread?: boolean;
   bot_active?: boolean;
+  platform?: string;
 }
 
 interface Message {
@@ -95,7 +105,7 @@ function isAiNotConfiguredError(msg: string): boolean {
   );
 }
 
-type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats';
+type ChatFilter = 'all' | 'unread' | 'needs_human' | 'my_chats' | 'whatsapp' | 'instagram' | 'messenger';
 
 function normalizePhone(phone: string): string {
   return phone.replace(/^\+/, '');
@@ -215,7 +225,7 @@ export default function WhatsAppChatPage() {
       const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
       let q = supabase
         .from('whatsapp_messages')
-        .select('phone_number, contact_name, member_id, content, created_at, direction')
+        .select('phone_number, contact_name, member_id, content, created_at, direction, platform')
         .order('created_at', { ascending: false });
       if (branchFilter) q = q.eq('branch_id', branchFilter);
       const { data, error } = await q;
@@ -228,6 +238,7 @@ export default function WhatsAppChatPage() {
         content: string | null;
         created_at: string;
         direction: string;
+        platform: string | null;
       }) => {
         if (!contactMap.has(msg.phone_number)) {
           contactMap.set(msg.phone_number, {
@@ -237,6 +248,7 @@ export default function WhatsAppChatPage() {
             last_message: msg.content || '',
             last_message_time: msg.created_at,
             unread_count: 0,
+            platform: msg.platform || 'whatsapp',
           });
         }
       });
@@ -383,7 +395,7 @@ export default function WhatsAppChatPage() {
     }
   }, [messages]);
 
-  // Filter contacts by search + triage tab
+  // Filter contacts by search + triage tab + platform
   const filteredContacts = enrichedContacts.filter((c: ChatContact) => {
     const matchesSearch = c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.phone_number.includes(searchQuery);
@@ -394,6 +406,9 @@ export default function WhatsAppChatPage() {
       const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
       return s?.assigned_to === user?.id;
     }
+    if (chatFilter === 'whatsapp') return (c.platform || 'whatsapp') === 'whatsapp';
+    if (chatFilter === 'instagram') return c.platform === 'instagram';
+    if (chatFilter === 'messenger') return c.platform === 'messenger';
     return true;
   });
 
@@ -608,6 +623,8 @@ export default function WhatsAppChatPage() {
     const s = settingsMap.get(c.phone_number) || settingsMap.get(normalizePhone(c.phone_number));
     return s?.assigned_to === user?.id;
   }).length;
+  const igCount = enrichedContacts.filter(c => c.platform === 'instagram').length;
+  const fbCount = enrichedContacts.filter(c => c.platform === 'messenger').length;
 
   return (
     <AppLayout>
@@ -620,10 +637,10 @@ export default function WhatsAppChatPage() {
             <div className="p-4 border-b border-border/30">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/10">
-                    <MessageSquare className="h-4 w-4 text-emerald-500" />
+                  <div className="p-1.5 rounded-lg bg-primary/10">
+                    <MessageSquare className="h-4 w-4 text-primary" />
                   </div>
-                  Chats
+                  Inbox
                 </h2>
                 <div className="flex items-center gap-1">
                   <Badge variant="secondary" className="rounded-full text-xs">{contacts.length}</Badge>
@@ -650,10 +667,10 @@ export default function WhatsAppChatPage() {
                 />
               </div>
               {/* Triage Tabs */}
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {([
                   { key: 'all' as ChatFilter, label: 'All', count: contacts.length },
-                  { key: 'my_chats' as ChatFilter, label: 'My Chats', count: myChatsCount },
+                  { key: 'my_chats' as ChatFilter, label: 'Mine', count: myChatsCount },
                   { key: 'unread' as ChatFilter, label: 'Unread', count: unreadCount },
                   { key: 'needs_human' as ChatFilter, label: 'Human', count: needsHumanCount },
                 ]).map(tab => (
@@ -675,6 +692,29 @@ export default function WhatsAppChatPage() {
                   </button>
                 ))}
               </div>
+              {/* Platform filter row */}
+              {(igCount > 0 || fbCount > 0) && (
+                <div className="flex gap-1 mt-1.5">
+                  {[
+                    { key: 'whatsapp' as ChatFilter, icon: <MessageSquare className="h-3 w-3" />, label: 'WA' },
+                    ...(igCount > 0 ? [{ key: 'instagram' as ChatFilter, icon: <Instagram className="h-3 w-3" />, label: 'IG' }] : []),
+                    ...(fbCount > 0 ? [{ key: 'messenger' as ChatFilter, icon: <Facebook className="h-3 w-3" />, label: 'FB' }] : []),
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setChatFilter(prev => prev === tab.key ? 'all' : tab.key)}
+                      className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                        chatFilter === tab.key
+                          ? 'bg-accent text-accent-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Contact List */}
@@ -710,6 +750,12 @@ export default function WhatsAppChatPage() {
                           {contact.contact_name?.[0]?.toUpperCase() || <User className="h-5 w-5" />}
                         </AvatarFallback>
                       </Avatar>
+                      {/* Platform badge */}
+                      {contact.platform && contact.platform !== 'whatsapp' && (
+                        <span className="absolute -bottom-0.5 -right-0.5 bg-background rounded-full p-0.5">
+                          <PlatformIcon platform={contact.platform} className="h-3 w-3" />
+                        </span>
+                      )}
                       {/* Visual indicators */}
                       {contact.is_unread && (
                         <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-background" />
@@ -757,9 +803,12 @@ export default function WhatsAppChatPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                        {selectedContact.contact_name || selectedContact.phone_number}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
+                        <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
+                          {selectedContact.contact_name || selectedContact.phone_number}
+                        </h3>
+                      </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
                         {selectedContact.phone_number}
