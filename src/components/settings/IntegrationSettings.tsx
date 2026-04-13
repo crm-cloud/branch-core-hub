@@ -128,6 +128,8 @@ export function IntegrationSettings() {
   const activeSmsProviders = getIntegrationsByType('sms').filter((i: any) => i.is_active).length;
   const activeEmailProviders = getIntegrationsByType('email').filter((i: any) => i.is_active).length;
   const activeWhatsApp = getIntegrationsByType('whatsapp').filter((i: any) => i.is_active).length;
+  const activeInstagram = getIntegrationsByType('instagram').filter((i: any) => i.is_active).length;
+  const activeMessenger = getIntegrationsByType('messenger').filter((i: any) => i.is_active).length;
 
   const openConfig = (type: IntegrationType, provider: string) => {
     const existing = integrations.find(
@@ -179,11 +181,13 @@ export function IntegrationSettings() {
       </div>
 
       <Tabs defaultValue="payment" className="space-y-4">
-        <TabsList className="grid grid-cols-5 w-full max-w-4xl">
+        <TabsList className="flex flex-wrap gap-1 h-auto p-1 w-full max-w-5xl">
           <TabsTrigger value="payment">Payment</TabsTrigger>
           <TabsTrigger value="sms">SMS</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
-          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="whatsapp" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+          <TabsTrigger value="instagram" className="gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
+          <TabsTrigger value="messenger" className="gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
           <TabsTrigger value="google">Google</TabsTrigger>
         </TabsList>
 
