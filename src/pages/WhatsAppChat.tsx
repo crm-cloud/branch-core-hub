@@ -225,7 +225,7 @@ export default function WhatsAppChatPage() {
       const branchFilter = selectedBranch !== 'all' ? selectedBranch : undefined;
       let q = supabase
         .from('whatsapp_messages')
-        .select('phone_number, contact_name, member_id, content, created_at, direction')
+        .select('phone_number, contact_name, member_id, content, created_at, direction, platform')
         .order('created_at', { ascending: false });
       if (branchFilter) q = q.eq('branch_id', branchFilter);
       const { data, error } = await q;
@@ -238,6 +238,7 @@ export default function WhatsAppChatPage() {
         content: string | null;
         created_at: string;
         direction: string;
+        platform: string | null;
       }) => {
         if (!contactMap.has(msg.phone_number)) {
           contactMap.set(msg.phone_number, {
@@ -247,6 +248,7 @@ export default function WhatsAppChatPage() {
             last_message: msg.content || '',
             last_message_time: msg.created_at,
             unread_count: 0,
+            platform: msg.platform || 'whatsapp',
           });
         }
       });
