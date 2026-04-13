@@ -667,10 +667,10 @@ export default function WhatsAppChatPage() {
                 />
               </div>
               {/* Triage Tabs */}
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {([
                   { key: 'all' as ChatFilter, label: 'All', count: contacts.length },
-                  { key: 'my_chats' as ChatFilter, label: 'My Chats', count: myChatsCount },
+                  { key: 'my_chats' as ChatFilter, label: 'Mine', count: myChatsCount },
                   { key: 'unread' as ChatFilter, label: 'Unread', count: unreadCount },
                   { key: 'needs_human' as ChatFilter, label: 'Human', count: needsHumanCount },
                 ]).map(tab => (
@@ -692,6 +692,29 @@ export default function WhatsAppChatPage() {
                   </button>
                 ))}
               </div>
+              {/* Platform filter row */}
+              {(igCount > 0 || fbCount > 0) && (
+                <div className="flex gap-1 mt-1.5">
+                  {[
+                    { key: 'whatsapp' as ChatFilter, icon: <MessageSquare className="h-3 w-3" />, label: 'WA' },
+                    ...(igCount > 0 ? [{ key: 'instagram' as ChatFilter, icon: <Instagram className="h-3 w-3" />, label: 'IG' }] : []),
+                    ...(fbCount > 0 ? [{ key: 'messenger' as ChatFilter, icon: <Facebook className="h-3 w-3" />, label: 'FB' }] : []),
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setChatFilter(prev => prev === tab.key ? 'all' : tab.key)}
+                      className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                        chatFilter === tab.key
+                          ? 'bg-accent text-accent-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Contact List */}
