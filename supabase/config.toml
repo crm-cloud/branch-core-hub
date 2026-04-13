@@ -81,3 +81,9 @@ verify_jwt = false
 [functions.create-razorpay-link]
 verify_jwt = true
 
+[functions.meta-webhook]
+verify_jwt = false
+
+[functions.send-message]
+verify_jwt = false
+
