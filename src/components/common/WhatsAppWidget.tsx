@@ -3,7 +3,7 @@ import { X, MessageCircle } from "lucide-react";
 
 const WHATSAPP_NUMBER = "918298293003";
 const DRAFTED_MESSAGE =
-  "Hi Incline Fitness! 👋 I'd love to know more about your gym memberships, facilities, and current offers. Could you help me get started?";
+  "Hi, I'd like to know more about Incline Fitness memberships and current offers.";
 
 const WhatsAppWidget = () => {
   const [open, setOpen] = useState(false);
