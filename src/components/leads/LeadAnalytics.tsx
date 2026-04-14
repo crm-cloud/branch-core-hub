@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { STATUS_CONFIG, LEAD_STATUSES } from './LeadFilters';
+import { Badge } from '@/components/ui/badge';
+import { Megaphone } from 'lucide-react';
 
 interface LeadAnalyticsProps {
   leads: any[];
@@ -66,6 +68,25 @@ export function LeadAnalytics({ leads }: LeadAnalyticsProps) {
       }, 0) / leadsWithResponse.length)
     : null;
 
+  // Meta Ads Attribution
+  const adLeads = leads.filter(l => l.ad_id || l.campaign_name);
+  const campaignCounts: Record<string, number> = {};
+  adLeads.forEach(l => {
+    const campaign = l.campaign_name || 'Unknown Campaign';
+    campaignCounts[campaign] = (campaignCounts[campaign] || 0) + 1;
+  });
+  const campaignData = Object.entries(campaignCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, value]) => ({ name, value }));
+
+  // Lead Response Time metric (staff response after AI handoff)
+  const slowResponses = leads.filter(l => {
+    if (!l.first_response_at || !l.created_at) return false;
+    const diff = new Date(l.first_response_at).getTime() - new Date(l.created_at).getTime();
+    return diff > 5 * 60 * 1000; // > 5 minutes
+  });
+
   return (
     <div className="space-y-4">
       {/* KPI Row */}
@@ -80,24 +101,33 @@ export function LeadAnalytics({ leads }: LeadAnalyticsProps) {
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Avg Response Time</p>
-            <p className="text-2xl font-bold text-foreground">{avgResponseHours !== null ? `${avgResponseHours}h` : '—'}</p>
+            <p className={`text-2xl font-bold ${avgResponseHours !== null && avgResponseHours > 1 ? 'text-destructive' : 'text-foreground'}`}>
+              {avgResponseHours !== null ? `${avgResponseHours}h` : '—'}
+            </p>
             <p className="text-xs text-muted-foreground">{leadsWithResponse.length} leads measured</p>
           </CardContent>
         </Card>
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
           <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground">Hot Leads</p>
-            <p className="text-2xl font-bold text-foreground">{leads.filter(l => l.temperature === 'hot').length}</p>
-            <p className="text-xs text-muted-foreground">Require immediate action</p>
+            <p className="text-xs text-muted-foreground">From Paid Ads</p>
+            <p className="text-2xl font-bold text-foreground">{adLeads.length}</p>
+            <p className="text-xs text-muted-foreground">
+              {adLeads.length > 0 && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1 border-amber-300 text-amber-600 bg-amber-50">
+                  <Megaphone className="h-2.5 w-2.5 mr-0.5" />
+                  Ad-sourced
+                </Badge>
+              )}
+            </p>
           </CardContent>
         </Card>
         <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
           <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground">Overdue Follow-ups</p>
-            <p className="text-2xl font-bold text-foreground">
-              {leads.filter(l => l.next_action_at && new Date(l.next_action_at) < new Date()).length}
+            <p className="text-xs text-muted-foreground">Slow Responses (&gt;5m)</p>
+            <p className={`text-2xl font-bold ${slowResponses.length > 0 ? 'text-destructive' : 'text-foreground'}`}>
+              {slowResponses.length}
             </p>
-            <p className="text-xs text-destructive">Need attention</p>
+            <p className="text-xs text-destructive">{slowResponses.length > 0 ? 'Need attention' : 'All good'}</p>
           </CardContent>
         </Card>
       </div>
@@ -120,6 +150,39 @@ export function LeadAnalytics({ leads }: LeadAnalyticsProps) {
               </ResponsiveContainer>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8">No source data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Ad Campaign Attribution */}
+        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-amber-500" />
+            Ad Campaign Performance
+          </CardTitle></CardHeader>
+          <CardContent>
+            {campaignData.length > 0 ? (
+              <div className="space-y-3">
+                {campaignData.map((c, i) => {
+                  const maxVal = Math.max(...campaignData.map(d => d.value), 1);
+                  const width = Math.max(10, (c.value / maxVal) * 100);
+                  return (
+                    <div key={c.name} className="flex items-center gap-3">
+                      <span className="text-xs w-32 text-right text-muted-foreground truncate">{c.name}</span>
+                      <div className="flex-1 h-6 bg-muted/30 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white"
+                          style={{ width: `${width}%`, backgroundColor: FUNNEL_COLORS[i] || '#f59e0b' }}
+                        >
+                          {c.value}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">No ad-sourced leads yet</p>
             )}
           </CardContent>
         </Card>
@@ -163,7 +226,7 @@ export function LeadAnalytics({ leads }: LeadAnalyticsProps) {
         </Card>
 
         {/* Pipeline Funnel */}
-        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
+        <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5 md:col-span-2">
           <CardHeader><CardTitle className="text-base">Pipeline Stages</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-2">

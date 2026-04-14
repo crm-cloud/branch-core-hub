@@ -34,24 +34,46 @@ Deno.serve(async (req) => {
 
     const { contact_name, phone_number, recent_messages, context_type } = await req.json();
 
-    if (!recent_messages || !Array.isArray(recent_messages)) {
+    // Service client for DB queries
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceClient = createClient(supabaseUrl, serviceKey);
+
+    // Module 2: Hydrate conversation memory from DB
+    let conversationMessages = recent_messages || [];
+    if (phone_number && (!conversationMessages || conversationMessages.length < 5)) {
+      try {
+        const { data: dbMessages } = await serviceClient
+          .from('whatsapp_messages')
+          .select('content, direction, platform')
+          .eq('phone_number', phone_number)
+          .eq('is_internal_note', false)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (dbMessages && dbMessages.length > 0) {
+          conversationMessages = dbMessages.reverse().map((m: any) => ({
+            content: m.content,
+            direction: m.direction,
+          }));
+        }
+      } catch (e) {
+        console.warn('Failed to hydrate messages from DB:', e);
+      }
+    }
+
+    if (!conversationMessages || !Array.isArray(conversationMessages) || conversationMessages.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'recent_messages array is required' }),
+        JSON.stringify({ error: 'No messages available for context' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Build conversation context
-    const conversationHistory = recent_messages
+    const conversationHistory = conversationMessages
       .slice(-10)
       .map((m: any) => `${m.direction === 'inbound' ? contact_name || 'Customer' : 'Staff'}: ${m.content}`)
       .join('\n');
 
-    // Fetch custom system prompt from organization_settings if available
-    const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const serviceClient = createClient(supabaseUrl2, serviceKey);
-
+    // Fetch custom system prompt from organization_settings
     let customPrompt: string | null = null;
     try {
       const { data: orgSettings } = await serviceClient

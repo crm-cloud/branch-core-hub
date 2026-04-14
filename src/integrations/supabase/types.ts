@@ -2968,9 +2968,11 @@ export type Database = {
       }
       leads: {
         Row: {
+          ad_id: string | null
           assigned_to: string | null
           branch_id: string
           budget: string | null
+          campaign_name: string | null
           converted_at: string | null
           converted_member_id: string | null
           created_at: string
@@ -3012,9 +3014,11 @@ export type Database = {
           won_at: string | null
         }
         Insert: {
+          ad_id?: string | null
           assigned_to?: string | null
           branch_id: string
           budget?: string | null
+          campaign_name?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
@@ -3056,9 +3060,11 @@ export type Database = {
           won_at?: string | null
         }
         Update: {
+          ad_id?: string | null
           assigned_to?: string | null
           branch_id?: string
           budget?: string | null
+          campaign_name?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
@@ -6353,6 +6359,7 @@ export type Database = {
           created_at: string | null
           direction: string
           id: string
+          is_internal_note: boolean
           media_url: string | null
           member_id: string | null
           message_type: string
@@ -6371,6 +6378,7 @@ export type Database = {
           created_at?: string | null
           direction: string
           id?: string
+          is_internal_note?: boolean
           media_url?: string | null
           member_id?: string | null
           message_type?: string
@@ -6389,6 +6397,7 @@ export type Database = {
           created_at?: string | null
           direction?: string
           id?: string
+          is_internal_note?: boolean
           media_url?: string | null
           member_id?: string | null
           message_type?: string

@@ -60,6 +60,7 @@ interface ChatContact {
   is_unread?: boolean;
   bot_active?: boolean;
   platform?: string;
+  assigned_staff?: { full_name: string; avatar_url: string | null } | null;
 }
 
 interface Message {
@@ -69,6 +70,7 @@ interface Message {
   status: string;
   created_at: string;
   message_type: string;
+  is_internal_note?: boolean;
 }
 
 interface ChatSettingsRow {
@@ -130,6 +132,9 @@ export default function WhatsAppChatPage() {
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attachUploading, setAttachUploading] = useState(false);
+  const [whisperMode, setWhisperMode] = useState(false);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState('');
 
   // Clear chat confirmation
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
@@ -212,6 +217,20 @@ export default function WhatsAppChatPage() {
       }));
     },
     enabled: transferStaffOpen,
+  });
+
+  // Slash command templates
+  const { data: slashTemplates = [] } = useQuery({
+    queryKey: ['slash-templates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('templates')
+        .select('id, name, content')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   // Build a map for quick lookup
@@ -320,6 +339,8 @@ export default function WhatsAppChatPage() {
         throw new Error('Please select a specific branch before sending messages');
       }
 
+      const isNote = whisperMode;
+
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -329,12 +350,16 @@ export default function WhatsAppChatPage() {
           member_id: selectedContact.member_id,
           content,
           direction: 'outbound',
-          status: 'pending',
+          status: isNote ? 'delivered' : 'pending',
           message_type: 'text',
+          is_internal_note: isNote,
         })
         .select()
         .single();
       if (error) throw error;
+
+      // Don't send to WhatsApp if it's an internal note
+      if (isNote) return data;
 
       const messageId: string = data.id;
 
@@ -995,6 +1020,24 @@ export default function WhatsAppChatPage() {
                             );
                           }
 
+                          // Internal note rendering
+                          if (msg.is_internal_note) {
+                            return (
+                              <div key={msg.id} className="flex justify-end mb-1">
+                                <div className="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm bg-amber-500/10 border border-amber-500/20 rounded-br-md">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <Eye className="h-3 w-3 text-amber-600" />
+                                    <span className="text-[10px] font-semibold text-amber-600">Staff Only Note</span>
+                                  </div>
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">{msg.content}</p>
+                                  <div className="flex items-center justify-end gap-1 mt-1 text-amber-500/60">
+                                    <span className="text-[10px]">{format(new Date(msg.created_at), 'HH:mm')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           return (
                             <div
                               key={msg.id}
@@ -1085,6 +1128,14 @@ export default function WhatsAppChatPage() {
 
                 {/* Message Input */}
                 <div className="px-4 py-3 border-t border-border/30 bg-card flex-shrink-0">
+                  {/* Whisper Mode Banner */}
+                  {whisperMode && (
+                    <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span className="font-medium">Internal Note Mode</span> — This message will NOT be sent to the customer
+                      <Button variant="ghost" size="sm" className="ml-auto h-5 px-1.5 text-[10px]" onClick={() => setWhisperMode(false)}>Exit</Button>
+                    </div>
+                  )}
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -1092,6 +1143,31 @@ export default function WhatsAppChatPage() {
                     accept="image/*,application/pdf,.doc,.docx"
                     onChange={handleAttachment}
                   />
+                  {/* Slash command popover */}
+                  {slashMenuOpen && (
+                    <div className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg p-1">
+                      {slashTemplates
+                        .filter((t: any) => !slashFilter || t.name.toLowerCase().includes(slashFilter.toLowerCase()))
+                        .slice(0, 8)
+                        .map((t: any) => (
+                          <button
+                            key={t.id}
+                            className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-muted/80 flex items-center gap-2"
+                            onClick={() => {
+                              setNewMessage(t.content);
+                              setSlashMenuOpen(false);
+                              setSlashFilter('');
+                            }}
+                          >
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium">{t.name}</span>
+                          </button>
+                        ))}
+                      {slashTemplates.filter((t: any) => !slashFilter || t.name.toLowerCase().includes(slashFilter.toLowerCase())).length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-2">No templates found</p>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
                       <PopoverTrigger asChild>
@@ -1129,13 +1205,38 @@ export default function WhatsAppChatPage() {
                     >
                       {aiSuggesting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
                     </Button>
+                    {/* Whisper toggle */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`rounded-xl flex-shrink-0 ${whisperMode ? 'text-amber-500 bg-amber-500/10' : 'text-muted-foreground hover:text-foreground'}`}
+                      onClick={() => setWhisperMode(!whisperMode)}
+                      title="Internal Note (Whisper Mode)"
+                    >
+                      <Eye className="h-5 w-5" />
+                    </Button>
                     <Input
-                      placeholder={isBranchUnselected ? 'Select a branch to send messages…' : 'Type a message…'}
+                      placeholder={isBranchUnselected ? 'Select a branch to send messages…' : whisperMode ? 'Write an internal note…' : 'Type a message or / for templates…'}
                       value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNewMessage(val);
+                        if (val === '/') {
+                          setSlashMenuOpen(true);
+                          setSlashFilter('');
+                        } else if (val.startsWith('/')) {
+                          setSlashMenuOpen(true);
+                          setSlashFilter(val.slice(1));
+                        } else {
+                          setSlashMenuOpen(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setSlashMenuOpen(false);
+                        if (e.key === 'Enter' && !e.shiftKey && !slashMenuOpen) handleSend();
+                      }}
                       disabled={isBranchUnselected}
-                      className="flex-1 rounded-xl bg-muted/50 border-0 focus-visible:ring-1 disabled:opacity-60"
+                      className={`flex-1 rounded-xl border-0 focus-visible:ring-1 disabled:opacity-60 ${whisperMode ? 'bg-amber-500/5 ring-1 ring-amber-500/20' : 'bg-muted/50'}`}
                       data-testid="input-new-message"
                     />
                     <Button
