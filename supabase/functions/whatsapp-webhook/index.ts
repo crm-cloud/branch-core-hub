@@ -286,6 +286,30 @@ async function processIncomingMessages(value: any, branchId: string | null): Pro
         },
         { onConflict: "branch_id,phone_number" },
       );
+
+      // Meta Ads attribution: extract referral data if present
+      if (message.referral) {
+        try {
+          const adId = message.referral.source_id || message.referral.ad_id || null;
+          const campaignName = message.referral.headline || message.referral.body || null;
+          const sourceUrl = message.referral.source_url || null;
+          if (adId || campaignName) {
+            // Store attribution on any existing lead with this phone
+            await supabase
+              .from("leads")
+              .update({
+                ad_id: adId,
+                campaign_name: campaignName,
+                source: sourceUrl ? "meta_ad" : "whatsapp_ad",
+              })
+              .eq("phone", message.from)
+              .is("ad_id", null);
+            console.log("Meta ad attribution captured:", { phone: message.from, adId, campaignName });
+          }
+        } catch (refErr) {
+          console.warn("Failed to extract Meta referral data:", refErr);
+        }
+      }
     }
   }
 
@@ -1650,7 +1674,7 @@ async function resolveBranchId(integration: WhatsAppIntegration | null, value: a
 }
 
 async function getFallbackBranchId(): Promise<string | null> {
-  if (fallbackBranchIdCache !== undefined) {
+  if (fallbackBranchIdFetched) {
     return fallbackBranchIdCache;
   }
 
@@ -1663,6 +1687,7 @@ async function getFallbackBranchId(): Promise<string | null> {
     .maybeSingle();
 
   fallbackBranchIdCache = branch?.id ?? null;
+  fallbackBranchIdFetched = true;
   return fallbackBranchIdCache;
 }
 
