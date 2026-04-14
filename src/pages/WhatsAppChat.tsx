@@ -60,6 +60,7 @@ interface ChatContact {
   is_unread?: boolean;
   bot_active?: boolean;
   platform?: string;
+  assigned_staff?: { full_name: string; avatar_url: string | null } | null;
 }
 
 interface Message {
@@ -69,6 +70,7 @@ interface Message {
   status: string;
   created_at: string;
   message_type: string;
+  is_internal_note?: boolean;
 }
 
 interface ChatSettingsRow {
