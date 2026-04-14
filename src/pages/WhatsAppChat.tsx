@@ -339,6 +339,8 @@ export default function WhatsAppChatPage() {
         throw new Error('Please select a specific branch before sending messages');
       }
 
+      const isNote = whisperMode;
+
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -348,12 +350,16 @@ export default function WhatsAppChatPage() {
           member_id: selectedContact.member_id,
           content,
           direction: 'outbound',
-          status: 'pending',
+          status: isNote ? 'delivered' : 'pending',
           message_type: 'text',
+          is_internal_note: isNote,
         })
         .select()
         .single();
       if (error) throw error;
+
+      // Don't send to WhatsApp if it's an internal note
+      if (isNote) return data;
 
       const messageId: string = data.id;
 
