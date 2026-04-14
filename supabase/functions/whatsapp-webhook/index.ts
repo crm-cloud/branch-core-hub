@@ -24,7 +24,8 @@ type WhatsAppIntegration = {
 };
 
 const integrationCache = new Map<string, WhatsAppIntegration | null>();
-let fallbackBranchIdCache: string | null | undefined;
+let fallbackBranchIdCache: string | null = null;
+let fallbackBranchIdFetched = false;
 
 // ─── Member context shape for tool execution ────────────────────────────────
 interface MemberContext {
