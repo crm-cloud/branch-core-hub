@@ -219,6 +219,20 @@ export default function WhatsAppChatPage() {
     enabled: transferStaffOpen,
   });
 
+  // Slash command templates
+  const { data: slashTemplates = [] } = useQuery({
+    queryKey: ['slash-templates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('templates')
+        .select('id, name, content')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Build a map for quick lookup
   const settingsMap = new Map<string, ChatSettingsRow>();
   chatSettings.forEach(s => settingsMap.set(s.phone_number, s));
