@@ -132,6 +132,9 @@ export default function WhatsAppChatPage() {
   const [convertLeadOpen, setConvertLeadOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attachUploading, setAttachUploading] = useState(false);
+  const [whisperMode, setWhisperMode] = useState(false);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState('');
 
   // Clear chat confirmation
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
