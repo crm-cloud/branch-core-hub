@@ -1,96 +1,98 @@
 
 
-# Plan: Deep Audit Fixes + Team Inbox + Meta Ads + AI Flow Builder
+# Plan: AI Flow Builder Upgrade + Branded Experience + Roles UI + Notification Merge + Meta Template Audit
 
-## Build Errors (Fix First)
+## Module 1: Dynamic AI Flow Builder (Interactive Buttons + Visual Upgrade)
 
-1. **`vite.config.ts` line 10**: `allowedHosts: true` — Vite 5 types require `true` as literal `true` or `string[]`. Fix: cast to `true as const`.
-2. **`whatsapp-webhook/index.ts` line 1665**: `fallbackBranchIdCache` typed `string | null | undefined` but return type is `string | null`. Fix: change the variable type to `string | null` and initialize to `null`, using a separate boolean sentinel for "not yet fetched".
+**File: `src/components/settings/AIFlowBuilderSettings.tsx`**
 
-## Module 1: Fix Invoice GST Toggle Logic
+Current state: Basic card-based flow rules with keyword triggers and 3 action types. Missing interactive button support and visual flow visualization.
 
-**Problem:** `CreateInvoiceDrawer.tsx` always defaults `includeGst: true` regardless of org settings. HSN codes from `TaxGstSettings` are not populated on invoice items.
+Changes:
+- Add `interactive_buttons` field to the `FlowRule` interface — an array of `{ id: string, title: string }` (max 3 per WhatsApp spec)
+- Add a new action type: `send_interactive` (sends text + button list)
+- For each flow rule card, add a "WhatsApp Buttons" section that appears when action is `send_interactive` or `send_text` — allows defining up to 3 reply buttons
+- Add visual flow preview: a simple top-to-bottom card chain with arrows between trigger → condition → response, using CSS borders and pseudo-elements (not a full node editor)
+- Add drag-to-reorder support for rules using native HTML drag events (priority ordering)
+- Add a "Test Rule" dry-run button per card that shows what would happen for a sample message
 
-**Fix:**
-- Fetch `organization_settings.gst_rates` and `hsn_defaults` in `CreateInvoiceDrawer.tsx`; default `includeGst` based on whether org has GST configured
-- Add `hsn_code` field per line item in the drawer UI, pre-populated from category defaults
-- Pass `hsn_code` when inserting `invoice_items`
-- Same fix in `PurchaseMembershipDrawer.tsx`
+**File: `supabase/functions/whatsapp-webhook/index.ts`**
+- Update the flow rule executor to send interactive button messages when `interactive_buttons` is present, using the Meta API interactive message format
 
-## Module 2: Update ai-auto-reply with Conversation Memory
+## Module 2: Professional HTML Email Templates
 
-**Problem:** `ai-auto-reply` receives `recent_messages` from the frontend but doesn't fetch from DB. The frontend already sends last 10 messages, but the edge function should also hydrate from `whatsapp_messages` for the sender.
+**File: `supabase/functions/send-email/index.ts`**
 
-**Fix:**
-- In `ai-auto-reply/index.ts`, after auth, query `whatsapp_messages` for the given `phone_number` (last 10, ordered ASC) as fallback/supplement when `recent_messages` is sparse
-- Include `platform` awareness so it works across unified messages
+Current state: Accepts raw `html` or `text` from the caller. No built-in branded template.
 
-## Module 3: Meta Ads Attribution
+Changes:
+- Add a `wrapInBrandedTemplate(bodyHtml, subject)` helper function that wraps any content in a responsive HTML email shell
+- Template specs: `#000000` background, `#EAB308` accent, white text, Incline logo header, footer with "The Incline Life by Incline" branding
+- Support `{{user_name}}`, `{{invoice_id}}`, `{{amount}}` variable interpolation in the body
+- Add a `use_branded_template: true` flag in the request body (default false for backward compat)
+- When enabled, wrap the provided `html`/`text` in the branded shell before dispatching
 
-**Schema:** Add `ad_id`, `campaign_name` columns to `leads` table (migration).
+## Module 3: Unified Sidebar Branding
 
-**Webhook:** In `whatsapp-webhook/index.ts`, extract `referral` payload from Meta webhook entry (Meta sends ad click context in `entry[].changes[].value.messages[].referral`). Populate `ad_id`, `campaign_name` on lead capture.
+**File: `src/components/layout/AppSidebar.tsx`**
 
-**UI:** Add a small "Ad Attribution" card in the Leads analytics section (`LeadAnalytics.tsx`) showing leads per campaign. No separate page — just extend existing analytics.
+Current state: `BrandLogo` shows either uploaded logo or text-only "Incline". No icon + text combo.
 
-## Module 4: Team Inbox Collaboration
+Changes:
+- Update `BrandLogo` to render a horizontal layout: small dumbbell/fitness icon SVG + org name text
+- When `collapsed` prop is passed, show only the icon (shrink gracefully)
+- Use Incline brand colors (`#EAB308` accent) for the icon
+- If `org.logo_url` exists, show it as before but with proper collapsed-state handling (show only a cropped/small version)
 
-### 4a: Internal Notes (Whisper Mode)
-- Add `is_internal_note` boolean column to `whatsapp_messages` (migration, default false)
-- In `WhatsAppChat.tsx`, add a toggle button next to the send box: "Internal Note" mode
-- When toggled on, insert message with `is_internal_note: true` and do NOT call `send-whatsapp`
-- Render internal notes with a distinct yellow/amber background and "Staff Only" badge
-- Filter internal notes from customer-visible queries in the webhook
+## Module 4: Admin Roles Redesign
 
-### 4b: Quick Replies (Slash Commands)
-- When user types `/` in the message input, show a popover with templates from `templates` table
-- Filter templates as user types (e.g., `/price` filters to pricing templates)
-- On select, insert template content into the message box
-- Reuse existing `templates` query already in use by `BroadcastDrawer`
+**File: `src/pages/AdminRoles.tsx`**
 
-### 4c: Assigned Staff Avatar on Chat List
-- Join `whatsapp_chat_settings.assigned_to` with `profiles` to get avatar/name
-- Show a small avatar overlay on each chat card in the sidebar for assigned staff
+Current state: Single list with search and role filter dropdown. Uses Dialog for add role (should use Sheet per project rules).
 
-### 4d: Lead Response Time Metric
-- In lead analytics, calculate time between AI handoff (`bot_active` set to false / `transfer_to_human` tool log) and first staff outbound message
-- Highlight in red if > 5 minutes
+Changes:
+- Replace the single role filter dropdown with 4 tabs: "All Users", "Admins", "Trainers", "Staff" (using Shadcn Tabs)
+- Add columns: Name, Role badges, Branch (join with `branch_members` or `profiles`), Phone, Status (active/inactive based on last login or role presence)
+- Replace Dialog with Sheet (right-side drawer) for "Assign Role" per project convention
+- Add a DropdownMenu per row with actions: "Assign Role", "Change Branch", "Deactivate User", "View Profile"
+- Apply Vuexy card styling: `rounded-xl`, soft shadows, gradient header
 
-## Module 5: AI Flow Builder (Simplified Card-Based)
+## Module 5: Notification Settings Merge
 
-**Not a full node editor** — that's too complex and fragile. Instead:
-- Create `AIFlowRules` component in settings: a list of trigger-response cards
-- Each card: Trigger keyword/phrase → Response action (send template, send text with buttons, assign to staff)
-- Store rules in `organization_settings.ai_flow_rules` (JSONB array)
-- In `whatsapp-webhook`, before the main AI call, check incoming message against flow rules for exact/fuzzy keyword matches. If matched, execute the rule action instead of calling Gemini.
+**Files: `src/components/settings/LeadNotificationSettings.tsx` + `NotificationSettings.tsx`**
 
-## Module 6: Broadcast Center (Unified)
+Current state: `LeadNotificationSettings` has its own card style with channel toggles. `NotificationSettings` has a different card layout for system alerts. They don't match visually.
 
-**Not building a full "Global Broadcast Center" page** — extend existing `BroadcastDrawer`:
-- Add a "Cross-Channel" mode: when enabled, the single message sends to:
-  - WhatsApp via existing `send-broadcast`
-  - Email via existing `send-broadcast` with `channel: 'email'`
-  - Instagram/Messenger DMs via `send-message` for active leads on those platforms
-- Add an optional "Update Website Banner" toggle that upserts a row in `announcements` table with `is_banner: true`
+Changes:
+- Refactor `LeadNotificationSettings` to group toggles into 3 sections: "Lead Capture Alerts" (SMS/WhatsApp to lead), "Follow-up Reminders" (to admins/managers), "Conversion Notifications" (future placeholder)
+- Match the Card/Switch/Label pattern used in `NotificationSettings` system alerts card
+- Remove redundant info banners and consolidate into a single top-level description
+- Keep the link to Templates settings
+
+## Module 6: Meta Template Manager Audit
+
+**File: `supabase/functions/manage-whatsapp-templates/index.ts`**
+
+Current state: Already uses v25.0 and `appsecret_proof`. Handles WhatsApp templates only.
+
+Changes:
+- Add `action: 'sync_ig_icebreakers'` and `action: 'sync_messenger_quick_replies'` cases
+- For Instagram: Fetch ice-breaker questions via `GET /{ig_account_id}/ice_breakers` (Meta Graph API)
+- For Messenger: Fetch persistent menu / quick replies via `GET /{page_id}/messenger_profile?fields=persistent_menu`
+- Store synced IG/Messenger assets in existing `whatsapp_templates` table with a `platform` discriminator column (or a new `meta_assets` table if cleaner)
+- Harden WABA_ID and APP_SECRET validation: return 400 with clear error messages when missing, rather than hitting Meta and getting 403
+
+---
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| `vite.config.ts` | Fix `allowedHosts` type |
-| `supabase/functions/whatsapp-webhook/index.ts` | Fix type error, add Meta ads referral extraction, add flow rules check |
-| `supabase/functions/ai-auto-reply/index.ts` | Add DB message history fetch |
-| `src/components/invoices/CreateInvoiceDrawer.tsx` | HSN code per item, GST default from org settings |
-| `src/components/members/PurchaseMembershipDrawer.tsx` | HSN code support |
-| `src/pages/WhatsAppChat.tsx` | Internal notes toggle, slash commands, assigned staff avatar, platform send routing |
-| `src/components/leads/LeadAnalytics.tsx` | Ad attribution chart, response time metric |
-| `src/components/settings/AIFlowBuilderSettings.tsx` | Trigger-response rule cards |
-| `src/components/announcements/BroadcastDrawer.tsx` | Cross-channel mode |
-| Migration | `ad_id`/`campaign_name` on leads, `is_internal_note` on whatsapp_messages |
-
-## What I'm deliberately NOT building
-- Full visual node-based flow editor (too complex, fragile; card-based rules achieve the same goal)
-- Member self-service renewal portal (separate epic, needs dedicated member-facing auth flow)
-- Typing indicators (Meta API doesn't expose user typing; staff typing would need presence channels — deferred)
-- "Flame" icon for paid ad leads (will add a badge instead — simpler, same signal)
+| `src/components/settings/AIFlowBuilderSettings.tsx` | Interactive buttons field, visual flow preview, drag reorder |
+| `supabase/functions/whatsapp-webhook/index.ts` | Send interactive button messages from flow rules |
+| `supabase/functions/send-email/index.ts` | Branded HTML email template wrapper |
+| `src/components/layout/AppSidebar.tsx` | Icon + text logo layout, collapsed state |
+| `src/pages/AdminRoles.tsx` | Tab-based UI, DropdownMenu actions, Sheet drawer, Vuexy styling |
+| `src/components/settings/LeadNotificationSettings.tsx` | Grouped sections, visual alignment with NotificationSettings |
+| `supabase/functions/manage-whatsapp-templates/index.ts` | IG icebreakers + Messenger quick replies sync |
 
