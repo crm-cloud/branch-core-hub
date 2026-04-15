@@ -1,4 +1,4 @@
-// v1.0.0 — Universal Email Dispatcher (SMTP/SendGrid/Mailgun)
+// v2.0.0 — Universal Email Dispatcher with Branded Template Support
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -6,6 +6,60 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// ── Branded HTML Email Template ─────────────────────────────────────────────
+function wrapInBrandedTemplate(bodyHtml: string, subject: string, variables?: Record<string, string>): string {
+  let content = bodyHtml;
+  // Interpolate variables like {{user_name}}, {{invoice_id}}, {{amount}}
+  if (variables) {
+    for (const [key, value] of Object.entries(variables)) {
+      content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .wrapper { background-color: #000000; width: 100%; padding: 32px 0; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #111111; border-radius: 16px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%); padding: 32px 40px; text-align: center; border-bottom: 2px solid #EAB308; }
+    .logo-text { color: #EAB308; font-size: 28px; font-weight: 800; letter-spacing: 2px; margin: 0; }
+    .logo-sub { color: #ffffff60; font-size: 11px; letter-spacing: 4px; text-transform: uppercase; margin-top: 4px; }
+    .body { padding: 40px; color: #ffffff; line-height: 1.7; font-size: 15px; }
+    .body h1, .body h2, .body h3 { color: #ffffff; margin-top: 0; }
+    .body p { color: #ffffffcc; margin: 0 0 16px; }
+    .body a { color: #EAB308; }
+    .cta-btn { display: inline-block; background: #EAB308; color: #000000 !important; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; margin: 16px 0; }
+    .footer { background-color: #0a0a0a; padding: 24px 40px; text-align: center; border-top: 1px solid #ffffff10; }
+    .footer p { color: #ffffff40; font-size: 12px; margin: 0 0 4px; }
+    .footer a { color: #EAB308; text-decoration: none; }
+    @media (max-width: 640px) { .body { padding: 24px; } .header { padding: 24px; } }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <p class="logo-text">INCLINE</p>
+        <p class="logo-sub">Fitness</p>
+      </div>
+      <div class="body">
+        ${content}
+      </div>
+      <div class="footer">
+        <p>The Incline Life by Incline</p>
+        <p style="margin-top: 8px;"><a href="https://inclinefitness.in">inclinefitness.in</a></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -18,10 +72,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { to, subject, html, text, branch_id, attachments, from_override } = body;
+    const { to, subject, html, text, branch_id, attachments, from_override, use_branded_template, variables } = body;
 
     if (!to || !subject || (!html && !text)) {
       return json({ error: "Missing required fields: to, subject, html or text" }, 400);
+    }
+
+    // Apply branded template if requested
+    let finalHtml = html || text!;
+    if (use_branded_template) {
+      finalHtml = wrapInBrandedTemplate(finalHtml, subject, variables);
     }
 
     // Fetch active email integration
@@ -48,16 +108,16 @@ Deno.serve(async (req) => {
 
     switch (provider) {
       case "smtp":
-        result = await sendViaSMTP(to, subject, html || text!, fromEmail, fromName, config, credentials);
+        result = await sendViaSMTP(to, subject, finalHtml, fromEmail, fromName, config, credentials);
         break;
       case "sendgrid":
-        result = await sendViaSendGrid(to, subject, html || text!, fromEmail, fromName, credentials, attachments);
+        result = await sendViaSendGrid(to, subject, finalHtml, fromEmail, fromName, credentials, attachments);
         break;
       case "mailgun":
-        result = await sendViaMailgun(to, subject, html || text!, fromEmail, fromName, config, credentials, attachments);
+        result = await sendViaMailgun(to, subject, finalHtml, fromEmail, fromName, config, credentials, attachments);
         break;
       case "ses":
-        result = await sendViaSES(to, subject, html || text!, fromEmail, fromName, config, credentials);
+        result = await sendViaSES(to, subject, finalHtml, fromEmail, fromName, config, credentials);
         break;
       default:
         result = { success: false, error: `Unsupported email provider: ${provider}` };
