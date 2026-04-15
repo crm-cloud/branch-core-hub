@@ -153,9 +153,11 @@ export function PurchaseMembershipDrawer({
   const purchaseMembership = useMutation({
     mutationFn: async () => {
       if (!selectedPlan) throw new Error('Please select a plan');
+
+      const isPaymentLink = paymentMethod === 'razorpay_link';
       
       // Validate partial payment
-      if (isPartialPayment) {
+      if (isPartialPayment && !isPaymentLink) {
         if (amountPaying <= 0) throw new Error('Please enter amount paying now');
         if (amountPaying >= calculateTotal()) throw new Error('Amount paying should be less than total for partial payment');
         if (!paymentDueDate) throw new Error('Please set a due date for remaining amount');
@@ -163,7 +165,7 @@ export function PurchaseMembershipDrawer({
 
       const endDate = calculateEndDate();
       const totalAmount = calculateTotal();
-      const actualAmountPaid = isPartialPayment ? amountPaying : totalAmount;
+      const actualAmountPaid = isPaymentLink ? 0 : (isPartialPayment ? amountPaying : totalAmount);
 
       // Create membership
       const { data: membership, error: membershipError } = await supabase
@@ -178,7 +180,7 @@ export function PurchaseMembershipDrawer({
           price_paid: totalAmount,
           discount_amount: discountAmount,
           discount_reason: discountReason || null,
-          status: 'active',
+          status: isPaymentLink ? 'pending' : 'active',
         })
         .select()
         .single();
@@ -186,7 +188,7 @@ export function PurchaseMembershipDrawer({
       if (membershipError) throw membershipError;
 
       // Determine invoice status
-      const invoiceStatus = isPartialPayment ? 'partial' : 'paid';
+      const invoiceStatus = isPaymentLink ? 'pending' : (isPartialPayment ? 'partial' : 'paid');
 
       // Create invoice with partial payment support
       // Generate unique invoice number
@@ -700,6 +702,7 @@ export function PurchaseMembershipDrawer({
                     <SelectItem value="upi">UPI</SelectItem>
                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                     <SelectItem value="wallet">Wallet</SelectItem>
+                    <SelectItem value="razorpay_link">🔗 Send Payment Link</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
