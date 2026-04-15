@@ -90,11 +90,10 @@ export function AddTrainerDrawer({ open, onOpenChange, branchId }: AddTrainerDra
       
       const existingMemberIds = (existingMembers || []).map((m) => m.user_id);
 
-      // Get all active profiles
+      // Get all profiles
       const { data: users } = await supabase
         .from('profiles')
-        .select('id, email, full_name')
-        .eq('is_active', true);
+        .select('id, email, full_name');
 
       // Filter out users who are already trainers or members
       const filtered = (users || []).filter((u) => 
