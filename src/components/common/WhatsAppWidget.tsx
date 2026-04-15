@@ -32,7 +32,7 @@ const WhatsAppWidget = () => {
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-sm leading-tight">Incline Fitness</p>
+              <p className="text-white font-semibold text-sm leading-tight">The Incline Life</p>
               <p className="text-white/80 text-xs">Typically replies within minutes</p>
             </div>
             <button
