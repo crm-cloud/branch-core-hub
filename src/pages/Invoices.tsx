@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,10 +17,11 @@ import {
   FileText, Plus, Users, DollarSign, TrendingUp, Clock, Search, MoreHorizontal, Eye, Download, Send, Mail,
   ChevronLeft, ChevronRight, ShoppingCart, ClipboardList, Dumbbell, PlusCircle, ReceiptText, Undo2
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -28,6 +29,7 @@ import {
 const PAGE_SIZE = 20;
 
 export default function InvoicesPage() {
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<any>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
@@ -37,6 +39,28 @@ export default function InvoicesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const { branchFilter, effectiveBranchId } = useBranchContext();
+
+  // Realtime subscription for invoice status updates
+  useEffect(() => {
+    if (!branchFilter) return;
+    const channel = supabase
+      .channel('invoices-realtime')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'invoices',
+        filter: `branch_id=eq.${branchFilter}`,
+      }, (payload) => {
+        const newStatus = payload.new?.status;
+        const invoiceNum = payload.new?.invoice_number;
+        if (newStatus === 'paid' && payload.old?.status !== 'paid') {
+          toast.success(`✅ Invoice ${invoiceNum || ''} marked as Paid`);
+        }
+        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [branchFilter, queryClient]);
 
   // Reset page on filter changes
   const handleStatusChange = (val: string) => { setStatusFilter(val); setPage(0); };

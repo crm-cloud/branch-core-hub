@@ -659,6 +659,7 @@ interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total_amount: number;
+  hsn_code?: string;
 }
 
 interface InvoicePDFData {
@@ -681,6 +682,7 @@ interface InvoicePDFData {
   branch_address?: string;
   branch_phone?: string;
   branch_email?: string;
+  branch_state?: string;
   gst_number?: string;
   logo_url?: string;
   is_gst_invoice?: boolean;
@@ -703,9 +705,12 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
   const taxHalf = (data.tax_amount || 0) / 2;
   const invoiceTitle = data.is_gst_invoice ? 'TAX INVOICE' : 'INVOICE';
 
+  const showHsnColumn = data.is_gst_invoice && data.items.some(i => i.hsn_code);
+
   const itemRows = data.items.map(i => `
     <tr>
       <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(i.description)}</td>
+      ${showHsnColumn ? `<td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;text-align:center;color:#64748b;">${i.hsn_code || '-'}</td>` : ''}
       <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:center;">${i.quantity || 1}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;">₹${i.unit_price.toLocaleString('en-IN')}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;text-align:right;">₹${i.total_amount.toLocaleString('en-IN')}</td>
@@ -754,6 +759,7 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
     <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
       <thead><tr style="background:#f1f5f9;">
         <th style="padding:10px 12px;font-size:11px;text-align:left;color:#64748b;text-transform:uppercase;">Description</th>
+        ${showHsnColumn ? '<th style="padding:10px 12px;font-size:11px;text-align:center;color:#64748b;text-transform:uppercase;">HSN/SAC</th>' : ''}
         <th style="padding:10px 12px;font-size:11px;text-align:center;color:#64748b;text-transform:uppercase;">Qty</th>
         <th style="padding:10px 12px;font-size:11px;text-align:right;color:#64748b;text-transform:uppercase;">Rate</th>
         <th style="padding:10px 12px;font-size:11px;text-align:right;color:#64748b;text-transform:uppercase;">Amount</th>
@@ -779,8 +785,9 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
     ${data.notes ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:20px;"><p style="font-size:12px;color:#64748b;">${escapeHtml(data.notes)}</p></div>` : ''}
 
     <div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      ${data.is_gst_invoice && data.branch_state ? `<p style="font-size:10px;color:#94a3b8;margin-bottom:4px;">Subject to ${data.branch_state} jurisdiction</p>` : ''}
       <p style="font-size:11px;color:#94a3b8;">Thank you for choosing Incline Fitness!</p>
-      <p style="font-size:10px;color:#cbd5e1;margin-top:4px;">Generated on ${new Date().toLocaleDateString('en-IN')}</p>
+      <p style="font-size:10px;color:#cbd5e1;margin-top:4px;">Generated on ${new Date().toLocaleDateString('en-IN')} • The Incline Life by Incline</p>
     </div>
   </body></html>`;
 

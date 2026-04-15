@@ -5,10 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { createPOSSale, type CartItem } from '@/services/storeService';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +26,32 @@ export default function POSPage() {
   const [lastSale, setLastSale] = useState<any>(null);
   const [guestInfo, setGuestInfo] = useState({ name: '', phone: '', email: '' });
   const [showGuestForm, setShowGuestForm] = useState(false);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
+  const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
+  const [watchingInvoiceId, setWatchingInvoiceId] = useState<string | null>(null);
+
+  // Realtime subscription for invoice status updates
+  useEffect(() => {
+    if (!watchingInvoiceId) return;
+    const channel = supabase
+      .channel(`pos-invoice-${watchingInvoiceId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'invoices',
+        filter: `id=eq.${watchingInvoiceId}`,
+      }, (payload) => {
+        if (payload.new?.status === 'paid') {
+          toast.success('✅ Payment Received! Invoice marked as Paid.');
+          setWatchingInvoiceId(null);
+          setPaymentLinkUrl(null);
+          queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
+          queryClient.invalidateQueries({ queryKey: ['invoices'] });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [watchingInvoiceId, queryClient]);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['pos-products', categoryFilter],
@@ -123,6 +149,9 @@ export default function POSPage() {
       const { data: branch } = await supabase.from('branches').select('id').limit(1).maybeSingle();
       if (!branch) throw new Error('No branch found');
 
+      const isPaymentLink = paymentMethod === 'razorpay_link';
+      const effectivePaymentMethod = isPaymentLink ? 'upi' : paymentMethod;
+
       // If paying with wallet, check balance
       if (paymentMethod === 'wallet') {
         if (!selectedMember) throw new Error('Please select a member to use wallet payment');
@@ -140,23 +169,44 @@ export default function POSPage() {
         branchId: branch.id,
         memberId: selectedMember?.id,
         items: cart,
-        paymentMethod,
+        paymentMethod: isPaymentLink ? 'upi' : paymentMethod,
       });
 
-      return sale;
+      // If payment link selected, generate Razorpay link instead of recording payment
+      if (isPaymentLink && sale.invoice_id) {
+        setPaymentLinkLoading(true);
+        try {
+          const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
+            body: { invoiceId: sale.invoice_id, amount: cartTotal, branchId: branch.id },
+          });
+          if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
+          if (linkData?.error) throw new Error(linkData.error);
+          setPaymentLinkUrl(linkData.short_url);
+          setWatchingInvoiceId(sale.invoice_id);
+        } finally {
+          setPaymentLinkLoading(false);
+        }
+      }
+
+      return { ...sale, isPaymentLink };
     },
     onSuccess: (sale) => {
-      toast.success('Sale completed successfully! Invoice created.');
+      if (sale.isPaymentLink) {
+        toast.success('Invoice created & payment link generated!');
+      } else {
+        toast.success('Sale completed successfully! Invoice created.');
+      }
       setLastSale({ ...sale, items: cart, total: cartTotal, paymentMethod, member: selectedMember });
-      setShowInvoice(true);
+      if (!sale.isPaymentLink) {
+        setShowInvoice(true);
+      }
       setCart([]);
       setSelectedMember(null);
-      setPaymentMethod('cash');
+      if (!sale.isPaymentLink) setPaymentMethod('cash');
       setGuestInfo({ name: '', phone: '', email: '' });
       setShowGuestForm(false);
       queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
-      // Also invalidate invoices and payments so they appear in Finance and Invoices pages
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['finance-income'] });
@@ -520,6 +570,7 @@ export default function POSPage() {
                           <SelectItem value="cash">💵 Cash</SelectItem>
                           <SelectItem value="card">💳 Card</SelectItem>
                           <SelectItem value="upi">📱 UPI</SelectItem>
+                          <SelectItem value="razorpay_link">🔗 Payment Link</SelectItem>
                           {selectedMember && (
                             <SelectItem value="wallet" disabled={walletBalance < cartTotal}>
                               👛 Wallet (₹{walletBalance.toLocaleString()})
@@ -527,6 +578,29 @@ export default function POSPage() {
                           )}
                         </SelectContent>
                       </Select>
+
+                      {paymentLinkUrl && (
+                        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+                          <p className="text-xs font-medium text-primary">Payment Link Generated</p>
+                          <div className="flex items-center gap-2">
+                            <Input value={paymentLinkUrl} readOnly className="text-xs" />
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => {
+                                navigator.clipboard.writeText(paymentLinkUrl);
+                                toast.success('Link copied!');
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Waiting for payment...
+                          </div>
+                        </div>
+                      )}
 
                       <Button 
                         className="w-full" 

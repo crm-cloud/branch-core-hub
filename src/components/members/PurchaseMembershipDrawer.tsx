@@ -153,9 +153,11 @@ export function PurchaseMembershipDrawer({
   const purchaseMembership = useMutation({
     mutationFn: async () => {
       if (!selectedPlan) throw new Error('Please select a plan');
+
+      const isPaymentLink = paymentMethod === 'razorpay_link';
       
       // Validate partial payment
-      if (isPartialPayment) {
+      if (isPartialPayment && !isPaymentLink) {
         if (amountPaying <= 0) throw new Error('Please enter amount paying now');
         if (amountPaying >= calculateTotal()) throw new Error('Amount paying should be less than total for partial payment');
         if (!paymentDueDate) throw new Error('Please set a due date for remaining amount');
@@ -163,7 +165,7 @@ export function PurchaseMembershipDrawer({
 
       const endDate = calculateEndDate();
       const totalAmount = calculateTotal();
-      const actualAmountPaid = isPartialPayment ? amountPaying : totalAmount;
+      const actualAmountPaid = isPaymentLink ? 0 : (isPartialPayment ? amountPaying : totalAmount);
 
       // Create membership
       const { data: membership, error: membershipError } = await supabase
@@ -178,7 +180,7 @@ export function PurchaseMembershipDrawer({
           price_paid: totalAmount,
           discount_amount: discountAmount,
           discount_reason: discountReason || null,
-          status: 'active',
+          status: isPaymentLink ? 'pending' : 'active',
         })
         .select()
         .single();
@@ -186,7 +188,7 @@ export function PurchaseMembershipDrawer({
       if (membershipError) throw membershipError;
 
       // Determine invoice status
-      const invoiceStatus = isPartialPayment ? 'partial' : 'paid';
+      const invoiceStatus = isPaymentLink ? 'pending' : (isPartialPayment ? 'partial' : 'paid');
 
       // Create invoice with partial payment support
       // Generate unique invoice number
@@ -241,16 +243,31 @@ export function PurchaseMembershipDrawer({
 
       await supabase.from('invoice_items').insert(items);
 
-      // Record payment (only for amount paid)
-      await supabase.from('payments').insert({
-        branch_id: branchId,
-        member_id: memberId,
-        invoice_id: invoice.id,
-        amount: actualAmountPaid,
-        payment_method: paymentMethod as any,
-        status: 'completed',
-        payment_date: new Date().toISOString(),
-      });
+      // Record payment or generate payment link
+      if (isPaymentLink) {
+        // Generate Razorpay payment link
+        const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
+          body: { invoiceId: invoice.id, amount: totalAmount, branchId },
+        });
+        if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
+        if (linkData?.error) throw new Error(linkData.error);
+        
+        // Copy link and show toast
+        if (linkData?.short_url) {
+          await navigator.clipboard.writeText(linkData.short_url);
+          toast.success(`Payment link copied: ${linkData.short_url}`);
+        }
+      } else if (actualAmountPaid > 0) {
+        await supabase.from('payments').insert({
+          branch_id: branchId,
+          member_id: memberId,
+          invoice_id: invoice.id,
+          amount: actualAmountPaid,
+          payment_method: paymentMethod as any,
+          status: 'completed',
+          payment_date: new Date().toISOString(),
+        });
+      }
 
       // Create payment reminders if partial payment and reminders enabled
       if (isPartialPayment && sendReminders && remainingAmount > 0) {
@@ -700,6 +717,7 @@ export function PurchaseMembershipDrawer({
                     <SelectItem value="upi">UPI</SelectItem>
                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                     <SelectItem value="wallet">Wallet</SelectItem>
+                    <SelectItem value="razorpay_link">🔗 Send Payment Link</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
