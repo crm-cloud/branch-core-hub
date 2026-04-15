@@ -243,16 +243,31 @@ export function PurchaseMembershipDrawer({
 
       await supabase.from('invoice_items').insert(items);
 
-      // Record payment (only for amount paid)
-      await supabase.from('payments').insert({
-        branch_id: branchId,
-        member_id: memberId,
-        invoice_id: invoice.id,
-        amount: actualAmountPaid,
-        payment_method: paymentMethod as any,
-        status: 'completed',
-        payment_date: new Date().toISOString(),
-      });
+      // Record payment or generate payment link
+      if (isPaymentLink) {
+        // Generate Razorpay payment link
+        const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
+          body: { invoiceId: invoice.id, amount: totalAmount, branchId },
+        });
+        if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
+        if (linkData?.error) throw new Error(linkData.error);
+        
+        // Copy link and show toast
+        if (linkData?.short_url) {
+          await navigator.clipboard.writeText(linkData.short_url);
+          toast.success(`Payment link copied: ${linkData.short_url}`);
+        }
+      } else if (actualAmountPaid > 0) {
+        await supabase.from('payments').insert({
+          branch_id: branchId,
+          member_id: memberId,
+          invoice_id: invoice.id,
+          amount: actualAmountPaid,
+          payment_method: paymentMethod as any,
+          status: 'completed',
+          payment_date: new Date().toISOString(),
+        });
+      }
 
       // Create payment reminders if partial payment and reminders enabled
       if (isPartialPayment && sendReminders && remainingAmount > 0) {
