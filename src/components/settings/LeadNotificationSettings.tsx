@@ -9,7 +9,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Bell, MessageSquare, Phone, Save, Users, UserCheck, Info, ExternalLink } from 'lucide-react';
+import { Bell, Save, UserCheck, Users, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function LeadNotificationSettings() {
@@ -70,29 +70,18 @@ export function LeadNotificationSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
-        ...form,
-        branch_id: branchId || null,
-      };
-
+      const payload = { ...form, branch_id: branchId || null };
       if (rules?.id) {
         const isMatchingBranch = rules.branch_id === branchId;
         if (isMatchingBranch || (!branchId && !rules.branch_id)) {
-          const { error } = await supabase
-            .from('lead_notification_rules')
-            .update(payload)
-            .eq('id', rules.id);
+          const { error } = await supabase.from('lead_notification_rules').update(payload).eq('id', rules.id);
           if (error) throw error;
         } else {
-          const { error } = await supabase
-            .from('lead_notification_rules')
-            .upsert(payload, { onConflict: 'branch_id' });
+          const { error } = await supabase.from('lead_notification_rules').upsert(payload, { onConflict: 'branch_id' });
           if (error) throw error;
         }
       } else {
-        const { error } = await supabase
-          .from('lead_notification_rules')
-          .insert(payload);
+        const { error } = await supabase.from('lead_notification_rules').insert(payload);
         if (error) throw error;
       }
     },
@@ -105,7 +94,7 @@ export function LeadNotificationSettings() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="rounded-xl">
         <CardHeader><Skeleton className="h-6 w-48" /></CardHeader>
         <CardContent className="space-y-4">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
@@ -126,123 +115,107 @@ export function LeadNotificationSettings() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="rounded-xl shadow-lg shadow-slate-200/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Lead Notification Rules
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-primary" />
+            <CardTitle>Lead Notification Rules</CardTitle>
             {enabledCount > 0 && (
               <Badge variant="default" className="ml-2">{enabledCount} active</Badge>
             )}
-          </CardTitle>
+          </div>
           <CardDescription>
             Configure automated SMS and WhatsApp notifications when a new lead is captured.
-            {branchId ? ' Settings apply to the selected branch.' : ' These are global default settings.'}
+            {branchId ? ' Settings apply to the selected branch.' : ' These are global defaults.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Warning when all channels disabled */}
-          {enabledCount === 0 && (
-            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-2">
-              <Bell className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
-                All notification channels are disabled. No automated notifications will be sent when new leads are captured.
-                Enable at least one channel below to start notifying.
-              </p>
-            </div>
-          )}
-
-          {/* Info banners */}
-          <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 flex gap-2">
-            <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-muted-foreground">
-              Notifications require an active SMS or WhatsApp provider configured in the Integrations tab.
-              Notification failures will never block lead creation.
-            </p>
-          </div>
-
-          <div className="p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/10 flex items-center gap-2">
-            <ExternalLink className="h-4 w-4 text-indigo-600 flex-shrink-0" />
-            <p className="text-xs text-muted-foreground">
-              Message templates for lead notifications can be managed in{' '}
-              <button
-                onClick={() => navigate('/settings?tab=templates')}
-                className="text-primary font-medium hover:underline"
-              >
-                Settings → Templates
-              </button>
-              {' '}(look for "Lead Welcome" and "Team Alert" trigger types).
-            </p>
-          </div>
-
-          {/* Channel toggles */}
+          {/* Lead Capture Alerts */}
           <div className="space-y-4">
             <h4 className="font-semibold text-sm flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              Notify the Lead
+              <UserCheck className="h-4 w-4 text-primary" />
+              Lead Capture Alerts
             </h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm">SMS to Lead</Label>
+            <p className="text-xs text-muted-foreground -mt-2">Notify the lead when they're captured</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>SMS to Lead</Label>
+                  <p className="text-sm text-muted-foreground">Send welcome SMS to captured lead</p>
                 </div>
                 <Switch checked={form.sms_to_lead} onCheckedChange={() => toggleField('sms_to_lead')} />
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-green-600" />
-                  <Label className="text-sm">WhatsApp to Lead</Label>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>WhatsApp to Lead</Label>
+                  <p className="text-sm text-muted-foreground">Send WhatsApp welcome message to lead</p>
                 </div>
                 <Switch checked={form.whatsapp_to_lead} onCheckedChange={() => toggleField('whatsapp_to_lead')} />
               </div>
             </div>
           </div>
 
+          {/* Follow-up Reminders (Admin & Manager alerts) */}
           <div className="space-y-4">
             <h4 className="font-semibold text-sm flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Notify Admins (Owners & Admins)
+              <Users className="h-4 w-4 text-primary" />
+              Follow-up Reminders
             </h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm">SMS to Admins</Label>
+            <p className="text-xs text-muted-foreground -mt-2">Alert your team when new leads arrive</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>SMS to Admins</Label>
+                  <p className="text-sm text-muted-foreground">Alert owners & admins via SMS</p>
                 </div>
                 <Switch checked={form.sms_to_admins} onCheckedChange={() => toggleField('sms_to_admins')} />
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-green-600" />
-                  <Label className="text-sm">WhatsApp to Admins</Label>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>WhatsApp to Admins</Label>
+                  <p className="text-sm text-muted-foreground">Alert owners & admins via WhatsApp</p>
                 </div>
                 <Switch checked={form.whatsapp_to_admins} onCheckedChange={() => toggleField('whatsapp_to_admins')} />
               </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h4 className="font-semibold text-sm flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Notify Branch Managers
-            </h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm">SMS to Managers</Label>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>SMS to Managers</Label>
+                  <p className="text-sm text-muted-foreground">Alert branch managers via SMS</p>
                 </div>
                 <Switch checked={form.sms_to_managers} onCheckedChange={() => toggleField('sms_to_managers')} />
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-green-600" />
-                  <Label className="text-sm">WhatsApp to Managers</Label>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>WhatsApp to Managers</Label>
+                  <p className="text-sm text-muted-foreground">Alert branch managers via WhatsApp</p>
                 </div>
                 <Switch checked={form.whatsapp_to_managers} onCheckedChange={() => toggleField('whatsapp_to_managers')} />
               </div>
             </div>
+          </div>
+
+          {/* Conversion Notifications (Placeholder) */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm flex items-center gap-2 text-muted-foreground">
+              🎯 Conversion Notifications
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Coming soon — get notified when leads convert to members.
+            </p>
+          </div>
+
+          {/* Template link */}
+          <div className="p-3 rounded-lg bg-muted/50 border flex items-center gap-2">
+            <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              Message templates are managed in{' '}
+              <button
+                onClick={() => navigate('/settings?tab=templates')}
+                className="text-primary font-medium hover:underline"
+              >
+                Settings → Templates
+              </button>
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { Menu, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Menu, LogOut, ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -29,7 +29,6 @@ function useOrgBranding() {
 function useWhatsAppUnreadCount() {
   const queryClient = useQueryClient();
 
-  // Realtime subscription for auto-refetch
   useEffect(() => {
     const channel = supabase
       .channel('sidebar-unread')
@@ -55,18 +54,44 @@ function useWhatsAppUnreadCount() {
   });
 }
 
-function BrandLogo({ className }: { className?: string }) {
+function BrandLogo({ collapsed = false }: { collapsed?: boolean }) {
   const { data: org } = useOrgBranding();
   
   if (org?.logo_url) {
-    return <img src={org.logo_url} alt={org.name || 'Logo'} className={cn("max-h-8 object-contain", className)} />;
+    if (collapsed) {
+      return <img src={org.logo_url} alt={org.name || 'Logo'} className="h-8 w-8 object-contain rounded" />;
+    }
+    return (
+      <div className="flex items-center gap-2.5">
+        <img src={org.logo_url} alt={org.name || 'Logo'} className="max-h-8 object-contain" />
+      </div>
+    );
   }
   
   const displayName = org?.name && org.name !== 'Default' ? org.name : 'Incline';
+  
+  if (collapsed) {
+    return (
+      <div className="p-1.5 rounded-lg bg-[hsl(var(--primary))]/10">
+        <Dumbbell className="h-5 w-5 text-[hsl(var(--primary))]" />
+      </div>
+    );
+  }
+  
   return (
-    <span className="text-sidebar-primary text-2xl font-bold">
-      {displayName}
-    </span>
+    <div className="flex items-center gap-2.5">
+      <div className="p-1.5 rounded-lg bg-[hsl(var(--primary))]/10">
+        <Dumbbell className="h-5 w-5 text-[hsl(var(--primary))]" />
+      </div>
+      <div className="flex flex-col">
+        <span className="text-sidebar-primary text-lg font-bold leading-tight tracking-tight">
+          {displayName}
+        </span>
+        <span className="text-[10px] text-sidebar-foreground/40 font-medium uppercase tracking-widest leading-none">
+          Fitness
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -107,23 +132,33 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
       >
         <div className={cn(
           'border-b border-sidebar-border flex items-center',
-          collapsed ? 'p-3 justify-center' : 'p-6 justify-between'
+          collapsed ? 'p-3 justify-center' : 'p-5 justify-between'
         )}>
+          <BrandLogo collapsed={collapsed} />
           {!collapsed && (
-            <h1 className="text-2xl font-bold text-sidebar-foreground">
-              <BrandLogo />
-            </h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleCollapse}
+              data-testid="button-sidebar-toggle"
+              aria-label="Collapse sidebar"
+              className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onToggleCollapse}
-            data-testid="button-sidebar-toggle"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </Button>
+          {collapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleCollapse}
+              data-testid="button-sidebar-toggle"
+              aria-label="Expand sidebar"
+              className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute -right-3 top-5 bg-sidebar border border-sidebar-border rounded-full shadow-sm z-10"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </Button>
+          )}
         </div>
 
         <ScrollArea className="flex-1 py-4">
@@ -249,10 +284,8 @@ export function MobileNav() {
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0 bg-sidebar">
-        <div className="p-6 border-b border-sidebar-border">
-          <h1 className="text-2xl font-bold text-sidebar-foreground">
-            <BrandLogo />
-          </h1>
+        <div className="p-5 border-b border-sidebar-border">
+          <BrandLogo />
         </div>
 
         <ScrollArea className="h-[calc(100vh-180px)] py-4">
