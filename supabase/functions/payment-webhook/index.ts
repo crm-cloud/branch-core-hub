@@ -9,7 +9,7 @@ const corsHeaders = {
 // Validation constants
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PAYLOAD_SIZE = 102400; // 100KB
-const ALLOWED_GATEWAYS = ['razorpay', 'phonepe'];
+const ALLOWED_GATEWAYS = ['razorpay', 'phonepe', 'payu'];
 
 interface RazorpayPaymentEntity {
   id: string;
@@ -318,6 +318,102 @@ serve(async (req: Request) => {
         status,
         webhook_data: payload,
       };
+    } else if (gateway === "payu") {
+      // PayU webhook handling
+      // PayU sends form-encoded POST data with sha512 hash
+      const payuStatus = payload.status;
+      const txnId = payload.txnid;
+      const payuAmount = parseFloat(payload.amount || "0");
+      const productInfo = payload.productinfo || "";
+      const referenceId = payload.udf1; // We store invoice_id in udf1
+      const payuTxnId = payload.mihpayid;
+
+      // Verify PayU signature
+      const merchantKey = integration.credentials?.merchant_key;
+      const merchantSalt = integration.credentials?.merchant_salt;
+
+      if (merchantKey && merchantSalt && payload.hash) {
+        // PayU verification: sha512(salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+        const reverseHashString = `${merchantSalt}|${payuStatus}||||||${payload.udf5 || ""}|${payload.udf4 || ""}|${payload.udf3 || ""}|${payload.udf2 || ""}|${payload.udf1 || ""}|${payload.email || ""}|${payload.firstname || ""}|${productInfo}|${payuAmount}|${txnId}|${merchantKey}`;
+        const expectedHash = await sha512(reverseHashString);
+        if (payload.hash !== expectedHash) {
+          console.error("Invalid PayU signature");
+          return new Response(
+            JSON.stringify({ error: "Invalid signature" }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      if (payuStatus === "success" && referenceId && isValidUUID(referenceId)) {
+        // Use record_payment RPC
+        const { data: invoice } = await supabase
+          .from("invoices")
+          .select("id, member_id, branch_id")
+          .eq("id", referenceId)
+          .single();
+
+        if (invoice) {
+          const { data: payResult } = await supabase.rpc("record_payment", {
+            p_branch_id: invoice.branch_id,
+            p_invoice_id: invoice.id,
+            p_member_id: invoice.member_id,
+            p_amount: payuAmount,
+            p_payment_method: "online",
+            p_transaction_id: payuTxnId,
+            p_notes: "Auto-recorded via PayU",
+          });
+          console.log("PayU record_payment result:", JSON.stringify(payResult));
+
+          // Trigger MIPS sync for membership items
+          const { data: membershipItems } = await supabase
+            .from("invoice_items")
+            .select("reference_id")
+            .eq("invoice_id", referenceId)
+            .in("reference_type", ["membership", "membership_renewal"]);
+
+          if (membershipItems && membershipItems.length > 0 && invoice.member_id) {
+            try {
+              const syncUrl = `${supabaseUrl}/functions/v1/sync-to-mips`;
+              await fetch(syncUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${supabaseServiceKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  action: "sync_member",
+                  member_id: invoice.member_id,
+                  branch_id: invoice.branch_id,
+                }),
+              });
+              console.log("MIPS sync triggered for PayU payment, member:", invoice.member_id);
+            } catch (syncErr) {
+              console.error("MIPS sync trigger failed:", syncErr);
+            }
+          }
+        }
+      }
+
+      let status = "created";
+      if (payuStatus === "success") status = "captured";
+      else if (payuStatus === "failure") status = "failed";
+      else if (payuStatus === "pending") status = "authorized";
+
+      transactionData = {
+        gateway_order_id: txnId,
+        gateway_payment_id: payuTxnId || txnId,
+        amount: payuAmount,
+        status,
+        webhook_data: payload,
+      };
+
+      if (payuStatus === "success" && referenceId) {
+        return new Response(
+          JSON.stringify({ status: "success" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     } else {
       return new Response(
         JSON.stringify({ error: "Unsupported gateway" }),
@@ -422,6 +518,15 @@ async function sha256(message: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(message);
   const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha512(message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await globalThis.crypto.subtle.digest("SHA-512", data);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
