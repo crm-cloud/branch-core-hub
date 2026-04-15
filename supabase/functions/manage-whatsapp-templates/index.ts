@@ -437,8 +437,58 @@ serve(async (req) => {
       );
     }
 
+    // ── ACTION: sync_ig_icebreakers ──
+    if (action === "sync_ig_icebreakers") {
+      const igAccountId = activeIntegration.config?.ig_account_id;
+      if (!igAccountId) {
+        return new Response(
+          JSON.stringify({ error: "Instagram account ID not configured. Add ig_account_id to WhatsApp integration config." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const igUrl = appendProof(`${META_API_BASE}/${igAccountId}/ice_breakers`, proof);
+      try {
+        const resp = await fetch(igUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const data = await resp.json();
+        if (!resp.ok) {
+          return new Response(JSON.stringify({ error: data?.error?.message || "Failed to fetch IG ice breakers" }),
+            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ ice_breakers: data.data || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `IG API error: ${(e as Error).message}` }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // ── ACTION: sync_messenger_quick_replies ──
+    if (action === "sync_messenger_quick_replies") {
+      const pageId = activeIntegration.config?.page_id;
+      if (!pageId) {
+        return new Response(
+          JSON.stringify({ error: "Facebook Page ID not configured. Add page_id to WhatsApp integration config." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const msgUrl = appendProof(`${META_API_BASE}/${pageId}/messenger_profile?fields=persistent_menu,ice_breakers,get_started`, proof);
+      try {
+        const resp = await fetch(msgUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const data = await resp.json();
+        if (!resp.ok) {
+          return new Response(JSON.stringify({ error: data?.error?.message || "Failed to fetch Messenger profile" }),
+            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ messenger_profile: data.data || data }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `Messenger API error: ${(e as Error).message}` }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     return new Response(
-      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | get_status` }),
+      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | get_status | sync_ig_icebreakers | sync_messenger_quick_replies` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
