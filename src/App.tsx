@@ -112,7 +112,7 @@ function PageLoader() {
   );
 }
 
-const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/lead-form"];
+const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/lead-form", "/member/pay"];
 
 function PublicWhatsAppWidget() {
   const location = useLocation();
