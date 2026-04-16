@@ -15,6 +15,26 @@ function json(payload: unknown, status = 200) {
   });
 }
 
+function formatMetaError(error: string, platform: "whatsapp" | "instagram"): string {
+  const lower = error.toLowerCase();
+  if (lower.includes("appsecret_proof")) {
+    return platform === "whatsapp"
+      ? "Meta rejected app secret proof. Verify your access token and app secret belong to the same WhatsApp Meta app."
+      : "Meta rejected app secret proof. Verify your access token and app secret belong to the same Instagram/Meta app.";
+  }
+  if (lower.includes("does not exist")) {
+    return platform === "whatsapp"
+      ? "Invalid WhatsApp Business Account ID. Check the WABA ID in your Meta configuration."
+      : "Invalid Instagram/Page ID. Check the Instagram business account ID or linked Facebook Page ID.";
+  }
+  if (lower.includes("permission") || lower.includes("oauth") || lower.includes("token")) {
+    return platform === "whatsapp"
+      ? "Meta token was rejected or lacks permission. Re-enter the access token and confirm the app has WhatsApp permissions."
+      : "Meta token was rejected or lacks permission. Re-enter the access token and confirm the app has Instagram/Page permissions.";
+  }
+  return error;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -33,7 +53,10 @@ Deno.serve(async (req) => {
     const authClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser();
     if (authError || !user) {
       return json({ success: false, error: "Unauthorized" });
     }
@@ -152,7 +175,12 @@ async function testEmail(provider: string, config: any, credentials: any, adminE
             personalizations: [{ to: [{ email: adminEmail }] }],
             from: { email: config?.from_email || "test@test.com", name: config?.from_name || "Incline Fitness" },
             subject: "🧪 Test Email — Incline Fitness",
-            content: [{ type: "text/html", value: "<h2>✅ Email integration is working!</h2><p>This is a test email from Incline Fitness CRM.</p>" }],
+            content: [
+              {
+                type: "text/html",
+                value: "<h2>✅ Email integration is working!</h2><p>This is a test email from Incline Fitness CRM.</p>",
+              },
+            ],
           }),
         });
         return resp.ok || resp.status === 202
@@ -204,27 +232,25 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
         return { success: false, error: "Access Token and WABA ID are required" };
       }
 
-      let appsecretProof = "";
-      if (credentials.app_secret) {
-        appsecretProof = await hmacSha256(credentials.app_secret, credentials.access_token);
+      const result = await fetchMetaGraph(
+        `https://graph.facebook.com/v25.0/${config.business_account_id}/message_templates?limit=1`,
+        credentials.access_token,
+        credentials.app_secret,
+      );
+
+      if (!result.ok) {
+        if (result.error?.includes("does not exist")) {
+          return { success: false, error: "Invalid WABA ID. Please check your WhatsApp Business Account ID." };
+        }
+        return { success: false, error: formatMetaError(result.error || "Meta WhatsApp API test failed", "whatsapp") };
       }
 
-      const url = `https://graph.facebook.com/v25.0/${config.business_account_id}/message_templates?limit=1${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`;
-      try {
-        const resp = await fetch(url, {
-          headers: { Authorization: `Bearer ${credentials.access_token}` },
-        });
-        const data = await resp.json();
-        if (data.error) {
-          if (data.error.message?.includes("does not exist")) {
-            return { success: false, error: "Invalid WABA ID. Please check your WhatsApp Business Account ID." };
-          }
-          return { success: false, error: data.error.message };
-        }
-        return { success: true, message: "Meta WhatsApp API connected ✓" };
-      } catch (e) {
-        return { success: false, error: `Meta API failed: ${(e as Error).message}` };
-      }
+      return {
+        success: true,
+        message: result.usedFallback
+          ? "Meta WhatsApp API connected ✓ (verified without app secret proof)"
+          : "Meta WhatsApp API connected ✓",
+      };
     }
     case "wati": {
       if (!credentials?.access_token || !config?.api_endpoint_url) {
@@ -259,33 +285,72 @@ async function testInstagram(config: any, credentials: any) {
   const pageId = config?.page_id || config?.instagram_account_id;
   if (!pageId) return { success: false, error: "Page ID / Instagram Account ID is required" };
 
-  let appsecretProof = "";
-  if (credentials?.app_secret) {
-    appsecretProof = await hmacSha256(credentials.app_secret, accessToken);
+  const result = await fetchMetaGraph(
+    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name`,
+    accessToken,
+    credentials?.app_secret,
+  );
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: `Meta API: ${formatMetaError(result.error || "Instagram test failed", "instagram")}`,
+    };
   }
 
-  const url = `https://graph.facebook.com/v25.0/${pageId}?fields=id,name${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const data = await resp.json();
-    if (data.error) {
-      return { success: false, error: `Meta API: ${data.error.message}` };
-    }
-    return { success: true, message: `Instagram connected ✓ (Page: ${data.name || pageId})` };
-  } catch (e) {
-    return { success: false, error: `Instagram test failed: ${(e as Error).message}` };
-  }
+  return {
+    success: true,
+    message: result.usedFallback
+      ? `Instagram connected ✓ (verified without app secret proof)`
+      : `Instagram connected ✓ (Page: ${result.data?.name || pageId})`,
+  };
 }
 
 // ── Utility ─────────────────────────────────────────
 
+async function fetchMetaGraph(
+  baseUrl: string,
+  accessToken: string,
+  appSecret?: string,
+): Promise<{ ok: boolean; data?: any; error?: string; usedFallback?: boolean }> {
+  const proof = appSecret ? await hmacSha256(appSecret, accessToken) : "";
+  const urls = [`${baseUrl}${proof ? `${baseUrl.includes("?") ? "&" : "?"}appsecret_proof=${proof}` : ""}`];
+
+  if (proof) {
+    urls.push(baseUrl);
+  }
+
+  let lastError: string | undefined;
+
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      const resp = await fetch(urls[i], {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await resp.json();
+      if (data?.error) {
+        lastError = data.error.message || "Meta API request failed";
+        if (i === 0 && lastError && /appsecret_proof/i.test(lastError)) {
+          continue;
+        }
+        return { ok: false, error: lastError, usedFallback: i > 0 };
+      }
+      return { ok: true, data, usedFallback: i > 0 };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Meta API request failed";
+    }
+  }
+
+  return { ok: false, error: lastError || "Meta API request failed" };
+}
+
 async function hmacSha256(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
