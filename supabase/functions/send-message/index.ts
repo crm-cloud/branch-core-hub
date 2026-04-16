@@ -1,4 +1,5 @@
-// v1.0.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger
+// v1.1.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger
+// Added: appsecret_proof for Meta Graph API calls
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -7,6 +8,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+/** Generate HMAC SHA-256 appsecret_proof for Meta Graph API */
+async function generateAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(accessToken));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -24,7 +35,7 @@ serve(async (req) => {
       message_type = "text",
       media_url,
       caption,
-      phone_number, // backward compat alias for recipient_id
+      phone_number,
     } = body;
 
     const recipientId = recipient_id || phone_number;
@@ -40,7 +51,6 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (platform === "whatsapp") {
-      // Forward to existing send-whatsapp function for full WA logic
       const waUrl = `${supabaseUrl}/functions/v1/send-whatsapp`;
       const waResponse = await fetch(waUrl, {
         method: "POST",
@@ -65,10 +75,9 @@ serve(async (req) => {
       });
     }
 
-    // Instagram or Messenger — use Meta Graph API /me/messages
+    // Instagram or Messenger — use Meta Graph API
     const integrationType = platform === "instagram" ? "instagram" : "messenger";
 
-    // Fetch integration settings
     let integration: any = null;
     const { data: branchInteg } = await supabase
       .from("integration_settings")
@@ -110,12 +119,18 @@ serve(async (req) => {
       );
     }
 
+    // Generate appsecret_proof if app_secret is configured
+    const appSecret = integration.credentials?.app_secret;
+    let appsecretProof = "";
+    if (appSecret) {
+      appsecretProof = await generateAppSecretProof(accessToken, appSecret);
+    }
+
     // Build Meta Graph API request
     let metaPayload: any;
     let metaUrl: string;
 
     if (platform === "instagram") {
-      // Instagram Send API
       const igAccountId = integration.config?.instagram_account_id || integration.config?.page_id;
       metaUrl = `https://graph.facebook.com/v25.0/${igAccountId}/messages`;
       metaPayload = {
@@ -125,7 +140,6 @@ serve(async (req) => {
           : { text: content },
       };
     } else {
-      // Messenger Send API
       const pageId = integration.config?.page_id;
       metaUrl = `https://graph.facebook.com/v25.0/${pageId}/messages`;
       metaPayload = {
@@ -135,6 +149,11 @@ serve(async (req) => {
           : { text: content },
         messaging_type: "RESPONSE",
       };
+    }
+
+    // Append appsecret_proof as query param
+    if (appsecretProof) {
+      metaUrl += `${metaUrl.includes("?") ? "&" : "?"}appsecret_proof=${appsecretProof}`;
     }
 
     const metaResponse = await fetch(metaUrl, {
@@ -159,7 +178,6 @@ serve(async (req) => {
 
     const platformMsgId = metaData?.message_id || metaData?.messages?.[0]?.id || null;
 
-    // Update message status
     await supabase
       .from("whatsapp_messages")
       .update({
@@ -168,7 +186,6 @@ serve(async (req) => {
       })
       .eq("id", message_id);
 
-    // Log communication
     await supabase.from("communication_logs").insert({
       branch_id,
       recipient: recipientId,
