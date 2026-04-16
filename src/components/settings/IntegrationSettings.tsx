@@ -887,6 +887,7 @@ function IntegrationConfigSheet({
   const credentialFields = schema.filter(f => f.section === 'credentials');
   const webhookInfo = getWebhookInfoForProvider(type, provider);
   const displayName = getProviderDisplayName(type, provider);
+  const isMetaProvider = type === 'whatsapp' || type === 'instagram';
 
   const renderField = (field: ProviderFieldDef, values: Record<string, string>, setter: (v: Record<string, string>) => void) => {
     if (field.type === 'select' && field.options) {
@@ -1038,17 +1039,34 @@ function IntegrationConfigSheet({
                   if (data?.success) {
                     toast.success(data.message || 'Connection verified ✓');
                   } else {
-                    toast.error(data?.error || 'Connection test failed');
+                    const errorMessage = data?.error || 'Connection test failed';
+                    toast.error(
+                      errorMessage.includes('Access Token is required')
+                        ? 'Add the Meta access token before testing.'
+                        : errorMessage.includes('Page ID / Instagram Account ID')
+                          ? 'Add the Instagram business account ID or linked page ID before testing.'
+                          : errorMessage.includes('WABA ID')
+                            ? 'Add the WhatsApp Business Account ID before testing.'
+                            : errorMessage
+                    );
                   }
                 } catch (e: any) {
-                  toast.error(e.message || 'Test failed');
+                  const message = e?.message || 'Test failed';
+                  toast.error(message.includes('appsecret_proof')
+                    ? 'Meta rejected the app secret proof. The test will try again without it. Check that your access token and app secret belong to the same Meta app.'
+                    : message);
                 }
               }}
             >
               <Send className="h-4 w-4 mr-2" />
-              Test
+              {isMetaProvider ? 'Test Meta' : 'Test'}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {isMetaProvider
+              ? 'Meta tests verify your access token, account/page ID, and optional app secret. If Meta rejects the proof, the test retries without it and reports which path succeeded.'
+              : 'Tests verify the provider credentials and return a clear connection status.'}
+          </p>
         </div>
       </SheetContent>
     </Sheet>

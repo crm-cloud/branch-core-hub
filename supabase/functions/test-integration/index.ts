@@ -53,10 +53,7 @@ Deno.serve(async (req) => {
     const authClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: authHeader } },
     });
-    const {
-      data: { user },
-      error: authError,
-    } = await authClient.auth.getUser();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
     if (authError || !user) {
       return json({ success: false, error: "Unauthorized" });
     }
@@ -175,12 +172,7 @@ async function testEmail(provider: string, config: any, credentials: any, adminE
             personalizations: [{ to: [{ email: adminEmail }] }],
             from: { email: config?.from_email || "test@test.com", name: config?.from_name || "Incline Fitness" },
             subject: "🧪 Test Email — Incline Fitness",
-            content: [
-              {
-                type: "text/html",
-                value: "<h2>✅ Email integration is working!</h2><p>This is a test email from Incline Fitness CRM.</p>",
-              },
-            ],
+            content: [{ type: "text/html", value: "<h2>✅ Email integration is working!</h2><p>This is a test email from Incline Fitness CRM.</p>" }],
           }),
         });
         return resp.ok || resp.status === 202
@@ -292,10 +284,7 @@ async function testInstagram(config: any, credentials: any) {
   );
 
   if (!result.ok) {
-    return {
-      success: false,
-      error: `Meta API: ${formatMetaError(result.error || "Instagram test failed", "instagram")}`,
-    };
+    return { success: false, error: `Meta API: ${formatMetaError(result.error || "Instagram test failed", "instagram")}` };
   }
 
   return {
@@ -314,7 +303,9 @@ async function fetchMetaGraph(
   appSecret?: string,
 ): Promise<{ ok: boolean; data?: any; error?: string; usedFallback?: boolean }> {
   const proof = appSecret ? await hmacSha256(appSecret, accessToken) : "";
-  const urls = [`${baseUrl}${proof ? `${baseUrl.includes("?") ? "&" : "?"}appsecret_proof=${proof}` : ""}`];
+  const urls = [
+    `${baseUrl}${proof ? `${baseUrl.includes("?") ? "&" : "?"}appsecret_proof=${proof}` : ""}`,
+  ];
 
   if (proof) {
     urls.push(baseUrl);
@@ -346,11 +337,9 @@ async function fetchMetaGraph(
 
 async function hmacSha256(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
-    "sign",
-  ]);
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
