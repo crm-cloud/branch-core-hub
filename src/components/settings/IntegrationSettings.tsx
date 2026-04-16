@@ -143,7 +143,7 @@ export function IntegrationSettings() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Integrations</h2>
-          <p className="text-sm text-muted-foreground">Configure payment, SMS, email, WhatsApp, Instagram, Messenger and Google</p>
+          <p className="text-sm text-muted-foreground">Configure payment, SMS, email, WhatsApp, Instagram, Messenger, Google and lead capture</p>
         </div>
       </div>
 
@@ -188,6 +188,7 @@ export function IntegrationSettings() {
           <TabsTrigger value="whatsapp" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="instagram" className="gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
           <TabsTrigger value="messenger" className="gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
+          <TabsTrigger value="leads" className="gap-1.5"><Send className="h-3.5 w-3.5" />Lead Capture</TabsTrigger>
           <TabsTrigger value="google" className="gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
         </TabsList>
 
@@ -767,7 +768,10 @@ export function IntegrationSettings() {
             </Card>
           </Collapsible>
         </TabsContent>
-        {/* Lead Capture tab removed — now in AI Agent Hub */}
+
+        <TabsContent value="leads" className="space-y-4">
+          <LeadCaptureTab />
+        </TabsContent>
       </Tabs>
 
       <IntegrationConfigSheet 
@@ -1360,7 +1364,6 @@ function LeadCaptureTab() {
 
   return (
     <div className="space-y-6">
-
       {/* Webhook Configuration */}
       <Card>
         <CardHeader>
