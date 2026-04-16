@@ -1,4 +1,4 @@
-// v1.0.0 — Razorpay Payment Link Generator
+// v1.1.0 — Razorpay Payment Link Generator (hardened)
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -9,6 +9,20 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+/** Sanitize name: strip non-printable/special chars, max 50 chars */
+function sanitizeName(raw: string): string {
+  return raw.replace(/[^\p{L}\p{N}\s.\-']/gu, "").trim().slice(0, 50) || "Member";
+}
+
+/** Sanitize Indian phone: must be 10 digits → prepend +91. Returns empty if invalid */
+function sanitizePhone(raw: string): string {
+  const digits = raw.replace(/[^0-9]/g, "");
+  // Strip leading 91 country code if present
+  const local = digits.startsWith("91") && digits.length >= 12 ? digits.slice(2) : digits;
+  if (local.length === 10) return `+91${local}`;
+  return "";
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -21,13 +35,23 @@ serve(async (req: Request) => {
 
     if (!invoiceId || !amount || !branchId) {
       return new Response(
-        JSON.stringify({ error: "invoiceId, amount, and branchId are required" }),
+        JSON.stringify({ error: "invoiceId, amount, and branchId are required", code: "MISSING_PARAMS" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Fetch Razorpay credentials from integration_settings
-    const { data: integration } = await supabase
+    // Amount floor: Razorpay minimum is ₹1
+    if (typeof amount !== "number" || amount < 1) {
+      return new Response(
+        JSON.stringify({ error: "Amount must be at least ₹1", code: "AMOUNT_TOO_LOW" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Fetch Razorpay credentials — try branch-specific first, then global (null branch)
+    let integration: any = null;
+
+    const { data: branchInt } = await supabase
       .from("integration_settings")
       .select("credentials, config")
       .eq("branch_id", branchId)
@@ -36,9 +60,27 @@ serve(async (req: Request) => {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!integration?.credentials?.key_id || !integration?.credentials?.key_secret) {
+    if (branchInt?.credentials?.key_id && branchInt?.credentials?.key_secret) {
+      integration = branchInt;
+    } else {
+      // Fallback: global integration (null branch_id)
+      const { data: globalInt } = await supabase
+        .from("integration_settings")
+        .select("credentials, config")
+        .is("branch_id", null)
+        .eq("integration_type", "payment_gateway")
+        .eq("provider", "razorpay")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (globalInt?.credentials?.key_id && globalInt?.credentials?.key_secret) {
+        integration = globalInt;
+      }
+    }
+
+    if (!integration) {
       return new Response(
-        JSON.stringify({ error: "Razorpay not configured for this branch" }),
+        JSON.stringify({ error: "Razorpay not configured for this branch", code: "NO_GATEWAY" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -55,7 +97,7 @@ serve(async (req: Request) => {
 
     if (invErr || !invoice) {
       return new Response(
-        JSON.stringify({ error: "Invoice not found" }),
+        JSON.stringify({ error: "Invoice not found", code: "INVOICE_NOT_FOUND" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -80,11 +122,8 @@ serve(async (req: Request) => {
           .single();
 
         if (profile) {
-          customerName = profile.full_name || "Member";
-          customerPhone = (profile.phone || "").replace(/[^0-9]/g, "");
-          if (customerPhone && !customerPhone.startsWith("91")) {
-            customerPhone = "91" + customerPhone;
-          }
+          customerName = sanitizeName(profile.full_name || "Member");
+          customerPhone = sanitizePhone(profile.phone || "");
           customerEmail = profile.email || "";
         }
       }
@@ -108,8 +147,8 @@ serve(async (req: Request) => {
       callback_method: "get",
     };
 
-    // Only add contact/email if available
-    if (customerPhone) razorpayPayload.customer.contact = `+${customerPhone}`;
+    // Only add contact/email if valid
+    if (customerPhone) razorpayPayload.customer.contact = customerPhone;
     if (customerEmail) razorpayPayload.customer.email = customerEmail;
 
     console.log("Creating Razorpay payment link for invoice:", invoiceId, "amount:", amountInPaise);
@@ -128,7 +167,7 @@ serve(async (req: Request) => {
     if (!rzpResponse.ok) {
       console.error("Razorpay API error:", JSON.stringify(rzpResult));
       return new Response(
-        JSON.stringify({ error: rzpResult.error?.description || "Failed to create payment link" }),
+        JSON.stringify({ error: rzpResult.error?.description || "Failed to create payment link", code: "RAZORPAY_ERROR" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -158,7 +197,7 @@ serve(async (req: Request) => {
     const msg = error instanceof Error ? error.message : "Unknown error";
     console.error("create-razorpay-link error:", msg);
     return new Response(
-      JSON.stringify({ error: msg }),
+      JSON.stringify({ error: msg, code: "INTERNAL_ERROR" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
