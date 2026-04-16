@@ -1,4 +1,5 @@
-// v1.0.0 — Test Connection for SMS / Email / WhatsApp providers
+// v1.1.0 — Test Connection for SMS / Email / WhatsApp / Instagram providers
+// Fixed: always return 200 with structured {ok, error} so supabase.functions.invoke doesn't throw
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -6,6 +7,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,7 +23,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
+      return json({ success: false, error: "Unauthorized" });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -27,25 +35,24 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: authError } = await authClient.auth.getUser();
     if (authError || !user) {
-      return json({ error: "Unauthorized" }, 401);
+      return json({ success: false, error: "Unauthorized" });
     }
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Role check
     const { data: roleData } = await adminClient
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .in("role", ["owner", "admin", "manager"]);
     if (!roleData?.length) {
-      return json({ error: "Admin access required" }, 403);
+      return json({ success: false, error: "Admin access required" });
     }
 
     const { type, provider, config, credentials } = await req.json();
 
     if (!type || !provider) {
-      return json({ error: "Missing type or provider" }, 400);
+      return json({ success: false, error: "Missing type or provider" });
     }
 
     let result: { success: boolean; message?: string; error?: string };
@@ -60,16 +67,22 @@ Deno.serve(async (req) => {
       case "whatsapp":
         result = await testWhatsApp(provider, config, credentials);
         break;
+      case "instagram":
+        result = await testInstagram(config, credentials);
+        break;
       default:
         result = { success: false, error: `Unsupported type: ${type}` };
     }
 
-    return json(result, result.success ? 200 : 400);
+    // Always return 200 so supabase.functions.invoke gives us the body
+    return json(result);
   } catch (error: any) {
     console.error("test-integration error:", error);
-    return json({ error: error.message }, 500);
+    return json({ success: false, error: error.message });
   }
 });
+
+// ── SMS ─────────────────────────────────────────────
 
 async function testSMS(provider: string, config: any, credentials: any) {
   switch (provider) {
@@ -122,6 +135,8 @@ async function testSMS(provider: string, config: any, credentials: any) {
   }
 }
 
+// ── Email ───────────────────────────────────────────
+
 async function testEmail(provider: string, config: any, credentials: any, adminEmail: string) {
   switch (provider) {
     case "sendgrid": {
@@ -167,21 +182,20 @@ async function testEmail(provider: string, config: any, credentials: any, adminE
         return { success: false, error: `Mailgun failed: ${(e as Error).message}` };
       }
     }
-    case "smtp": {
+    case "smtp":
       if (!config?.host || !credentials?.username) {
         return { success: false, error: "SMTP Host and Username are required" };
       }
-      // We can't easily test SMTP from edge functions, but validate the config
       return { success: true, message: "SMTP configuration looks valid ✓ (send a test email to fully verify)" };
-    }
-    case "ses": {
+    case "ses":
       if (!credentials?.access_key_id) return { success: false, error: "AWS Access Key ID is required" };
       return { success: true, message: "AWS SES configuration saved ✓ (ensure your domain is verified in AWS)" };
-    }
     default:
       return { success: false, error: `No test available for email provider: ${provider}` };
   }
 }
+
+// ── WhatsApp ────────────────────────────────────────
 
 async function testWhatsApp(provider: string, config: any, credentials: any) {
   switch (provider) {
@@ -192,10 +206,7 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
 
       let appsecretProof = "";
       if (credentials.app_secret) {
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey("raw", enc.encode(credentials.app_secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-        const sig = await crypto.subtle.sign("HMAC", key, enc.encode(credentials.access_token));
-        appsecretProof = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+        appsecretProof = await hmacSha256(credentials.app_secret, credentials.access_token);
       }
 
       const url = `https://graph.facebook.com/v25.0/${config.business_account_id}/message_templates?limit=1${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`;
@@ -239,9 +250,42 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
   }
 }
 
-function json(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// ── Instagram ───────────────────────────────────────
+
+async function testInstagram(config: any, credentials: any) {
+  const accessToken = credentials?.access_token || credentials?.page_access_token;
+  if (!accessToken) return { success: false, error: "Access Token is required" };
+
+  const pageId = config?.page_id || config?.instagram_account_id;
+  if (!pageId) return { success: false, error: "Page ID / Instagram Account ID is required" };
+
+  let appsecretProof = "";
+  if (credentials?.app_secret) {
+    appsecretProof = await hmacSha256(credentials.app_secret, accessToken);
+  }
+
+  const url = `https://graph.facebook.com/v25.0/${pageId}?fields=id,name${appsecretProof ? `&appsecret_proof=${appsecretProof}` : ""}`;
+  try {
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await resp.json();
+    if (data.error) {
+      return { success: false, error: `Meta API: ${data.error.message}` };
+    }
+    return { success: true, message: `Instagram connected ✓ (Page: ${data.name || pageId})` };
+  } catch (e) {
+    return { success: false, error: `Instagram test failed: ${(e as Error).message}` };
+  }
+}
+
+// ── Utility ─────────────────────────────────────────
+
+async function hmacSha256(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
