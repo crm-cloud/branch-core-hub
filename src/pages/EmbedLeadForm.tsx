@@ -31,7 +31,7 @@ export default function EmbedLeadForm() {
           fullName,
           phone,
           email: email || undefined,
-          source: utmSource,
+          source: 'website',
           utm_source: utmSource,
           utm_medium: utmMedium,
           utm_campaign: utmCampaign,

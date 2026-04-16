@@ -10,6 +10,7 @@ import { leadService } from '@/services/leadService';
 import { useBranches } from '@/hooks/useBranches';
 import { toast } from 'sonner';
 import { UserPlus, Phone, Mail, ArrowRight, Building2 } from 'lucide-react';
+import { LeadSourceBadge } from './LeadSourceBadge';
 
 interface ConvertMemberDrawerProps {
   open: boolean;
@@ -78,7 +79,7 @@ export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberD
               <div className="mt-4 pt-4 border-t space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Source</span>
-                  <Badge variant="outline">{lead.source || 'Direct'}</Badge>
+                  <LeadSourceBadge source={lead.source} />
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Current Status</span>

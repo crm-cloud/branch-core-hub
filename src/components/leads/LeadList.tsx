@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { STATUS_CONFIG, LEAD_STATUSES } from './LeadFilters';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LeadSourceBadge } from './LeadSourceBadge';
 
 const PAGE_SIZE = 50;
 
@@ -221,7 +222,7 @@ export function LeadList({ leads, isLoading, page, onPageChange, onSelectLead, o
                         <TempIcon className={`h-4 w-4 ${tempColor}`} />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs">{lead.source || 'Direct'}</Badge>
+                        <LeadSourceBadge source={lead.source} className="max-w-[140px] truncate" />
                       </TableCell>
                       <TableCell>
                         {lead.score > 0 ? (

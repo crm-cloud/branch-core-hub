@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { STATUS_CONFIG, LEAD_STATUSES } from './LeadFilters';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { LeadSourceBadge } from './LeadSourceBadge';
 
 interface LeadKanbanProps {
   leads: any[];
@@ -153,7 +154,7 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                                 )}
 
                                 <div className="flex items-center justify-between">
-                                  <Badge variant="outline" className="text-[10px]">{lead.source || 'Direct'}</Badge>
+                                  <LeadSourceBadge source={lead.source} compact className="max-w-[120px] truncate" />
                                   <span className="text-[10px] text-muted-foreground">
                                     {format(new Date(lead.created_at), 'dd MMM')}
                                   </span>

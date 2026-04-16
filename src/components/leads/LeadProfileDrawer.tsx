@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { LeadActivityTimeline } from './LeadActivityTimeline';
 import { STATUS_CONFIG, LEAD_STATUSES, TEMP_CONFIG } from './LeadFilters';
+import { LeadSourceBadge } from './LeadSourceBadge';
 
 interface LeadProfileDrawerProps {
   open: boolean;
@@ -244,7 +245,12 @@ export function LeadProfileDrawer({ open, onOpenChange, lead, onFollowup, onConv
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Attribution</h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {lead.source && <div><span className="text-muted-foreground">Source:</span> {lead.source}</div>}
+                    {lead.source && (
+                      <div className="col-span-2 flex items-center gap-2">
+                        <span className="text-muted-foreground">Source:</span>
+                        <LeadSourceBadge source={lead.source} />
+                      </div>
+                    )}
                     {lead.utm_source && <div><span className="text-muted-foreground">UTM Source:</span> {lead.utm_source}</div>}
                     {lead.utm_medium && <div><span className="text-muted-foreground">Medium:</span> {lead.utm_medium}</div>}
                     {lead.utm_campaign && <div><span className="text-muted-foreground">Campaign:</span> {lead.utm_campaign}</div>}

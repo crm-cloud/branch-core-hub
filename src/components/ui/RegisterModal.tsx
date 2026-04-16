@@ -32,18 +32,32 @@ const WEBHOOK_URL =
   "https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/webhook-lead-capture?slug=545d8df4-4ea0-4bed-a060-0d6ef7beaffc";
 
 const getSource = (): string => {
+  return "website";
+};
+
+const getAttribution = () => {
   try {
     const params = new URLSearchParams(window.location.search);
-    const utm = params.get("utm_source");
-    if (utm) return utm;
-    const ref = document.referrer || "";
-    if (ref.includes("instagram")) return "instagram";
-    if (ref.includes("facebook")) return "facebook";
-    if (ref.includes("twitter") || ref.includes("x.com")) return "twitter";
-    if (ref.includes("youtube")) return "youtube";
-    if (ref.includes("linkedin")) return "linkedin";
-  } catch {}
-  return "website";
+    return {
+      utm_source: params.get("utm_source") || null,
+      utm_medium: params.get("utm_medium") || null,
+      utm_campaign: params.get("utm_campaign") || null,
+      utm_content: params.get("utm_content") || null,
+      utm_term: params.get("utm_term") || null,
+      landing_page: `${window.location.origin}${window.location.pathname}`,
+      referrer_url: document.referrer || null,
+    };
+  } catch {
+    return {
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_content: null,
+      utm_term: null,
+      landing_page: null,
+      referrer_url: null,
+    };
+  }
 };
 
 const AGE_RANGES = ["18-24", "25-30", "31-35", "36-40", "41-50", "50+"];
@@ -112,6 +126,7 @@ const RegisterModal = () => {
         email: data.email,
         source: getSource(),
         notes: buildNotes(data),
+        ...getAttribution(),
       };
 
       const res = await fetch(WEBHOOK_URL, {
