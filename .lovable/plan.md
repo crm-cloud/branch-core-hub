@@ -1,78 +1,66 @@
 
 
-# Plan: Razorpay Payment Automation & Finance Engine
+# Plan: Razorpay Pipeline Fixes, Query Refresh, Invoice PDF, IG Settings, Member Tasks & Email
 
-## Audit Findings
+## Audit Summary
 
-### System Health
-- **DB Errors**: `column "is_active" does not exist` — a query somewhere references `is_active` on a table that lacks it. Need to trace.
-- **Edge Function Errors**: No 4xx/5xx edge function logs found — clean.
-- **Razorpay MCP**: Not available in Lovable's connector catalog. No MCP server exists for Razorpay. The Razorpay REST API is well-documented and our existing `create-razorpay-link` already implements it correctly using `POST /v1/payment_links/` with proper Basic Auth, `reference_id`, and `notify: { sms: true, email: true }`.
+**Razorpay `create-razorpay-link`**: The edge function is correctly structured — amount conversion to paise (`Math.round(amount * 100)`) is already present, credentials are fetched from `integration_settings`, customer fields are conditionally added. No code-level bugs found. Edge function logs show clean boot/shutdown cycles with no errors.
 
-### What Already Works Well
-- `create-razorpay-link` — correctly generates payment links with dynamic credentials from `integration_settings`
-- `payment-webhook` — handles `payment_link.paid` event, calls `record_payment` RPC atomically, triggers MIPS sync for membership items
-- `SendPaymentLinkDrawer` — full UI for generating + sharing links via WhatsApp/copy
-- `record_payment` RPC — atomically updates invoice balance, activates linked memberships
-- GST columns exist: `is_gst_invoice`, `gst_rate`, `customer_gstin` on invoices; `hsn_code` on `invoice_items`
-- `CreateInvoiceDrawer` already has GST toggle with CGST/SGST split
+**`/member/pay` route**: Does NOT exist in `App.tsx` — the `SendPaymentLinkDrawer` references it as a fallback URL, but no route or page handles it. This is a 404.
 
-### What's Missing or Broken
-1. **POS has no "Generate Payment Link" option** — only cash/card/UPI/wallet
-2. **No Realtime subscription** on invoice status — staff must manually refresh
-3. **PDF generator doesn't produce Tax Invoices** — no GSTIN, no "TAX INVOICE" header, no HSN column
-4. **Webhook doesn't handle PayU** — only Razorpay and PhonePe
-5. **`PurchaseMembershipDrawer` has no "Generate Payment Link" flow** — only immediate payment
-6. **`is_active` column error** — need to trace which table/query
+**React Query invalidation**: Already present in most hooks (`usePlans`, `useWallet`, `usePTPackages`, `AddCategoryDrawer`, etc.). A sweep is needed to verify completeness across all mutations.
+
+**Invoice PDF**: `generateInvoicePDF` exists and is well-built with GST support, HSN columns, and CGST/SGST splits. It uses `window.open` + print dialog. A proper download-as-PDF button is already in `InvoiceViewDrawer`. The PDF is comprehensive — no major gaps.
+
+**Dynamic logo**: Already implemented in both `AppSidebar.tsx` and `AppLayout.tsx` — both fetch `logo_url` from `organization_settings`.
+
+**Diet/Workout requests**: Already route to `/my-requests` (MemberRequests page) which creates tasks. NOT routing to empty pages.
+
+**Custom SMTP for auth emails**: Lovable Cloud manages auth emails. Custom SMTP routing for password resets requires the email domain setup flow — not a simple edge function change.
 
 ---
 
-## Implementation
+## What Actually Needs Building
 
-### Module 1: Fix `is_active` DB Error
-- Trace the query causing `column "is_active" does not exist` by searching codebase for `is_active` on tables that lack it
-- Fix the offending query
+### Module 1: MemberCheckout Page + Route (Critical Fix)
+**New file: `src/pages/MemberCheckout.tsx`**
+- Public page (no auth required) that reads `?invoice=` query param
+- Fetches invoice details (number, amount, due, member name) via public-facing edge function or RPC
+- Shows a professional payment summary card with Incline branding
+- Calls `create-razorpay-link` to get the Razorpay payment link and redirects to it, OR embeds Razorpay checkout inline
+- Shows real-time status via Realtime subscription on invoice table
 
-### Module 2: POS — Add "Generate Payment Link" Option
-**File: `src/pages/POS.tsx`**
-- Add a `razorpay_link` option in the payment method Select alongside cash/card/upi/wallet
-- When selected, after checkout creates the invoice, call `create-razorpay-link` instead of `record_payment`
-- Show the generated link in the success dialog with copy/share buttons
-- Add Supabase Realtime subscription on `invoices` table filtered by the current invoice ID — when status changes to `paid`, show a green "✅ Payment Received" toast and update the Recent Sales list
+**File: `src/App.tsx`**
+- Add public route: `<Route path="/member/pay" element={<MemberCheckout />} />`
 
-### Module 3: PurchaseMembershipDrawer — Payment Link Option
-**File: `src/components/members/PurchaseMembershipDrawer.tsx`**
-- Add a "Send Payment Link" option in payment method
-- When selected, skip immediate `record_payment`, create invoice as `pending`, then call `create-razorpay-link`
-- Show link result with copy/WhatsApp share
+### Module 2: Edge Function Hardening — `create-razorpay-link`
+- Add fallback for `null` branch: try global (null branch) integration if branch-specific not found
+- Sanitize `customer.name` — strip special characters, enforce max 50 chars
+- Sanitize `customer.contact` — ensure exactly `+91XXXXXXXXXX` format or omit
+- Add explicit `amount` floor check: reject if < 1 (Razorpay minimum is ₹1)
+- Return structured error codes instead of generic messages
 
-### Module 4: Invoices Page — Realtime Status Updates
-**File: `src/pages/Invoices.tsx`**
-- Subscribe to `postgres_changes` on `invoices` table for the current branch
-- When an invoice status changes (e.g., webhook marks it `paid`), auto-update the table row with a brief highlight animation
-- Show a toast: "Invoice INV-XXX marked as Paid"
+### Module 3: React Query Mutation Audit
+Sweep all `useMutation` across these files for missing `invalidateQueries`:
+- `src/pages/POS.tsx` — verify product/inventory invalidation after sale
+- `src/components/products/AddProductDrawer.tsx` — verify products list refresh
+- `src/components/members/PurchaseMembershipDrawer.tsx` — verify member/invoice/membership refresh
+- Any drawer or page using `useMutation` without `queryClient.invalidateQueries` in `onSuccess`
 
-### Module 5: Tax Invoice PDF Enhancement
-**File: `src/utils/pdfGenerator.ts`**
-- Add a `generateTaxInvoice()` function (or extend existing invoice PDF logic)
-- When `is_gst_invoice` is true:
-  - Title: "TAX INVOICE" instead of "Invoice"
-  - Show gym GSTIN (from `organization_settings.gstin`) and branch address
-  - Show customer GSTIN if available
-  - Add HSN/SAC code column in line items table
-  - Show CGST/SGST split in totals section
-  - Add "Subject to [State] jurisdiction" footer
+Most are already correct. Will audit and fix any gaps.
 
-### Module 6: Webhook — Add PayU Support
-**File: `supabase/functions/payment-webhook/index.ts`**
-- Add `payu` to `ALLOWED_GATEWAYS`
-- Implement PayU signature verification: `sha512(key|txnid|amount|productinfo|...)`
-- Parse PayU `Successful` status from POST form data
-- Extract `udf1` (used as `reference_id` / invoice ID) and call `record_payment` RPC
-- Follow same MIPS sync pattern as Razorpay
+### Module 4: Instagram Integration Settings Fix
+**File: `src/pages/Integrations.tsx`** (or wherever IG settings tab lives)
+- Ensure the Meta/Instagram tab fetches existing `integration_settings` where `provider = 'instagram'` on mount
+- Pre-populate form fields with saved values so settings persist across page loads
 
-### Module 7: Realtime — Enable for Invoices Table
-**Migration**: `ALTER PUBLICATION supabase_realtime ADD TABLE public.invoices;`
+### Module 5: Member Dashboard — Diet/Workout Task Creation
+**Already working** — "Request Diet Plan" and "Request Workout Plan" both link to `/my-requests` (MemberRequests page) which handles task creation. No fix needed.
+
+**Store/Checkout tab**: The member store already exists at `/member-store` (MemberStore.tsx). Will add a direct link/tab in MemberDashboard.
+
+### Module 6: Custom SMTP for Auth Emails
+This is **out of scope for a simple edge function change**. Auth emails in Lovable Cloud are managed by the platform's email infrastructure. To customize the sender domain, the user needs to set up email domain via Cloud → Emails. Will check if an email domain is configured and guide accordingly.
 
 ---
 
@@ -80,15 +68,16 @@
 
 | File | Change |
 |---|---|
-| `src/pages/POS.tsx` | Add "Payment Link" method, Realtime subscription |
-| `src/components/members/PurchaseMembershipDrawer.tsx` | Add "Send Payment Link" flow |
-| `src/pages/Invoices.tsx` | Realtime invoice status updates |
-| `src/utils/pdfGenerator.ts` | Tax Invoice PDF with GSTIN + HSN + CGST/SGST |
-| `supabase/functions/payment-webhook/index.ts` | Add PayU gateway support |
-| Migration | Enable Realtime on invoices, trace `is_active` error |
+| `src/pages/MemberCheckout.tsx` | **New** — Public payment page with invoice lookup + Razorpay redirect |
+| `src/App.tsx` | Add `/member/pay` route |
+| `supabase/functions/create-razorpay-link/index.ts` | Sanitize customer fields, amount floor, fallback branch lookup |
+| `src/pages/Integrations.tsx` | Fix IG settings tab to load saved config on mount |
+| `src/pages/MemberDashboard.tsx` | Add Store/Checkout quick link |
+| Various mutation files | Audit + fix any missing `invalidateQueries` calls |
 
 ## What I'm NOT Building
-- Razorpay MCP integration (doesn't exist in connector catalog; existing direct API integration is correct)
-- PhonePe payment link generation (only Razorpay Payment Links API is in use; PhonePe uses a different flow)
-- Full membership auto-renewal system (the `record_payment` RPC already activates memberships when invoice is fully paid; the webhook already triggers MIPS sync — this flow is complete)
+- Invoice PDF overhaul (already comprehensive with GST, HSN, CGST/SGST, print dialog)
+- Dynamic logo in sidebar/header (already implemented)
+- Diet/Workout request flow fix (already works correctly)
+- Custom SMTP routing for auth emails (requires Lovable Cloud email domain setup, not an edge function)
 
