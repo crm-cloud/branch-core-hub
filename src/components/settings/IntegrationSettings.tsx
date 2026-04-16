@@ -1041,7 +1041,9 @@ function IntegrationConfigSheet({
                   } else {
                     const errorMessage = data?.error || 'Connection test failed';
                     toast.error(
-                      errorMessage.includes('Access Token is required')
+                      errorMessage.includes('appsecret_proof')
+                        ? 'Meta rejected app secret proof. Check that your access token and app secret belong to the same Meta app.'
+                        : errorMessage.includes('Access Token is required')
                         ? 'Add the Meta access token before testing.'
                         : errorMessage.includes('Page ID / Instagram Account ID')
                           ? 'Add the Instagram business account ID or linked page ID before testing.'
