@@ -1,83 +1,87 @@
 
 
-# Plan: Razorpay Pipeline Fixes, Query Refresh, Invoice PDF, IG Settings, Member Tasks & Email
+Plan covers all 7 tasks. Audit findings:
 
-## Audit Summary
+- **Task 1**: `test-integration` is fine for Instagram. The real failure shown in screenshots ("Meta API: Invalid appsecret_proof", "Unsupported type: messenger") = the `test-integration` switch has no `messenger` case + Instagram credentials need correct page+token pairing. Inbound webhook (`meta-webhook`) is separate. Need a true "round-trip" test that actually sends a DM via Graph API.
+- **Task 2**: Need to dump current schema (134 migrations, 119 tables) into one consolidated SQL file.
+- **Task 3**: Auth emails are platform defaults (plain). Transactional sends go via `send-email` edge function — need branded HTML wrapper templates.
+- **Task 4**: `AddProductDrawer` initializes `useState` from `product` prop ONCE — never re-syncs when reopened with a different product. Needs `useEffect` reset + Image URL fetch field.
+- **Task 5**: `trainers` table has NO `trainer_code` column. Two refs in `GlobalSearch.tsx` + `hrmService.ts`. Add the column via migration with auto-gen trigger.
+- **Task 6**: POS payment flow needs card method + transaction_id + slip upload. `payments` table already has `transaction_id`; need `slip_url` column.
+- **Task 7**: SEO/AEO/AI indexing audit on public landing.
 
-**Razorpay `create-razorpay-link`**: The edge function is correctly structured — amount conversion to paise (`Math.round(amount * 100)`) is already present, credentials are fetched from `integration_settings`, customer fields are conditionally added. No code-level bugs found. Edge function logs show clean boot/shutdown cycles with no errors.
+# Plan: 7-Task Audit & Fix Sprint
 
-**`/member/pay` route**: Does NOT exist in `App.tsx` — the `SendPaymentLinkDrawer` references it as a fallback URL, but no route or page handles it. This is a 404.
+## Task 1 — Instagram/Messenger Integration Test (Round-Trip)
+- Add `messenger` case to `test-integration` switch (currently missing → "Unsupported type: messenger" toast).
+- Replace the read-only `GET /me` Instagram test with a true round-trip: verify token + page link + (optional) send a test DM to a configured admin IG-scoped user ID.
+- Improve `appsecret_proof` error path: detect when access_token belongs to a DIFFERENT app than the app_secret and surface that specifically.
+- Audit `meta-webhook` GET (challenge), POST (signature verification, message parsing) — confirm working; add structured `console.error` for every Graph API failure with full Meta error payload.
+- `send-message` outbound: confirm `appsecret_proof` is appended to BOTH `/me/messages` (Messenger) AND `/{ig-user-id}/messages` (Instagram) endpoints.
 
-**React Query invalidation**: Already present in most hooks (`usePlans`, `useWallet`, `usePTPackages`, `AddCategoryDrawer`, etc.). A sweep is needed to verify completeness across all mutations.
+## Task 2 — Standalone Supabase Schema Dump
+- Generate a single consolidated SQL file at `/mnt/documents/incline_full_schema.sql` containing:
+  - All 119 public tables with PKs, FKs, indexes, defaults, check constraints
+  - All enums (`app_role`, `benefit_type`, etc.)
+  - All ~80+ functions + triggers
+  - All RLS policies
+  - Storage bucket definitions (`product-images`, `biometric-photos`, etc.) + storage RLS
+  - Realtime publication memberships
+- Provide a separate `MIGRATION_GUIDE.md` with step-by-step apply instructions (psql command, env var swap, edge function redeploy, secrets re-add).
+- **Lovable Cloud is left untouched** — no client/env changes in this round. Files are deliverables only.
 
-**Invoice PDF**: `generateInvoicePDF` exists and is well-built with GST support, HSN columns, and CGST/SGST splits. It uses `window.open` + print dialog. A proper download-as-PDF button is already in `InvoiceViewDrawer`. The PDF is comprehensive — no major gaps.
+## Task 3 — Branded HTML Email Templates
+- Create `supabase/functions/_shared/emailTemplates.ts` with a master responsive HTML wrapper (logo, brand color, CTA button, footer, unsubscribe placeholder) + 5 templates: Welcome, Password Reset, Booking Confirmation, Payment Receipt, Membership Expiring.
+- Wire `send-email` edge function to detect `templateName` in payload and render the matching HTML; fall back to existing plain text behavior if no template specified.
+- Update existing call sites (booking confirmations, payment receipts, lead notifications) to pass `templateName`.
+- Note: Supabase Auth emails (signup, password reset) come from the platform — to brand those requires the email-domain setup flow, which is a separate path (will note in plan but not auto-trigger).
 
-**Dynamic logo**: Already implemented in both `AppSidebar.tsx` and `AppLayout.tsx` — both fetch `logo_url` from `organization_settings`.
+## Task 4 — POS Edit Product: Pre-fill + Image URL Fetch
+- Refactor `AddProductDrawer` to use `useEffect([product, open])` that resets `formData` when the drawer opens with a (different) product.
+- Add an "Image URL" input below the file upload box. On blur/click "Fetch", call a new edge function `fetch-image-url` that downloads the URL server-side (avoids CORS), validates content-type, uploads to `product-images` bucket, returns the storage URL.
+- Show inline preview, error toasts for invalid URL / fetch failure / unsupported format (only image/jpeg, image/png, image/webp).
 
-**Diet/Workout requests**: Already route to `/my-requests` (MemberRequests page) which creates tasks. NOT routing to empty pages.
+## Task 5 — Fix `trainers.trainer_code` 400 Error
+- Migration: add `trainer_code TEXT UNIQUE` to `trainers` + auto-generation trigger (`TR-<branch_code>-<seq>` pattern, matching member_code style).
+- Backfill existing rows.
+- Add btree index on `trainer_code`.
+- Verify `GlobalSearch.tsx` query returns; no other refs exist.
 
-**Custom SMTP for auth emails**: Lovable Cloud manages auth emails. Custom SMTP routing for password resets requires the email domain setup flow — not a simple edge function change.
+## Task 6 — POS Card Payment Capture
+- Migration: add `slip_url TEXT NULL` to `payments` table. (`transaction_id` already exists.)
+- Update POS payment dialog: payment method selector (Cash / Credit Card / Debit Card / UPI / Other). When Card or UPI selected, show Transaction ID input + slip upload (uses `payment-slips` storage bucket, created via migration with member-readable RLS).
+- Order/receipt detail view: render transaction ID + slip thumbnail (click to lightbox).
+- Cash flow remains unchanged.
 
----
+## Task 7 — SEO / AEO / AI Indexing Audit
+- Update `index.html`: title, meta description, canonical, OG tags, Twitter cards, theme-color, JSON-LD `Organization` + `LocalBusiness` (NAP, openingHours for both branches, geo, telephone) + `WebSite` SearchAction.
+- Add `public/robots.txt` (allow all, point to sitemap), `public/sitemap.xml` (landing + key public routes), `public/llms.txt` (for AI crawlers — short summary + key URLs).
+- Add FAQ JSON-LD on landing if FAQ section exists.
+- Ensure single semantic `<h1>` on landing, descriptive alt text on hero images.
+- Deliver a short audit report markdown summarizing findings + Lighthouse-style recommendations.
 
-## What Actually Needs Building
-
-### Module 1: MemberCheckout Page + Route (Critical Fix)
-**New file: `src/pages/MemberCheckout.tsx`**
-- Public page (no auth required) that reads `?invoice=` query param
-- Fetches invoice details (number, amount, due, member name) via public-facing edge function or RPC
-- Shows a professional payment summary card with Incline branding
-- Calls `create-razorpay-link` to get the Razorpay payment link and redirects to it, OR embeds Razorpay checkout inline
-- Shows real-time status via Realtime subscription on invoice table
-
-**File: `src/App.tsx`**
-- Add public route: `<Route path="/member/pay" element={<MemberCheckout />} />`
-
-### Module 2: Edge Function Hardening — `create-razorpay-link`
-- Add fallback for `null` branch: try global (null branch) integration if branch-specific not found
-- Sanitize `customer.name` — strip special characters, enforce max 50 chars
-- Sanitize `customer.contact` — ensure exactly `+91XXXXXXXXXX` format or omit
-- Add explicit `amount` floor check: reject if < 1 (Razorpay minimum is ₹1)
-- Return structured error codes instead of generic messages
-
-### Module 3: React Query Mutation Audit
-Sweep all `useMutation` across these files for missing `invalidateQueries`:
-- `src/pages/POS.tsx` — verify product/inventory invalidation after sale
-- `src/components/products/AddProductDrawer.tsx` — verify products list refresh
-- `src/components/members/PurchaseMembershipDrawer.tsx` — verify member/invoice/membership refresh
-- Any drawer or page using `useMutation` without `queryClient.invalidateQueries` in `onSuccess`
-
-Most are already correct. Will audit and fix any gaps.
-
-### Module 4: Instagram Integration Settings Fix
-**File: `src/pages/Integrations.tsx`** (or wherever IG settings tab lives)
-- Ensure the Meta/Instagram tab fetches existing `integration_settings` where `provider = 'instagram'` on mount
-- Pre-populate form fields with saved values so settings persist across page loads
-
-### Module 5: Member Dashboard — Diet/Workout Task Creation
-**Already working** — "Request Diet Plan" and "Request Workout Plan" both link to `/my-requests` (MemberRequests page) which handles task creation. No fix needed.
-
-**Store/Checkout tab**: The member store already exists at `/member-store` (MemberStore.tsx). Will add a direct link/tab in MemberDashboard.
-
-### Module 6: Custom SMTP for Auth Emails
-This is **out of scope for a simple edge function change**. Auth emails in Lovable Cloud are managed by the platform's email infrastructure. To customize the sender domain, the user needs to set up email domain via Cloud → Emails. Will check if an email domain is configured and guide accordingly.
-
----
-
-## Files Changed
-
+## Files Changed / Created
 | File | Change |
 |---|---|
-| `src/pages/MemberCheckout.tsx` | **New** — Public payment page with invoice lookup + Razorpay redirect |
-| `src/App.tsx` | Add `/member/pay` route |
-| `supabase/functions/create-razorpay-link/index.ts` | Sanitize customer fields, amount floor, fallback branch lookup |
-| `src/pages/Integrations.tsx` | Fix IG settings tab to load saved config on mount |
-| `src/pages/MemberDashboard.tsx` | Add Store/Checkout quick link |
-| Various mutation files | Audit + fix any missing `invalidateQueries` calls |
+| `supabase/functions/test-integration/index.ts` | Add `messenger` case, real IG round-trip test, better error parsing |
+| `supabase/functions/send-message/index.ts` | Audit + harden Graph API error logging |
+| `supabase/functions/_shared/emailTemplates.ts` | **New** — Master HTML email wrapper + 5 templates |
+| `supabase/functions/send-email/index.ts` | Render branded HTML when `templateName` provided |
+| `supabase/functions/fetch-image-url/index.ts` | **New** — Server-side image download → storage upload |
+| `src/components/products/AddProductDrawer.tsx` | useEffect reset on product change + Image URL fetch UI |
+| `src/components/search/GlobalSearch.tsx` | Verify after migration |
+| `src/pages/POS.tsx` (+ payment dialog) | Card method + transaction ID + slip upload |
+| `src/components/billing/InvoiceViewDrawer.tsx` (or receipt view) | Display transaction ID + slip thumbnail |
+| `index.html` | Full SEO meta + JSON-LD |
+| `public/robots.txt`, `public/sitemap.xml`, `public/llms.txt` | **New** |
+| Migration | `trainer_code` column + trigger + backfill; `slip_url` on payments; `payment-slips` storage bucket + RLS |
+| `/mnt/documents/incline_full_schema.sql` | **New** — Consolidated standalone dump |
+| `/mnt/documents/MIGRATION_GUIDE.md` | **New** — Apply instructions |
+| `/mnt/documents/SEO_AUDIT_REPORT.md` | **New** — Audit findings |
 
 ## What I'm NOT Building
-- Invoice PDF overhaul (already comprehensive with GST, HSN, CGST/SGST, print dialog)
-- Dynamic logo in sidebar/header (already implemented)
-- Diet/Workout request flow fix (already works correctly)
-- Custom SMTP routing for auth emails (requires Lovable Cloud email domain setup, not an edge function)
+- Switching the live Lovable client to an external Supabase project (you confirmed dump-only).
+- Custom Supabase Auth email branding (requires email-domain DNS setup — separate flow; will mention in chat).
+- Marketing/promo email templates (only transactional templates).
+- Auto-trigger for SEO ranking improvements (organic process; only on-page fixes).
 
