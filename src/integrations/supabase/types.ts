@@ -2713,6 +2713,7 @@ export type Database = {
           refunded_at: string | null
           refunded_by: string | null
           reminder_sent_at: string | null
+          source: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount: number | null
@@ -2742,6 +2743,7 @@ export type Database = {
           refunded_at?: string | null
           refunded_by?: string | null
           reminder_sent_at?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
           tax_amount?: number | null
@@ -2771,6 +2773,7 @@ export type Database = {
           refunded_at?: string | null
           refunded_by?: string | null
           reminder_sent_at?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
           tax_amount?: number | null
