@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Upload, Loader2, Link as LinkIcon } from 'lucide-react';
 import { uploadProductImage, createProduct, updateProduct } from '@/services/productService';
 
 interface AddProductDrawerProps {
@@ -18,26 +18,55 @@ interface AddProductDrawerProps {
   product?: any;
 }
 
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  sku: '',
+  price: '',
+  cost_price: '',
+  tax_rate: 0,
+  category_id: '',
+  branch_id: '',
+  is_active: true,
+  image_url: '',
+  initial_quantity: '',
+};
+
 export function AddProductDrawer({ open, onOpenChange, product }: AddProductDrawerProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isEditing = !!product;
-  
-  const [formData, setFormData] = useState({
-    name: product?.name || '',
-    description: product?.description || '',
-    sku: product?.sku || '',
-    price: product?.price || '',
-    cost_price: product?.cost_price || '',
-    tax_rate: product?.tax_rate || 0,
-    category_id: product?.category_id || '',
-    branch_id: product?.branch_id || '',
-    is_active: product?.is_active ?? true,
-    image_url: product?.image_url || '',
-    initial_quantity: '',
-  });
+
+  const [formData, setFormData] = useState<any>(EMPTY_FORM);
   const [uploading, setUploading] = useState(false);
-  const [imagePreview, setImagePreview] = useState(product?.image_url || '');
+  const [fetchingUrl, setFetchingUrl] = useState(false);
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageUrlInput, setImageUrlInput] = useState('');
+
+  // Sync form when drawer opens or product changes (fixes "edit doesn't pre-fill" bug)
+  useEffect(() => {
+    if (!open) return;
+    if (product) {
+      setFormData({
+        name: product.name || '',
+        description: product.description || '',
+        sku: product.sku || '',
+        price: product.price ?? '',
+        cost_price: product.cost_price ?? '',
+        tax_rate: product.tax_rate ?? 0,
+        category_id: product.category_id || '',
+        branch_id: product.branch_id || '',
+        is_active: product.is_active ?? true,
+        image_url: product.image_url || '',
+        initial_quantity: '',
+      });
+      setImagePreview(product.image_url || '');
+    } else {
+      setFormData(EMPTY_FORM);
+      setImagePreview('');
+    }
+    setImageUrlInput('');
+  }, [open, product]);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['product-categories'],
@@ -64,27 +93,48 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.type.startsWith('image/')) {
       toast.error('Please select an image file');
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Image size must be less than 5MB');
       return;
     }
-
     setUploading(true);
     try {
       const publicUrl = await uploadProductImage(file);
-      setFormData({ ...formData, image_url: publicUrl });
+      setFormData((f: any) => ({ ...f, image_url: publicUrl }));
       setImagePreview(publicUrl);
       toast.success('Image uploaded successfully');
     } catch (error: any) {
       toast.error('Failed to upload image: ' + error.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleFetchImageUrl = async () => {
+    if (!imageUrlInput.trim()) {
+      toast.error('Enter an image URL');
+      return;
+    }
+    setFetchingUrl(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-image-url', {
+        body: { imageUrl: imageUrlInput.trim() },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (!data?.url) throw new Error('No URL returned');
+      setFormData((f: any) => ({ ...f, image_url: data.url }));
+      setImagePreview(data.url);
+      setImageUrlInput('');
+      toast.success('Image fetched and saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to fetch image');
+    } finally {
+      setFetchingUrl(false);
     }
   };
 
@@ -103,38 +153,29 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
         image_url: formData.image_url || null,
       };
 
-      if (isEditing) {
-        return updateProduct(product.id, payload);
-      } else {
-        const newProduct = await createProduct(payload as any);
-        
-        // Create inventory record with initial quantity
-        if (formData.initial_quantity && Number(formData.initial_quantity) > 0) {
-          const quantity = Number(formData.initial_quantity);
-          const branchId = formData.branch_id || branches[0]?.id;
-          
-          if (branchId) {
-            // Create inventory record
-            await supabase.from('inventory').insert({
-              product_id: newProduct.id,
-              branch_id: branchId,
-              quantity: quantity,
-              min_quantity: 5, // Default low stock threshold
-            });
-            
-            // Record initial stock movement
-            await supabase.from('stock_movements').insert({
-              product_id: newProduct.id,
-              branch_id: branchId,
-              movement_type: 'initial',
-              quantity: quantity,
-              notes: 'Initial stock on product creation',
-            });
-          }
+      if (isEditing) return updateProduct(product.id, payload);
+
+      const newProduct = await createProduct(payload as any);
+      if (formData.initial_quantity && Number(formData.initial_quantity) > 0) {
+        const quantity = Number(formData.initial_quantity);
+        const branchId = formData.branch_id || branches[0]?.id;
+        if (branchId) {
+          await supabase.from('inventory').insert({
+            product_id: newProduct.id,
+            branch_id: branchId,
+            quantity,
+            min_quantity: 5,
+          });
+          await supabase.from('stock_movements').insert({
+            product_id: newProduct.id,
+            branch_id: branchId,
+            movement_type: 'initial',
+            quantity,
+            notes: 'Initial stock on product creation',
+          });
         }
-        
-        return newProduct;
       }
+      return newProduct;
     },
     onSuccess: () => {
       toast.success(isEditing ? 'Product updated' : 'Product created with inventory');
@@ -142,29 +183,9 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       onOpenChange(false);
-      resetForm();
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to save product');
-    },
+    onError: (error: any) => toast.error(error.message || 'Failed to save product'),
   });
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      sku: '',
-      price: '',
-      cost_price: '',
-      tax_rate: 0,
-      category_id: '',
-      branch_id: '',
-      is_active: true,
-      image_url: '',
-      initial_quantity: '',
-    });
-    setImagePreview('');
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,7 +210,7 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
           {/* Image Upload */}
           <div className="space-y-2">
             <Label>Product Image</Label>
-            <div 
+            <div
               className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary transition-colors"
               onClick={() => fileInputRef.current?.click()}
             >
@@ -200,14 +221,14 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
                 </div>
               ) : imagePreview ? (
                 <div className="relative">
-                  <img src={imagePreview} alt="Preview" className="max-h-40 mx-auto rounded" />
+                  <img src={imagePreview} alt="Product preview" className="max-h-40 mx-auto rounded" />
                   <p className="text-xs text-muted-foreground mt-2">Click to change</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 py-4">
                   <Upload className="h-8 w-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Click to upload image</p>
-                  <p className="text-xs text-muted-foreground">PNG, JPG up to 5MB</p>
+                  <p className="text-xs text-muted-foreground">PNG, JPG, WebP up to 5MB</p>
                 </div>
               )}
             </div>
@@ -218,6 +239,26 @@ export function AddProductDrawer({ open, onOpenChange, product }: AddProductDraw
               onChange={handleImageUpload}
               className="hidden"
             />
+
+            {/* Image URL fetch */}
+            <div className="flex gap-2 pt-2">
+              <Input
+                placeholder="…or paste an image URL"
+                value={imageUrlInput}
+                onChange={(e) => setImageUrlInput(e.target.value)}
+                disabled={fetchingUrl}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleFetchImageUrl}
+                disabled={fetchingUrl || !imageUrlInput.trim()}
+              >
+                {fetchingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
+                <span className="ml-2">Fetch</span>
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

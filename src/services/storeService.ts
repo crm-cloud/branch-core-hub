@@ -81,6 +81,8 @@ export async function createPOSSale(sale: {
   items: CartItem[];
   paymentMethod: string;
   soldBy?: string;
+  transactionId?: string;
+  slipUrl?: string;
 }) {
   const totalAmount = sale.items.reduce(
     (sum, item) => sum + item.product.price * item.quantity,
@@ -160,7 +162,9 @@ export async function createPOSSale(sale: {
       payment_method: sale.paymentMethod as any,
       status: 'completed',
       payment_date: new Date().toISOString(),
-    });
+      transaction_id: sale.transactionId || null,
+      slip_url: sale.slipUrl || null,
+    } as any);
   }
 
   // Update inventory
