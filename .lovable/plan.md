@@ -1,87 +1,110 @@
 
 
-Plan covers all 7 tasks. Audit findings:
+Massive multi-domain sprint. I'll group into focused work packages and lean on existing RPCs/services rather than introducing parallel paths.
 
-- **Task 1**: `test-integration` is fine for Instagram. The real failure shown in screenshots ("Meta API: Invalid appsecret_proof", "Unsupported type: messenger") = the `test-integration` switch has no `messenger` case + Instagram credentials need correct page+token pairing. Inbound webhook (`meta-webhook`) is separate. Need a true "round-trip" test that actually sends a DM via Graph API.
-- **Task 2**: Need to dump current schema (134 migrations, 119 tables) into one consolidated SQL file.
-- **Task 3**: Auth emails are platform defaults (plain). Transactional sends go via `send-email` edge function — need branded HTML wrapper templates.
-- **Task 4**: `AddProductDrawer` initializes `useState` from `product` prop ONCE — never re-syncs when reopened with a different product. Needs `useEffect` reset + Image URL fetch field.
-- **Task 5**: `trainers` table has NO `trainer_code` column. Two refs in `GlobalSearch.tsx` + `hrmService.ts`. Add the column via migration with auto-gen trigger.
-- **Task 6**: POS payment flow needs card method + transaction_id + slip upload. `payments` table already has `transaction_id`; need `slip_url` column.
-- **Task 7**: SEO/AEO/AI indexing audit on public landing.
+# Plan: POS, Payments, Leads, Member Lifecycle, Meta, Storage — Audit & Fix Sprint
 
-# Plan: 7-Task Audit & Fix Sprint
+## Package 1 — POS Branch + Order Model Normalization (P1)
+**Files:** `src/pages/POS.tsx`, `src/services/storeService.ts`, `src/pages/Store.tsx`, `src/pages/Invoices.tsx`, `src/pages/MemberStore.tsx`
 
-## Task 1 — Instagram/Messenger Integration Test (Round-Trip)
-- Add `messenger` case to `test-integration` switch (currently missing → "Unsupported type: messenger" toast).
-- Replace the read-only `GET /me` Instagram test with a true round-trip: verify token + page link + (optional) send a test DM to a configured admin IG-scoped user ID.
-- Improve `appsecret_proof` error path: detect when access_token belongs to a DIFFERENT app than the app_secret and surface that specifically.
-- Audit `meta-webhook` GET (challenge), POST (signature verification, message parsing) — confirm working; add structured `console.error` for every Graph API failure with full Meta error payload.
-- `send-message` outbound: confirm `appsecret_proof` is appended to BOTH `/me/messages` (Messenger) AND `/{ig-user-id}/messages` (Instagram) endpoints.
+- **POS.tsx (line 123):** Replace `supabase.from('branches').select().limit(1)` with `effectiveBranchId` from `useBranch()` (already wired in `BranchContext`). Block checkout with toast when no branch is selected.
+- **Order model:** Stop using `notes ILIKE 'Store purchase…'`. Add a typed marker on invoice creation:
+  - POS sales already set `pos_sale_id` → use that (Invoices.tsx already does).
+  - Member self-service store: add a migration column `invoices.source TEXT` (`'pos' | 'member_store' | 'ecommerce' | 'membership' | 'manual'`, default `'manual'`) backfilled from existing patterns (`pos_sale_id NOT NULL` → `pos`, `notes LIKE 'Store purchase by member'` → `member_store`).
+  - Update `Store.tsx` filter to `source IN ('pos','member_store','ecommerce')` instead of notes parsing.
+  - Update `MemberStore.tsx` and `storeService.ts` to set `source` explicitly.
+- **Deprecate** unused `createEcommerceOrder()` path OR wire it as the single member-store entry point — pick the simpler: keep current MemberStore direct invoice path but stamp `source='member_store'`.
 
-## Task 2 — Standalone Supabase Schema Dump
-- Generate a single consolidated SQL file at `/mnt/documents/incline_full_schema.sql` containing:
-  - All 119 public tables with PKs, FKs, indexes, defaults, check constraints
-  - All enums (`app_role`, `benefit_type`, etc.)
-  - All ~80+ functions + triggers
-  - All RLS policies
-  - Storage bucket definitions (`product-images`, `biometric-photos`, etc.) + storage RLS
-  - Realtime publication memberships
-- Provide a separate `MIGRATION_GUIDE.md` with step-by-step apply instructions (psql command, env var swap, edge function redeploy, secrets re-add).
-- **Lovable Cloud is left untouched** — no client/env changes in this round. Files are deliverables only.
+## Package 2 — Send Payment Link End-to-End (P1)
+**Files:** `src/components/invoices/SendPaymentLinkDrawer.tsx`, `src/services/paymentService.ts`, `supabase/functions/create-payment-order/index.ts`, `supabase/functions/create-razorpay-link/index.ts`
 
-## Task 3 — Branded HTML Email Templates
-- Create `supabase/functions/_shared/emailTemplates.ts` with a master responsive HTML wrapper (logo, brand color, CTA button, footer, unsubscribe placeholder) + 5 templates: Welcome, Password Reset, Booking Confirmation, Payment Receipt, Membership Expiring.
-- Wire `send-email` edge function to detect `templateName` in payload and render the matching HTML; fall back to existing plain text behavior if no template specified.
-- Update existing call sites (booking confirmations, payment receipts, lead notifications) to pass `templateName`.
-- Note: Supabase Auth emails (signup, password reset) come from the platform — to brand those requires the email-domain setup flow, which is a separate path (will note in plan but not auto-trigger).
+- Remove `/member/pay?invoice=…` URL building. Replace with: drawer calls `create-razorpay-link` (already deployed v1.1.0) → receives short link → uses **that** URL in WhatsApp/email body.
+- **Naming alignment:** `create-payment-order` checks `integration_type = 'payment'` while frontend writes `'payment_gateway'`. Fix the edge function to read `'payment_gateway'` (matches `IntegrationSettings.tsx` + `paymentService.ts`).
+- WhatsApp delivery: route through `send-message` edge function (real Graph API) when WhatsApp is configured; fall back to `wa.me` only when not configured. Email delivery: route through `send-email` (transactional) instead of `mailto:`. Both receive the real Razorpay short link.
+- Public `/member/pay` route already exists (MemberCheckout.tsx) — keep it as a fallback landing for invoice lookup, but the **primary** delivered URL is the Razorpay short link.
 
-## Task 4 — POS Edit Product: Pre-fill + Image URL Fetch
-- Refactor `AddProductDrawer` to use `useEffect([product, open])` that resets `formData` when the drawer opens with a (different) product.
-- Add an "Image URL" input below the file upload box. On blur/click "Fetch", call a new edge function `fetch-image-url` that downloads the URL server-side (avoids CORS), validates content-type, uploads to `product-images` bucket, returns the storage URL.
-- Show inline preview, error toasts for invalid URL / fetch failure / unsupported format (only image/jpeg, image/png, image/webp).
+## Package 3 — Lead Capture Normalization (P1)
+**Files:** `supabase/functions/webhook-lead-capture/index.ts`, `supabase/functions/capture-lead/index.ts`, `src/components/leads/AddLeadDrawer.tsx`, embedded form, chatbot capture
 
-## Task 5 — Fix `trainers.trainer_code` 400 Error
-- Migration: add `trainer_code TEXT UNIQUE` to `trainers` + auto-generation trigger (`TR-<branch_code>-<seq>` pattern, matching member_code style).
-- Backfill existing rows.
-- Add btree index on `trainer_code`.
-- Verify `GlobalSearch.tsx` query returns; no other refs exist.
+- Migration: add `leads.raw_payload JSONB`, `leads.utm_source/medium/campaign/term/content TEXT`, `leads.referrer TEXT`, `leads.landing_url TEXT` (most likely already partially exist — audit first; only add missing).
+- Edge functions: write **structured** fields to columns, store the **full** inbound JSON in `raw_payload`, keep `notes` strictly as the free-text user message. No more "kitchen sink in notes".
+- Frontend `AddLeadDrawer`: surface UTM fields as optional advanced section.
+- Backward compat: existing leads keep their current `notes` content; new fields default-null.
 
-## Task 6 — POS Card Payment Capture
-- Migration: add `slip_url TEXT NULL` to `payments` table. (`transaction_id` already exists.)
-- Update POS payment dialog: payment method selector (Cash / Credit Card / Debit Card / UPI / Other). When Card or UPI selected, show Transaction ID input + slip upload (uses `payment-slips` storage bucket, created via migration with member-readable RLS).
-- Order/receipt detail view: render transaction ID + slip thumbnail (click to lightbox).
-- Cash flow remains unchanged.
+## Package 4 — Member Self-Service Lifecycle (P1/P2)
+**Files:** `supabase/functions/send-reminders/index.ts`, `src/services/communicationService.ts`, `src/utils/pdfGenerator.ts`, `supabase/functions/create-member-user/index.ts`, `src/components/members/AddMemberDrawer.tsx`, `src/components/benefits/BookBenefitSlot.tsx`
 
-## Task 7 — SEO / AEO / AI Indexing Audit
-- Update `index.html`: title, meta description, canonical, OG tags, Twitter cards, theme-color, JSON-LD `Organization` + `LocalBusiness` (NAP, openingHours for both branches, geo, telephone) + `WebSite` SearchAction.
-- Add `public/robots.txt` (allow all, point to sitemap), `public/sitemap.xml` (landing + key public routes), `public/llms.txt` (for AI crawlers — short summary + key URLs).
-- Add FAQ JSON-LD on landing if FAQ section exists.
-- Ensure single semantic `<h1>` on landing, descriptive alt text on hero images.
-- Deliver a short audit report markdown summarizing findings + Lighthouse-style recommendations.
+- **send-reminders:** Replace `/member/...` paths with actual app routes (`/my-invoices`, `/my-classes`, `/my-benefits`). Replace log-only sends with real `send-message` (WhatsApp) + `send-email` invocations, gated by `reminder_configurations`.
+- **communicationService:** WhatsApp uses `send-whatsapp` edge function (Graph API), not `wa.me`. Email uses `send-email`. Keep `wa.me` only as explicit "open WhatsApp app" UX action, not as the send mechanism.
+- **PDFs:** Persist generated invoice PDFs to a new `invoice-pdfs` storage bucket (private, member+staff RLS). Return signed URL for email/WhatsApp attachment. Keep existing print-window as a UX option.
+- **create-member-user:** Read & persist `avatarUrl`, `governmentIdType`, `governmentIdNumber`. Default new members to `status='inactive'` (or `pending`); flip to `active` only when first paid membership invoice fully paid (already handled in `record_payment` RPC — extend it to also activate the member row).
+- **BookBenefitSlot:** Stop direct insert into `benefit_bookings`. Call `book_facility_slot` RPC instead — it enforces capacity, duplicates, frequency limits.
 
-## Files Changed / Created
+## Package 5 — Meta Messenger: Decide & Implement OR Hide (P2)
+**Files:** `src/pages/Integrations.tsx` / `IntegrationSettings.tsx`, `src/utils/communication.ts`, `supabase/functions/test-integration/index.ts`, `supabase/functions/send-message/index.ts`, `supabase/functions/meta-webhook/index.ts`
+
+- Audit: `IntegrationSettings.tsx` only lists `payment_gateway|sms|email|whatsapp|google_business` — Messenger is NOT a UI option. The "Unsupported type: messenger" toast must be coming from somewhere else (likely the test-integration switch). 
+- **Decision:** since `meta-webhook` and `send-message` already handle Messenger inbound + outbound (page_id, appsecret_proof), **complete the path** rather than hide:
+  - Add `'messenger'` to `IntegrationSettings.tsx` provider list with credential fields (page_id, page_access_token, app_secret).
+  - Add `messenger` case in `test-integration` (Graph `/me?fields=id,name`).
+  - Extend `communication.ts` channel union to include `messenger` (mirror whatsapp routing).
+- If user prefers to hide instead, we'll just remove the trigger sites — confirm during build if needed.
+
+## Package 6 — Product Image Upload Diagnostics (P3)
+**Files:** `src/components/products/AddProductDrawer.tsx`, `src/services/productService.ts`, migration audit for `products` storage bucket policies
+
+- Verify `products` bucket exists, `public=true`, RLS allows `authenticated` insert. Run linter on storage policies.
+- Improve `uploadProductImage` error reporting: surface `error.statusCode`, `error.message`, and bucket name in the toast (currently swallowed). Add `console.error` with full Supabase error object.
+- Add a pre-upload size + MIME validation (≤5MB, jpeg/png/webp/gif) with explicit toast.
+- The new `fetch-image-url` edge function already provides the URL-based path as a CORS-safe alternative — confirm it's wired in `AddProductDrawer`.
+
+## Package 7 — AI Fitness Plan Builder (Epics 1-4)
+**Files:** `src/pages/AIFitness.tsx`, new `src/components/fitness/AIGeneratorModal.tsx`, new `src/components/fitness/ManualPlanBuilder.tsx`, `src/components/fitness/AssignPlanDrawer.tsx`
+
+- **AIFitness page redesign:** Tabs `Global Templates | Member Plans`. Top-right "Create New Plan" dropdown → Generate with AI (Sparkle) | Build Manually (Wrench).
+- **AIGeneratorModal:** Multi-step Sheet (Goal → Experience → Days/week → Diet → optional Member link via member autocomplete). On submit, call new `generate-fitness-plan` edge function (Lovable AI Gateway, `google/gemini-2.5-flash`) with streaming. Render skeleton then editable Markdown editor; "Save as Template" or "Assign to Member".
+- **ManualPlanBuilder:** Day accordion for workouts (Add Exercise: name/sets/reps/rest), meal sections for diet (Breakfast/Lunch/Dinner/Snacks with macros + calories). Save target picker (Template vs Member).
+- **Floating action bar on saved plan:** Download PDF (jsPDF, branded with org logo + member name + structured tables), Send WhatsApp (uses real `send-whatsapp` with PDF link from new `fitness-plans` storage bucket), Send Email (uses `send-email` with branded HTML template).
+- Schema: `fitness_plans (id, branch_id, type='workout'|'diet'|'combined', scope='template'|'member', member_id NULL, trainer_id, title, content JSONB, pdf_url, created_at)` + RLS.
+
+## Files Summary
 | File | Change |
 |---|---|
-| `supabase/functions/test-integration/index.ts` | Add `messenger` case, real IG round-trip test, better error parsing |
-| `supabase/functions/send-message/index.ts` | Audit + harden Graph API error logging |
-| `supabase/functions/_shared/emailTemplates.ts` | **New** — Master HTML email wrapper + 5 templates |
-| `supabase/functions/send-email/index.ts` | Render branded HTML when `templateName` provided |
-| `supabase/functions/fetch-image-url/index.ts` | **New** — Server-side image download → storage upload |
-| `src/components/products/AddProductDrawer.tsx` | useEffect reset on product change + Image URL fetch UI |
-| `src/components/search/GlobalSearch.tsx` | Verify after migration |
-| `src/pages/POS.tsx` (+ payment dialog) | Card method + transaction ID + slip upload |
-| `src/components/billing/InvoiceViewDrawer.tsx` (or receipt view) | Display transaction ID + slip thumbnail |
-| `index.html` | Full SEO meta + JSON-LD |
-| `public/robots.txt`, `public/sitemap.xml`, `public/llms.txt` | **New** |
-| Migration | `trainer_code` column + trigger + backfill; `slip_url` on payments; `payment-slips` storage bucket + RLS |
-| `/mnt/documents/incline_full_schema.sql` | **New** — Consolidated standalone dump |
-| `/mnt/documents/MIGRATION_GUIDE.md` | **New** — Apply instructions |
-| `/mnt/documents/SEO_AUDIT_REPORT.md` | **New** — Audit findings |
+| `src/pages/POS.tsx` | Use `effectiveBranchId`; block on no branch |
+| `src/services/storeService.ts` | Set `source` on invoices; remove notes-based marking |
+| `src/pages/Store.tsx` | Filter by `invoices.source` not notes |
+| `src/pages/MemberStore.tsx` | Stamp `source='member_store'` |
+| Migration | `invoices.source` column + backfill; `leads.raw_payload`+UTM cols (only missing); `fitness_plans` table; `invoice-pdfs` + `fitness-plans` storage buckets |
+| `src/components/invoices/SendPaymentLinkDrawer.tsx` | Call `create-razorpay-link`; route via send-message/send-email |
+| `supabase/functions/create-payment-order/index.ts` | Read `integration_type='payment_gateway'` |
+| `supabase/functions/webhook-lead-capture/index.ts` + `capture-lead/index.ts` | Map structured fields; `raw_payload` JSONB; clean `notes` |
+| `src/components/leads/AddLeadDrawer.tsx` | Optional UTM fields |
+| `supabase/functions/send-reminders/index.ts` | Real send-message/send-email; correct routes |
+| `src/services/communicationService.ts` | Real edge function sends, not wa.me/mailto |
+| `src/utils/pdfGenerator.ts` | Persist to `invoice-pdfs` bucket; return signed URL |
+| `supabase/functions/create-member-user/index.ts` | Read all profile fields; default `inactive` |
+| `supabase/functions/record_payment` (migration) | Activate member on first paid membership |
+| `src/components/benefits/BookBenefitSlot.tsx` | Use `book_facility_slot` RPC |
+| `src/pages/Integrations.tsx`/`IntegrationSettings.tsx` | Add Messenger provider |
+| `src/utils/communication.ts` | Add `messenger` channel |
+| `supabase/functions/test-integration/index.ts` | Add `messenger` case |
+| `src/services/productService.ts` + `AddProductDrawer.tsx` | Verbose error reporting; size/MIME validation |
+| `src/pages/AIFitness.tsx` (+new modal/builder/edge fn) | Full Epic 1-4 build |
+| `supabase/functions/generate-fitness-plan/index.ts` | **New** — Gemini streaming via Lovable AI |
+
+## Regression Checklist (delivered after build)
+1. POS: select branch → ring up sale → invoice appears in Invoices (filter by branch) AND in Store POS Sales view.
+2. Member self-service store purchase → invoice appears in Store with `source='member_store'`.
+3. Send Payment Link → real Razorpay short link delivered via WhatsApp + email; clicking pays; webhook updates invoice to `paid`.
+4. Webhook lead capture → structured fields populated; `raw_payload` has full body; `notes` clean.
+5. Member registration → all fields persist; member starts `inactive` until first paid membership invoice.
+6. Benefit booking → enforced by RPC (capacity/duplicate/limit toasts work).
+7. Messenger integration tab visible; test button passes.
+8. Product image upload — clear error message on failure; URL fetch works.
+9. AI Fitness: generate → edit → save as template OR assign to member → download PDF → WhatsApp/email delivery.
 
 ## What I'm NOT Building
-- Switching the live Lovable client to an external Supabase project (you confirmed dump-only).
-- Custom Supabase Auth email branding (requires email-domain DNS setup — separate flow; will mention in chat).
-- Marketing/promo email templates (only transactional templates).
-- Auto-trigger for SEO ranking improvements (organic process; only on-page fixes).
+- Switching member status engine to a separate state machine (extending existing `record_payment` RPC instead).
+- Replacing `pdfGenerator` print-window entirely (keeping as UX option, adding persisted PDFs).
+- Custom Supabase Auth email branding (separate email-domain DNS flow).
 
