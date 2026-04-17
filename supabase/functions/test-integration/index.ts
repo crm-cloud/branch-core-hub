@@ -90,6 +90,10 @@ Deno.serve(async (req) => {
       case "instagram":
         result = await testInstagram(config, credentials);
         break;
+      case "messenger":
+      case "facebook_messenger":
+        result = await testMessenger(config, credentials);
+        break;
       default:
         result = { success: false, error: `Unsupported type: ${type}` };
     }
@@ -274,24 +278,62 @@ async function testInstagram(config: any, credentials: any) {
   const accessToken = credentials?.access_token || credentials?.page_access_token;
   if (!accessToken) return { success: false, error: "Access Token is required" };
 
-  const pageId = config?.page_id || config?.instagram_account_id;
-  if (!pageId) return { success: false, error: "Page ID / Instagram Account ID is required" };
+  const pageId = config?.instagram_account_id || config?.page_id;
+  if (!pageId) return { success: false, error: "Instagram Account ID / Page ID is required" };
 
-  const result = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name`,
+  // Round-trip check #1: verify the IG/page entity is accessible via this token
+  const entity = await fetchMetaGraph(
+    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,username`,
+    accessToken,
+    credentials?.app_secret,
+  );
+  if (!entity.ok) {
+    return { success: false, error: `Meta API: ${formatMetaError(entity.error || "Instagram test failed", "instagram")}` };
+  }
+
+  // Round-trip check #2: verify the token can access /me/accounts (page→IG link sanity)
+  const me = await fetchMetaGraph(
+    `https://graph.facebook.com/v25.0/me?fields=id,name`,
     accessToken,
     credentials?.app_secret,
   );
 
-  if (!result.ok) {
-    return { success: false, error: `Meta API: ${formatMetaError(result.error || "Instagram test failed", "instagram")}` };
-  }
+  const label = entity.data?.username
+    ? `@${entity.data.username}`
+    : entity.data?.name || pageId;
 
   return {
     success: true,
-    message: result.usedFallback
-      ? `Instagram connected ✓ (verified without app secret proof)`
-      : `Instagram connected ✓ (Page: ${result.data?.name || pageId})`,
+    message: `Instagram connected ✓ (${label}${me.ok && me.data?.name ? ` via ${me.data.name}` : ""})${entity.usedFallback ? " — without appsecret_proof" : ""}`,
+  };
+}
+
+async function testMessenger(config: any, credentials: any) {
+  const accessToken = credentials?.page_access_token || credentials?.access_token;
+  if (!accessToken) return { success: false, error: "Page Access Token is required" };
+
+  const pageId = config?.page_id;
+  if (!pageId) return { success: false, error: "Facebook Page ID is required" };
+
+  const entity = await fetchMetaGraph(
+    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,category`,
+    accessToken,
+    credentials?.app_secret,
+  );
+  if (!entity.ok) {
+    return { success: false, error: `Meta API: ${formatMetaError(entity.error || "Messenger test failed", "instagram")}` };
+  }
+
+  // Verify Messenger is enabled by reading subscribed_apps (may require pages_messaging perm)
+  const subs = await fetchMetaGraph(
+    `https://graph.facebook.com/v25.0/${pageId}/subscribed_apps`,
+    accessToken,
+    credentials?.app_secret,
+  );
+
+  return {
+    success: true,
+    message: `Messenger connected ✓ (Page: ${entity.data?.name || pageId})${subs.ok ? "" : " — note: enable webhook subscription for inbound messages"}`,
   };
 }
 
