@@ -4537,6 +4537,7 @@ export type Database = {
           payment_date: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           received_by: string | null
+          slip_url: string | null
           status: Database["public"]["Enums"]["payment_status"]
           transaction_id: string | null
           void_reason: string | null
@@ -4556,6 +4557,7 @@ export type Database = {
           payment_date?: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           received_by?: string | null
+          slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
           void_reason?: string | null
@@ -4575,6 +4577,7 @@ export type Database = {
           payment_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           received_by?: string | null
+          slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
           void_reason?: string | null
@@ -6106,6 +6109,7 @@ export type Database = {
           pt_share_percentage: number | null
           salary_type: string | null
           specializations: string[] | null
+          trainer_code: string | null
           updated_at: string
           user_id: string
           weekly_off: string | null
@@ -6130,6 +6134,7 @@ export type Database = {
           pt_share_percentage?: number | null
           salary_type?: string | null
           specializations?: string[] | null
+          trainer_code?: string | null
           updated_at?: string
           user_id: string
           weekly_off?: string | null
@@ -6154,6 +6159,7 @@ export type Database = {
           pt_share_percentage?: number | null
           salary_type?: string | null
           specializations?: string[] | null
+          trainer_code?: string | null
           updated_at?: string
           user_id?: string
           weekly_off?: string | null
