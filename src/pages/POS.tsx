@@ -18,6 +18,8 @@ export default function POSPage() {
   const navigate = useNavigate();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [transactionId, setTransactionId] = useState('');
+  const [slipFile, setSlipFile] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedMember, setSelectedMember] = useState<any>(null);
@@ -165,11 +167,23 @@ export default function POSPage() {
         if (updateError) throw updateError;
       }
 
+      // Upload payment slip if provided
+      let slipUrl: string | undefined;
+      if (slipFile && (paymentMethod === 'card' || paymentMethod === 'upi')) {
+        const ext = slipFile.name.split('.').pop() || 'jpg';
+        const path = `${branch.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, slipFile);
+        if (upErr) throw new Error('Slip upload failed: ' + upErr.message);
+        slipUrl = path;
+      }
+
       const sale = await createPOSSale({
         branchId: branch.id,
         memberId: selectedMember?.id,
         items: cart,
         paymentMethod: isPaymentLink ? 'upi' : paymentMethod,
+        transactionId: transactionId || undefined,
+        slipUrl,
       });
 
       // If payment link selected, generate Razorpay link instead of recording payment
@@ -203,6 +217,8 @@ export default function POSPage() {
       setCart([]);
       setSelectedMember(null);
       if (!sale.isPaymentLink) setPaymentMethod('cash');
+      setTransactionId('');
+      setSlipFile(null);
       setGuestInfo({ name: '', phone: '', email: '' });
       setShowGuestForm(false);
       queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
@@ -568,7 +584,7 @@ export default function POSPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cash">💵 Cash</SelectItem>
-                          <SelectItem value="card">💳 Card</SelectItem>
+                          <SelectItem value="card">💳 Credit / Debit Card</SelectItem>
                           <SelectItem value="upi">📱 UPI</SelectItem>
                           <SelectItem value="razorpay_link">🔗 Payment Link</SelectItem>
                           {selectedMember && (
@@ -578,6 +594,32 @@ export default function POSPage() {
                           )}
                         </SelectContent>
                       </Select>
+
+                      {(paymentMethod === 'card' || paymentMethod === 'upi') && (
+                        <div className="space-y-2 p-3 rounded-lg bg-muted/30 border">
+                          <div className="space-y-1">
+                            <Label htmlFor="txn-id" className="text-xs">Transaction / Reference ID (optional)</Label>
+                            <Input
+                              id="txn-id"
+                              placeholder="e.g. RZP12345 or UPI ref"
+                              value={transactionId}
+                              onChange={(e) => setTransactionId(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="slip-upload" className="text-xs">Slip / Receipt Photo (optional)</Label>
+                            <Input
+                              id="slip-upload"
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => setSlipFile(e.target.files?.[0] || null)}
+                              className="h-9 text-xs"
+                            />
+                            {slipFile && <p className="text-xs text-muted-foreground">📎 {slipFile.name}</p>}
+                          </div>
+                        </div>
+                      )}
 
                       {paymentLinkUrl && (
                         <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
