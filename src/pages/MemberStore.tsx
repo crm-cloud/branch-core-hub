@@ -242,12 +242,13 @@ export default function MemberStore() {
           amount_paid: walletDeduction,
           total_amount: finalAmount,
           status: invoiceStatus as any,
+          source: 'member_store' as any,
           notes: [
             'Store purchase by member',
             appliedDiscount ? `Promo: ${appliedDiscount.code} (-₹${discountAmount})` : '',
             walletDeduction > 0 ? `Wallet: -₹${walletDeduction}` : '',
           ].filter(Boolean).join(' | '),
-        })
+        } as any)
         .select()
         .single();
       

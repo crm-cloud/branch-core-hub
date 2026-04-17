@@ -52,7 +52,7 @@ serve(async (req) => {
       .from("integration_settings")
       .select("*")
       .eq("branch_id", branchId)
-      .eq("integration_type", "payment")
+      .eq("integration_type", "payment_gateway")
       .eq("provider", gateway)
       .eq("is_active", true)
       .single();

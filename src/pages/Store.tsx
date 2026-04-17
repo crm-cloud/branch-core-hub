@@ -30,7 +30,7 @@ export default function StorePage() {
     },
   });
 
-  // Fetch member store orders from invoices — improved filter with fallback
+  // Fetch member store orders from invoices — typed `source` column with notes fallback for legacy rows
   const { data: memberStoreOrders = [], isLoading: ordersLoading } = useQuery({
     queryKey: ['member-store-orders'],
     queryFn: async () => {
@@ -41,7 +41,7 @@ export default function StorePage() {
           members(member_code, profiles:user_id(full_name)),
           invoice_items(description, quantity, unit_price, total_amount, reference_type)
         `)
-        .or('notes.eq.Store purchase by member,notes.ilike.%store%purchase%')
+        .or('source.eq.member_store,source.eq.ecommerce,notes.ilike.%store%purchase%')
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
