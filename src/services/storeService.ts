@@ -126,8 +126,9 @@ export async function createPOSSale(sale: {
       status: 'paid',
       due_date: new Date().toISOString().split('T')[0],
       pos_sale_id: posSale.id,
+      source: 'pos' as any,
       notes: 'POS Sale',
-    })
+    } as any)
     .select()
     .single();
 

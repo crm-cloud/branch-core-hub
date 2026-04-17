@@ -67,7 +67,10 @@ Deno.serve(async (req) => {
       fitnessGoals,
       healthConditions,
       referredBy,
-      createdBy
+      createdBy,
+      avatarUrl,
+      governmentIdType,
+      governmentIdNumber,
     } = await req.json()
 
     if (!email || !fullName || !branchId) {
@@ -104,7 +107,7 @@ Deno.serve(async (req) => {
       console.log('Reusing orphaned auth user:', existingUser.id)
       userId = existingUser.id
 
-      // Update their profile
+      // Update their profile (include avatar if provided)
       await supabaseAdmin
         .from('profiles')
         .update({
@@ -116,6 +119,7 @@ Deno.serve(async (req) => {
           emergency_contact_name: emergencyContactName || null,
           emergency_contact_phone: emergencyContactPhone || null,
           must_set_password: true,
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
         })
         .eq('id', userId)
 
@@ -146,7 +150,7 @@ Deno.serve(async (req) => {
       console.log('User created:', authData.user.id)
       userId = authData.user.id
 
-      // Update profile with all details
+      // Update profile with all details (include avatar if provided)
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .update({
@@ -158,6 +162,7 @@ Deno.serve(async (req) => {
           emergency_contact_name: emergencyContactName || null,
           emergency_contact_phone: emergencyContactPhone || null,
           must_set_password: true,
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
         })
         .eq('id', userId)
 
@@ -177,20 +182,40 @@ Deno.serve(async (req) => {
     }
 
     // Create member record -- member_code is omitted so the DB trigger generates it
+    // Persist government ID fields if the columns exist (safe upsert pattern)
+    const memberInsert: Record<string, any> = {
+      user_id: userId,
+      branch_id: branchId,
+      status: 'active',
+      source: source || 'walk-in',
+      fitness_goals: fitnessGoals || null,
+      health_conditions: healthConditions || null,
+      referred_by: referredBy || null,
+      created_by: createdBy || callingUser.id,
+    };
+    if (governmentIdType) memberInsert.government_id_type = governmentIdType;
+    if (governmentIdNumber) memberInsert.government_id_number = governmentIdNumber;
+
     const { data: member, error: memberError } = await supabaseAdmin
       .from('members')
-      .insert({
-        user_id: userId,
-        branch_id: branchId,
-        status: 'active',
-        source: source || 'walk-in',
-        fitness_goals: fitnessGoals || null,
-        health_conditions: healthConditions || null,
-        referred_by: referredBy || null,
-        created_by: createdBy || callingUser.id,
-      })
+      .insert(memberInsert)
       .select('id, member_code')
       .single()
+
+    // If government ID columns don't exist on members, retry without them (graceful)
+    if (memberError && /government_id/.test(memberError.message || '')) {
+      console.warn('government_id columns missing on members table; retrying without them');
+      delete memberInsert.government_id_type;
+      delete memberInsert.government_id_number;
+      const retry = await supabaseAdmin.from('members').insert(memberInsert).select('id, member_code').single();
+      if (retry.error) throw retry.error;
+      Object.assign({}, retry.data); // no-op type quiet
+      const r = retry.data!;
+      return new Response(
+        JSON.stringify({ success: true, userId, memberId: r.id, memberCode: r.member_code, message: 'Member created successfully (without optional government ID fields).' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (memberError) {
       console.error('Member insert error:', memberError)

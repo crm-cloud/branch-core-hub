@@ -67,31 +67,55 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      if (!data?.short_url) throw new Error('No payment link returned');
 
       setGeneratedLink(data.short_url);
-      toast.success('Payment link sent via Razorpay SMS & Email');
+      toast.success('Razorpay payment link generated. Razorpay also sent SMS + email automatically.');
+
+      // Best-effort: also send via configured WhatsApp / Email integrations
+      if (invoice.member_phone) {
+        try {
+          await supabase.functions.invoke('send-message', {
+            body: {
+              channel: 'whatsapp',
+              to: invoice.member_phone,
+              message: `Hi ${invoice.member_name || 'Member'}, your invoice ${invoice.invoice_number} has a balance of ₹${paymentAmount.toLocaleString()}. Pay securely here: ${data.short_url}`,
+              branch_id: invoice.branch_id,
+            },
+          });
+        } catch (e) { console.warn('WhatsApp dispatch skipped:', e); }
+      }
+      if (invoice.member_email) {
+        try {
+          await supabase.functions.invoke('send-email', {
+            body: {
+              to: invoice.member_email,
+              subject: `Payment link for invoice ${invoice.invoice_number}`,
+              html: `<p>Hi ${invoice.member_name || 'Member'},</p><p>Your invoice <b>${invoice.invoice_number}</b> has a balance of <b>₹${paymentAmount.toLocaleString()}</b>.</p><p><a href="${data.short_url}">Click here to pay securely</a></p><p>Thank you.</p>`,
+              branch_id: invoice.branch_id,
+            },
+          });
+        } catch (e) { console.warn('Email dispatch skipped:', e); }
+      }
     } catch (err: any) {
       console.error('Razorpay link error:', err);
-      // Fallback: show manual link
-      const fallbackLink = `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
-      setGeneratedLink(fallbackLink);
-      toast.error('Razorpay not configured. Generated manual link instead.');
+      toast.error(err.message || 'Failed to generate payment link. Configure Razorpay in Integrations.');
     } finally {
       setGenerating(false);
     }
   };
 
   const handleCopyLink = () => {
-    const link = generatedLink || `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
-    navigator.clipboard.writeText(link);
+    if (!generatedLink) return;
+    navigator.clipboard.writeText(generatedLink);
     setCopied(true);
     toast.success('Payment link copied!');
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleShareWhatsApp = () => {
-    const link = generatedLink || `${window.location.origin}/member/pay?invoice=${invoice.id}&amount=${paymentAmount}`;
-    const message = `Hi ${invoice.member_name || 'Member'},\n\nYour invoice *${invoice.invoice_number}* has a payment of *₹${paymentAmount.toLocaleString()}*.\n\nPay securely here:\n${link}\n\nThank you!`;
+    if (!generatedLink) return;
+    const message = `Hi ${invoice.member_name || 'Member'},\n\nYour invoice *${invoice.invoice_number}* has a payment of *₹${paymentAmount.toLocaleString()}*.\n\nPay securely here:\n${generatedLink}\n\nThank you!`;
     const phone = (invoice.member_phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = phone.startsWith('91') ? phone : `91${phone}`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');

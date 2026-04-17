@@ -112,20 +112,48 @@ export async function deleteProduct(id: string) {
   if (error) throw error;
 }
 
-// Image upload
+// Image upload — verbose error reporting + pre-flight validation
+const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const PRODUCTS_BUCKET = 'products';
+
 export async function uploadProductImage(file: File): Promise<string> {
-  const fileExt = file.name.split('.').pop();
+  // Pre-flight validation with friendly errors
+  if (!ALLOWED_IMAGE_MIMES.includes(file.type)) {
+    throw new Error(`Unsupported image type: ${file.type || 'unknown'}. Use JPG, PNG, WebP or GIF.`);
+  }
+  if (file.size > MAX_IMAGE_SIZE) {
+    throw new Error(`Image too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Max 5MB.`);
+  }
+
+  const fileExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
   const fileName = `${crypto.randomUUID()}.${fileExt}`;
   const filePath = `products/${fileName}`;
 
   const { error: uploadError } = await supabase.storage
-    .from('products')
-    .upload(filePath, file);
+    .from(PRODUCTS_BUCKET)
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      contentType: file.type,
+      upsert: false,
+    });
 
-  if (uploadError) throw uploadError;
+  if (uploadError) {
+    // Surface the real Supabase storage error so the toast is actionable
+    console.error('uploadProductImage failed:', {
+      bucket: PRODUCTS_BUCKET,
+      path: filePath,
+      mime: file.type,
+      size: file.size,
+      error: uploadError,
+    });
+    const detail = (uploadError as any)?.message || 'unknown storage error';
+    const status = (uploadError as any)?.statusCode ? ` [${(uploadError as any).statusCode}]` : '';
+    throw new Error(`Storage upload failed${status}: ${detail}`);
+  }
 
   const { data: { publicUrl } } = supabase.storage
-    .from('products')
+    .from(PRODUCTS_BUCKET)
     .getPublicUrl(filePath);
 
   return publicUrl;

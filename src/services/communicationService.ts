@@ -108,20 +108,36 @@ export const communicationService = {
     return url;
   },
 
-  // Email (via edge function - provider-agnostic)
+  // Email — actually send via configured provider edge function (no longer log-only)
   async sendEmail(to: string, subject: string, body: string, branchId: string) {
-    // Log the email attempt
-    await this.logCommunication({
-      branch_id: branchId,
-      type: 'email',
-      recipient: to,
-      subject,
-      content: body,
-      status: 'sent',
-    });
-    
-    console.log('Email sent to:', to);
-    return { success: true };
+    try {
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: { to, subject, html: body, branch_id: branchId },
+      });
+      if (error) throw error;
+      // log success
+      await this.logCommunication({
+        branch_id: branchId,
+        type: 'email',
+        recipient: to,
+        subject,
+        content: body,
+        status: 'sent',
+      });
+      return { success: true, ...data };
+    } catch (err: any) {
+      console.error('sendEmail failed:', err);
+      // log failure
+      await this.logCommunication({
+        branch_id: branchId,
+        type: 'email',
+        recipient: to,
+        subject,
+        content: body,
+        status: 'failed',
+      }).catch(() => {});
+      throw err;
+    }
   },
 
   // Send email via configured provider (Edge Function)

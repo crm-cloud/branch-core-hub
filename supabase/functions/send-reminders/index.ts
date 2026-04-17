@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
         message: `Hi ${name}, your payment is ${reminder.reminder_type === "before_due" ? "due soon" : reminder.reminder_type === "on_due" ? "due today" : "overdue"}.`,
-        type: "warning", category: "payment", action_url: "/member/invoices",
+        type: "warning", category: "payment", action_url: "/my-invoices",
       });
       commLogs.push({
         branch_id: reminder.branch_id, type: "notification",
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
           notifications.push({
             user_id: member.user_id, branch_id: ms.branch_id, title: "Membership Expiring Soon",
             message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now.`,
-            type: "warning", category: "membership", action_url: "/member/plans",
+            type: "warning", category: "membership", action_url: "/my-membership",
           });
           commLogs.push({
             branch_id: ms.branch_id, type: "notification",
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
       if (!isReminderEnabled(cls.branch_id, "class_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
-      notifications.push({ user_id: member.user_id, branch_id: cls.branch_id, title: "Class Tomorrow", message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`, type: "info", category: "class", action_url: "/member/classes" });
+      notifications.push({ user_id: member.user_id, branch_id: cls.branch_id, title: "Class Tomorrow", message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`, type: "info", category: "class", action_url: "/my-classes" });
       results.class_reminders++;
     }
 
@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
       const member = pkg?.members;
       if (!member?.user_id) continue;
       if (!isReminderEnabled(pkg.branch_id, "pt_reminder")) continue;
-      notifications.push({ user_id: member.user_id, branch_id: pkg.branch_id, title: "PT Session Tomorrow", message: `Reminder: You have a Personal Training session scheduled for tomorrow.`, type: "info", category: "pt_session", action_url: "/member/pt-sessions" });
+      notifications.push({ user_id: member.user_id, branch_id: pkg.branch_id, title: "PT Session Tomorrow", message: `Reminder: You have a Personal Training session scheduled for tomorrow.`, type: "info", category: "pt_session", action_url: "/my-pt-sessions" });
       results.pt_reminders++;
     }
 
@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
       if (!isReminderEnabled(slot.branch_id, "benefit_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
-      notifications.push({ user_id: member.user_id, branch_id: slot.branch_id, title: "Benefit Booking Tomorrow", message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`, type: "info", category: "benefit", action_url: "/member/benefits" });
+      notifications.push({ user_id: member.user_id, branch_id: slot.branch_id, title: "Benefit Booking Tomorrow", message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`, type: "info", category: "benefit", action_url: "/my-benefits" });
       results.benefit_reminders++;
     }
 

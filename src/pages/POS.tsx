@@ -13,10 +13,12 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { createPOSSale, type CartItem } from '@/services/storeService';
 import { useNavigate } from 'react-router-dom';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function POSPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { effectiveBranchId, currentBranchName } = useBranchContext();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [transactionId, setTransactionId] = useState('');
@@ -149,11 +151,13 @@ export default function POSPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      const { data: branch } = await supabase.from('branches').select('id').limit(1).maybeSingle();
-      if (!branch) throw new Error('No branch found');
+      // Use the active branch from context, NOT the first branch in DB
+      if (!effectiveBranchId) {
+        throw new Error('Please select a specific branch before ringing up a sale.');
+      }
+      const branchId = effectiveBranchId;
 
       const isPaymentLink = paymentMethod === 'razorpay_link';
-      const effectivePaymentMethod = isPaymentLink ? 'upi' : paymentMethod;
 
       // If paying with wallet, check balance
       if (paymentMethod === 'wallet') {
@@ -172,14 +176,14 @@ export default function POSPage() {
       let slipUrl: string | undefined;
       if (slipFile && (paymentMethod === 'card' || paymentMethod === 'upi')) {
         const ext = slipFile.name.split('.').pop() || 'jpg';
-        const path = `${branch.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+        const path = `${branchId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, slipFile);
         if (upErr) throw new Error('Slip upload failed: ' + upErr.message);
         slipUrl = path;
       }
 
       const sale = await createPOSSale({
-        branchId: branch.id,
+        branchId,
         memberId: selectedMember?.id,
         items: cart,
         paymentMethod: isPaymentLink ? 'upi' : paymentMethod,
@@ -192,7 +196,7 @@ export default function POSPage() {
         setPaymentLinkLoading(true);
         try {
           const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
-            body: { invoiceId: sale.invoice_id, amount: cartTotal, branchId: branch.id },
+            body: { invoiceId: sale.invoice_id, amount: cartTotal, branchId },
           });
           if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
           if (linkData?.error) throw new Error(linkData.error);
