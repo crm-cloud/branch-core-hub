@@ -143,7 +143,7 @@ export function IntegrationSettings() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Integrations</h2>
-          <p className="text-sm text-muted-foreground">Configure payment, SMS, email, WhatsApp, Instagram, Messenger, Google and lead capture</p>
+          <p className="text-sm text-muted-foreground">Configure payment, SMS, email, Meta (WhatsApp, Instagram, Messenger), Google and lead capture</p>
         </div>
       </div>
 
@@ -167,10 +167,10 @@ export function IntegrationSettings() {
           variant={activeEmailProviders > 0 ? 'success' : 'default'}
         />
         <StatCard
-          title="WhatsApp"
-          value={activeWhatsApp}
-          icon={MessageSquare}
-          variant={activeWhatsApp > 0 ? 'success' : 'default'}
+          title="Meta Integrations"
+          value={activeWhatsApp + activeInstagram + activeMessenger}
+          icon={Facebook}
+          variant={(activeWhatsApp + activeInstagram + activeMessenger) > 0 ? 'success' : 'default'}
         />
         <StatCard
           title="Google Business"
@@ -185,8 +185,7 @@ export function IntegrationSettings() {
           <TabsTrigger value="payment" className="gap-1.5"><CreditCard className="h-3.5 w-3.5" />Payment</TabsTrigger>
           <TabsTrigger value="sms" className="gap-1.5"><Phone className="h-3.5 w-3.5" />SMS</TabsTrigger>
           <TabsTrigger value="email" className="gap-1.5"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
-          <TabsTrigger value="whatsapp" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
-          <TabsTrigger value="instagram" className="gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
+          <TabsTrigger value="meta" className="gap-1.5"><Facebook className="h-3.5 w-3.5" />Meta</TabsTrigger>
           <TabsTrigger value="leads" className="gap-1.5"><Send className="h-3.5 w-3.5" />Lead Capture</TabsTrigger>
           <TabsTrigger value="google" className="gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
         </TabsList>
@@ -359,17 +358,61 @@ export function IntegrationSettings() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="whatsapp" className="space-y-4">
-          <Card>
+        {/* ─── Meta Tab: WhatsApp, Instagram, Messenger ─── */}
+        <TabsContent value="meta" className="space-y-4">
+          {/* Meta Webhook URL — Shared for all platforms (uses v25 API) */}
+          <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                WhatsApp Business API
+                <Facebook className="h-5 w-5" />
+                Meta Integrations (API v25)
               </CardTitle>
               <CardDescription>
-                Configure WhatsApp for chat and messaging
+                Unified webhook for WhatsApp, Instagram, and Messenger
               </CardDescription>
             </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  <h4 className="font-semibold text-sm">Meta Webhook URL (v25)</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">Register this URL in your Meta Developer Portal for WhatsApp, Instagram, and Facebook Messenger webhooks.</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {SUPABASE_FUNCTION_BASE}/meta-webhook
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
+                    toast.success('Meta webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Nested tabs for Meta platforms */}
+          <Tabs defaultValue="whatsapp_meta" className="space-y-4">
+            <TabsList className="flex flex-wrap gap-1 h-auto p-1 w-full">
+              <TabsTrigger value="whatsapp_meta" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+              <TabsTrigger value="instagram_meta" className="gap-1.5"><Instagram className="h-3.5 w-3.5 text-pink-500" />Instagram</TabsTrigger>
+              <TabsTrigger value="messenger_meta" className="gap-1.5"><Facebook className="h-3.5 w-3.5 text-blue-600" />Messenger</TabsTrigger>
+            </TabsList>
+
+            {/* ─── WhatsApp Subtab ─── */}
+            <TabsContent value="whatsapp_meta" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    WhatsApp Business API
+                  </CardTitle>
+                  <CardDescription>
+                    Configure WhatsApp for chat and messaging
+                  </CardDescription>
+                </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 {WHATSAPP_PROVIDERS.map((provider) => {
@@ -513,20 +556,20 @@ export function IntegrationSettings() {
               </CollapsibleContent>
             </Card>
           </Collapsible>
-        </TabsContent>
+            </TabsContent>
 
-        {/* ── Instagram Tab ── */}
-        <TabsContent value="instagram" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Instagram className="h-5 w-5 text-pink-500" />
-                Instagram Direct Messages
-              </CardTitle>
-              <CardDescription>
-                Receive and reply to Instagram DMs through the unified inbox
-              </CardDescription>
-            </CardHeader>
+            {/* ─── Instagram Subtab ─── */}
+            <TabsContent value="instagram_meta" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Instagram className="h-5 w-5 text-pink-500" />
+                    Instagram Direct Messages
+                  </CardTitle>
+                  <CardDescription>
+                    Receive and reply to Instagram DMs through Meta
+                  </CardDescription>
+                </CardHeader>
             <CardContent className="space-y-4">
               {/* Webhook URL */}
               <div className="p-4 rounded-lg bg-pink-500/5 border border-pink-500/10 space-y-2">
@@ -585,10 +628,81 @@ export function IntegrationSettings() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+            </TabsContent>
 
-        {/* Messenger tab removed — backend not yet implemented end-to-end.
-            send-message + meta-webhook code paths preserved for future re-enable. */}
+            {/* ─── Messenger Subtab ─── */}
+            <TabsContent value="messenger_meta" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Facebook className="h-5 w-5 text-blue-600" />
+                    Facebook Messenger
+                  </CardTitle>
+                  <CardDescription>
+                    Receive and reply to Facebook Messenger messages
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Webhook URL */}
+                  <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Webhook className="h-4 w-4 text-blue-600" />
+                      <h4 className="font-semibold text-sm">Facebook Messenger Webhook URL</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Messenger → Webhooks → Callback URL.</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                        {SUPABASE_FUNCTION_BASE}/meta-webhook
+                      </code>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
+                        toast.success('Messenger webhook URL copied!');
+                      }}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {MESSENGER_PROVIDERS.map((provider) => {
+                      const config = getIntegrationsByType('messenger').find(
+                        (i: any) => i.provider === provider.id
+                      );
+                      return (
+                        <Card key={provider.id}>
+                          <CardContent className="pt-6">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                                  <Facebook className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <h3 className="font-semibold">{provider.name}</h3>
+                                  <p className="text-sm text-muted-foreground">{provider.description}</p>
+                                </div>
+                              </div>
+                              <Badge variant={config?.is_active ? 'default' : 'secondary'}>
+                                {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                                {config?.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </div>
+                            <Button 
+                              className="w-full mt-4" 
+                              variant={config?.is_active ? 'outline' : 'default'}
+                              onClick={() => openConfig('messenger', provider.id)}
+                            >
+                              <Settings className="h-4 w-4 mr-2" />
+                              {config ? 'Configure' : 'Setup'}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
 
         <TabsContent value="google" className="space-y-4">
           <Card>
