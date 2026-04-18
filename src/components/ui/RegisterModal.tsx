@@ -16,9 +16,9 @@ const leadSchema = z.object({
   phone: z
     .string()
     .trim()
-    .min(10, "Enter a valid phone number")
-    .max(15)
-    .regex(/^\+?\d{10,15}$/, "Enter a valid phone number (e.g. +919876543210)"),
+    .min(10, "Enter a valid 10-digit phone number")
+    .max(10)
+    .regex(/^\d{10}$/, "Enter a valid 10-digit phone number"),
   email: z.string().trim().email("Enter a valid email").max(255),
   age: z.string().trim().min(1, "Select your age range"),
   area: z.string().trim().min(2, "Enter your area/locality").max(100),
