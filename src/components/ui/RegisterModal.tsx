@@ -217,12 +217,16 @@ const RegisterModal = () => {
                     <Label htmlFor="phone" className="text-foreground text-sm font-semibold">
                       Phone *
                     </Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="+919876543210"
-                      {...register("phone")}
-                      className="bg-background border-border"
+                    <Controller
+                      name="phone"
+                      control={control}
+                      render={({ field }) => (
+                        <PhoneInput
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          className="bg-background border-border"
+                        />
+                      )}
                     />
                     {errors.phone && <p className="text-destructive text-xs">{errors.phone.message}</p>}
                   </div>
