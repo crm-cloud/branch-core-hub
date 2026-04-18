@@ -360,7 +360,7 @@ export function IntegrationSettings() {
 
         {/* ─── Meta Tab: WhatsApp, Instagram, Messenger ─── */}
         <TabsContent value="meta" className="space-y-4">
-          {/* Meta Webhook URL — Shared for all platforms (uses v25 API) */}
+          {/* Platform-specific Webhook URLs (v25 API) */}
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -368,27 +368,20 @@ export function IntegrationSettings() {
                 Meta Integrations (API v25)
               </CardTitle>
               <CardDescription>
-                Unified webhook for WhatsApp, Instagram, and Messenger
+                Platform-specific webhooks for WhatsApp, Instagram, and Messenger
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-primary" />
-                  <h4 className="font-semibold text-sm">Meta Webhook URL (v25)</h4>
+                  <h4 className="font-semibold text-sm">Webhook Endpoints</h4>
                 </div>
-                <p className="text-xs text-muted-foreground">Register this URL in your Meta Developer Portal for WhatsApp, Instagram, and Facebook Messenger webhooks.</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                    {SUPABASE_FUNCTION_BASE}/meta-webhook
-                  </code>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
-                    toast.success('Meta webhook URL copied!');
-                  }}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                <p className="text-xs text-muted-foreground">Each platform uses its own webhook endpoint. See details in each platform's section below.</p>
+                <ul className="text-xs text-muted-foreground space-y-1 ml-4 list-disc">
+                  <li><strong>WhatsApp:</strong> {SUPABASE_FUNCTION_BASE}/whatsapp-webhook</li>
+                  <li><strong>Instagram & Messenger:</strong> {SUPABASE_FUNCTION_BASE}/meta-webhook</li>
+                </ul>
               </div>
             </CardContent>
           </Card>
@@ -414,6 +407,25 @@ export function IntegrationSettings() {
                   </CardDescription>
                 </CardHeader>
             <CardContent className="space-y-4">
+              {/* Webhook URL */}
+              <div className="p-4 rounded-lg bg-green-500/5 border border-green-500/10 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-green-600" />
+                  <h4 className="font-semibold text-sm">WhatsApp Webhook URL (whatsapp-webhook)</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → WhatsApp → Configuration → Webhook.</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
+                    {WHATSAPP_WEBHOOK_URL}
+                  </code>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(WHATSAPP_WEBHOOK_URL);
+                    toast.success('WhatsApp webhook URL copied!');
+                  }}>
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {WHATSAPP_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('whatsapp').find(
@@ -575,12 +587,12 @@ export function IntegrationSettings() {
               <div className="p-4 rounded-lg bg-pink-500/5 border border-pink-500/10 space-y-2">
                 <div className="flex items-center gap-2">
                   <Webhook className="h-4 w-4 text-pink-500" />
-                  <h4 className="font-semibold text-sm">Instagram Webhook URL</h4>
+                  <h4 className="font-semibold text-sm">Instagram Webhook URL (meta-webhook)</h4>
                 </div>
                 <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Instagram → Webhooks → Callback URL.</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                    {SUPABASE_FUNCTION_BASE}/meta-webhook
+                    {`${SUPABASE_FUNCTION_BASE}/meta-webhook`}
                   </code>
                   <Button variant="outline" size="sm" onClick={() => {
                     navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
@@ -647,12 +659,12 @@ export function IntegrationSettings() {
                   <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10 space-y-2">
                     <div className="flex items-center gap-2">
                       <Webhook className="h-4 w-4 text-blue-600" />
-                      <h4 className="font-semibold text-sm">Facebook Messenger Webhook URL</h4>
+                      <h4 className="font-semibold text-sm">Facebook Messenger Webhook URL (meta-webhook)</h4>
                     </div>
                     <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Messenger → Webhooks → Callback URL.</p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                        {SUPABASE_FUNCTION_BASE}/meta-webhook
+                        {`${SUPABASE_FUNCTION_BASE}/meta-webhook`}
                       </code>
                       <Button variant="outline" size="sm" onClick={() => {
                         navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
