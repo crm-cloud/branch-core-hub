@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,9 +16,9 @@ const leadSchema = z.object({
   phone: z
     .string()
     .trim()
-    .min(10, "Enter a valid phone number")
-    .max(15)
-    .regex(/^\+?\d{10,15}$/, "Enter a valid phone number (e.g. +919876543210)"),
+    .min(10, "Enter a valid 10-digit phone number")
+    .max(10)
+    .regex(/^\d{10}$/, "Enter a valid 10-digit phone number"),
   email: z.string().trim().email("Enter a valid email").max(255),
   age: z.string().trim().min(1, "Select your age range"),
   area: z.string().trim().min(2, "Enter your area/locality").max(100),
@@ -122,7 +123,7 @@ const RegisterModal = () => {
     try {
       const payload = {
         full_name: data.full_name,
-        phone: data.phone,
+        phone: `+91${data.phone}`,
         email: data.email,
         source: getSource(),
         notes: buildNotes(data),
@@ -216,12 +217,16 @@ const RegisterModal = () => {
                     <Label htmlFor="phone" className="text-foreground text-sm font-semibold">
                       Phone *
                     </Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="+919876543210"
-                      {...register("phone")}
-                      className="bg-background border-border"
+                    <Controller
+                      name="phone"
+                      control={control}
+                      render={({ field }) => (
+                        <PhoneInput
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          className="bg-background border-border"
+                        />
+                      )}
                     />
                     {errors.phone && <p className="text-destructive text-xs">{errors.phone.message}</p>}
                   </div>

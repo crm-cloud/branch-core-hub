@@ -45,6 +45,7 @@ const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: stri
   }
 };
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
+import { useChatSound } from '@/hooks/useChatSound';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 
@@ -303,6 +304,10 @@ export default function WhatsAppChatPage() {
     },
     enabled: !!selectedContact,
   });
+
+  // Play sound on incoming inbound message arrival
+  const inboundCount = messages.filter((m) => m.direction === 'inbound').length;
+  useChatSound(inboundCount);
 
   // AI Tool Logs for this contact (for thought banners)
   const { data: aiToolLogs = [] } = useQuery({

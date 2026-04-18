@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2 } from 'lucide-react';
@@ -33,27 +34,31 @@ export function WhatsAppShareDialog({
 
   useEffect(() => {
     if (open) {
-      setPhone(defaultPhone || '');
+      // PhoneInput strips +91 for display, so feed it the raw 10-digit number
+      const cleaned = (defaultPhone || '').replace(/\D/g, '').replace(/^91/, '').slice(-10);
+      setPhone(cleaned);
       setContent(message);
     }
   }, [open, defaultPhone, message]);
 
   const send = async () => {
-    if (!phone.trim()) {
-      toast.error('Please enter a phone number');
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length !== 10) {
+      toast.error('Please enter a valid 10-digit phone number');
       return;
     }
     if (!branchId) {
       toast.error('Missing branch context — cannot send WhatsApp message');
       return;
     }
+    const fullPhone = `+91${digits}`;
     setSending(true);
     try {
       const { data: msg, error: insertErr } = await supabase
         .from('whatsapp_messages')
         .insert({
           branch_id: branchId,
-          phone_number: phone.trim(),
+          phone_number: fullPhone,
           content,
           message_type: 'text',
           direction: 'outbound',
@@ -66,7 +71,7 @@ export function WhatsAppShareDialog({
       const { error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
         body: {
           message_id: (msg as { id: string }).id,
-          phone_number: phone.trim(),
+          phone_number: fullPhone,
           content,
           branch_id: branchId,
         },
@@ -94,13 +99,11 @@ export function WhatsAppShareDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label htmlFor="wa-phone">Recipient phone (with country code)</Label>
-            <Input
+            <Label htmlFor="wa-phone">Recipient phone</Label>
+            <PhoneInput
               id="wa-phone"
-              type="tel"
-              placeholder="+919876543210"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(v) => setPhone(v)}
             />
           </div>
           <div>

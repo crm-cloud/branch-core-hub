@@ -36,7 +36,14 @@ export async function fetchNotifications(userId: string, limit = 20) {
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return data as Notification[];
+  // Client-side dedupe: collapse identical title+message created within the same minute
+  const seen = new Map<string, Notification>();
+  for (const n of (data || []) as Notification[]) {
+    const bucket = Math.floor(new Date(n.created_at).getTime() / 60000);
+    const key = `${n.title}::${n.message}::${bucket}`;
+    if (!seen.has(key)) seen.set(key, n);
+  }
+  return Array.from(seen.values()) as Notification[];
 }
 
 export async function fetchUnreadCount(userId: string) {

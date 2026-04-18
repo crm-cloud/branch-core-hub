@@ -7,12 +7,13 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle2, Volume2, VolumeX } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead } from '@/services/notificationService';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
+import { useChatSound, isChatSoundEnabled, setChatSoundEnabled } from '@/hooks/useChatSound';
 
 const typeIcons = {
   info: Info,
@@ -34,12 +35,20 @@ export function NotificationBell() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(isChatSoundEnabled());
 
-  // Realtime subscription for instant notifications
+  useEffect(() => {
+    const handler = () => setSoundOn(isChatSoundEnabled());
+    window.addEventListener('chat-sound-pref-change', handler);
+    return () => window.removeEventListener('chat-sound-pref-change', handler);
+  }, []);
+  // Realtime subscription for instant notifications — unique channel per user/mount
+  // prevents duplicate handler fires when multiple components subscribe.
   useEffect(() => {
     if (!user?.id) return;
+    const channelName = `user-notifications-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('user-notifications')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -49,8 +58,8 @@ export function NotificationBell() {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['notification-count'] });
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['notification-count', user.id] });
+          queryClient.invalidateQueries({ queryKey: ['notifications', user.id] });
         }
       )
       .subscribe();
@@ -64,6 +73,10 @@ export function NotificationBell() {
     enabled: !!user?.id,
     refetchInterval: 30000, // Refetch every 30 seconds
   });
+
+  // Play sound on new unread (only when count increases)
+  useChatSound(unreadCount);
+
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications', user?.id],
@@ -105,17 +118,31 @@ export function NotificationBell() {
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between p-3 border-b">
           <h4 className="font-semibold">Notifications</h4>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={() => markAllReadMutation.mutate()}
-              className="text-xs h-7"
+              size="icon"
+              className="h-7 w-7"
+              title={soundOn ? 'Mute notification sound' : 'Enable notification sound'}
+              onClick={() => {
+                setChatSoundEnabled(!soundOn);
+                setSoundOn(!soundOn);
+              }}
             >
-              <CheckCheck className="h-3 w-3 mr-1" />
-              Mark all read
+              {soundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />}
             </Button>
-          )}
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => markAllReadMutation.mutate()}
+                className="text-xs h-7"
+              >
+                <CheckCheck className="h-3 w-3 mr-1" />
+                Mark all read
+              </Button>
+            )}
+          </div>
         </div>
 
         <ScrollArea className="h-[300px]">
