@@ -163,13 +163,13 @@ function seededShuffle<T>(array: T[], seed: string): T[] {
   return arr;
 }
 
-export default function AIFitnessPage() {
+export default function AIFitnessPage({ defaultTab = "generate" }: { defaultTab?: "generate" | "templates" | "assign" | "member-plans" } = {}) {
   const { profile, hasAnyRole } = useAuth();
   const canUseAi = hasAnyRole(['owner', 'admin', 'manager']);
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">(
-    canUseAi ? "generate" : "templates"
-  );
+  const initialTab: "generate" | "templates" | "assign" | "member-plans" =
+    defaultTab === "generate" && !canUseAi ? "templates" : defaultTab;
+  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">(initialTab);
   // Defensive guard: if a non-AI role somehow lands on the generate tab, redirect to templates.
   useEffect(() => {
     if (!canUseAi && activeTab === "generate") {

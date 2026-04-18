@@ -39,6 +39,13 @@ const PaymentsPage = lazy(() => import("./pages/Payments"));
 const ClassesPage = lazy(() => import("./pages/Classes"));
 const PTSessionsPage = lazy(() => import("./pages/PTSessions"));
 const AIFitnessPage = lazy(() => import("./pages/AIFitness"));
+const CreateModePickerPage = lazy(() => import("./pages/fitness/CreateModePicker"));
+const CreateAIPage = lazy(() => import("./pages/fitness/CreateAI"));
+const CreateManualWorkoutPage = lazy(() => import("./pages/fitness/CreateManualWorkout"));
+const CreateManualDietPage = lazy(() => import("./pages/fitness/CreateManualDiet"));
+const PreviewPlanPage = lazy(() => import("./pages/fitness/PreviewPlan"));
+const FitnessTemplatesPage = lazy(() => import("./pages/fitness/TemplatesEntry"));
+const FitnessMemberPlansPage = lazy(() => import("./pages/fitness/MemberPlansEntry"));
 const EquipmentPage = lazy(() => import("./pages/Equipment"));
 const EquipmentMaintenancePage = lazy(() => import("./pages/EquipmentMaintenance"));
 const LockersPage = lazy(() => import("./pages/Lockers"));
@@ -88,7 +95,6 @@ const TrainerDashboard = lazy(() => import("./pages/TrainerDashboard"));
 const MyClients = lazy(() => import("./pages/MyClients"));
 const TrainerEarnings = lazy(() => import("./pages/TrainerEarnings"));
 const ScheduleSession = lazy(() => import("./pages/ScheduleSession"));
-const TrainerPlanBuilder = lazy(() => import("./pages/TrainerPlanBuilder"));
 
 // Staff-specific pages
 const StaffDashboard = lazy(() => import("./pages/StaffDashboard"));
@@ -210,11 +216,20 @@ function RoutedContent() {
           <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><PaymentsPage /></ProtectedRoute>} />
           <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
           <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer', 'staff']}><PTSessionsPage /></ProtectedRoute>} />
+          {/* New plan creation flow */}
+          <Route path="/fitness/create" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateModePickerPage /></ProtectedRoute>} />
+          <Route path="/fitness/create/ai" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><CreateAIPage /></ProtectedRoute>} />
+          <Route path="/fitness/create/manual/workout" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateManualWorkoutPage /></ProtectedRoute>} />
+          <Route path="/fitness/create/manual/diet" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><CreateManualDietPage /></ProtectedRoute>} />
+          <Route path="/fitness/preview/:planId" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><PreviewPlanPage /></ProtectedRoute>} />
           {/* Trainers may view templates / member plans; AI Generate tab is hidden in-page for non-AI roles */}
-          <Route path="/diet-workout-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
-          {/* Backward-compat alias */}
-          <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
-          <Route path="/trainer-plan-builder" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerPlanBuilder /></ProtectedRoute>} />
+          <Route path="/fitness/templates" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><FitnessTemplatesPage /></ProtectedRoute>} />
+          <Route path="/fitness/member-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><FitnessMemberPlansPage /></ProtectedRoute>} />
+
+          {/* Legacy routes redirect to the new flow */}
+          <Route path="/diet-workout-plans" element={<Navigate to="/fitness/create" replace />} />
+          <Route path="/ai-fitness" element={<Navigate to="/fitness/create" replace />} />
+          <Route path="/trainer-plan-builder" element={<Navigate to="/fitness/create" replace />} />
           <Route path="/inventory" element={<Navigate to="/products" replace />} />
           <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
           <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><EquipmentMaintenancePage /></ProtectedRoute>} />

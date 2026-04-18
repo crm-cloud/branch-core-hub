@@ -1,0 +1,252 @@
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Textarea } from '@/components/ui/textarea';
+import { ChevronDown, User, Pencil } from 'lucide-react';
+
+export interface MemberProfileOverrides {
+  age?: string;
+  gender?: string;
+  weight?: string;
+  height?: string;
+  fitness_level?: string;
+  equipment?: string;
+  dietary_preference?: string;
+  cuisine?: string;
+  allergies?: string;
+  health_conditions?: string;
+  fitness_goals?: string;
+}
+
+interface Props {
+  memberId: string;
+  value: MemberProfileOverrides;
+  onChange: (next: MemberProfileOverrides) => void;
+}
+
+function calcAge(dob?: string | null): string {
+  if (!dob) return '';
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return '';
+  const diffMs = Date.now() - d.getTime();
+  const ageDt = new Date(diffMs);
+  return String(Math.abs(ageDt.getUTCFullYear() - 1970));
+}
+
+function calcBmi(w?: string, h?: string): string | null {
+  const wn = parseFloat(w || '');
+  const hn = parseFloat(h || '');
+  if (!wn || !hn) return null;
+  const meters = hn / 100;
+  if (meters <= 0) return null;
+  return (wn / (meters * meters)).toFixed(1);
+}
+
+export function MemberProfileCard({ memberId, value, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Pull base member info + latest measurement
+  const { data, isLoading } = useQuery({
+    queryKey: ['member-profile-prefill', memberId],
+    enabled: !!memberId,
+    queryFn: async () => {
+      const { data: member } = await supabase
+        .from('members')
+        .select('id, user_id, health_conditions, fitness_goals, profiles:user_id(gender, date_of_birth, full_name)')
+        .eq('id', memberId)
+        .maybeSingle();
+      const { data: meas } = await supabase
+        .from('member_measurements')
+        .select('weight_kg, height_cm, recorded_at')
+        .eq('member_id', memberId)
+        .order('recorded_at', { ascending: false })
+        .limit(1);
+      const m = (meas || [])[0];
+      const profile = (member as any)?.profiles;
+      return {
+        gender: (profile?.gender || '').toLowerCase(),
+        age: calcAge(profile?.date_of_birth),
+        weight: m?.weight_kg ? String(m.weight_kg) : '',
+        height: m?.height_cm ? String(m.height_cm) : '',
+        health_conditions: (member as any)?.health_conditions || '',
+        fitness_goals: (member as any)?.fitness_goals || '',
+      };
+    },
+  });
+
+  // Hydrate once when data arrives — does not mutate the saved profile,
+  // only seeds the form state for this plan.
+  useEffect(() => {
+    if (!data || hydrated) return;
+    onChange({
+      age: value.age || data.age,
+      gender: value.gender || data.gender,
+      weight: value.weight || data.weight,
+      height: value.height || data.height,
+      health_conditions: value.health_conditions ?? data.health_conditions,
+      fitness_goals: value.fitness_goals ?? data.fitness_goals,
+      fitness_level: value.fitness_level,
+      equipment: value.equipment,
+      dietary_preference: value.dietary_preference,
+      cuisine: value.cuisine,
+      allergies: value.allergies,
+    });
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, hydrated]);
+
+  const set = (k: keyof MemberProfileOverrides) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    onChange({ ...value, [k]: e.target.value });
+  const setSel = (k: keyof MemberProfileOverrides) => (v: string) => onChange({ ...value, [k]: v });
+
+  const bmi = calcBmi(value.weight, value.height);
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <User className="h-4 w-4 text-primary" />
+          Member Profile
+          {isLoading && <Badge variant="outline" className="text-xs">Loading…</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Read-only summary chips */}
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">Age: {value.age || '—'}</Badge>
+          <Badge variant="secondary">Gender: {value.gender || '—'}</Badge>
+          <Badge variant="secondary">Weight: {value.weight ? `${value.weight} kg` : '—'}</Badge>
+          <Badge variant="secondary">Height: {value.height ? `${value.height} cm` : '—'}</Badge>
+          <Badge variant="secondary">BMI: {bmi || '—'}</Badge>
+          {value.fitness_level && <Badge variant="outline">Level: {value.fitness_level}</Badge>}
+          {value.dietary_preference && <Badge variant="outline">Diet: {value.dietary_preference}</Badge>}
+        </div>
+
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
+              <Pencil className="h-3.5 w-3.5" />
+              {open ? 'Hide profile data' : 'Edit profile data for this plan'}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Changes apply only to this plan. The member's saved profile is not modified.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Age</Label>
+                <Input value={value.age || ''} onChange={set('age')} type="number" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Gender</Label>
+                <Select value={value.gender || ''} onValueChange={setSel('gender')}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fitness Level</Label>
+                <Select value={value.fitness_level || ''} onValueChange={setSel('fitness_level')}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="beginner">Beginner</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="advanced">Advanced</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Weight (kg)</Label>
+                <Input type="number" value={value.weight || ''} onChange={set('weight')} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Height (cm)</Label>
+                <Input type="number" value={value.height || ''} onChange={set('height')} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BMI</Label>
+                <Input value={bmi || ''} disabled />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Equipment Access</Label>
+                <Select value={value.equipment || ''} onValueChange={setSel('equipment')}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_gym">Full Gym</SelectItem>
+                    <SelectItem value="home_basic">Home (basic)</SelectItem>
+                    <SelectItem value="home_dumbbells">Home (dumbbells)</SelectItem>
+                    <SelectItem value="bodyweight">Bodyweight only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Dietary Preference</Label>
+                <Select value={value.dietary_preference || ''} onValueChange={setSel('dietary_preference')}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vegetarian">Vegetarian</SelectItem>
+                    <SelectItem value="vegan">Vegan</SelectItem>
+                    <SelectItem value="non_vegetarian">Non-Vegetarian</SelectItem>
+                    <SelectItem value="eggetarian">Eggetarian</SelectItem>
+                    <SelectItem value="pescatarian">Pescatarian</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Cuisine</Label>
+                <Select value={value.cuisine || ''} onValueChange={setSel('cuisine')}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="indian">Indian</SelectItem>
+                    <SelectItem value="continental">Continental</SelectItem>
+                    <SelectItem value="mediterranean">Mediterranean</SelectItem>
+                    <SelectItem value="asian">Asian</SelectItem>
+                    <SelectItem value="mixed">Mixed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Allergies</Label>
+              <Input value={value.allergies || ''} onChange={set('allergies')} placeholder="e.g. nuts, dairy, gluten" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Health Conditions</Label>
+              <Textarea
+                value={value.health_conditions || ''}
+                onChange={set('health_conditions')}
+                rows={2}
+                placeholder="Injuries or limitations to consider"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fitness Goals</Label>
+              <Textarea
+                value={value.fitness_goals || ''}
+                onChange={set('fitness_goals')}
+                rows={2}
+                placeholder="Lose fat, build strength, improve endurance…"
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </CardContent>
+    </Card>
+  );
+}
