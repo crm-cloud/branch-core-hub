@@ -123,7 +123,7 @@ const RegisterModal = () => {
     try {
       const payload = {
         full_name: data.full_name,
-        phone: data.phone,
+        phone: `+91${data.phone}`,
         email: data.email,
         source: getSource(),
         notes: buildNotes(data),
