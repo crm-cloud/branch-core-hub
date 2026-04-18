@@ -3234,6 +3234,77 @@ export type Database = {
           },
         ]
       }
+      meal_catalog: {
+        Row: {
+          branch_id: string | null
+          calories: number
+          carbs: number
+          created_at: string
+          created_by: string | null
+          cuisine: string
+          default_quantity: string | null
+          dietary_type: string
+          fats: number
+          fiber: number
+          id: string
+          is_active: boolean
+          meal_type: string
+          name: string
+          notes: string | null
+          protein: number
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          calories?: number
+          carbs?: number
+          created_at?: string
+          created_by?: string | null
+          cuisine: string
+          default_quantity?: string | null
+          dietary_type: string
+          fats?: number
+          fiber?: number
+          id?: string
+          is_active?: boolean
+          meal_type: string
+          name: string
+          notes?: string | null
+          protein?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          calories?: number
+          carbs?: number
+          created_at?: string
+          created_by?: string | null
+          cuisine?: string
+          default_quantity?: string | null
+          dietary_type?: string
+          fats?: number
+          fiber?: number
+          id?: string
+          is_active?: boolean
+          meal_type?: string
+          name?: string
+          notes?: string | null
+          protein?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_catalog_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_attendance: {
         Row: {
           branch_id: string
