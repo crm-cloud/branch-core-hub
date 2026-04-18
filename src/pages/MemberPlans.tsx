@@ -122,17 +122,27 @@ export default function MemberPlansPage() {
     title: 'Share via WhatsApp',
   });
 
-  // Member identity
+  // Member identity (members has no full_name/phone — those live on profiles)
   const { data: member } = useQuery({
     queryKey: ['my-member', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase
+      const { data: m } = await supabase
         .from('members')
-        .select('id, member_code, full_name, phone, dietary_preference, cuisine_preference, branch_id')
+        .select('id, member_code, dietary_preference, cuisine_preference, branch_id, user_id')
         .eq('user_id', user.id)
         .maybeSingle();
-      return data;
+      if (!m) return null;
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user.id)
+        .maybeSingle();
+      return {
+        ...m,
+        full_name: p?.full_name ?? null,
+        phone: p?.phone ?? null,
+      };
     },
     enabled: !!user?.id,
   });
