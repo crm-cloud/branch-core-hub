@@ -118,17 +118,31 @@ export function NotificationBell() {
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between p-3 border-b">
           <h4 className="font-semibold">Notifications</h4>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={() => markAllReadMutation.mutate()}
-              className="text-xs h-7"
+              size="icon"
+              className="h-7 w-7"
+              title={soundOn ? 'Mute notification sound' : 'Enable notification sound'}
+              onClick={() => {
+                setChatSoundEnabled(!soundOn);
+                setSoundOn(!soundOn);
+              }}
             >
-              <CheckCheck className="h-3 w-3 mr-1" />
-              Mark all read
+              {soundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />}
             </Button>
-          )}
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => markAllReadMutation.mutate()}
+                className="text-xs h-7"
+              >
+                <CheckCheck className="h-3 w-3 mr-1" />
+                Mark all read
+              </Button>
+            )}
+          </div>
         </div>
 
         <ScrollArea className="h-[300px]">
