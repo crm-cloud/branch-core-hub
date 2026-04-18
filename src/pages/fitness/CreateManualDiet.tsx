@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getPlanTemplate } from '@/services/fitnessService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,8 @@ const EMPTY_ITEM: MealItem = { food: '', quantity: '', calories: 0, protein: 0, 
 
 export default function CreateManualDietPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const templateId = searchParams.get('template');
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -66,6 +69,54 @@ export default function CreateManualDietPage() {
   const [fatTarget, setFatTarget] = useState(60);
   const [slots, setSlots] = useState<MealSlot[]>(DEFAULT_SLOTS);
   const [swapSlotIdx, setSwapSlotIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!templateId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const tpl = await getPlanTemplate(templateId);
+        if (cancelled) return;
+        if (!tpl) { toast.error('Template not found'); return; }
+        if (tpl.type !== 'diet') {
+          toast.error('That template is a workout plan — opening the workout builder instead');
+          navigate(`/fitness/create/manual/workout?template=${templateId}`, { replace: true });
+          return;
+        }
+        setPlanName(tpl.name);
+        setDescription(tpl.description || '');
+        const content: any = tpl.content || {};
+        if (content.dietaryType) setDietaryType(content.dietaryType);
+        if (content.cuisine) setCuisine(content.cuisine);
+        if (content.dailyCalories) setCalTarget(Number(content.dailyCalories) || 2000);
+        const macroNum = (v: any) => parseInt(String(v ?? '').replace(/\D/g, ''), 10);
+        if (content.macros?.protein) setProteinTarget(macroNum(content.macros.protein) || 120);
+        if (content.macros?.carbs) setCarbsTarget(macroNum(content.macros.carbs) || 220);
+        if (content.macros?.fat) setFatTarget(macroNum(content.macros.fat) || 60);
+        if (Array.isArray(content.slots) && content.slots.length) {
+          setSlots(content.slots.map((s: any) => ({
+            name: s.name || '',
+            time: s.time || '',
+            items: (s.items || []).map((i: any) => ({
+              food: i.food || '',
+              quantity: i.quantity || '',
+              calories: Number(i.calories) || 0,
+              protein: Number(i.protein) || 0,
+              carbs: Number(i.carbs) || 0,
+              fats: Number(i.fats) || 0,
+            })),
+            recipe_link: s.recipe_link,
+            prep_video_url: s.prep_video_url,
+            prep_video_file_path: s.prep_video_file_path,
+          })));
+        }
+        toast.success(`Loaded template: ${tpl.name}`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to load template');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [templateId]);
 
   const totals = useMemo(() => slots.reduce((acc, s) => {
     s.items.forEach(i => {

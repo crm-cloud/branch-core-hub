@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getPlanTemplate } from '@/services/fitnessService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +46,8 @@ const EMPTY_EXERCISE: Exercise = { name: '', sets: 3, reps: '12', rest_seconds: 
 
 export default function CreateManualWorkoutPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const templateId = searchParams.get('template');
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -53,6 +56,58 @@ export default function CreateManualWorkoutPage() {
   const [member, setMember] = useState<PickedMember | null>(null);
   const [days, setDays] = useState<Day[]>(DEFAULT_DAYS);
   const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    if (!templateId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const tpl = await getPlanTemplate(templateId);
+        if (cancelled) return;
+        if (!tpl) { toast.error('Template not found'); return; }
+        if (tpl.type !== 'workout') {
+          toast.error('That template is a diet plan — opening the diet builder instead');
+          navigate(`/fitness/create/manual/diet?template=${templateId}`, { replace: true });
+          return;
+        }
+        setPlanName(tpl.name);
+        setDescription(tpl.description || '');
+        if (tpl.difficulty) setDifficulty(tpl.difficulty);
+        if (tpl.goal) setGoal(tpl.goal);
+        const content: any = tpl.content || {};
+        const tplDays: any[] = content?.weeks?.[0]?.days || [];
+        if (tplDays.length) {
+          setDays(tplDays.map((d: any) => ({
+            day: d.day || '',
+            focus: d.focus || '',
+            exercises: (d.exercises || []).map((ex: any) => {
+              const restRaw = ex.rest;
+              const restNum =
+                typeof restRaw === 'number'
+                  ? restRaw
+                  : typeof restRaw === 'string'
+                    ? parseInt(restRaw.replace(/\D/g, ''), 10) || 60
+                    : 60;
+              return {
+                name: ex.name || '',
+                sets: ex.sets ?? 3,
+                reps: String(ex.reps ?? '12'),
+                rest_seconds: restNum,
+                weight: ex.weight || '',
+                form_tips: ex.notes || '',
+                video_url: ex.video_url,
+                video_file_path: ex.video_file_path,
+              };
+            }),
+          })));
+        }
+        toast.success(`Loaded template: ${tpl.name}`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to load template');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [templateId]);
 
   const updateDay = (idx: number, patch: Partial<Day>) =>
     setDays(prev => prev.map((d, i) => i === idx ? { ...d, ...patch } : d));

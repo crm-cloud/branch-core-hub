@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getPlanTemplate } from '@/services/fitnessService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,8 @@ import { newDraftId, saveDraft } from '@/lib/planDraft';
 export default function CreateAIPage() {
   const navigate = useNavigate();
   const generate = useGenerateFitnessPlan();
+  const [searchParams] = useSearchParams();
+  const templateId = searchParams.get('template');
 
   const [type, setType] = useState<'workout' | 'diet'>('workout');
   const [member, setMember] = useState<PickedMember | null>(null);
@@ -31,6 +34,39 @@ export default function CreateAIPage() {
   const [fatTarget, setFatTarget] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!templateId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const tpl = await getPlanTemplate(templateId);
+        if (cancelled) return;
+        if (!tpl) { toast.error('Template not found'); return; }
+        setType(tpl.type);
+        setPlanName(tpl.name);
+        if (tpl.goal) setGoal(tpl.goal);
+        const content: any = tpl.content || {};
+        if (content.dailyCalories) setCaloriesTarget(String(content.dailyCalories));
+        const macroNum = (v: any) => parseInt(String(v ?? '').replace(/\D/g, ''), 10);
+        if (content.macros?.protein) setProteinTarget(String(macroNum(content.macros.protein) || ''));
+        if (content.macros?.carbs) setCarbsTarget(String(macroNum(content.macros.carbs) || ''));
+        if (content.macros?.fat) setFatTarget(String(macroNum(content.macros.fat) || ''));
+        if (tpl.description) setSpecialNotes(tpl.description);
+        setProfile(prev => ({
+          ...prev,
+          fitness_level: tpl.difficulty || prev.fitness_level,
+          fitness_goals: tpl.goal || prev.fitness_goals,
+          dietary_preference: content.dietaryType || prev.dietary_preference,
+          cuisine: content.cuisine || prev.cuisine,
+        }));
+        toast.success(`Loaded template: ${tpl.name}`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to load template');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [templateId]);
 
   const dietRequirementsMet = type !== 'diet' || (!!profile.dietary_preference && !!profile.cuisine);
 

@@ -107,6 +107,23 @@ export async function createPlanTemplate(template: {
   };
 }
 
+// Fetch a single plan template by id
+export async function getPlanTemplate(id: string): Promise<FitnessPlanTemplate | null> {
+  const { data, error } = await supabase
+    .from('fitness_plan_templates')
+    .select('*')
+    .eq('id', id)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    ...data,
+    type: data.type as 'workout' | 'diet',
+    content: narrowPlanContent(data.content),
+  };
+}
+
 // Assign plan to member
 export async function assignPlanToMember(params: {
   member_id: string;

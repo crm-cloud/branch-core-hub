@@ -4,18 +4,47 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Pencil, UserPlus, Sparkles, Dumbbell, UtensilsCrossed, AlertCircle } from 'lucide-react';
+import { Pencil, UserPlus, Sparkles, Dumbbell, UtensilsCrossed, AlertCircle, Bookmark, Loader2 } from 'lucide-react';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { AssignPlanDrawer } from '@/components/fitness/AssignPlanDrawer';
 import { loadDraft, PlanDraft } from '@/lib/planDraft';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { createPlanTemplate } from '@/services/fitnessService';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function PreviewPlanPage() {
   const { planId } = useParams<{ planId: string }>();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<PlanDraft | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
   const { effectiveBranchId } = useBranchContext();
+  const queryClient = useQueryClient();
+
+  const handleSaveAsTemplate = async () => {
+    if (!draft) return;
+    setSavingTemplate(true);
+    try {
+      const tpl = await createPlanTemplate({
+        branch_id: effectiveBranchId ?? null,
+        name: draft.name,
+        type: draft.type,
+        description: draft.description,
+        difficulty: draft.difficulty,
+        goal: draft.goal,
+        content: draft.content,
+      });
+      setSavedTemplateId(tpl.id);
+      queryClient.invalidateQueries({ queryKey: ['fitness-templates'] });
+      toast.success('Saved as template');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save template');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   useEffect(() => {
     if (planId) setDraft(loadDraft(planId));
@@ -58,6 +87,19 @@ export default function PreviewPlanPage() {
           <>
             <Button variant="outline" onClick={() => navigate(editPath)} className="gap-1.5">
               <Pencil className="h-4 w-4" /> Edit before assign
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveAsTemplate}
+              disabled={savingTemplate || !!savedTemplateId}
+              className="gap-1.5"
+            >
+              {savingTemplate ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Bookmark className="h-4 w-4" />
+              )}
+              {savedTemplateId ? 'Saved as template' : 'Save as template'}
             </Button>
             <Button onClick={() => setAssignOpen(true)} className="gap-1.5">
               <UserPlus className="h-4 w-4" /> Assign to member

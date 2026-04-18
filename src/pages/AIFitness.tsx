@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download, Edit, Users } from "lucide-react";
+import { Sparkles, Dumbbell, Utensils, Loader2, Copy, Save, UserPlus, Library, Trash2, Shuffle, Zap, Target, ChevronRight, Download, Edit, Users, FilePlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { format } from "date-fns";
 import { useGenerateFitnessPlan } from "@/hooks/usePTPackages";
@@ -167,6 +168,7 @@ export default function AIFitnessPage({ defaultTab = "generate" }: { defaultTab?
   const { profile, hasAnyRole } = useAuth();
   const canUseAi = hasAnyRole(['owner', 'admin', 'manager']);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const initialTab: "generate" | "templates" | "assign" | "member-plans" =
     defaultTab === "generate" && !canUseAi ? "templates" : defaultTab;
   const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">(initialTab);
@@ -868,6 +870,19 @@ export default function AIFitnessPage({ defaultTab = "generate" }: { defaultTab?
                                 });
                               }}>
                                 <Download className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const path = template.type === 'workout'
+                                    ? '/fitness/create/manual/workout'
+                                    : '/fitness/create/manual/diet';
+                                  navigate(`${path}?template=${template.id}`);
+                                }}
+                                title="Use as starting point"
+                              >
+                                <FilePlus className="h-3.5 w-3.5" />
                               </Button>
                               {canUseAi && (
                                 <Button size="sm" variant="outline" onClick={() => handleEditTemplate(template)} title="Edit">
