@@ -225,7 +225,8 @@ function RoutedContent() {
           {/* Trainers may view templates / member plans; AI Generate tab is hidden in-page for non-AI roles */}
           <Route path="/fitness/templates" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><FitnessTemplatesPage /></ProtectedRoute>} />
           <Route path="/fitness/member-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><FitnessMemberPlansPage /></ProtectedRoute>} />
-          <Route path="/meal-catalog" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><MealCatalogPage /></ProtectedRoute>} />
+          <Route path="/meal-catalog" element={<Navigate to="/fitness/meal-catalog" replace />} />
+          <Route path="/fitness/meal-catalog" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><MealCatalogPage /></ProtectedRoute>} />
 
           {/* Legacy routes redirect to the new flow */}
           <Route path="/diet-workout-plans" element={<Navigate to="/fitness/create" replace />} />

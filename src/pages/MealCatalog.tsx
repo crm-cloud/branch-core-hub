@@ -19,6 +19,7 @@ import {
 } from '@/services/mealCatalogService';
 import { DIETARY_PREFERENCES, CUISINE_PREFERENCES } from '@/types/fitnessPlan';
 import { toast } from 'sonner';
+import { FitnessHubTabs } from '@/components/fitness/FitnessHubTabs';
 
 const MEAL_TYPES: { value: MealType; label: string }[] = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -122,13 +123,14 @@ export default function MealCatalog() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <FitnessHubTabs />
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <UtensilsCrossed className="h-8 w-8 text-accent" />
+            <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+              <UtensilsCrossed className="h-5 w-5 text-accent" />
               Meal Catalog
-            </h1>
-            <p className="text-muted-foreground">Master list of meals used by the diet builder's swap modal</p>
+            </h2>
+            <p className="text-sm text-muted-foreground">Master list of meals used by the diet builder's swap modal</p>
           </div>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-2" />

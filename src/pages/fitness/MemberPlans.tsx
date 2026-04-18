@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, Library, Users } from "lucide-react";
+import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,13 +31,14 @@ export default function FitnessMemberPlansPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <FitnessHubTabs />
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Users className="h-8 w-8 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
               Member Plans
-            </h1>
-            <p className="text-muted-foreground">
+            </h2>
+            <p className="text-sm text-muted-foreground">
               Workout & diet plans currently assigned to members
             </p>
           </div>

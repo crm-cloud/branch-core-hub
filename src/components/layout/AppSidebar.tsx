@@ -172,7 +172,11 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
                 )}
                 <ul className="space-y-1">
                   {section.items.map((item) => {
-                    const isActive = location.pathname === item.href;
+                    const isActive =
+                      location.pathname === item.href ||
+                      (item.href === '/fitness/create' &&
+                        (location.pathname.startsWith('/fitness/') ||
+                          location.pathname === '/meal-catalog'));
                     if (collapsed) {
                       return (
                         <li key={item.href}>
@@ -297,7 +301,11 @@ export function MobileNav() {
                 </p>
                 <ul className="space-y-1">
                   {section.items.map((item) => {
-                    const isActive = location.pathname === item.href;
+                    const isActive =
+                      location.pathname === item.href ||
+                      (item.href === '/fitness/create' &&
+                        (location.pathname.startsWith('/fitness/') ||
+                          location.pathname === '/meal-catalog'));
                     return (
                       <li key={item.href}>
                         <Link

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Sparkles, Hand, Dumbbell, UtensilsCrossed, ChevronRight, Library, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { FitnessHubTabs } from '@/components/fitness/FitnessHubTabs';
 
 export default function CreateModePickerPage() {
   const navigate = useNavigate();
@@ -12,10 +13,11 @@ export default function CreateModePickerPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-5xl">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Create a Plan</h1>
-          <p className="text-muted-foreground mt-1">
+      <div className="space-y-6">
+        <FitnessHubTabs />
+        <div className="max-w-5xl space-y-2">
+          <h2 className="text-xl font-semibold tracking-tight">Create a Plan</h2>
+          <p className="text-sm text-muted-foreground">
             {isAdmin
               ? 'Choose how you want to build the plan — let AI generate a personalized program, or build one manually.'
               : 'Build a workout or diet plan for one of your clients.'}

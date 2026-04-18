@@ -77,7 +77,7 @@ export const trainerMenuConfig: MenuSection[] = [
       { label: 'PT Sessions', href: '/pt-sessions', icon: Dumbbell, roles: ['trainer'] },
       { label: 'Schedule Session', href: '/schedule-session', icon: Calendar, roles: ['trainer'] },
       { label: 'My Classes', href: '/classes', icon: Calendar, roles: ['trainer'] },
-      { label: 'Create Plan', href: '/fitness/create', icon: ClipboardList, roles: ['trainer'] },
+      { label: 'Diet & Workout', href: '/fitness/create', icon: Dumbbell, roles: ['trainer'] },
     ],
   },
   {
@@ -176,10 +176,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
       { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Create Plan', href: '/fitness/create', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Plan Templates', href: '/fitness/templates', icon: ClipboardList, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Member Plans', href: '/fitness/member-plans', icon: Users, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Meal Catalog', href: '/meal-catalog', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Diet & Workout', href: '/fitness/create', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {

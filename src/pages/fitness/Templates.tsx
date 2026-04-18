@@ -24,6 +24,7 @@ import {
   FitnessPlanTemplate,
 } from "@/services/fitnessService";
 import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
+import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -281,14 +282,15 @@ export default function FitnessTemplatesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <FitnessHubTabs />
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Library className="h-8 w-8 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+              <Library className="h-5 w-5 text-primary" />
               Plan Templates
-            </h1>
-            <p className="text-muted-foreground">
+            </h2>
+            <p className="text-sm text-muted-foreground">
               Browse, shuffle, and assign workout & diet templates to members
             </p>
           </div>
