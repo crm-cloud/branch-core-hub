@@ -145,17 +145,18 @@ export default function CreateManualDietPage() {
     updateSlot(sIdx, { items: slots[sIdx].items.filter((_, i) => i !== iIdx) });
 
   const applySwap = (sIdx: number, entry: MealCatalogEntry) => {
+    const anyEntry = entry as any;
     updateSlot(sIdx, {
       items: [{
         food: entry.name,
-        quantity: entry.serving_size || '1 serving',
+        quantity: entry.default_quantity || '1 serving',
         calories: entry.calories,
-        protein: entry.protein_g,
-        carbs: entry.carbs_g,
-        fats: entry.fats_g,
+        protein: entry.protein,
+        carbs: entry.carbs,
+        fats: entry.fats,
       }],
-      recipe_link: entry.recipe_url || slots[sIdx].recipe_link,
-      prep_video_url: entry.video_url || slots[sIdx].prep_video_url,
+      recipe_link: anyEntry.recipe_link || slots[sIdx].recipe_link,
+      prep_video_url: anyEntry.prep_video_url || slots[sIdx].prep_video_url,
     });
     setSwapSlotIdx(null);
     toast.success(`Swapped to ${entry.name}`);
