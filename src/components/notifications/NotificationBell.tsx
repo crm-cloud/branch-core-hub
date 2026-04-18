@@ -74,6 +74,10 @@ export function NotificationBell() {
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 
+  // Play sound on new unread (only when count increases)
+  useChatSound(unreadCount);
+
+
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications', user?.id],
     queryFn: () => fetchNotifications(user!.id),
