@@ -7,12 +7,13 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle2, Volume2, VolumeX } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchNotifications, fetchUnreadCount, markAsRead, markAllAsRead } from '@/services/notificationService';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
+import { useChatSound, isChatSoundEnabled, setChatSoundEnabled } from '@/hooks/useChatSound';
 
 const typeIcons = {
   info: Info,
