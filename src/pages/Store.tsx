@@ -273,22 +273,27 @@ export default function StorePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {posSales.slice(0, 8).map((sale: any) => (
-                  <div key={sale.id} className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                      <CreditCard className="h-4 w-4" />
+                {posSales.slice(0, 8).map((sale: any) => {
+                  const customer =
+                    sale.customer_name ||
+                    sale.members?.profiles?.full_name ||
+                    sale.members?.member_code ||
+                    'Walk-in';
+                  return (
+                    <div key={sale.id} className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                        <CreditCard className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{customer}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{sale.payment_method}</p>
+                      </div>
+                      <span className="text-sm font-bold text-success">
+                        +₹{sale.total_amount?.toLocaleString()}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {sale.members?.profiles?.full_name || sale.members?.member_code || 'Walk-in'}
-                      </p>
-                      <p className="text-xs text-muted-foreground capitalize">{sale.payment_method}</p>
-                    </div>
-                    <span className="text-sm font-bold text-success">
-                      +₹{sale.total_amount?.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
                 {posSales.length === 0 && (
                   <p className="text-center text-sm text-muted-foreground py-8">No sales yet</p>
                 )}
@@ -332,18 +337,34 @@ export default function StorePage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {posSales.map((sale: any) => (
-                            <TableRow key={sale.id}>
-                              <TableCell>{format(new Date(sale.sale_date), 'dd MMM yyyy HH:mm')}</TableCell>
-                              <TableCell className="font-mono text-xs">{sale.invoices?.invoice_number || '-'}</TableCell>
-                              <TableCell>{sale.members?.profiles?.full_name || sale.members?.member_code || 'Walk-in'}</TableCell>
-                              <TableCell>{(sale.items as any[])?.length || 0} items</TableCell>
-                              <TableCell className="font-medium">₹{sale.total_amount.toLocaleString()}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="capitalize">{sale.payment_method}</Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {posSales.map((sale: any) => {
+                            const customer =
+                              sale.customer_name ||
+                              sale.members?.profiles?.full_name ||
+                              sale.members?.member_code ||
+                              'Walk-in';
+                            const customerPhone = sale.customer_phone;
+                            return (
+                              <TableRow key={sale.id}>
+                                <TableCell>{format(new Date(sale.sale_date), 'dd MMM yyyy HH:mm')}</TableCell>
+                                <TableCell className="font-mono text-xs">{sale.invoices?.invoice_number || '-'}</TableCell>
+                                <TableCell>
+                                  <div className="font-medium">{customer}</div>
+                                  {customerPhone && <div className="text-xs text-muted-foreground">{customerPhone}</div>}
+                                </TableCell>
+                                <TableCell>{(sale.items as any[])?.length || 0} items</TableCell>
+                                <TableCell className="font-medium">₹{sale.total_amount.toLocaleString()}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <Badge variant="outline" className="capitalize">{sale.payment_method}</Badge>
+                                    {sale.payment_status === 'awaiting_payment' && (
+                                      <Badge variant="secondary" className="text-[10px]">Awaiting</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                           {posSales.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">

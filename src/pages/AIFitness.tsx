@@ -400,7 +400,7 @@ export default function AIFitnessPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Sparkles className="h-8 w-8 text-primary" />
-              AI Fitness Planner
+              Diet & Workout Plans
             </h1>
             <p className="text-muted-foreground">Generate, manage, and assign personalized workout & diet plans</p>
           </div>
