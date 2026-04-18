@@ -35,7 +35,13 @@ export function NotificationBell() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(isChatSoundEnabled());
 
+  useEffect(() => {
+    const handler = () => setSoundOn(isChatSoundEnabled());
+    window.addEventListener('chat-sound-pref-change', handler);
+    return () => window.removeEventListener('chat-sound-pref-change', handler);
+  }, []);
   // Realtime subscription for instant notifications — unique channel per user/mount
   // prevents duplicate handler fires when multiple components subscribe.
   useEffect(() => {
