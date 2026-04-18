@@ -1,0 +1,713 @@
+# 🏋️ REDESIGN PROMPT: AI Fitness Planner - Diet & Workout Plans
+
+## Current State Analysis (From Screenshots)
+
+**Issues Identified:**
+- Generic form layout lacks role-based workflows
+- No distinction between Trainer (manual) vs Admin (AI) capabilities
+- Missing dietary preference options (veg/non-veg/Indian cuisine)
+- No video attachment capability for workout exercises
+- No pre-fill from member profile data
+- Poor visual hierarchy in plan creation
+- Macro calculations not visible
+- Member assignment flow needs optimization
+
+---
+
+## REDESIGN OBJECTIVES
+
+### 1. **Role-Based Access Control**
+```
+TRAINER (Create Manual Plans Only)
+├─ Can create custom workout plans
+├─ Can create custom diet plans
+├─ Can assign to single/multiple members
+├─ CANNOT use AI generation
+└─ Manual entry only
+
+ADMIN/OWNER (Full AI + Manual)
+├─ Can use AI generation (one-click)
+├─ Can create manual plans
+├─ Can create global templates
+├─ Can assign to all members
+├─ Can manage plan library
+├─ Can view all plans across members
+└─ Can edit trainer-created plans
+```
+
+### 2. **Member Profile Pre-Fill**
+When creating a plan, auto-populate from member database:
+```
+From Member Profile (Auto-filled):
+├─ Age ✓ (from DOB)
+├─ Gender ✓
+├─ Weight ✓ (current)
+├─ Height ✓
+├─ BMI ✓ (auto-calculated)
+├─ Fitness Level ✓ (from history)
+├─ Equipment Available ✓ (home/gym/both)
+├─ Current Activity Level ✓
+├─ Dietary Restrictions ✓ (saved preferences)
+├─ Food Allergies ✓
+└─ Injuries/Limitations ✓
+
+User can OVERRIDE any field
+```
+
+### 3. **Dietary Preferences System**
+```
+DIET TYPE SELECTOR (Required):
+┌─────────────────────────────────┐
+│ Dietary Preference              │
+│                                 │
+│ ○ Vegetarian                    │
+│ ○ Non-Vegetarian                │
+│ ○ Vegan                         │
+│ ○ Pescatarian                   │
+└─────────────────────────────────┘
+
+CUISINE PREFERENCE (Required):
+┌─────────────────────────────────┐
+│ Preferred Cuisine               │
+│                                 │
+│ ○ Indian (Traditional)          │
+│ ○ Indian (Modern/Fusion)        │
+│ ○ Continental                   │
+│ ○ Asian                         │
+│ ○ Mediterranean                 │
+│ ○ Mixed (Any)                   │
+└─────────────────────────────────┘
+
+SPECIFIC AVOIDANCES (Optional):
+┌─────────────────────────────────┐
+│ ☐ Dairy-free                    │
+│ ☐ Gluten-free                   │
+│ ☐ High spice                    │
+│ ☐ Avoid certain cuisines        │
+│ [Text field for custom]         │
+└─────────────────────────────────┘
+```
+
+### 4. **Workout Video Attachments**
+```
+FOR EACH EXERCISE:
+
+Exercise Name: [Bench Press]
+
+Video Attachment (Optional):
+┌─────────────────────────────────┐
+│ [📹 Upload Video]               │
+│ or                              │
+│ [🔗 YouTube/Vimeo Link]         │
+│                                 │
+│ ✓ Video must show:              │
+│   • Proper form                 │
+│   • Full range of motion        │
+│   • Safety tips                 │
+│                                 │
+│ Accepted formats: MP4, MOV, WebM│
+│ Max size: 50MB                  │
+│ Duration: 15-90 seconds         │
+└─────────────────────────────────┘
+
+When member views plan:
+├─ Exercise card shows video thumbnail
+├─ [▶ Play Video] button above form tips
+├─ Full-screen video player on click
+├─ Video auto-plays at 0.75x speed
+└─ Can loop/rewatch
+```
+
+---
+
+## NEW PAGE STRUCTURE
+
+### **STEP 1: Create Plan - Role-Based Entry Point**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Diet & Workout Plans                                        │
+│ Generate, manage, and assign personalized plans             │
+├─────────────────────────────────────────────────────────────┤
+│ [Generate] [Template Library] [Member Plans] [Assign]       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ CREATE NEW PLAN                                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ IF ROLE = ADMIN/OWNER:                                     │
+│ ┌─────────────────────┬─────────────────────┐             │
+│ │ 🤖 AI GENERATION    │ ✋ MANUAL CREATION   │             │
+│ │ (Recommended)       │ (Custom)            │             │
+│ │                     │                     │             │
+│ │ • Fast (30-60s)    │ • Full control      │             │
+│ │ • Personalized     │ • Template-based    │             │
+│ │ • Data-driven      │ • Step-by-step      │             │
+│ │                     │                     │             │
+│ │ [Create with AI] →  │ [Create Manually] → │             │
+│ └─────────────────────┴─────────────────────┘             │
+│                                                             │
+│ IF ROLE = TRAINER:                                         │
+│ ┌─────────────────────────────────────────────┐           │
+│ │ ✋ MANUAL CREATION ONLY                      │           │
+│ │                                             │           │
+│ │ Build custom workout & diet plans           │           │
+│ │ Guided step-by-step form                    │           │
+│ │                                             │           │
+│ │ [Create Workout]    [Create Diet Plan]      │           │
+│ └─────────────────────────────────────────────┘           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **STEP 2A: AI GENERATION (Admin Only)**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🤖 Generate Personalized Plan (Admin/Owner)                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ SELECT MEMBER                                              │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ [Search member by name/ID...]                        │  │
+│ │                                                      │  │
+│ │ Selected: John Doe                                   │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ MEMBER PROFILE (Auto-filled, Editable)                    │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Age: 28                    Weight: 78 kg              │  │
+│ │ Height: 5'10"              BMI: 24.3                  │  │
+│ │ Current Activity: Moderate  Fitness Level: Intermediate│  │
+│ │ Equipment: Gym + Home       Injuries: None            │  │
+│ │                                                       │  │
+│ │ Dietary Preference: Non-Veg  Cuisine: Indian         │  │
+│ │ Allergies: None             Restrictions: None       │  │
+│ │                                                       │  │
+│ │ [Edit Profile Data]                                  │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ PLAN GOALS & PREFERENCES                                   │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Primary Goal:      [Muscle Gain ▼]                   │  │
+│ │ Duration:          [12 Weeks ▼]                      │  │
+│ │ Workouts/Week:     [5 Days ▼]                        │  │
+│ │ Diet Focus:        [High Protein ▼]                  │  │
+│ │ Difficulty:        [Intermediate ▼]                  │  │
+│ │ Calorie Target:    [2200 cal/day ▼] (Auto-calculated)  │ │
+│ │                                                       │  │
+│ │ Special Notes:     [Text field...]                   │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│                                                             │
+│              [Cancel]        [Generate Plan]               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+LOADING STATE (After Generate clicked):
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│                  🔄 Generating Plan...                     │
+│                                                             │
+│        Analyzing member profile...                         │
+│        ███░░░░░░ 30%                                      │
+│                                                             │
+│        Creating workout routine...                         │
+│        ██████░░░░ 60%                                     │
+│                                                             │
+│        Calculating macros & meals...                      │
+│        █████████░ 90%                                     │
+│                                                             │
+│        Estimated time: 45 seconds                          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+AFTER GENERATION:
+┌─────────────────────────────────────────────────────────────┐
+│ ✓ Plan Generated Successfully!                              │
+│                                                             │
+│ GENERATED PLAN PREVIEW                                      │
+│ ├─ Workout Plan: PPL Split (Push/Pull/Legs)               │
+│ ├─ Weeks: 12                                                │
+│ ├─ Workouts/Week: 5 days                                    │
+│ ├─ Diet: 2200 cal/day (Protein: 180g, Carbs: 220g)        │
+│ ├─ Cuisine: Indian (Non-Veg)                               │
+│ └─ Status: Ready to assign                                  │
+│                                                             │
+│ QUICK ACTIONS                                               │
+│ [View Full Plan] [Edit Before Assign] [Assign to Member]  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **STEP 2B: MANUAL CREATION (Trainer + Admin)**
+
+#### **2B.1 - Workout Plan Builder**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ✋ Create Workout Plan Manually                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ PLAN INFO                                                   │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Plan Name: [Push/Pull/Legs - Advanced]               │  │
+│ │ Duration:  [12 Weeks ▼]                              │  │
+│ │ Days/Week: [5 ▼]                                     │  │
+│ │ Difficulty:[Intermediate ▼]                          │  │
+│ │ Description: [Optional text...]                      │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ WEEKLY SCHEDULE (Drag to reorder)                           │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ MON  [Chest & Triceps] [+ Add Exercises]             │  │
+│ │ TUE  [Back & Biceps]   [+ Add Exercises]             │  │
+│ │ WED  [Legs]            [+ Add Exercises]             │  │
+│ │ THU  [Shoulders]       [+ Add Exercises]             │  │
+│ │ FRI  [Full Body]       [+ Add Exercises]             │  │
+│ │ SAT  [Rest Day]                                      │  │
+│ │ SUN  [Rest Day]                                      │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ EDIT DAY: MONDAY - CHEST & TRICEPS                         │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Exercise 1: Barbell Bench Press                      │  │
+│ │ Sets: [4 ▼]  Reps: [8 ▼]  Weight: [80 kg]           │  │
+│ │ Rest (sec): [90]                                     │  │
+│ │                                                       │  │
+│ │ VIDEO ATTACHMENT (Optional):                         │  │
+│ │ [📹 Upload Video]  or  [🔗 YouTube Link]            │  │
+│ │ ✓ Current: demo-bench-press-form.mp4 ✓             │  │
+│ │                                                       │  │
+│ │ FORM TIPS:                                           │  │
+│ │ [Keep chest high, lower to mid-chest]               │  │
+│ │                                                       │  │
+│ │ ┌──────────────────────────────────────────────────┐│  │
+│ │ │ [Delete Ex.] [↑ Move Up] [↓ Move Down]           ││  │
+│ │ └──────────────────────────────────────────────────┘│  │
+│ │                                                       │  │
+│ │ Exercise 2: Incline Dumbbell Press                   │  │
+│ │ Sets: [3 ▼]  Reps: [10 ▼]  Weight: [30 kg]          │  │
+│ │ Rest (sec): [75]                                     │  │
+│ │ VIDEO: [📹 Upload]                                   │  │
+│ │ [Delete] [↑] [↓]                                    │  │
+│ │                                                       │  │
+│ │ Exercise 3: Tricep Dips                              │  │
+│ │ Sets: [3 ▼]  Reps: [12 ▼]  Weight: [BW+10kg]       │  │
+│ │ Rest (sec): [60]                                     │  │
+│ │ VIDEO: [📹 Upload]                                   │  │
+│ │ [Delete] [↑] [↓]                                    │  │
+│ │                                                       │  │
+│ │ [+ Add Another Exercise]                             │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│                                                             │
+│              [Save Plan] [Preview] [Next]                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### **2B.2 - Diet Plan Builder**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ✋ Create Diet Plan Manually                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ PLAN INFO                                                   │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Plan Name: [High Protein Indian Diet]                │  │
+│ │ Duration:  [12 Weeks ▼]                              │  │
+│ │ Daily Calories: [2200]                               │  │
+│ │ Description: [Optional...]                           │  │
+│ │                                                       │  │
+│ │ MACRO TARGETS (Auto-calculated):                     │  │
+│ │ Protein: 180g (33%)  Carbs: 220g (40%)  Fats: 73g (27%)│ │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ DIETARY PREFERENCES                                         │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Type: [Non-Vegetarian ▼]                             │  │
+│ │ Cuisine: [Indian ▼]                                  │  │
+│ │ Special: ☐ Dairy-free  ☐ Gluten-free  ☐ Low spice   │  │
+│ │ Allergies: [None ▼]                                  │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ EDIT DAY: MONDAY                                            │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ BREAKFAST (7:00 AM)                                  │  │
+│ │ ┌────────────────────────────────────────────────┐  │  │
+│ │ │ Meal: [Scrambled Eggs with Roti]               │  │  │
+│ │ │ Quantity: [3 eggs + 2 roti]                    │  │  │
+│ │ │ Macros: P: 18g | C: 30g | F: 10g | Cal: 280  │  │  │
+│ │ │ [🔗 Recipe Link] [Edit] [Swap Meal]            │  │  │
+│ │ └────────────────────────────────────────────────┘  │  │
+│ │                                                      │  │
+│ │ MID-MORNING SNACK (10:00 AM)                        │  │
+│ │ ┌────────────────────────────────────────────────┐  │  │
+│ │ │ Meal: [Greek Yogurt with Almonds]              │  │  │
+│ │ │ Quantity: [200g yogurt + 25g almonds]          │  │  │
+│ │ │ Macros: P: 20g | C: 15g | F: 14g | Cal: 260  │  │  │
+│ │ │ [🔗 Recipe] [Edit] [Swap]                      │  │  │
+│ │ └────────────────────────────────────────────────┘  │  │
+│ │                                                      │  │
+│ │ LUNCH (1:00 PM)                                    │  │
+│ │ ┌────────────────────────────────────────────────┐  │  │
+│ │ │ Meal: [Grilled Chicken with Brown Rice]        │  │  │
+│ │ │ Quantity: [150g chicken + 150g rice + veggies]│  │  │
+│ │ │ Macros: P: 45g | C: 50g | F: 8g | Cal: 420   │  │  │
+│ │ │ [🔗 Recipe] [Edit] [Swap]                      │  │  │
+│ │ │ [+ Add preparation video]                      │  │  │
+│ │ └────────────────────────────────────────────────┘  │  │
+│ │                                                      │  │
+│ │ EVENING SNACK (4:00 PM)                            │  │
+│ │ ┌────────────────────────────────────────────────┐  │  │
+│ │ │ Meal: [Protein Shake with Banana]              │  │  │
+│ │ │ Quantity: [1 scoop whey + 1 banana]            │  │  │
+│ │ │ Macros: P: 25g | C: 30g | F: 2g | Cal: 240   │  │  │
+│ │ │ [🔗 Recipe] [Edit] [Swap]                      │  │  │
+│ │ └────────────────────────────────────────────────┘  │  │
+│ │                                                      │  │
+│ │ DINNER (7:00 PM)                                   │  │
+│ │ ┌────────────────────────────────────────────────┐  │  │
+│ │ │ Meal: [Tandoori Fish with Quinoa Salad]        │  │  │
+│ │ │ Quantity: [180g fish + 100g quinoa + veggies] │  │  │
+│ │ │ Macros: P: 40g | C: 45g | F: 8g | Cal: 410   │  │  │
+│ │ │ [🔗 Recipe] [Edit] [Swap]                      │  │  │
+│ │ │ [+ Add preparation video]                      │  │  │
+│ │ └────────────────────────────────────────────────┘  │  │
+│ │                                                      │  │
+│ │ DAY TOTALS:                                         │  │
+│ │ P: 188g | C: 220g | F: 42g | Total: 2160 cal     │  │  │
+│ │ ✓ Within target (2200 cal)                         │  │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ [Copy to All Days] [Manual Adjust] [Save Diet Plan]       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+MEAL SWAP MODAL:
+┌─────────────────────────────────────────┐
+│ Swap "Scrambled Eggs with Roti"         │
+├─────────────────────────────────────────┤
+│ ALTERNATIVES (Same macros, Indian):     │
+│                                         │
+│ ✓ Omlette with 2 Paratha                │
+│   P: 18g | C: 32g | F: 9g | Cal: 285   │
+│   [Select]                              │
+│                                         │
+│ ○ Idli with Sambar & Chutney            │
+│   P: 19g | C: 28g | F: 5g | Cal: 220   │
+│   [Select]                              │
+│                                         │
+│ ○ Upma (Semolina) with Vegetables       │
+│   P: 17g | C: 31g | F: 6g | Cal: 245   │
+│   [Select]                              │
+│                                         │
+│ ○ Dosa with Sambhar                     │
+│   P: 20g | C: 30g | F: 7g | Cal: 260   │
+│   [Select]                              │
+│                                         │
+│ [Cancel]                                │
+└─────────────────────────────────────────┘
+```
+
+---
+
+### **STEP 3: Assign Plan to Member(s)**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 👥 Assign Plan to Member(s)                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ SELECT PLAN                                                 │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ [Recent Plan v]                                      │  │
+│ │ ○ Muscle Building 12-Week (Just created)             │  │
+│ │ ○ Weight Loss Circuit (Template)                     │  │
+│ │ ○ Beginner Full Body (Template)                      │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ SELECT MEMBER(S)                                            │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Search: [Type name/email...]                         │  │
+│ │                                                       │  │
+│ │ ☑ John Doe (john@email.com)                         │  │
+│ │   Joined: Jan 2023 | Level: Intermediate             │  │
+│ │                                                       │  │
+│ │ ☐ Jane Smith (jane@email.com)                       │  │
+│ │   Joined: Mar 2023 | Level: Beginner                 │  │
+│ │                                                       │  │
+│ │ ☐ Mike Johnson (mike@email.com)                     │  │
+│ │   Joined: Feb 2023 | Level: Advanced                 │  │
+│ │                                                       │  │
+│ │ [Select All]  [Clear All]                            │  │
+│ │                                                       │  │
+│ │ Selected: 1 member                                   │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ ASSIGNMENT DETAILS                                          │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Start Date: [Today ▼]  or [Pick Date]               │  │
+│ │ Duration: 12 Weeks (ends: March 15, 2024)           │  │
+│ │                                                       │  │
+│ │ NOTIFICATION MESSAGE                                 │  │
+│ │ [Send notification via Email + WhatsApp]            │  │
+│ │                                                       │  │
+│ │ Message:                                             │  │
+│ │ "Hi John, we've created a personalized workout &    │  │
+│ │  diet plan tailored to your goals. Start date: Today.│ │ │
+│ │  View and begin your journey!"                       │  │
+│ │                                                       │  │
+│ │ [Customize Message]                                  │  │
+│ │                                                       │  │
+│ │ ☑ Email notification                                 │  │
+│ │ ☑ WhatsApp notification                              │  │
+│ │ ☑ In-app notification                                │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│               [Cancel]    [Assign Plan]                    │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+CONFIRMATION:
+┌─────────────────────────────────────────────────────────────┐
+│ ✓ Plan Assigned Successfully                               │
+│                                                             │
+│ Plan: Muscle Building 12-Week                              │
+│ Assigned to: John Doe                                      │
+│ Start Date: Today                                          │
+│ Status: Notifications sent (Email + WhatsApp)             │
+│                                                             │
+│ NEXT ACTIONS:                                              │
+│ [View Assignment] [Assign More] [Return to Plans]         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **MEMBER VIEW (How Members See Assigned Plan)**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Your Plans                                                  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ 🟢 ACTIVE PLAN                                              │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ Muscle Building 12-Week                              │  │
+│ │ Assigned by: Coach Rahul                             │  │
+│ │ Started: Jan 15, 2024 | Ends: Apr 15, 2024         │  │
+│ │                                                       │  │
+│ │ Progress: [████████░░] 67% (Week 8 of 12)           │  │
+│ │                                                       │  │
+│ │ Summary:                                             │  │
+│ │ └─ Workouts: 8/12 completed                         │  │
+│ │ └─ Dietary compliance: 85%                          │  │
+│ │ └─ Weight progress: +3kg (muscle)                   │  │
+│ │                                                       │  │
+│ │ [View Workouts] [View Diet] [Download PDF]          │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ WORKOUTS                                                    │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ MONDAY - Chest & Triceps    [Start Workout]         │  │
+│ │ ├─ Bench Press: 4×8 @ 80kg  [📹 Form Video]        │  │
+│ │ ├─ Incline Dumbbell: 3×10   [📹 Form Video]        │  │
+│ │ └─ Tricep Dips: 3×12        [📹 Form Video]        │  │
+│ │ Status: Not yet                                      │  │
+│ │                                                       │  │
+│ │ TUESDAY - Back & Biceps     [Start Workout]         │  │
+│ │ ├─ Barbell Row: 4×6         [📹 Form Video]        │  │
+│ │ ├─ Pull-ups: 3×10           [📹 Form Video]        │  │
+│ │ └─ Barbell Curl: 3×8        [📹 Form Video]        │  │
+│ │ Status: ✓ Completed                                 │  │
+│ │                                                       │  │
+│ │ [View Full Weekly Schedule]                          │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ MEAL PLAN                                                   │
+│ ┌──────────────────────────────────────────────────────┐  │
+│ │ TODAY'S MEALS - Daily: 2200 cal (P: 180g | C: 220g) │  │
+│ │                                                       │  │
+│ │ Breakfast: Scrambled Eggs with Roti (280 cal)       │  │
+│ │ [📹 Prep Video] [🔗 Recipe] [Swap] [✓ Completed]    │  │
+│ │                                                       │  │
+│ │ Snack 1: Greek Yogurt with Almonds (260 cal)        │  │
+│ │ [🔗 Recipe] [Swap] [ ] Not yet                      │  │
+│ │                                                       │  │
+│ │ Lunch: Grilled Chicken with Brown Rice (420 cal)    │  │
+│ │ [📹 Prep Video] [🔗 Recipe] [Swap]                 │  │
+│ │                                                       │  │
+│ │ Snack 2: Protein Shake with Banana (240 cal)        │  │
+│ │ [🔗 Recipe] [Swap]                                  │  │
+│ │                                                       │  │
+│ │ Dinner: Tandoori Fish with Quinoa (410 cal)         │  │
+│ │ [📹 Prep Video] [🔗 Recipe] [Swap]                 │  │
+│ │                                                       │  │
+│ │ Total: 2160 cal | P: 188g | C: 220g | F: 42g       │  │
+│ │ ✓ Within target                                      │  │
+│ │                                                       │  │
+│ │ [View Full Meal Plan] [Shopping List] [Swap Meals]  │  │
+│ └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│ [📥 Download PDF] [⬆ Share with WhatsApp] [📊 Progress]  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## KEY FEATURES SUMMARY
+
+### ✅ Checklist
+
+- [x] Role-based access (Trainer = Manual only, Admin = AI + Manual)
+- [x] AI generation with 30-60 second completion
+- [x] Manual creation workflow for both workout & diet
+- [x] Member profile pre-fill (Age, Weight, BMI, Fitness Level, etc.)
+- [x] Dietary preferences (Veg/Non-veg/Indian cuisine + macros)
+- [x] Video attachment for each workout exercise
+- [x] Macro calculations auto-populated
+- [x] Meal swap functionality (same macros, same cuisine)
+- [x] Assignment to single/multiple members
+- [x] Email + WhatsApp notifications
+- [x] Member view with video playback
+- [x] Download PDF functionality
+- [x] Share via WhatsApp with plan summary
+- [x] Progress tracking overlay
+- [x] Recipe links for meals
+- [x] Shopping list generation from meal plan
+
+---
+
+## TECHNICAL REQUIREMENTS
+
+```
+DATABASE TABLES TO CREATE/UPDATE:
+├─ user_profiles (new fields)
+│  ├─ dietary_preference (veg/non-veg/vegan)
+│  ├─ cuisine_preference (Indian/Continental/Asian)
+│  ├─ allergies (TEXT array)
+│  ├─ fitness_level
+│  ├─ current_activity_level
+│  └─ equipment_available
+
+├─ workout_plans
+│  ├─ exercises (JSONB)
+│  │  ├─ video_url (optional)
+│  │  ├─ video_file (optional)
+│  │  ├─ form_tips
+│  │  └─ youtube_link (optional)
+│  └─ trainer_created (boolean)
+
+├─ diet_plans
+│  ├─ dietary_type
+│  ├─ cuisine_type
+│  ├─ daily_macros (JSON)
+│  ├─ meals (JSONB array)
+│  │  ├─ video_url (prep video)
+│  │  ├─ recipe_link
+│  │  └─ macro_details
+│  └─ trainer_created (boolean)
+
+├─ plan_assignments
+│  ├─ assigned_by_user_id
+│  ├─ assigned_to_member_id
+│  ├─ notification_status
+│  └─ assignment_date
+
+└─ meal_swaps (history)
+   ├─ original_meal
+   ├─ swapped_meal
+   └─ date_swapped
+
+API ENDPOINTS:
+├─ POST /api/plans/generate (AI - Admin only)
+├─ POST /api/plans/create-manual (Trainer + Admin)
+├─ POST /api/plans/assign-member (All)
+├─ GET /api/member-profile/:id (Pre-fill data)
+├─ POST /api/plans/download-pdf
+├─ POST /api/plans/send-whatsapp
+└─ GET /api/meal-alternatives (Diet specific)
+
+FILE UPLOADS:
+├─ Workout video: /uploads/workouts/{planId}/{exerciseId}
+├─ Meal prep video: /uploads/meals/{planId}/{mealId}
+└─ Max size: 50MB per video
+```
+
+---
+
+## DESIGN TOKENS (Refined)
+
+```
+Colors:
+├─ Accent: #EF8B1F (Orange - CTA buttons)
+├─ Success: #10B981 (Green - Completed)
+├─ Warning: #F59E0B (Amber - Pending)
+├─ Video: #3B82F6 (Blue - Video button)
+├─ Dietary: #A78BFA (Purple - Dietary tags)
+└─ Base: #0F172A (Dark)
+
+Typography:
+├─ Header: Poppins Bold 32px
+├─ Subheader: Geist SemiBold 20px
+├─ Body: Inter Regular 14-16px
+├─ Label: Inter Medium 12px
+└─ Stat: Poppins Bold 24px
+
+Spacing:
+├─ Cards: 20px padding
+├─ Inputs: 12px padding
+├─ Gaps: 16px between sections
+└─ Mobile: 16px padding on edges
+```
+
+---
+
+## Success Metrics
+
+- ✅ Trainer can create manual plan in <5 minutes
+- ✅ Admin can generate AI plan in 30-60 seconds
+- ✅ Plan creation saves <2 minutes
+- ✅ Macro calculations <100ms
+- ✅ Video upload/processing <2 minutes
+- ✅ Member receives assignment notification immediately
+- ✅ 95% of plans pre-filled from member profile
+- ✅ Dietary preferences save correctly
+- ✅ All videos playable on mobile
+- ✅ PDF download <5 seconds
+- ✅ WhatsApp share works instantly
+- ✅ Scroll performance 60fps on all views
+- ✅ Mobile responsive (375px minimum)
+- ✅ Accessibility WCAG AA compliant
+
+---
+
+## Additional Notes for Lovable
+
+1. **Video Processing**: Use FFmpeg on server to compress videos to <50MB while maintaining quality
+2. **PDF Export**: Include member name, plan dates, trainer name, macro targets, QR code linking to digital version
+3. **Macro Calculations**: Use standard formulas (TDEE, Mifflin-St Jeor for calories)
+4. **Indian Cuisine Database**: Pre-load common Indian meals with macro data
+5. **Form Validation**: Ensure all required fields are filled before submission
+6. **Error Handling**: Clear messages if API fails, retry mechanism for file uploads
+7. **Analytics**: Track plan creation time, completion rate, member satisfaction
+
+---
+
+## Tone & Language
+
+- Encouraging & motivational
+- Clear & jargon-free
+- Action-oriented CTAs
+- Trainer-friendly (simple instructions)
+- Member-friendly (celebratory milestones)
