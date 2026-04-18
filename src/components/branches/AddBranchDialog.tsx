@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -32,6 +33,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
     email: '',
     openingTime: '06:00',
     closingTime: '22:00',
+    isOpen24x7: false,
     timezone: 'Asia/Kolkata',
     managerId: '',
   });
@@ -70,8 +72,8 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
           postal_code: data.postalCode,
           phone: data.phone,
           email: data.email,
-          opening_time: data.openingTime,
-          closing_time: data.closingTime,
+          opening_time: data.isOpen24x7 ? '00:00' : data.openingTime,
+          closing_time: data.isOpen24x7 ? '23:59' : data.closingTime,
           timezone: data.timezone,
           is_active: true,
         })
@@ -131,6 +133,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
         email: '',
         openingTime: '06:00',
         closingTime: '22:00',
+        isOpen24x7: false,
         timezone: 'Asia/Kolkata',
         managerId: '',
       });
@@ -272,6 +275,25 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
           </div>
 
           {/* Operating Hours */}
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <div>
+              <Label htmlFor="is_open_24_7">Open 24x7</Label>
+              <p className="text-xs text-muted-foreground">Saves hours as 00:00 to 23:59</p>
+            </div>
+            <Switch
+              id="is_open_24_7"
+              checked={formData.isOpen24x7}
+              onCheckedChange={(checked) =>
+                setFormData({
+                  ...formData,
+                  isOpen24x7: checked,
+                  openingTime: checked ? '00:00' : formData.openingTime,
+                  closingTime: checked ? '23:59' : formData.closingTime,
+                })
+              }
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -282,6 +304,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
                 type="time"
                 value={formData.openingTime}
                 onChange={(e) => setFormData({ ...formData, openingTime: e.target.value })}
+                disabled={formData.isOpen24x7}
               />
             </div>
             <div className="space-y-2">
@@ -290,6 +313,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
                 type="time"
                 value={formData.closingTime}
                 onChange={(e) => setFormData({ ...formData, closingTime: e.target.value })}
+                disabled={formData.isOpen24x7}
               />
             </div>
           </div>

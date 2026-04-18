@@ -6,23 +6,29 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Building2, Upload, X, Loader2, ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useBranchContext } from '@/contexts/BranchContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
+const ALLOWED_LOGO_MIME_TYPES = [
+  'image/svg+xml',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+] as const;
+
 export function OrganizationSettings() {
   const queryClient = useQueryClient();
-  const { selectedBranch } = useBranchContext();
   const [dragActive, setDragActive] = useState(false);
 
   const { data: orgSettings, isLoading } = useQuery({
-    queryKey: ['organization-settings', selectedBranch],
+    queryKey: ['organization-settings-global'],
     queryFn: async () => {
-      let query = supabase.from('organization_settings').select('*');
-      if (selectedBranch && selectedBranch !== 'all') {
-        query = query.eq('branch_id', selectedBranch);
-      }
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await supabase
+        .from('organization_settings')
+        .select('*')
+        .is('branch_id', null)
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -51,7 +57,7 @@ export function OrganizationSettings() {
     mutationFn: async (values: typeof form) => {
       const payload = {
         ...values,
-        branch_id: selectedBranch || null,
+        branch_id: null,
         logo_url: orgSettings?.logo_url || null,
       };
       if (orgSettings?.id) {
@@ -69,7 +75,7 @@ export function OrganizationSettings() {
     },
     onSuccess: () => {
       toast.success('Settings saved');
-      queryClient.invalidateQueries({ queryKey: ['organization-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-settings-global'] });
     },
     onError: (e: any) => toast.error(e.message || 'Failed to save'),
   });
@@ -85,7 +91,7 @@ export function OrganizationSettings() {
       // Upsert org settings with logo
       const payload = {
         logo_url: publicUrl,
-        branch_id: selectedBranch || null,
+        branch_id: null,
         name: form.name || null,
         timezone: form.timezone,
         currency: form.currency,
@@ -102,7 +108,7 @@ export function OrganizationSettings() {
     },
     onSuccess: () => {
       toast.success('Logo uploaded');
-      queryClient.invalidateQueries({ queryKey: ['organization-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-settings-global'] });
     },
     onError: (e: any) => toast.error(e.message || 'Upload failed'),
   });
@@ -115,13 +121,17 @@ export function OrganizationSettings() {
     },
     onSuccess: () => {
       toast.success('Logo removed');
-      queryClient.invalidateQueries({ queryKey: ['organization-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['organization-settings-global'] });
     },
   });
 
   const handleFile = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
+    const fileName = file.name.toLowerCase();
+    const hasSvgExtension = fileName.endsWith('.svg');
+    const isAllowedType = ALLOWED_LOGO_MIME_TYPES.includes(file.type as typeof ALLOWED_LOGO_MIME_TYPES[number]);
+
+    if (!isAllowedType && !hasSvgExtension) {
+      toast.error('Please upload SVG, PNG, JPG, or WEBP logo');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -151,7 +161,7 @@ export function OrganizationSettings() {
             <ImageIcon className="h-5 w-5 text-primary" />
             Gym Logo
           </CardTitle>
-          <CardDescription>Upload your gym's logo (max 5MB)</CardDescription>
+          <CardDescription>Upload your gym's logo (SVG recommended, max 5MB)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-6">
@@ -180,7 +190,7 @@ export function OrganizationSettings() {
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = 'image/*';
+                input.accept = '.svg,image/svg+xml,image/png,image/jpeg,image/webp';
                 input.onchange = (e) => {
                   const file = (e.target as HTMLInputElement).files?.[0];
                   if (file) handleFile(file);
@@ -195,6 +205,9 @@ export function OrganizationSettings() {
                   <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                   <p className="text-sm text-muted-foreground">
                     Drag & drop or <span className="text-primary font-medium">click to upload</span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground/80">
+                    Supports SVG, PNG, JPG, WEBP
                   </p>
                 </>
               )}

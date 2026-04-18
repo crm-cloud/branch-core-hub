@@ -32,6 +32,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     email: '',
     opening_time: '06:00',
     closing_time: '22:00',
+    is_open_24_7: false,
     capacity: 50,
     is_active: true,
     managerId: '',
@@ -57,6 +58,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
   useEffect(() => {
     if (branch) {
       setManagerChanged(false);
+      const isOpen24x7 = branch.opening_time?.startsWith('00:00') && branch.closing_time?.startsWith('23:59');
       setFormData({
         name: branch.name || '',
         code: branch.code || '',
@@ -67,8 +69,9 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
         postal_code: branch.postal_code || '',
         phone: branch.phone || '',
         email: branch.email || '',
-        opening_time: branch.opening_time || '06:00',
-        closing_time: branch.closing_time || '22:00',
+        opening_time: isOpen24x7 ? '00:00' : (branch.opening_time?.slice(0, 5) || '06:00'),
+        closing_time: isOpen24x7 ? '23:59' : (branch.closing_time?.slice(0, 5) || '22:00'),
+        is_open_24_7: isOpen24x7,
         capacity: branch.capacity || 50,
         is_active: branch.is_active ?? true,
         managerId: currentManager?.user_id || '',
@@ -117,8 +120,8 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           postal_code: formData.postal_code,
           phone: formData.phone,
           email: formData.email,
-          opening_time: formData.opening_time,
-          closing_time: formData.closing_time,
+          opening_time: formData.is_open_24_7 ? '00:00' : formData.opening_time,
+          closing_time: formData.is_open_24_7 ? '23:59' : formData.closing_time,
           capacity: formData.capacity,
           is_active: formData.is_active,
           gstin: formData.gstin || null,
@@ -209,6 +212,25 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+              <div>
+                <Label htmlFor="is_open_24_7">Open 24x7</Label>
+                <p className="text-xs text-muted-foreground">Saves hours as 00:00 to 23:59</p>
+              </div>
+              <Switch
+                id="is_open_24_7"
+                checked={formData.is_open_24_7}
+                onCheckedChange={(checked) =>
+                  setFormData({
+                    ...formData,
+                    is_open_24_7: checked,
+                    opening_time: checked ? '00:00' : formData.opening_time,
+                    closing_time: checked ? '23:59' : formData.closing_time,
+                  })
+                }
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="opening_time">Opening Time</Label>
               <Input
@@ -216,6 +238,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
                 type="time"
                 value={formData.opening_time}
                 onChange={(e) => setFormData({ ...formData, opening_time: e.target.value })}
+                disabled={formData.is_open_24_7}
               />
             </div>
             <div className="space-y-2">
@@ -225,6 +248,7 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
                 type="time"
                 value={formData.closing_time}
                 onChange={(e) => setFormData({ ...formData, closing_time: e.target.value })}
+                disabled={formData.is_open_24_7}
               />
             </div>
           </div>

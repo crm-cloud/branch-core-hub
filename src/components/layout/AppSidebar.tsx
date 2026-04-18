@@ -54,16 +54,21 @@ function useWhatsAppUnreadCount() {
   });
 }
 
-function BrandLogo({ collapsed = false }: { collapsed?: boolean }) {
+function BrandLogo({ collapsed = false, mobile = false }: { collapsed?: boolean; mobile?: boolean }) {
   const { data: org } = useOrgBranding();
+  const logoContainerClass = cn('flex items-center', mobile ? 'h-16 max-w-[220px]' : 'h-14 max-w-[190px]');
   
   if (org?.logo_url) {
     if (collapsed) {
-      return <img src={org.logo_url} alt={org.name || 'Logo'} className="h-8 w-8 object-contain rounded" />;
+      return <img src={org.logo_url} alt={org.name || 'Logo'} className="h-9 w-9 object-contain rounded-md" />;
     }
     return (
-      <div className="flex items-center gap-2.5">
-        <img src={org.logo_url} alt={org.name || 'Logo'} className="max-h-8 object-contain" />
+      <div className={logoContainerClass}>
+        <img
+          src={org.logo_url}
+          alt={org.name || 'Logo'}
+          className="h-full w-full object-contain object-left"
+        />
       </div>
     );
   }
@@ -72,19 +77,19 @@ function BrandLogo({ collapsed = false }: { collapsed?: boolean }) {
   
   if (collapsed) {
     return (
-      <div className="p-1.5 rounded-lg bg-[hsl(var(--primary))]/10">
+      <div className="p-2 rounded-lg bg-[hsl(var(--primary))]/10">
         <Dumbbell className="h-5 w-5 text-[hsl(var(--primary))]" />
       </div>
     );
   }
   
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="p-1.5 rounded-lg bg-[hsl(var(--primary))]/10">
-        <Dumbbell className="h-5 w-5 text-[hsl(var(--primary))]" />
+    <div className={cn('rounded-xl border border-sidebar-border/70 bg-sidebar-accent/25 px-3', logoContainerClass)}>
+      <div className={cn('rounded-lg bg-[hsl(var(--primary))]/10', mobile ? 'p-2' : 'p-1.5')}>
+        <Dumbbell className={cn(mobile ? 'h-6 w-6' : 'h-5 w-5', 'text-[hsl(var(--primary))]')} />
       </div>
       <div className="flex flex-col">
-        <span className="text-sidebar-primary text-lg font-bold leading-tight tracking-tight">
+        <span className={cn('text-sidebar-primary font-bold leading-tight tracking-tight', mobile ? 'text-lg' : 'text-base')}>
           {displayName}
         </span>
         <span className="text-[10px] text-sidebar-foreground/40 font-medium uppercase tracking-widest leading-none">
@@ -288,8 +293,8 @@ export function MobileNav() {
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0 bg-sidebar">
-        <div className="p-5 border-b border-sidebar-border">
-          <BrandLogo />
+        <div className="px-5 py-4 border-b border-sidebar-border">
+          <BrandLogo mobile />
         </div>
 
         <ScrollArea className="h-[calc(100vh-180px)] py-4">
