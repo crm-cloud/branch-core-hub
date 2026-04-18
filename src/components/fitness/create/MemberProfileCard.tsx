@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
-import { ChevronDown, User, Pencil } from 'lucide-react';
+import { ChevronDown, User, Pencil, Save, Loader2 } from 'lucide-react';
 
 export interface MemberProfileOverrides {
   age?: string;
@@ -49,18 +51,36 @@ function calcBmi(w?: string, h?: string): string | null {
   return (wn / (meters * meters)).toFixed(1);
 }
 
+function arrToCsv(arr?: string[] | null): string {
+  if (!arr || arr.length === 0) return '';
+  return arr.join(', ');
+}
+
+function csvToArr(csv?: string): string[] {
+  if (!csv) return [];
+  return csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function MemberProfileCard({ memberId, value, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedEquipmentExtras, setSavedEquipmentExtras] = useState<string[]>([]);
+  const queryClient = useQueryClient();
 
-  // Pull base member info + latest measurement
+  // Pull base member info + latest measurement + saved fitness profile
   const { data, isLoading } = useQuery({
     queryKey: ['member-profile-prefill', memberId],
     enabled: !!memberId,
     queryFn: async () => {
       const { data: member } = await supabase
         .from('members')
-        .select('id, user_id, health_conditions, fitness_goals, profiles:user_id(gender, date_of_birth, full_name)')
+        .select(
+          'id, user_id, health_conditions, fitness_goals, fitness_level, equipment_availability, dietary_preference, cuisine_preference, allergies, profiles:user_id(gender, date_of_birth, full_name)'
+        )
         .eq('id', memberId)
         .maybeSingle();
       const { data: meas } = await supabase
@@ -71,13 +91,20 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
         .limit(1);
       const m = (meas || [])[0];
       const profile = (member as any)?.profiles;
+      const equipArr = ((member as any)?.equipment_availability as string[] | null) || [];
       return {
+        equipmentArr: equipArr,
         gender: (profile?.gender || '').toLowerCase(),
         age: calcAge(profile?.date_of_birth),
         weight: m?.weight_kg ? String(m.weight_kg) : '',
         height: m?.height_cm ? String(m.height_cm) : '',
         health_conditions: (member as any)?.health_conditions || '',
         fitness_goals: (member as any)?.fitness_goals || '',
+        fitness_level: (member as any)?.fitness_level || '',
+        equipment: equipArr[0] || '',
+        dietary_preference: (member as any)?.dietary_preference || '',
+        cuisine: (member as any)?.cuisine_preference || '',
+        allergies: arrToCsv((member as any)?.allergies),
       };
     },
   });
@@ -86,6 +113,7 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
   // only seeds the form state for this plan.
   useEffect(() => {
     if (!data || hydrated) return;
+    setSavedEquipmentExtras((data.equipmentArr || []).slice(1));
     onChange({
       age: value.age || data.age,
       gender: value.gender || data.gender,
@@ -93,11 +121,11 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
       height: value.height || data.height,
       health_conditions: value.health_conditions ?? data.health_conditions,
       fitness_goals: value.fitness_goals ?? data.fitness_goals,
-      fitness_level: value.fitness_level,
-      equipment: value.equipment,
-      dietary_preference: value.dietary_preference,
-      cuisine: value.cuisine,
-      allergies: value.allergies,
+      fitness_level: value.fitness_level || data.fitness_level,
+      equipment: value.equipment || data.equipment,
+      dietary_preference: value.dietary_preference || data.dietary_preference,
+      cuisine: value.cuisine || data.cuisine,
+      allergies: value.allergies ?? data.allergies,
     });
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,6 +136,35 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
   const setSel = (k: keyof MemberProfileOverrides) => (v: string) => onChange({ ...value, [k]: v });
 
   const bmi = calcBmi(value.weight, value.height);
+
+  const handleSaveToProfile = async () => {
+    if (!memberId) return;
+    setSaving(true);
+    try {
+      // Preserve any saved equipment entries beyond the first slot so the
+      // single-select UI does not silently drop multi-value data.
+      const equipment_availability = value.equipment
+        ? [value.equipment, ...savedEquipmentExtras.filter((e) => e !== value.equipment)]
+        : savedEquipmentExtras;
+      const update = {
+        fitness_level: value.fitness_level || null,
+        equipment_availability,
+        dietary_preference: value.dietary_preference || null,
+        cuisine_preference: value.cuisine || null,
+        allergies: csvToArr(value.allergies),
+        health_conditions: value.health_conditions || null,
+        fitness_goals: value.fitness_goals || null,
+      } satisfies Partial<Database['public']['Tables']['members']['Update']>;
+      const { error } = await supabase.from('members').update(update).eq('id', memberId);
+      if (error) throw error;
+      toast.success('Saved to member profile');
+      await queryClient.invalidateQueries({ queryKey: ['member-profile-prefill', memberId] });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save member profile');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Card className="border-primary/20">
@@ -140,7 +197,7 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-3 space-y-3">
             <p className="text-xs text-muted-foreground">
-              Changes apply only to this plan. The member's saved profile is not modified.
+              Changes apply only to this plan. Use “Save to member profile” to persist them so they pre-fill next time.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -243,6 +300,20 @@ export function MemberProfileCard({ memberId, value, onChange }: Props) {
                 rows={2}
                 placeholder="Lose fat, build strength, improve endurance…"
               />
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="gap-1.5"
+                onClick={handleSaveToProfile}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Save to member profile
+              </Button>
             </div>
           </CollapsibleContent>
         </Collapsible>
