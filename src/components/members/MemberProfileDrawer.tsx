@@ -27,6 +27,7 @@ import { RecordMeasurementDrawer } from './RecordMeasurementDrawer';
 import { CancelMembershipDrawer } from './CancelMembershipDrawer';
 import { MeasurementProgressView } from './MeasurementProgressView';
 import { EditProfileDrawer } from './EditProfileDrawer';
+import { MemberPlanProgressBlock } from '@/components/fitness/member/MemberPlanProgressBlock';
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
@@ -984,6 +985,10 @@ export function MemberProfileDrawer({
                     <IdCard className="h-3.5 w-3.5" />
                     <span className="text-xs whitespace-nowrap">Access</span>
                   </TabsTrigger>
+                  <TabsTrigger value="plans" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
+                    <Dumbbell className="h-3.5 w-3.5" />
+                    <span className="text-xs whitespace-nowrap">Plans</span>
+                  </TabsTrigger>
                   <TabsTrigger value="activity" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
                     <Activity className="h-3.5 w-3.5" />
                     <span className="text-xs whitespace-nowrap">Activity</span>
@@ -1496,6 +1501,10 @@ export function MemberProfileDrawer({
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            <TabsContent value="plans" className="space-y-4 mt-4">
+              <MemberPlanProgressBlock memberId={member.id} />
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-4 mt-4">

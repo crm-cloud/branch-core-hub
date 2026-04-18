@@ -471,7 +471,32 @@ export function generateContractPDF(contract: ContractData): void {
 
 function generateWorkoutContent(data: any): string {
   let html = '';
-  
+
+  // Newer shape: weeks → days → exercises
+  if (data.weeks && Array.isArray(data.weeks) && data.weeks.length > 0) {
+    data.weeks.forEach((week: any, wIdx: number) => {
+      html += '<div class="section">';
+      html += `<h2 class="section-title">Week ${week.week || wIdx + 1}</h2>`;
+      (week.days || []).forEach((day: any, dIdx: number) => {
+        html += `
+          <div class="day-card">
+            <div class="day-title">${day.day || day.label || `Day ${dIdx + 1}`}${day.focus ? ` — ${day.focus}` : ''}</div>
+            <ul class="exercise-list">
+        `;
+        (day.exercises || []).forEach((ex: any) => {
+          const name = typeof ex === 'string' ? ex : ex.name;
+          const sets = ex.sets ? `${ex.sets} sets` : '';
+          const reps = ex.reps ? ` × ${ex.reps} reps` : '';
+          const rest = ex.rest || (ex.rest_seconds ? `${ex.rest_seconds}s rest` : '');
+          html += `<li><strong>${name}</strong>${sets || reps || rest ? `<div class="exercise-detail">${[sets + reps, rest].filter(Boolean).join(' • ')}</div>` : ''}</li>`;
+        });
+        html += '</ul></div>';
+      });
+      html += '</div>';
+    });
+    return html;
+  }
+
   if (data.days && Array.isArray(data.days)) {
     html += '<div class="section">';
     html += '<h2 class="section-title">Weekly Schedule</h2>';
@@ -531,7 +556,40 @@ function generateDietContent(data: any, caloriesTarget?: number): string {
   }
   
   const meals = data.meals || data;
-  
+
+  // Newer shape: meals is an array of MealEntry objects
+  if (Array.isArray(meals) && meals.length > 0) {
+    html += '<div class="section">';
+    html += '<h2 class="section-title">Meal Plan</h2>';
+    meals.forEach((meal: any, idx: number) => {
+      html += `
+        <div class="day-card">
+          <div class="day-title">${meal.name || `Meal ${idx + 1}`}${meal.time ? ` <span style="font-weight:400;color:#666;font-size:13px;">· ${meal.time}</span>` : ''}${meal.calories ? `<span class="calories-badge">${Math.round(meal.calories)} kcal</span>` : ''}</div>
+          <ul class="meal-list">
+      `;
+      const items = Array.isArray(meal.items) ? meal.items : [];
+      if (items.length === 0) {
+        html += `<li>${meal.meal || meal.description || '—'}</li>`;
+      } else {
+        items.forEach((it: any) => {
+          if (typeof it === 'string') {
+            html += `<li>${it}</li>`;
+          } else {
+            const food = it.food || it.name || '';
+            const qty = it.quantity ? ` <span style="color:#666;">(${it.quantity})</span>` : '';
+            const cals = it.calories ? `<span class="calories-badge">${Math.round(it.calories)} kcal</span>` : '';
+            html += `<li>${food}${qty}${cals}</li>`;
+          }
+        });
+      }
+      html += '</ul></div>';
+    });
+    html += '</div>';
+    if (data.hydration) html += `<div class="section"><h2 class="section-title">Hydration</h2><div class="day-card"><p>${data.hydration}</p></div></div>`;
+    if (data.notes) html += `<div class="section"><h2 class="section-title">Notes</h2><div class="day-card"><p>${data.notes}</p></div></div>`;
+    return html;
+  }
+
   if (meals && typeof meals === 'object') {
     html += '<div class="section">';
     html += '<h2 class="section-title">Meal Plan</h2>';
