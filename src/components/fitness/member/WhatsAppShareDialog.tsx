@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2 } from 'lucide-react';
@@ -94,13 +95,11 @@ export function WhatsAppShareDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label htmlFor="wa-phone">Recipient phone (with country code)</Label>
-            <Input
+            <Label htmlFor="wa-phone">Recipient phone</Label>
+            <PhoneInput
               id="wa-phone"
-              type="tel"
-              placeholder="+919876543210"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(v) => setPhone(v)}
             />
           </div>
           <div>
