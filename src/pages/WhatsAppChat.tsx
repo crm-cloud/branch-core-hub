@@ -45,6 +45,7 @@ const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: stri
   }
 };
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
+import { useChatSound } from '@/hooks/useChatSound';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 
