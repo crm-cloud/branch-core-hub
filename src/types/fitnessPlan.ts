@@ -65,6 +65,8 @@ export interface MealEntry {
   fats?: number;
   /** Optional public URL for an externally hosted prep / cooking video. */
   prep_video_url?: string;
+  /** Optional storage path for a self-hosted meal prep video uploaded by the trainer. */
+  prep_video_file_path?: string;
   /** Optional public link to a recipe (blog, app, PDF, etc.). */
   recipe_link?: string;
 }

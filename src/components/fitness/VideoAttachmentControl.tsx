@@ -39,7 +39,7 @@ export function VideoAttachmentControl({ value, onChange, folder, label }: Props
   const hasAttachment = !!(value.video_url || value.video_file_path);
   const previewUrl = value.video_file_path ? getVideoPublicUrl(value.video_file_path) : value.video_url;
 
-  const handleUrlBlur = () => {
+  const handleUrlBlur = async () => {
     setError(null);
     const trimmed = urlInput.trim();
     if (!trimmed) {
@@ -49,6 +49,15 @@ export function VideoAttachmentControl({ value, onChange, folder, label }: Props
     if (!isAcceptedVideoUrl(trimmed)) {
       setError('Use a YouTube, Vimeo, or direct .mp4/.mov/.webm URL.');
       return;
+    }
+    // If there was a previously uploaded storage object, clean it up so we
+    // don't leave orphans in the bucket when switching to an external URL.
+    if (value.video_file_path) {
+      try {
+        await deleteVideo(value.video_file_path);
+      } catch {
+        /* swallow — UI swap must always succeed */
+      }
     }
     onChange({ video_file_path: undefined, video_url: trimmed });
   };
@@ -63,7 +72,10 @@ export function VideoAttachmentControl({ value, onChange, folder, label }: Props
     setUploading(true);
     try {
       const result = await uploadVideo(file, folder);
-      onChange({ video_url: undefined, video_file_path: result.path });
+      // Persist the public URL into `video_url` so the member-side player
+      // (which reads `video_url` directly) can stream the uploaded file.
+      // `video_file_path` is also kept so the file can be deleted later.
+      onChange({ video_url: result.publicUrl, video_file_path: result.path });
     } catch (e: any) {
       setError(e?.message || 'Upload failed');
     } finally {

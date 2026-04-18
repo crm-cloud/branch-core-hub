@@ -55,7 +55,7 @@ interface Meal {
   time: string;
   items: MealItem[];
   prep_video_url?: string;
-  video_file_path?: string;
+  prep_video_file_path?: string;
   recipe_link?: string;
   meal_type?: MealType;
 }
@@ -229,7 +229,7 @@ export default function TrainerPlanBuilder() {
       carbs: m.items.reduce((s, i) => s + i.carbs, 0),
       fats: m.items.reduce((s, i) => s + i.fats, 0),
       ...(m.prep_video_url ? { prep_video_url: m.prep_video_url } : {}),
-      ...(m.video_file_path ? { video_file_path: m.video_file_path } : {}),
+      ...(m.prep_video_file_path ? { prep_video_file_path: m.prep_video_file_path } : {}),
       ...(m.recipe_link ? { recipe_link: m.recipe_link } : {}),
     })),
   });
@@ -549,10 +549,10 @@ export default function TrainerPlanBuilder() {
                     <VideoAttachmentControl
                       label="Prep / cooking video"
                       folder="meals"
-                      value={{ video_url: meal.prep_video_url, video_file_path: meal.video_file_path }}
+                      value={{ video_url: meal.prep_video_url, video_file_path: meal.prep_video_file_path }}
                       onChange={(v) => updateMealField(mealIdx, {
                         prep_video_url: v.video_url,
-                        video_file_path: v.video_file_path,
+                        prep_video_file_path: v.video_file_path,
                       })}
                     />
                   </div>
