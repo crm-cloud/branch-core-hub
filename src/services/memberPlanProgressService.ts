@@ -245,7 +245,7 @@ export async function recordWorkoutCompletion(params: {
   exercise_index: number;
   exercise_name?: string;
 }): Promise<void> {
-  const { error } = await sb.from('member_workout_completions').upsert(
+  const { error } = await (sb.from('member_workout_completions') as any).upsert(
     {
       member_id: params.member_id,
       plan_source: params.plan_source,
@@ -309,7 +309,7 @@ export async function recordMealCompletion(params: {
   meal_name?: string;
 }): Promise<void> {
   const meal_date = params.meal_date ?? new Date().toISOString().split('T')[0];
-  const { error } = await sb.from('member_meal_completions').upsert(
+  const { error } = await (sb.from('member_meal_completions') as any).upsert(
     {
       member_id: params.member_id,
       plan_source: params.plan_source,
@@ -379,7 +379,7 @@ export async function recordMealSwap(params: {
   new_meal: MealEntry;
   catalog_meal_id?: string | null;
 }): Promise<void> {
-  const { error } = await sb.from('member_meal_swaps').insert({
+  const { error } = await (sb.from('member_meal_swaps') as any).insert({
     member_id: params.member_id,
     plan_source: params.plan_source,
     plan_id: params.plan_id,
