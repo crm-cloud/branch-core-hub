@@ -1,14 +1,38 @@
-import { useState } from 'react';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from '@/components/ui/drawer';
+import { useEffect, useMemo, useState } from 'react';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerDescription } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, Loader2, CheckCircle } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import {
+  Search,
+  User,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Mail,
+  MessageCircle,
+  Bell,
+  Users,
+} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { searchMembersForAssignment, assignPlanToMember } from '@/services/fitnessService';
+import {
+  searchMembersForAssignment,
+  assignPlanToMembers,
+  BulkAssignResult,
+  NotificationChannel,
+} from '@/services/fitnessService';
 import { toast } from 'sonner';
 import { format, addWeeks } from 'date-fns';
+
+interface MemberLite {
+  id: string;
+  member_code: string;
+  full_name: string;
+}
 
 interface AssignPlanDrawerProps {
   open: boolean;
@@ -22,155 +46,296 @@ interface AssignPlanDrawerProps {
   branchId?: string;
 }
 
+const CHANNEL_META: { value: NotificationChannel; label: string; Icon: typeof Mail }[] = [
+  { value: 'email', label: 'Email', Icon: Mail },
+  { value: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle },
+  { value: 'in_app', label: 'In-app', Icon: Bell },
+];
+
 export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignPlanDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMember, setSelectedMember] = useState<{ id: string; member_code: string; full_name: string } | null>(null);
+  const [selected, setSelected] = useState<MemberLite[]>([]);
   const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
+  const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
+  const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
+  // Reset every time the drawer is reopened
+  useEffect(() => {
+    if (open) {
+      setResults(null);
+      setSearchQuery('');
+    }
+  }, [open]);
+
   const { data: searchResults = [], isLoading: isSearching } = useQuery({
-    queryKey: ['member-search-assign', searchQuery],
+    queryKey: ['member-search-multi', searchQuery, branchId],
     queryFn: () => searchMembersForAssignment(searchQuery, branchId),
     enabled: searchQuery.length >= 2,
   });
 
+  // Merge selected + search results so selected members survive a re-search
+  const visible: MemberLite[] = useMemo(() => {
+    if (searchQuery.length < 2) return selected;
+    const ids = new Set(selected.map((m) => m.id));
+    return [
+      ...selected,
+      ...searchResults.filter((m) => !ids.has(m.id)),
+    ];
+  }, [searchResults, selected, searchQuery]);
+
+  const isSelected = (id: string) => selected.some((m) => m.id === id);
+
+  const toggleMember = (m: MemberLite) => {
+    setSelected((prev) =>
+      prev.some((p) => p.id === m.id) ? prev.filter((p) => p.id !== m.id) : [...prev, m],
+    );
+  };
+
+  const selectAll = () => {
+    const ids = new Set(selected.map((m) => m.id));
+    setSelected([...selected, ...searchResults.filter((m) => !ids.has(m.id))]);
+  };
+
+  const clearAll = () => setSelected([]);
+
+  const toggleChannel = (c: NotificationChannel) => {
+    setChannels((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  };
+
   const assignMutation = useMutation({
-    mutationFn: assignPlanToMember,
-    onSuccess: () => {
-      toast.success('Plan assigned successfully!');
+    mutationFn: () =>
+      assignPlanToMembers({
+        member_ids: selected.map((m) => m.id),
+        plan_name: plan!.name,
+        plan_type: plan!.type,
+        description: plan!.description,
+        plan_data: plan!.content,
+        is_custom: true,
+        valid_until: validUntil,
+        branch_id: branchId,
+        channels,
+      }),
+    onSuccess: (data) => {
+      const ok = data.filter((r) => r.success).length;
+      toast.success(`Assigned plan to ${ok} of ${data.length} members`);
       queryClient.invalidateQueries({ queryKey: ['member-fitness-plans'] });
-      onOpenChange(false);
-      setSelectedMember(null);
-      setSearchQuery('');
+      setResults(data);
+      setSelected([]);
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to assign plan');
-    },
+    onError: (e: Error) => toast.error(e.message || 'Failed to assign plan'),
   });
 
-  const handleAssign = () => {
-    if (!selectedMember || !plan) return;
-
-    assignMutation.mutate({
-      member_id: selectedMember.id,
-      plan_name: plan.name,
-      plan_type: plan.type,
-      description: plan.description,
-      plan_data: plan.content,
-      is_custom: true,
-      valid_until: validUntil,
-      branch_id: branchId,
-    });
+  const closeAndReset = () => {
+    onOpenChange(false);
+    setTimeout(() => {
+      setResults(null);
+      setSelected([]);
+      setSearchQuery('');
+    }, 200);
   };
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Assign Plan to Member</DrawerTitle>
-        </DrawerHeader>
-        
-        <div className="px-4 py-2 space-y-4">
-          {plan && (
-            <div className="p-3 bg-muted rounded-lg">
-              <div className="flex items-center gap-2">
-                <Badge>{plan.type}</Badge>
-                <span className="font-medium">{plan.name}</span>
-              </div>
-              {plan.description && (
-                <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
-              )}
-            </div>
+      <DrawerContent className="max-h-[92vh]">
+        <DrawerHeader className="text-left">
+          <DrawerTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            {results ? 'Assignment Confirmation' : 'Assign Plan to Members'}
+          </DrawerTitle>
+          {plan && !results && (
+            <DrawerDescription>
+              <span className="font-medium text-foreground">{plan.name}</span> — {plan.type} plan
+            </DrawerDescription>
           )}
+        </DrawerHeader>
 
-          {/* Member Search */}
-          <div className="space-y-2">
-            <Label>Search Member</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, email, or code..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="px-4 pb-2 overflow-y-auto">
+          {results ? (
+            <ConfirmationView results={results} channels={channels} />
+          ) : (
+            <div className="space-y-4">
+              {/* Member Search */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Members</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {selected.length} selected
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, email, or code..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
 
-            {/* Search Results */}
-            {searchQuery.length >= 2 && (
-              <div className="border rounded-md max-h-40 overflow-y-auto">
-                {isSearching ? (
-                  <div className="p-3 text-center text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                {searchQuery.length >= 2 && (
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={selectAll} disabled={searchResults.length === 0}>
+                      Select all
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={clearAll} disabled={selected.length === 0}>
+                      Clear all
+                    </Button>
                   </div>
-                ) : searchResults.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground">No members found</div>
-                ) : (
-                  searchResults.map((member) => (
-                    <button
-                      key={member.id}
-                      onClick={() => {
-                        setSelectedMember(member);
-                        setSearchQuery('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-muted flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span>{member.full_name}</span>
-                      </div>
-                      <Badge variant="outline">{member.member_code}</Badge>
-                    </button>
-                  ))
                 )}
-              </div>
-            )}
-          </div>
 
-          {/* Selected Member */}
-          {selectedMember && (
-            <div className="p-3 bg-accent/10 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-success" />
-                <div>
-                  <p className="font-medium">{selectedMember.full_name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedMember.member_code}</p>
+                <ScrollArea className="border rounded-md max-h-56">
+                  {isSearching ? (
+                    <div className="p-3 text-center text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                    </div>
+                  ) : visible.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      {searchQuery.length < 2
+                        ? 'Type at least 2 characters to search.'
+                        : 'No members found.'}
+                    </div>
+                  ) : (
+                    visible.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => toggleMember(member)}
+                        className={`w-full px-3 py-2 text-left hover:bg-muted flex items-center gap-2 border-b last:border-b-0 ${
+                          isSelected(member.id) ? 'bg-accent/10' : ''
+                        }`}
+                      >
+                        <Checkbox checked={isSelected(member.id)} onCheckedChange={() => toggleMember(member)} />
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="flex-1 text-sm">{member.full_name}</span>
+                        <Badge variant="outline" className="text-[10px]">{member.member_code}</Badge>
+                      </button>
+                    ))
+                  )}
+                </ScrollArea>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Valid Until</Label>
+                  <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notify on</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {CHANNEL_META.map(({ value, label, Icon }) => {
+                      const active = channels.includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => toggleChannel(value)}
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition ${
+                            active
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-background border-border hover:bg-muted'
+                          }`}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedMember(null)}>
-                Change
-              </Button>
             </div>
           )}
-
-          {/* Valid Until */}
-          <div className="space-y-2">
-            <Label>Valid Until</Label>
-            <Input
-              type="date"
-              value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
-            />
-          </div>
         </div>
 
-        <DrawerFooter>
-          <Button
-            onClick={handleAssign}
-            disabled={!selectedMember || assignMutation.isPending}
-            className="w-full"
-          >
-            {assignMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Assigning...
-              </>
-            ) : (
-              'Assign Plan'
-            )}
-          </Button>
+        <DrawerFooter className="flex-row gap-2">
+          {results ? (
+            <Button onClick={closeAndReset} className="w-full">Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button
+                onClick={() => assignMutation.mutate()}
+                disabled={selected.length === 0 || !plan || assignMutation.isPending}
+                className="flex-1"
+              >
+                {assignMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  `Assign to ${selected.length} member${selected.length === 1 ? '' : 's'}`
+                )}
+              </Button>
+            </>
+          )}
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function ConfirmationView({
+  results,
+  channels,
+}: {
+  results: BulkAssignResult[];
+  channels: NotificationChannel[];
+}) {
+  const successCount = results.filter((r) => r.success).length;
+  return (
+    <div className="space-y-3">
+      <div className="text-sm text-muted-foreground">
+        Plan assigned to <span className="font-medium text-foreground">{successCount}</span> of {results.length} members.
+      </div>
+      <ScrollArea className="max-h-[55vh] pr-3">
+        <div className="space-y-2">
+          {results.map((r) => (
+            <div key={r.member_id} className="border rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {r.success ? (
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                  <span className="text-sm font-medium">{r.member_name}</span>
+                </div>
+                {!r.success && r.error && (
+                  <span className="text-[11px] text-destructive">{r.error}</span>
+                )}
+              </div>
+              {channels.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {channels.map((c) => {
+                    const meta = CHANNEL_META.find((m) => m.value === c)!;
+                    const Icon = meta.Icon;
+                    const ch = r.channels[c];
+                    const ok = ch?.sent;
+                    return (
+                      <div
+                        key={c}
+                        className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border ${
+                          ok
+                            ? 'bg-success/10 text-success border-success/30'
+                            : 'bg-destructive/10 text-destructive border-destructive/30'
+                        }`}
+                        title={ch?.error || (ok ? 'Sent' : 'Not sent')}
+                      >
+                        <Icon className="h-3 w-3" />
+                        {meta.label}: {ok ? 'sent' : ch?.error || 'failed'}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }

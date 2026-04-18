@@ -8,12 +8,14 @@ import { Pencil, UserPlus, Sparkles, Dumbbell, UtensilsCrossed, AlertCircle } fr
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { AssignPlanDrawer } from '@/components/fitness/AssignPlanDrawer';
 import { loadDraft, PlanDraft } from '@/lib/planDraft';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function PreviewPlanPage() {
   const { planId } = useParams<{ planId: string }>();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<PlanDraft | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
+  const { effectiveBranchId } = useBranchContext();
 
   useEffect(() => {
     if (planId) setDraft(loadDraft(planId));
@@ -123,6 +125,7 @@ export default function PreviewPlanPage() {
           description: draft.description,
           content: draft.content,
         }}
+        branchId={effectiveBranchId ?? undefined}
       />
     </>
   );

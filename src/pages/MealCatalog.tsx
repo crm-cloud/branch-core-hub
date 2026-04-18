@@ -1,0 +1,285 @@
+import { useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Plus, Trash2, Edit, UtensilsCrossed, Loader2, Search } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  fetchMealCatalog,
+  createMealCatalogEntry,
+  updateMealCatalogEntry,
+  deleteMealCatalogEntry,
+  MealCatalogEntry,
+  MealType,
+} from '@/services/mealCatalogService';
+import { DIETARY_PREFERENCES, CUISINE_PREFERENCES } from '@/types/fitnessPlan';
+import { toast } from 'sonner';
+
+const MEAL_TYPES: { value: MealType; label: string }[] = [
+  { value: 'breakfast', label: 'Breakfast' },
+  { value: 'lunch', label: 'Lunch' },
+  { value: 'dinner', label: 'Dinner' },
+  { value: 'snack', label: 'Snack' },
+  { value: 'pre_workout', label: 'Pre-workout' },
+  { value: 'post_workout', label: 'Post-workout' },
+];
+
+const EMPTY: Omit<MealCatalogEntry, 'id' | 'created_at' | 'updated_at' | 'is_active'> = {
+  branch_id: null,
+  name: '',
+  dietary_type: 'vegetarian',
+  cuisine: 'indian',
+  meal_type: 'breakfast',
+  default_quantity: '',
+  calories: 0,
+  protein: 0,
+  carbs: 0,
+  fats: 0,
+  fiber: 0,
+  tags: [],
+  notes: '',
+};
+
+export default function MealCatalog() {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [filterDiet, setFilterDiet] = useState<string>('all');
+  const [filterCuisine, setFilterCuisine] = useState<string>('all');
+  const [editing, setEditing] = useState<MealCatalogEntry | null>(null);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draft, setDraft] = useState<typeof EMPTY>(EMPTY);
+
+  const { data: meals = [], isLoading } = useQuery({
+    queryKey: ['meal-catalog-admin', search, filterDiet, filterCuisine],
+    queryFn: () =>
+      fetchMealCatalog({
+        search: search || undefined,
+        dietaryType: filterDiet === 'all' ? null : filterDiet,
+        cuisine: filterCuisine === 'all' ? null : filterCuisine,
+      }),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!draft.name.trim()) throw new Error('Name is required');
+      if (editing) {
+        await updateMealCatalogEntry(editing.id, draft);
+      } else {
+        await createMealCatalogEntry(draft);
+      }
+    },
+    onSuccess: () => {
+      toast.success(editing ? 'Meal updated' : 'Meal added');
+      setDraftOpen(false);
+      setEditing(null);
+      setDraft(EMPTY);
+      queryClient.invalidateQueries({ queryKey: ['meal-catalog-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['meal-catalog'] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteMealCatalogEntry,
+    onSuccess: () => {
+      toast.success('Meal removed');
+      queryClient.invalidateQueries({ queryKey: ['meal-catalog-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['meal-catalog'] });
+    },
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setDraft(EMPTY);
+    setDraftOpen(true);
+  };
+
+  const openEdit = (m: MealCatalogEntry) => {
+    setEditing(m);
+    setDraft({
+      branch_id: m.branch_id,
+      name: m.name,
+      dietary_type: m.dietary_type,
+      cuisine: m.cuisine,
+      meal_type: m.meal_type,
+      default_quantity: m.default_quantity || '',
+      calories: m.calories,
+      protein: m.protein,
+      carbs: m.carbs,
+      fats: m.fats,
+      fiber: m.fiber,
+      tags: m.tags,
+      notes: m.notes || '',
+    });
+    setDraftOpen(true);
+  };
+
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <UtensilsCrossed className="h-8 w-8 text-accent" />
+              Meal Catalog
+            </h1>
+            <p className="text-muted-foreground">Master list of meals used by the diet builder's swap modal</p>
+          </div>
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Meal
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="relative sm:col-span-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search meals..."
+                  className="pl-10"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={filterDiet} onValueChange={setFilterDiet}>
+                <SelectTrigger><SelectValue placeholder="All diets" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All diets</SelectItem>
+                  {DIETARY_PREFERENCES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={filterCuisine} onValueChange={setFilterCuisine}>
+                <SelectTrigger><SelectValue placeholder="All cuisines" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All cuisines</SelectItem>
+                  {CUISINE_PREFERENCES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : meals.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">No meals match the filters.</div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {meals.map((m) => (
+                  <Card key={m.id} className="border-border/60">
+                    <CardContent className="pt-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{m.name}</p>
+                          {m.default_quantity && <p className="text-xs text-muted-foreground">{m.default_quantity}</p>}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)}>
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(m.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant="outline" className="text-[10px]">{m.dietary_type.replace('_', ' ')}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{m.cuisine.replace('_', ' ')}</Badge>
+                        <Badge variant="secondary" className="text-[10px]">{m.meal_type}</Badge>
+                      </div>
+                      <div className="flex gap-3 text-[11px] text-muted-foreground">
+                        <span><b className="text-foreground">{m.calories}</b> kcal</span>
+                        <span>P {m.protein}g</span>
+                        <span>C {m.carbs}g</span>
+                        <span>F {m.fats}g</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit Meal' : 'Add Meal'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Name *</Label>
+              <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label>Diet</Label>
+                <Select value={draft.dietary_type} onValueChange={(v) => setDraft({ ...draft, dietary_type: v as any })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DIETARY_PREFERENCES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Cuisine</Label>
+                <Select value={draft.cuisine} onValueChange={(v) => setDraft({ ...draft, cuisine: v as any })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CUISINE_PREFERENCES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Meal type</Label>
+                <Select value={draft.meal_type} onValueChange={(v) => setDraft({ ...draft, meal_type: v as MealType })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MEAL_TYPES.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Default quantity</Label>
+              <Input value={draft.default_quantity || ''} onChange={(e) => setDraft({ ...draft, default_quantity: e.target.value })} placeholder="e.g. 1 bowl, 200g" />
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {(['calories', 'protein', 'carbs', 'fats', 'fiber'] as const).map((k) => (
+                <div key={k} className="space-y-1">
+                  <Label className="text-xs capitalize">{k === 'calories' ? 'kcal' : `${k} g`}</Label>
+                  <Input
+                    type="number"
+                    value={draft[k] as number}
+                    onChange={(e) => setDraft({ ...draft, [k]: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <Label>Tags (comma-separated)</Label>
+              <Input
+                value={draft.tags.join(', ')}
+                onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDraftOpen(false)}>Cancel</Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editing ? 'Save changes' : 'Add Meal'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AppLayout>
+  );
+}

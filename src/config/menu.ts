@@ -179,6 +179,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Create Plan', href: '/fitness/create', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
       { label: 'Plan Templates', href: '/fitness/templates', icon: ClipboardList, roles: ['owner', 'admin', 'manager'] },
       { label: 'Member Plans', href: '/fitness/member-plans', icon: Users, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Meal Catalog', href: '/meal-catalog', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
     ],
   },
   {

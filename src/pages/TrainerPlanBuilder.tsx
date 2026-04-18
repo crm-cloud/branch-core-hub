@@ -8,16 +8,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { useTrainerData } from '@/hooks/useMemberData';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { createPlanTemplate, assignPlanToMember } from '@/services/fitnessService';
+import { createPlanTemplate } from '@/services/fitnessService';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dumbbell, UtensilsCrossed, Plus, Trash2, Save, Users, ClipboardList,
-  AlertCircle, Loader2, GripVertical, Clock
+  AlertCircle, Loader2, Clock, ArrowLeftRight, Link as LinkIcon
 } from 'lucide-react';
+import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
+import { MealSwapModal } from '@/components/fitness/MealSwapModal';
+import { AssignPlanDrawer } from '@/components/fitness/AssignPlanDrawer';
+import { DIETARY_PREFERENCES, CUISINE_PREFERENCES, MealEntry } from '@/types/fitnessPlan';
+import { MealCatalogEntry, MealType } from '@/services/mealCatalogService';
 
 interface WorkoutExercise {
   name: string;
@@ -26,6 +30,8 @@ interface WorkoutExercise {
   rest_seconds: number;
   equipment: string;
   notes: string;
+  video_url?: string;
+  video_file_path?: string;
 }
 
 interface WorkoutDay {
@@ -48,6 +54,10 @@ interface Meal {
   name: string;
   time: string;
   items: MealItem[];
+  prep_video_url?: string;
+  video_file_path?: string;
+  recipe_link?: string;
+  meal_type?: MealType;
 }
 
 const DEFAULT_DAYS: WorkoutDay[] = [
@@ -61,13 +71,13 @@ const DEFAULT_DAYS: WorkoutDay[] = [
 ];
 
 const DEFAULT_MEALS: Meal[] = [
-  { name: 'Breakfast', time: '07:00', items: [] },
-  { name: 'Mid-Morning Snack', time: '10:00', items: [] },
-  { name: 'Lunch', time: '13:00', items: [] },
-  { name: 'Evening Snack', time: '16:00', items: [] },
-  { name: 'Pre-Workout', time: '17:30', items: [] },
-  { name: 'Post-Workout', time: '19:00', items: [] },
-  { name: 'Dinner', time: '20:30', items: [] },
+  { name: 'Breakfast', time: '07:00', items: [], meal_type: 'breakfast' },
+  { name: 'Mid-Morning Snack', time: '10:00', items: [], meal_type: 'snack' },
+  { name: 'Lunch', time: '13:00', items: [], meal_type: 'lunch' },
+  { name: 'Evening Snack', time: '16:00', items: [], meal_type: 'snack' },
+  { name: 'Pre-Workout', time: '17:30', items: [], meal_type: 'pre_workout' },
+  { name: 'Post-Workout', time: '19:00', items: [], meal_type: 'post_workout' },
+  { name: 'Dinner', time: '20:30', items: [], meal_type: 'dinner' },
 ];
 
 const EMPTY_EXERCISE: WorkoutExercise = { name: '', sets: 3, reps: '12', rest_seconds: 60, equipment: '', notes: '' };
@@ -86,7 +96,9 @@ export default function TrainerPlanBuilder() {
   const [caloriesTarget, setCaloriesTarget] = useState<number>(2000);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [assignDrawerOpen, setAssignDrawerOpen] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState('');
+  const [dietaryType, setDietaryType] = useState<string>('vegetarian');
+  const [cuisine, setCuisine] = useState<string>('indian');
+  const [swapMealIndex, setSwapMealIndex] = useState<number | null>(null);
 
   // Workout helpers
   const addExercise = (dayIndex: number) => {
@@ -140,6 +152,27 @@ export default function TrainerPlanBuilder() {
     setMeals(prev => prev.map((m, i) => i === mealIndex ? { ...m, time } : m));
   };
 
+  const updateMealField = (mealIndex: number, patch: Partial<Meal>) => {
+    setMeals(prev => prev.map((m, i) => i === mealIndex ? { ...m, ...patch } : m));
+  };
+
+  const applySwap = (mealIndex: number, entry: MealCatalogEntry) => {
+    setMeals(prev => prev.map((m, i) => i === mealIndex ? {
+      ...m,
+      // Replace the items with a single auto-generated entry from the catalog
+      items: [{
+        food: entry.name,
+        quantity: entry.default_quantity || '1 serving',
+        calories: entry.calories,
+        protein: entry.protein,
+        carbs: entry.carbs,
+        fats: entry.fats,
+        fiber: entry.fiber,
+      }],
+    } : m));
+    toast.success(`Swapped to ${entry.name}`);
+  };
+
   // Save as template
   const saveTemplate = useMutation({
     mutationFn: async () => {
@@ -152,8 +185,8 @@ export default function TrainerPlanBuilder() {
         type: isWorkout ? 'workout' : 'diet',
         description: planDescription,
         content: isWorkout
-          ? { days: workoutDays.map(d => ({ day: `${d.day} - ${d.label}`, exercises: d.exercises.filter(e => e.name) })) }
-          : { meals: meals.map(m => ({ name: m.name, time: m.time, items: m.items.filter(i => i.food), calories: m.items.reduce((s, i) => s + i.calories, 0), protein: m.items.reduce((s, i) => s + i.protein, 0), carbs: m.items.reduce((s, i) => s + i.carbs, 0), fats: m.items.reduce((s, i) => s + i.fats, 0) })), caloriesTarget },
+          ? buildWorkoutContent()
+          : buildDietContent(),
       });
     },
     onSuccess: () => {
@@ -163,46 +196,42 @@ export default function TrainerPlanBuilder() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Assign to client
-  const assignToClient = useMutation({
-    mutationFn: async () => {
-      if (!selectedClientId || !planName.trim()) throw new Error('Select a client and enter a plan name');
-      const isWorkout = activeTab === 'workout';
+  // Build content payloads — preserves video / recipe metadata for P3.
+  const buildWorkoutContent = () => ({
+    days: workoutDays.map(d => ({
+      day: `${d.day} - ${d.label}`,
+      exercises: d.exercises
+        .filter(e => e.name)
+        .map(e => ({
+          name: e.name,
+          sets: e.sets,
+          reps: e.reps,
+          rest_seconds: e.rest_seconds,
+          equipment: e.equipment,
+          notes: e.notes,
+          ...(e.video_url ? { video_url: e.video_url } : {}),
+          ...(e.video_file_path ? { video_file_path: e.video_file_path } : {}),
+        })),
+    })),
+  });
 
-      await assignPlanToMember({
-        member_id: selectedClientId,
-        plan_name: planName,
-        plan_type: isWorkout ? 'workout' : 'diet',
-        description: planDescription,
-        plan_data: isWorkout
-          ? { days: workoutDays.map(d => ({ day: `${d.day} - ${d.label}`, exercises: d.exercises.filter(e => e.name) })) }
-          : { meals: meals.map(m => ({ name: m.name, time: m.time, items: m.items.filter(i => i.food).map(i => i.food), calories: m.items.reduce((s, i) => s + i.calories, 0), protein: m.items.reduce((s, i) => s + i.protein, 0), carbs: m.items.reduce((s, i) => s + i.carbs, 0), fats: m.items.reduce((s, i) => s + i.fats, 0) })), notes: `Daily Target: ${caloriesTarget} kcal` },
-        is_custom: true,
-        branch_id: activeBranchId || undefined,
-      });
-
-      // If diet plan, also save to diet_plans table
-      if (!isWorkout) {
-        const { supabase } = await import('@/integrations/supabase/client');
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('diet_plans').insert({
-          member_id: selectedClientId,
-          name: planName,
-          description: planDescription,
-          plan_data: { meals: meals.map(m => ({ name: m.name, time: m.time, items: m.items.filter(i => i.food).map(i => i.food), calories: m.items.reduce((s, i) => s + i.calories, 0), protein: m.items.reduce((s, i) => s + i.protein, 0), carbs: m.items.reduce((s, i) => s + i.carbs, 0), fats: m.items.reduce((s, i) => s + i.fats, 0) })) },
-          calories_target: caloriesTarget,
-          is_active: true,
-          trainer_id: trainer?.id,
-          start_date: new Date().toISOString().split('T')[0],
-        });
-      }
-    },
-    onSuccess: () => {
-      toast.success('Plan assigned to client!');
-      setAssignDrawerOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['member-fitness-plans'] });
-    },
-    onError: (e: any) => toast.error(e.message),
+  const buildDietContent = () => ({
+    type: dietaryType,
+    cuisine,
+    caloriesTarget,
+    notes: `Daily Target: ${caloriesTarget} kcal`,
+    meals: meals.map<MealEntry>(m => ({
+      name: m.name,
+      time: m.time,
+      items: m.items.filter(i => i.food),
+      calories: m.items.reduce((s, i) => s + i.calories, 0),
+      protein: m.items.reduce((s, i) => s + i.protein, 0),
+      carbs: m.items.reduce((s, i) => s + i.carbs, 0),
+      fats: m.items.reduce((s, i) => s + i.fats, 0),
+      ...(m.prep_video_url ? { prep_video_url: m.prep_video_url } : {}),
+      ...(m.video_file_path ? { video_file_path: m.video_file_path } : {}),
+      ...(m.recipe_link ? { recipe_link: m.recipe_link } : {}),
+    })),
   });
 
   if (isLoading) {
@@ -327,36 +356,47 @@ export default function TrainerPlanBuilder() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {workoutDays[selectedDayIndex].exercises.map((ex, exIdx) => (
-                  <div key={exIdx} className="grid grid-cols-12 gap-2 items-start p-3 bg-muted/50 rounded-lg">
-                    <div className="col-span-12 sm:col-span-3 space-y-1">
-                      <Label className="text-xs">Exercise</Label>
-                      <Input placeholder="Bench Press" value={ex.name} onChange={e => updateExercise(selectedDayIndex, exIdx, 'name', e.target.value)} />
+                  <div key={exIdx} className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <div className="grid grid-cols-12 gap-2 items-start">
+                      <div className="col-span-12 sm:col-span-3 space-y-1">
+                        <Label className="text-xs">Exercise</Label>
+                        <Input placeholder="Bench Press" value={ex.name} onChange={e => updateExercise(selectedDayIndex, exIdx, 'name', e.target.value)} />
+                      </div>
+                      <div className="col-span-3 sm:col-span-1 space-y-1">
+                        <Label className="text-xs">Sets</Label>
+                        <Input type="number" min={1} value={ex.sets} onChange={e => updateExercise(selectedDayIndex, exIdx, 'sets', parseInt(e.target.value) || 1)} />
+                      </div>
+                      <div className="col-span-3 sm:col-span-2 space-y-1">
+                        <Label className="text-xs">Reps</Label>
+                        <Input placeholder="12" value={ex.reps} onChange={e => updateExercise(selectedDayIndex, exIdx, 'reps', e.target.value)} />
+                      </div>
+                      <div className="col-span-3 sm:col-span-1 space-y-1">
+                        <Label className="text-xs">Rest (s)</Label>
+                        <Input type="number" min={0} value={ex.rest_seconds} onChange={e => updateExercise(selectedDayIndex, exIdx, 'rest_seconds', parseInt(e.target.value) || 0)} />
+                      </div>
+                      <div className="col-span-6 sm:col-span-2 space-y-1">
+                        <Label className="text-xs">Equipment</Label>
+                        <Input placeholder="Barbell" value={ex.equipment} onChange={e => updateExercise(selectedDayIndex, exIdx, 'equipment', e.target.value)} />
+                      </div>
+                      <div className="col-span-5 sm:col-span-2 space-y-1">
+                        <Label className="text-xs">Notes</Label>
+                        <Input placeholder="Drop set" value={ex.notes} onChange={e => updateExercise(selectedDayIndex, exIdx, 'notes', e.target.value)} />
+                      </div>
+                      <div className="col-span-1 flex items-end pb-1">
+                        <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeExercise(selectedDayIndex, exIdx)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="col-span-3 sm:col-span-1 space-y-1">
-                      <Label className="text-xs">Sets</Label>
-                      <Input type="number" min={1} value={ex.sets} onChange={e => updateExercise(selectedDayIndex, exIdx, 'sets', parseInt(e.target.value) || 1)} />
-                    </div>
-                    <div className="col-span-3 sm:col-span-2 space-y-1">
-                      <Label className="text-xs">Reps</Label>
-                      <Input placeholder="12" value={ex.reps} onChange={e => updateExercise(selectedDayIndex, exIdx, 'reps', e.target.value)} />
-                    </div>
-                    <div className="col-span-3 sm:col-span-1 space-y-1">
-                      <Label className="text-xs">Rest (s)</Label>
-                      <Input type="number" min={0} value={ex.rest_seconds} onChange={e => updateExercise(selectedDayIndex, exIdx, 'rest_seconds', parseInt(e.target.value) || 0)} />
-                    </div>
-                    <div className="col-span-6 sm:col-span-2 space-y-1">
-                      <Label className="text-xs">Equipment</Label>
-                      <Input placeholder="Barbell" value={ex.equipment} onChange={e => updateExercise(selectedDayIndex, exIdx, 'equipment', e.target.value)} />
-                    </div>
-                    <div className="col-span-5 sm:col-span-2 space-y-1">
-                      <Label className="text-xs">Notes</Label>
-                      <Input placeholder="Drop set" value={ex.notes} onChange={e => updateExercise(selectedDayIndex, exIdx, 'notes', e.target.value)} />
-                    </div>
-                    <div className="col-span-1 flex items-end pb-1">
-                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeExercise(selectedDayIndex, exIdx)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <VideoAttachmentControl
+                      label="Form demo video"
+                      folder="exercises"
+                      value={{ video_url: ex.video_url, video_file_path: ex.video_file_path }}
+                      onChange={(v) => {
+                        updateExercise(selectedDayIndex, exIdx, 'video_url', v.video_url);
+                        updateExercise(selectedDayIndex, exIdx, 'video_file_path', v.video_file_path);
+                      }}
+                    />
                   </div>
                 ))}
 
@@ -370,6 +410,30 @@ export default function TrainerPlanBuilder() {
 
           {/* ===== DIET TAB ===== */}
           <TabsContent value="diet" className="space-y-4 mt-4">
+            {/* Diet preferences (used to filter the swap modal) */}
+            <Card className="border-border/50">
+              <CardContent className="pt-4 grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Dietary Type</Label>
+                  <Select value={dietaryType} onValueChange={setDietaryType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {DIETARY_PREFERENCES.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Cuisine</Label>
+                  <Select value={cuisine} onValueChange={setCuisine}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CUISINE_PREFERENCES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Calorie target + totals */}
             <div className="grid gap-4 sm:grid-cols-6">
               <Card className="sm:col-span-2 border-success/20 bg-success/5">
@@ -410,12 +474,15 @@ export default function TrainerPlanBuilder() {
             {meals.map((meal, mealIdx) => (
               <Card key={mealIdx} className="border-border/50">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <UtensilsCrossed className="h-4 w-4 text-accent" />
                       {meal.name}
                     </CardTitle>
                     <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSwapMealIndex(mealIdx)}>
+                        <ArrowLeftRight className="h-3.5 w-3.5 mr-1" /> Swap
+                      </Button>
                       <Clock className="h-4 w-4 text-muted-foreground" />
                       <Input
                         type="time"
@@ -468,6 +535,27 @@ export default function TrainerPlanBuilder() {
                     <Plus className="h-4 w-4 mr-1" />
                     Add Item
                   </Button>
+
+                  {/* Recipe link + prep video */}
+                  <div className="grid gap-3 sm:grid-cols-2 pt-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs flex items-center gap-1"><LinkIcon className="h-3 w-3" /> Recipe link</Label>
+                      <Input
+                        placeholder="https://..."
+                        value={meal.recipe_link || ''}
+                        onChange={e => updateMealField(mealIdx, { recipe_link: e.target.value })}
+                      />
+                    </div>
+                    <VideoAttachmentControl
+                      label="Prep / cooking video"
+                      folder="meals"
+                      value={{ video_url: meal.prep_video_url, video_file_path: meal.video_file_path }}
+                      onChange={(v) => updateMealField(mealIdx, {
+                        prep_video_url: v.video_url,
+                        video_file_path: v.video_file_path,
+                      })}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -475,57 +563,34 @@ export default function TrainerPlanBuilder() {
         </Tabs>
       </div>
 
-      {/* Assign to Client Drawer */}
-      <Sheet open={assignDrawerOpen} onOpenChange={setAssignDrawerOpen}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Assign Plan to Client
-            </SheetTitle>
-          </SheetHeader>
+      {/* Multi-member Assign Drawer (shared with AI Fitness page) */}
+      <AssignPlanDrawer
+        open={assignDrawerOpen}
+        onOpenChange={setAssignDrawerOpen}
+        plan={planName ? {
+          name: planName,
+          type: activeTab === 'workout' ? 'workout' : 'diet',
+          description: planDescription,
+          content: activeTab === 'workout' ? buildWorkoutContent() : buildDietContent(),
+        } : null}
+        branchId={activeBranchId || undefined}
+      />
 
-          <div className="mt-6 space-y-4">
-            <Card className="bg-muted/50">
-              <CardContent className="pt-4">
-                <p className="font-medium">{planName || 'Untitled Plan'}</p>
-                <p className="text-sm text-muted-foreground">{activeTab === 'workout' ? 'Workout' : 'Diet'} Plan</p>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-2">
-              <Label>Select Client *</Label>
-              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client: any) => (
-                    <SelectItem key={client.member_id} value={client.member_id}>
-                      {client.member?.profile?.full_name || client.member?.member_code || 'Unknown'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {clients.length === 0 && (
-              <Card className="bg-warning/5 border-warning/20">
-                <CardContent className="pt-4 text-sm text-warning">
-                  No active PT clients. Plans can only be assigned to your PT clients.
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setAssignDrawerOpen(false)}>Cancel</Button>
-            <Button onClick={() => assignToClient.mutate()} disabled={assignToClient.isPending || !selectedClientId}>
-              {assignToClient.isPending ? 'Assigning...' : 'Assign Plan'}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      {/* Meal Swap Modal */}
+      <MealSwapModal
+        open={swapMealIndex !== null}
+        onOpenChange={(open) => !open && setSwapMealIndex(null)}
+        context={swapMealIndex !== null ? {
+          name: meals[swapMealIndex].name,
+          mealType: meals[swapMealIndex].meal_type,
+          dietaryType,
+          cuisine,
+          calories: meals[swapMealIndex].items.reduce((s, i) => s + i.calories, 0),
+        } : null}
+        onSelect={(entry) => {
+          if (swapMealIndex !== null) applySwap(swapMealIndex, entry);
+        }}
+      />
     </AppLayout>
   );
 }

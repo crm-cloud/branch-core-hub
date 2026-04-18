@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Dumbbell, Video } from 'lucide-react';
+import { Plus, Trash2, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
 import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
 
 interface Exercise {
   name: string;
@@ -21,6 +22,7 @@ interface Exercise {
   weight: string;
   form_tips: string;
   video_url?: string;
+  video_file_path?: string;
 }
 
 interface Day {
@@ -105,6 +107,7 @@ export default function CreateManualWorkoutPage() {
                 weight: ex.weight || undefined,
                 notes: ex.form_tips || undefined,
                 video_url: ex.video_url || undefined,
+                video_file_path: ex.video_file_path || undefined,
               })),
             })),
         }],
@@ -239,10 +242,17 @@ export default function CreateManualWorkoutPage() {
                         placeholder="Cues for proper form, breathing, tempo…"
                       />
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Video className="h-3.5 w-3.5" />
-                      Video upload (coming soon)
-                    </div>
+                    <VideoAttachmentControl
+                      folder="exercises"
+                      label="Demo video (URL or upload)"
+                      value={{ video_url: ex.video_url, video_file_path: ex.video_file_path }}
+                      onChange={(next) => {
+                        const updated = days[activeIdx].exercises.map((e, i) =>
+                          i === exIdx ? { ...e, video_url: next.video_url, video_file_path: next.video_file_path } : e
+                        );
+                        updateDay(activeIdx, { exercises: updated });
+                      }}
+                    />
                   </div>
                 ))}
 

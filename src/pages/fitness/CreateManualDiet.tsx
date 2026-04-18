@@ -5,12 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, UtensilsCrossed, Clock, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, UtensilsCrossed, Clock, AlertTriangle, ArrowLeftRight, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { CreateFlowLayout } from '@/components/fitness/create/CreateFlowLayout';
 import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/MemberSearchPicker';
 import { newDraftId, saveDraft } from '@/lib/planDraft';
 import { cn } from '@/lib/utils';
+import { VideoAttachmentControl } from '@/components/fitness/VideoAttachmentControl';
+import { MealSwapModal } from '@/components/fitness/MealSwapModal';
+import { MealCatalogEntry, MealType } from '@/services/mealCatalogService';
 
 interface MealItem {
   food: string;
@@ -25,7 +28,19 @@ interface MealSlot {
   name: string;
   time: string;
   items: MealItem[];
+  recipe_link?: string;
+  prep_video_url?: string;
+  prep_video_file_path?: string;
 }
+
+const SLOT_TO_MEAL_TYPE = (name: string): MealType | undefined => {
+  const k = name.toLowerCase();
+  if (k.includes('breakfast')) return 'breakfast';
+  if (k.includes('lunch')) return 'lunch';
+  if (k.includes('dinner')) return 'dinner';
+  if (k.includes('snack') || k.includes('mid')) return 'snack';
+  return undefined;
+};
 
 const DEFAULT_SLOTS: MealSlot[] = [
   { name: 'Breakfast', time: '07:30', items: [] },
@@ -50,6 +65,7 @@ export default function CreateManualDietPage() {
   const [carbsTarget, setCarbsTarget] = useState(220);
   const [fatTarget, setFatTarget] = useState(60);
   const [slots, setSlots] = useState<MealSlot[]>(DEFAULT_SLOTS);
+  const [swapSlotIdx, setSwapSlotIdx] = useState<number | null>(null);
 
   const totals = useMemo(() => slots.reduce((acc, s) => {
     s.items.forEach(i => {
@@ -76,6 +92,23 @@ export default function CreateManualDietPage() {
 
   const removeItem = (sIdx: number, iIdx: number) =>
     updateSlot(sIdx, { items: slots[sIdx].items.filter((_, i) => i !== iIdx) });
+
+  const applySwap = (sIdx: number, entry: MealCatalogEntry) => {
+    updateSlot(sIdx, {
+      items: [{
+        food: entry.name,
+        quantity: entry.serving_size || '1 serving',
+        calories: entry.calories,
+        protein: entry.protein_g,
+        carbs: entry.carbs_g,
+        fats: entry.fats_g,
+      }],
+      recipe_link: entry.recipe_url || slots[sIdx].recipe_link,
+      prep_video_url: entry.video_url || slots[sIdx].prep_video_url,
+    });
+    setSwapSlotIdx(null);
+    toast.success(`Swapped to ${entry.name}`);
+  };
 
   const handlePreview = () => {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
@@ -109,6 +142,9 @@ export default function CreateManualDietPage() {
           name: s.name,
           time: s.time,
           items: s.items.filter(i => i.food),
+          recipe_link: s.recipe_link || undefined,
+          prep_video_url: s.prep_video_url || undefined,
+          prep_video_file_path: s.prep_video_file_path || undefined,
           totals: s.items.reduce((a, i) => ({
             calories: a.calories + (Number(i.calories) || 0),
             protein: a.protein + (Number(i.protein) || 0),
@@ -222,6 +258,21 @@ export default function CreateManualDietPage() {
                       value={slot.time}
                       onChange={(e) => updateSlot(sIdx, { time: e.target.value })}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1"
+                      onClick={() => {
+                        if (!dietaryType || !cuisine) {
+                          toast.error('Set dietary type & cuisine first');
+                          return;
+                        }
+                        setSwapSlotIdx(sIdx);
+                      }}
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" /> Swap
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -262,9 +313,43 @@ export default function CreateManualDietPage() {
                 <Button variant="outline" size="sm" className="w-full border-dashed" onClick={() => addItem(sIdx)}>
                   <Plus className="h-4 w-4 mr-1" /> Add Item
                 </Button>
+
+                <div className="grid gap-2 pt-2 border-t">
+                  <div className="flex items-center gap-2">
+                    <LinkIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="Recipe link (optional)"
+                      value={slot.recipe_link || ''}
+                      onChange={(e) => updateSlot(sIdx, { recipe_link: e.target.value })}
+                    />
+                  </div>
+                  <VideoAttachmentControl
+                    folder="meals"
+                    label="Prep video (URL or upload)"
+                    value={{ video_url: slot.prep_video_url, video_file_path: slot.prep_video_file_path }}
+                    onChange={(next) => updateSlot(sIdx, {
+                      prep_video_url: next.video_url,
+                      prep_video_file_path: next.video_file_path,
+                    })}
+                  />
+                </div>
               </CardContent>
             </Card>
           ))}
+
+          <MealSwapModal
+            open={swapSlotIdx !== null}
+            onOpenChange={(o) => !o && setSwapSlotIdx(null)}
+            context={swapSlotIdx === null ? null : {
+              name: slots[swapSlotIdx].name,
+              mealType: SLOT_TO_MEAL_TYPE(slots[swapSlotIdx].name),
+              dietaryType,
+              cuisine,
+              calories: slots[swapSlotIdx].items.reduce((s, i) => s + (Number(i.calories) || 0), 0),
+            }}
+            onSelect={(entry) => swapSlotIdx !== null && applySwap(swapSlotIdx, entry)}
+          />
         </div>
 
         {/* Side: live macros + member */}
