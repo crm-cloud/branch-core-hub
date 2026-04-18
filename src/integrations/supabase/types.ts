@@ -4748,11 +4748,15 @@ export type Database = {
         Row: {
           branch_id: string
           created_at: string
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
           id: string
           invoice_id: string | null
           items: Json
           member_id: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: string
           sale_date: string
           sold_by: string | null
           total_amount: number
@@ -4760,11 +4764,15 @@ export type Database = {
         Insert: {
           branch_id: string
           created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
           id?: string
           invoice_id?: string | null
           items?: Json
           member_id?: string | null
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           sale_date?: string
           sold_by?: string | null
           total_amount: number
@@ -4772,11 +4780,15 @@ export type Database = {
         Update: {
           branch_id?: string
           created_at?: string
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
           id?: string
           invoice_id?: string | null
           items?: Json
           member_id?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           sale_date?: string
           sold_by?: string | null
           total_amount?: number

@@ -189,6 +189,10 @@ export default function POSPage() {
         paymentMethod: isPaymentLink ? 'upi' : paymentMethod,
         transactionId: transactionId || undefined,
         slipUrl,
+        guestName: !selectedMember ? guestInfo.name || undefined : undefined,
+        guestPhone: !selectedMember ? guestInfo.phone || undefined : undefined,
+        guestEmail: !selectedMember ? guestInfo.email || undefined : undefined,
+        awaitingPayment: isPaymentLink,
       });
 
       // If payment link selected, generate Razorpay link instead of recording payment

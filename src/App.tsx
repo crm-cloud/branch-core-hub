@@ -105,11 +105,13 @@ const SystemHealthPage = lazy(() => import("./pages/SystemHealth"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 
 function PageLoader() {
+  // Lightweight, non-blocking top progress bar.
+  // The dumbbell loader is reserved for true app bootstrap (auth cold start),
+  // not for in-app navigation or tab switches.
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-background/12 backdrop-blur-[28px] backdrop-saturate-150">
-      <div className="absolute inset-0 bg-gradient-to-br from-background/20 via-background/5 to-background/20" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,hsl(var(--accent)/0.10),transparent_42%)]" />
-      <GymLoader text="" className="relative drop-shadow-[0_0_18px_hsl(var(--accent)/0.18)]" />
+    <div className="pointer-events-none fixed top-0 left-0 right-0 z-50 h-0.5 overflow-hidden">
+      <div className="h-full w-1/3 animate-[progressSlide_1.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-primary to-transparent" />
+      <style>{`@keyframes progressSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
     </div>
   );
 }
@@ -208,6 +210,8 @@ function RoutedContent() {
           <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><PaymentsPage /></ProtectedRoute>} />
           <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
           <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer', 'staff']}><PTSessionsPage /></ProtectedRoute>} />
+          <Route path="/diet-workout-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
+          {/* Backward-compat alias */}
           <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
           <Route path="/trainer-plan-builder" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerPlanBuilder /></ProtectedRoute>} />
           <Route path="/inventory" element={<Navigate to="/products" replace />} />

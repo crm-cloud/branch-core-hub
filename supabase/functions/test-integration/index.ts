@@ -92,7 +92,10 @@ Deno.serve(async (req) => {
         break;
       case "messenger":
       case "facebook_messenger":
-        result = await testMessenger(config, credentials);
+        result = {
+          success: false,
+          error: "Messenger integration is not yet supported end-to-end. This provider has been temporarily disabled in the UI.",
+        };
         break;
       default:
         result = { success: false, error: `Unsupported type: ${type}` };
