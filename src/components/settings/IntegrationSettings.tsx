@@ -187,7 +187,6 @@ export function IntegrationSettings() {
           <TabsTrigger value="email" className="gap-1.5"><Mail className="h-3.5 w-3.5" />Email</TabsTrigger>
           <TabsTrigger value="whatsapp" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="instagram" className="gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
-          <TabsTrigger value="messenger" className="gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
           <TabsTrigger value="leads" className="gap-1.5"><Send className="h-3.5 w-3.5" />Lead Capture</TabsTrigger>
           <TabsTrigger value="google" className="gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
         </TabsList>
@@ -588,77 +587,8 @@ export function IntegrationSettings() {
           </Card>
         </TabsContent>
 
-        {/* ── Messenger Tab ── */}
-        <TabsContent value="messenger" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Facebook className="h-5 w-5 text-blue-500" />
-                Facebook Messenger
-              </CardTitle>
-              <CardDescription>
-                Receive and reply to Facebook Messenger messages through the unified inbox
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Webhook URL */}
-              <div className="p-4 rounded-lg bg-blue-500/5 border border-blue-500/10 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-blue-500" />
-                  <h4 className="font-semibold text-sm">Messenger Webhook URL</h4>
-                </div>
-                <p className="text-xs text-muted-foreground">Paste this URL in your Meta Developer Portal → Messenger → Webhooks → Callback URL.</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-muted px-3 py-2 rounded font-mono break-all">
-                    {SUPABASE_FUNCTION_BASE}/meta-webhook
-                  </code>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
-                    toast.success('Messenger webhook URL copied!');
-                  }}>
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {MESSENGER_PROVIDERS.map((provider) => {
-                  const config = getIntegrationsByType('messenger').find(
-                    (i: any) => i.provider === provider.id
-                  );
-                  return (
-                    <Card key={provider.id}>
-                      <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-blue-500 flex items-center justify-center">
-                              <Facebook className="h-5 w-5 text-white" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">{provider.name}</h3>
-                              <p className="text-sm text-muted-foreground">{provider.description}</p>
-                            </div>
-                          </div>
-                          <Badge variant={config?.is_active ? 'default' : 'secondary'}>
-                            {config?.is_active ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
-                            {config?.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
-                        <Button 
-                          className="w-full mt-4" 
-                          variant={config?.is_active ? 'outline' : 'default'}
-                          onClick={() => openConfig('messenger', provider.id)}
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          {config ? 'Configure' : 'Setup'}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* Messenger tab removed — backend not yet implemented end-to-end.
+            send-message + meta-webhook code paths preserved for future re-enable. */}
 
         <TabsContent value="google" className="space-y-4">
           <Card>
