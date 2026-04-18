@@ -35,11 +35,13 @@ export function NotificationBell() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  // Realtime subscription for instant notifications
+  // Realtime subscription for instant notifications — unique channel per user/mount
+  // prevents duplicate handler fires when multiple components subscribe.
   useEffect(() => {
     if (!user?.id) return;
+    const channelName = `user-notifications-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('user-notifications')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -49,8 +51,8 @@ export function NotificationBell() {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['notification-count'] });
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          queryClient.invalidateQueries({ queryKey: ['notification-count', user.id] });
+          queryClient.invalidateQueries({ queryKey: ['notifications', user.id] });
         }
       )
       .subscribe();
