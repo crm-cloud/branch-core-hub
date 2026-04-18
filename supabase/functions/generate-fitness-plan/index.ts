@@ -1,9 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const ALLOWED_AI_ROLES = ["owner", "admin", "manager"] as const;
 
 interface GeneratePlanRequest {
   type: "workout" | "diet";
@@ -28,9 +31,49 @@ serve(async (req) => {
   }
 
   try {
+    // ── Server-side role check: only owner/admin/manager may generate AI plans ──
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user: caller }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !caller) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: callerRoles } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", caller.id)
+      .in("role", ALLOWED_AI_ROLES as unknown as string[]);
+
+    if (!callerRoles || callerRoles.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: AI plan generation requires owner, admin, or manager role." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { type, memberInfo, durationWeeks = 4, caloriesTarget } = await req.json() as GeneratePlanRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
+
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }

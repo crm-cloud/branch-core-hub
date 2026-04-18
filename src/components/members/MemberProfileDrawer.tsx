@@ -1109,28 +1109,96 @@ export function MemberProfileDrawer({
                 </Card>
               )}
 
-              {/* Health & Goals */}
-              {(member.fitness_goals || member.health_conditions) && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Fitness Profile</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    {member.fitness_goals && (
-                      <div>
-                        <span className="text-muted-foreground">Goals:</span>
-                        <span className="ml-2">{member.fitness_goals}</span>
-                      </div>
-                    )}
-                    {member.health_conditions && (
-                      <div>
-                        <span className="text-muted-foreground">Health Conditions:</span>
-                        <span className="ml-2 text-destructive">{member.health_conditions}</span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+              {/* Health & Goals — uses fully-loaded memberDetails so new fields show */}
+              {(() => {
+                type FitnessProfileFields = {
+                  fitness_goals?: string | null;
+                  health_conditions?: string | null;
+                  dietary_preference?: string | null;
+                  cuisine_preference?: string | null;
+                  allergies?: string[] | null;
+                  fitness_level?: string | null;
+                  activity_level?: string | null;
+                  equipment_availability?: string[] | null;
+                  injuries_limitations?: string | null;
+                };
+                const m = (memberDetails ?? member) as FitnessProfileFields;
+                const allergies: string[] = Array.isArray(m.allergies) ? m.allergies : [];
+                const equipment: string[] = Array.isArray(m.equipment_availability) ? m.equipment_availability : [];
+                const hasAny = m.fitness_goals || m.health_conditions || m.dietary_preference ||
+                  m.cuisine_preference || allergies.length > 0 || m.fitness_level ||
+                  m.activity_level || equipment.length > 0 || m.injuries_limitations;
+                if (!hasAny) return null;
+                const titleCase = (s: string) =>
+                  s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Fitness & Diet Profile</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      {m.fitness_goals && (
+                        <div>
+                          <span className="text-muted-foreground">Goals:</span>
+                          <span className="ml-2">{m.fitness_goals}</span>
+                        </div>
+                      )}
+                      {m.dietary_preference && (
+                        <div>
+                          <span className="text-muted-foreground">Dietary Preference:</span>
+                          <span className="ml-2">{titleCase(m.dietary_preference)}</span>
+                        </div>
+                      )}
+                      {m.cuisine_preference && (
+                        <div>
+                          <span className="text-muted-foreground">Cuisine:</span>
+                          <span className="ml-2">{titleCase(m.cuisine_preference)}</span>
+                        </div>
+                      )}
+                      {allergies.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-muted-foreground">Allergies:</span>
+                          {allergies.map((a) => (
+                            <Badge key={a} variant="outline" className="text-xs">{a}</Badge>
+                          ))}
+                        </div>
+                      )}
+                      {m.fitness_level && (
+                        <div>
+                          <span className="text-muted-foreground">Fitness Level:</span>
+                          <span className="ml-2">{titleCase(m.fitness_level)}</span>
+                        </div>
+                      )}
+                      {m.activity_level && (
+                        <div>
+                          <span className="text-muted-foreground">Activity Level:</span>
+                          <span className="ml-2">{titleCase(m.activity_level)}</span>
+                        </div>
+                      )}
+                      {equipment.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-muted-foreground">Equipment:</span>
+                          {equipment.map((e) => (
+                            <Badge key={e} variant="secondary" className="text-xs">{titleCase(e)}</Badge>
+                          ))}
+                        </div>
+                      )}
+                      {m.injuries_limitations && (
+                        <div>
+                          <span className="text-muted-foreground">Injuries / Limitations:</span>
+                          <span className="ml-2 text-destructive">{m.injuries_limitations}</span>
+                        </div>
+                      )}
+                      {m.health_conditions && (
+                        <div>
+                          <span className="text-muted-foreground">Health Conditions:</span>
+                          <span className="ml-2 text-destructive">{m.health_conditions}</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
             </TabsContent>
 
             <TabsContent value="membership" className="space-y-4 mt-4">
@@ -1508,7 +1576,7 @@ export function MemberProfileDrawer({
         <EditProfileDrawer
           open={editProfileOpen}
           onOpenChange={setEditProfileOpen}
-          member={member}
+          member={memberDetails || member}
           profile={profile}
         />
         <CompGiftDrawer

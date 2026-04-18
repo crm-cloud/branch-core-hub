@@ -210,9 +210,10 @@ function RoutedContent() {
           <Route path="/payments" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><PaymentsPage /></ProtectedRoute>} />
           <Route path="/classes" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff', 'trainer']}><ClassesPage /></ProtectedRoute>} />
           <Route path="/pt-sessions" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer', 'staff']}><PTSessionsPage /></ProtectedRoute>} />
-          <Route path="/diet-workout-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
+          {/* Trainers may view templates / member plans; AI Generate tab is hidden in-page for non-AI roles */}
+          <Route path="/diet-workout-plans" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
           {/* Backward-compat alias */}
-          <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AIFitnessPage /></ProtectedRoute>} />
+          <Route path="/ai-fitness" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'trainer']}><AIFitnessPage /></ProtectedRoute>} />
           <Route path="/trainer-plan-builder" element={<ProtectedRoute requiredRoles={['trainer']}><TrainerPlanBuilder /></ProtectedRoute>} />
           <Route path="/inventory" element={<Navigate to="/products" replace />} />
           <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />

@@ -1,4 +1,23 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import type { WorkoutPlanContent, DietPlanContent } from "@/types/fitnessPlan";
+
+export type FitnessPlanContent = WorkoutPlanContent | DietPlanContent;
+
+/**
+ * Convert a typed plan-content object to Supabase's recursive `Json` shape.
+ * Uses a JSON round-trip so the value is provably JSON-serialisable at runtime
+ * — avoids structural-type escape hatches like `as unknown as Json`.
+ */
+function toJsonContent(content: FitnessPlanContent): Json {
+  return JSON.parse(JSON.stringify(content)) as Json;
+}
+
+/** Narrow Supabase `Json` plan content back to a typed plan content shape. */
+function narrowPlanContent(json: Json): FitnessPlanContent {
+  // Plan content is always a JSON object; trust the column shape, but avoid `any`.
+  return json as unknown as FitnessPlanContent;
+}
 
 export interface FitnessPlanTemplate {
   id: string;
@@ -8,7 +27,7 @@ export interface FitnessPlanTemplate {
   description: string | null;
   difficulty: string | null;
   goal: string | null;
-  content: any;
+  content: FitnessPlanContent;
   is_public: boolean | null;
   is_active: boolean | null;
   created_by: string | null;
@@ -22,7 +41,7 @@ export interface MemberFitnessPlan {
   plan_type: string;
   plan_name: string;
   description: string | null;
-  plan_data: any;
+  plan_data: Json;
   is_custom: boolean | null;
   is_public: boolean | null;
   valid_from: string | null;
@@ -50,7 +69,11 @@ export async function fetchPlanTemplates(branchId?: string, type?: 'workout' | '
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []) as FitnessPlanTemplate[];
+  return (data || []).map(row => ({
+    ...row,
+    type: row.type as 'workout' | 'diet',
+    content: narrowPlanContent(row.content),
+  }));
 }
 
 // Create plan template
@@ -61,7 +84,7 @@ export async function createPlanTemplate(template: {
   description?: string;
   difficulty?: string;
   goal?: string;
-  content: any;
+  content: FitnessPlanContent;
   is_public?: boolean;
 }): Promise<FitnessPlanTemplate> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -70,13 +93,18 @@ export async function createPlanTemplate(template: {
     .from('fitness_plan_templates')
     .insert({
       ...template,
+      content: toJsonContent(template.content),
       created_by: user?.id,
     })
     .select()
     .single();
 
   if (error) throw error;
-  return data as FitnessPlanTemplate;
+  return {
+    ...data,
+    type: data.type as 'workout' | 'diet',
+    content: narrowPlanContent(data.content),
+  };
 }
 
 // Assign plan to member
@@ -85,7 +113,7 @@ export async function assignPlanToMember(params: {
   plan_name: string;
   plan_type: 'workout' | 'diet';
   description?: string;
-  plan_data: any;
+  plan_data: FitnessPlanContent;
   is_custom?: boolean;
   valid_from?: string;
   valid_until?: string;
@@ -100,7 +128,7 @@ export async function assignPlanToMember(params: {
       plan_name: params.plan_name,
       plan_type: params.plan_type,
       description: params.description,
-      plan_data: params.plan_data,
+      plan_data: toJsonContent(params.plan_data),
       is_custom: params.is_custom ?? true,
       is_public: false,
       valid_from: params.valid_from || new Date().toISOString().split('T')[0],
@@ -112,7 +140,7 @@ export async function assignPlanToMember(params: {
     .single();
 
   if (error) throw error;
-  return data as MemberFitnessPlan;
+  return data;
 }
 
 // Fetch member's assigned plans
@@ -124,7 +152,7 @@ export async function fetchMemberPlans(memberId: string): Promise<MemberFitnessP
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as MemberFitnessPlan[];
+  return data || [];
 }
 
 // Search members for plan assignment

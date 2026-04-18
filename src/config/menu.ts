@@ -176,7 +176,7 @@ export const adminMenuConfig: MenuSection[] = [
       { label: 'Trainers', href: '/trainers', icon: Dumbbell, roles: ['owner', 'admin', 'manager'] },
       { label: 'All Bookings', href: '/all-bookings', icon: Calendar, roles: ['owner', 'admin', 'manager'] },
       { label: 'Benefit Tracking', href: '/benefit-tracking', icon: Heart, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Diet & Workout Plans', href: '/diet-workout-plans', icon: Sparkles, roles: ['owner', 'admin'] },
+      { label: 'Diet & Workout Plans', href: '/diet-workout-plans', icon: Sparkles, roles: ['owner', 'admin', 'manager', 'trainer'] },
     ],
   },
   {

@@ -71,6 +71,13 @@ Deno.serve(async (req) => {
       avatarUrl,
       governmentIdType,
       governmentIdNumber,
+      dietaryPreference,
+      cuisinePreference,
+      allergies,
+      fitnessLevel,
+      activityLevel,
+      equipmentAvailability,
+      injuriesLimitations,
     } = await req.json()
 
     if (!email || !fullName || !branchId) {
@@ -195,6 +202,13 @@ Deno.serve(async (req) => {
     };
     if (governmentIdType) memberInsert.government_id_type = governmentIdType;
     if (governmentIdNumber) memberInsert.government_id_number = governmentIdNumber;
+    if (dietaryPreference) memberInsert.dietary_preference = dietaryPreference;
+    if (cuisinePreference) memberInsert.cuisine_preference = cuisinePreference;
+    if (Array.isArray(allergies)) memberInsert.allergies = allergies;
+    if (fitnessLevel) memberInsert.fitness_level = fitnessLevel;
+    if (activityLevel) memberInsert.activity_level = activityLevel;
+    if (Array.isArray(equipmentAvailability)) memberInsert.equipment_availability = equipmentAvailability;
+    if (injuriesLimitations) memberInsert.injuries_limitations = injuriesLimitations;
 
     const { data: member, error: memberError } = await supabaseAdmin
       .from('members')

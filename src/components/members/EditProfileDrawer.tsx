@@ -9,8 +9,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, User, Phone, Mail, AlertCircle, Camera, Target } from 'lucide-react';
+import { Loader2, User, Phone, Mail, AlertCircle, Camera, Target, Activity } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DIETARY_PREFERENCES,
+  CUISINE_PREFERENCES,
+  FITNESS_LEVELS,
+  ACTIVITY_LEVELS,
+  EQUIPMENT_OPTIONS,
+} from '@/types/fitnessPlan';
 
 interface EditProfileDrawerProps {
   open: boolean;
@@ -31,8 +40,15 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
     emergency_contact_name: '',
     emergency_contact_phone: '',
     fitness_goals: '',
-    gstin: ''
+    gstin: '',
+    dietary_preference: '',
+    cuisine_preference: '',
+    allergies: '',
+    fitness_level: '',
+    activity_level: '',
+    injuries_limitations: '',
   });
+  const [equipmentAvailability, setEquipmentAvailability] = useState<string[]>([]);
 
   useEffect(() => {
     if (profile) {
@@ -43,11 +59,24 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
         emergency_contact_name: profile.emergency_contact_name || '',
         emergency_contact_phone: profile.emergency_contact_phone || '',
         fitness_goals: member?.fitness_goals || '',
-        gstin: member?.gstin || ''
+        gstin: member?.gstin || '',
+        dietary_preference: member?.dietary_preference || '',
+        cuisine_preference: member?.cuisine_preference || '',
+        allergies: Array.isArray(member?.allergies) ? member.allergies.join(', ') : '',
+        fitness_level: member?.fitness_level || '',
+        activity_level: member?.activity_level || '',
+        injuries_limitations: member?.injuries_limitations || '',
       });
+      setEquipmentAvailability(Array.isArray(member?.equipment_availability) ? member.equipment_availability : []);
       setAvatarUrl(profile.avatar_url || null);
     }
   }, [profile, member]);
+
+  const toggleEquipment = (value: string) => {
+    setEquipmentAvailability(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+  };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,13 +131,22 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
 
       if (error) throw error;
 
-      // Update fitness goals and GSTIN on member record
+      // Update fitness goals, GSTIN, and fitness/diet profile on member record
       if (member?.id) {
         await supabase
           .from('members')
-          .update({ 
+          .update({
             fitness_goals: formData.fitness_goals || null,
             gstin: formData.gstin || null,
+            dietary_preference: formData.dietary_preference || null,
+            cuisine_preference: formData.cuisine_preference || null,
+            allergies: formData.allergies
+              ? formData.allergies.split(',').map(s => s.trim()).filter(Boolean)
+              : [],
+            fitness_level: formData.fitness_level || null,
+            activity_level: formData.activity_level || null,
+            equipment_availability: equipmentAvailability,
+            injuries_limitations: formData.injuries_limitations || null,
           })
           .eq('id', member.id);
       }
@@ -285,6 +323,114 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
                 maxLength={15}
               />
               <p className="text-xs text-muted-foreground">Auto-fills on GST invoices for this member</p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Fitness & Diet Profile */}
+          <div className="space-y-4">
+            <h4 className="font-medium flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Fitness & Diet Profile
+            </h4>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Used by the AI planner and trainer plan builder.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Dietary Preference</Label>
+                <Select
+                  value={formData.dietary_preference}
+                  onValueChange={(v) => setFormData({ ...formData, dietary_preference: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select diet" /></SelectTrigger>
+                  <SelectContent>
+                    {DIETARY_PREFERENCES.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Cuisine Preference</Label>
+                <Select
+                  value={formData.cuisine_preference}
+                  onValueChange={(v) => setFormData({ ...formData, cuisine_preference: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select cuisine" /></SelectTrigger>
+                  <SelectContent>
+                    {CUISINE_PREFERENCES.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fitness Level</Label>
+                <Select
+                  value={formData.fitness_level}
+                  onValueChange={(v) => setFormData({ ...formData, fitness_level: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select level" /></SelectTrigger>
+                  <SelectContent>
+                    {FITNESS_LEVELS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Current Activity Level</Label>
+                <Select
+                  value={formData.activity_level}
+                  onValueChange={(v) => setFormData({ ...formData, activity_level: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select activity" /></SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_LEVELS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="allergies">Allergies</Label>
+              <Input
+                id="allergies"
+                placeholder="Comma-separated, e.g. peanuts, dairy, gluten"
+                value={formData.allergies}
+                onChange={(e) => setFormData({ ...formData, allergies: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Equipment Availability</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {EQUIPMENT_OPTIONS.map(o => (
+                  <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={equipmentAvailability.includes(o.value)}
+                      onCheckedChange={() => toggleEquipment(o.value)}
+                    />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="injuries_limitations">Injuries / Limitations</Label>
+              <Textarea
+                id="injuries_limitations"
+                rows={2}
+                placeholder="Lower-back pain, knee surgery 2022, etc."
+                value={formData.injuries_limitations}
+                onChange={(e) => setFormData({ ...formData, injuries_limitations: e.target.value })}
+              />
             </div>
           </div>
 

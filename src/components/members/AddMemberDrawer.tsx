@@ -12,6 +12,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Gift, IdCard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MemberAvatarUpload } from './MemberAvatarUpload';
+import {
+  DIETARY_PREFERENCES,
+  CUISINE_PREFERENCES,
+  FITNESS_LEVELS,
+  ACTIVITY_LEVELS,
+  EQUIPMENT_OPTIONS,
+} from '@/types/fitnessPlan';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface AddMemberDrawerProps {
   open: boolean;
@@ -37,7 +45,14 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     referralCode: '',
     governmentIdType: '',
     governmentIdNumber: '',
+    dietaryPreference: '',
+    cuisinePreference: '',
+    allergies: '',
+    fitnessLevel: '',
+    activityLevel: '',
+    injuriesLimitations: '',
   });
+  const [equipmentAvailability, setEquipmentAvailability] = useState<string[]>([]);
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
 
@@ -90,6 +105,15 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
           avatarUrl: avatarUrl || null,
           governmentIdType: data.governmentIdType || null,
           governmentIdNumber: data.governmentIdNumber || null,
+          dietaryPreference: data.dietaryPreference || null,
+          cuisinePreference: data.cuisinePreference || null,
+          allergies: data.allergies
+            ? data.allergies.split(',').map(s => s.trim()).filter(Boolean)
+            : [],
+          fitnessLevel: data.fitnessLevel || null,
+          activityLevel: data.activityLevel || null,
+          equipmentAvailability,
+          injuriesLimitations: data.injuriesLimitations || null,
         },
       });
 
@@ -146,8 +170,21 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
       referralCode: '',
       governmentIdType: '',
       governmentIdNumber: '',
+      dietaryPreference: '',
+      cuisinePreference: '',
+      allergies: '',
+      fitnessLevel: '',
+      activityLevel: '',
+      injuriesLimitations: '',
     });
+    setEquipmentAvailability([]);
     setReferrerInfo(null);
+  };
+
+  const toggleEquipment = (value: string) => {
+    setEquipmentAvailability(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -366,6 +403,109 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
               placeholder="Any medical conditions..."
               rows={2}
             />
+          </div>
+
+          {/* ── Fitness profile (used by Diet & Workout planner) ── */}
+          <div className="space-y-3 rounded-lg border border-border/50 bg-muted/20 p-3">
+            <p className="text-sm font-medium">Fitness & Diet Profile</p>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Used by the AI planner and trainer plan builder. Optional but recommended.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="dietaryPreference">Dietary Preference</Label>
+                <Select
+                  value={formData.dietaryPreference}
+                  onValueChange={(v) => setFormData({ ...formData, dietaryPreference: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select diet" /></SelectTrigger>
+                  <SelectContent>
+                    {DIETARY_PREFERENCES.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cuisinePreference">Cuisine Preference</Label>
+                <Select
+                  value={formData.cuisinePreference}
+                  onValueChange={(v) => setFormData({ ...formData, cuisinePreference: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select cuisine" /></SelectTrigger>
+                  <SelectContent>
+                    {CUISINE_PREFERENCES.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fitnessLevel">Fitness Level</Label>
+                <Select
+                  value={formData.fitnessLevel}
+                  onValueChange={(v) => setFormData({ ...formData, fitnessLevel: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select level" /></SelectTrigger>
+                  <SelectContent>
+                    {FITNESS_LEVELS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="activityLevel">Current Activity Level</Label>
+                <Select
+                  value={formData.activityLevel}
+                  onValueChange={(v) => setFormData({ ...formData, activityLevel: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select activity" /></SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_LEVELS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="allergies">Allergies</Label>
+              <Input
+                id="allergies"
+                placeholder="Comma-separated, e.g. peanuts, dairy, gluten"
+                value={formData.allergies}
+                onChange={(e) => setFormData({ ...formData, allergies: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Equipment Availability</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {EQUIPMENT_OPTIONS.map(o => (
+                  <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={equipmentAvailability.includes(o.value)}
+                      onCheckedChange={() => toggleEquipment(o.value)}
+                    />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="injuriesLimitations">Injuries / Limitations</Label>
+              <Textarea
+                id="injuriesLimitations"
+                rows={2}
+                placeholder="Lower-back pain, knee surgery 2022, etc."
+                value={formData.injuriesLimitations}
+                onChange={(e) => setFormData({ ...formData, injuriesLimitations: e.target.value })}
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">

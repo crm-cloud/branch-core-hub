@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -164,9 +164,18 @@ function seededShuffle<T>(array: T[], seed: string): T[] {
 }
 
 export default function AIFitnessPage() {
-  const { profile } = useAuth();
+  const { profile, hasAnyRole } = useAuth();
+  const canUseAi = hasAnyRole(['owner', 'admin', 'manager']);
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">("generate");
+  const [activeTab, setActiveTab] = useState<"generate" | "templates" | "assign" | "member-plans">(
+    canUseAi ? "generate" : "templates"
+  );
+  // Defensive guard: if a non-AI role somehow lands on the generate tab, redirect to templates.
+  useEffect(() => {
+    if (!canUseAi && activeTab === "generate") {
+      setActiveTab("templates");
+    }
+  }, [canUseAi, activeTab]);
   const [editingTemplate, setEditingTemplate] = useState<FitnessPlanTemplate | null>(null);
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
   const [memberInfo, setMemberInfo] = useState({
@@ -372,7 +381,11 @@ export default function AIFitnessPage() {
   });
 
   const handleEditTemplate = (template: FitnessPlanTemplate) => {
-    const content = template.content as any;
+    if (!canUseAi) {
+      toast.error('Editing templates requires AI access. Please contact your manager.');
+      return;
+    }
+    const content = template.content;
     setMemberInfo({
       name: template.name,
       age: '',
@@ -470,7 +483,9 @@ export default function AIFitnessPage() {
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
           <TabsList className="bg-muted/50">
-            <TabsTrigger value="generate" className="gap-1.5"><Sparkles className="h-4 w-4" /> Generate</TabsTrigger>
+            {canUseAi && (
+              <TabsTrigger value="generate" className="gap-1.5"><Sparkles className="h-4 w-4" /> Generate</TabsTrigger>
+            )}
             <TabsTrigger value="templates" className="gap-1.5"><Library className="h-4 w-4" /> Template Library</TabsTrigger>
             <TabsTrigger value="member-plans" className="gap-1.5"><Users className="h-4 w-4" /> Member Plans</TabsTrigger>
             <TabsTrigger value="assign" className="gap-1.5"><UserPlus className="h-4 w-4" /> Assign</TabsTrigger>
@@ -771,8 +786,14 @@ export default function AIFitnessPage() {
                 <CardContent className="py-12 text-center">
                   <Library className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">No Templates Yet</h3>
-                  <p className="text-muted-foreground mb-4">Generate plans and save them as templates.</p>
-                  <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-2 h-4 w-4" /> Generate First Plan</Button>
+                  <p className="text-muted-foreground mb-4">
+                    {canUseAi
+                      ? 'Generate plans and save them as templates.'
+                      : 'Templates will appear here once your manager creates them.'}
+                  </p>
+                  {canUseAi && (
+                    <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-2 h-4 w-4" /> Generate First Plan</Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -848,9 +869,11 @@ export default function AIFitnessPage() {
                               }}>
                                 <Download className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => handleEditTemplate(template)} title="Edit">
-                                <Edit className="h-3.5 w-3.5" />
-                              </Button>
+                              {canUseAi && (
+                                <Button size="sm" variant="outline" onClick={() => handleEditTemplate(template)} title="Edit">
+                                  <Edit className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               <Button size="sm" variant="ghost" onClick={() => deleteTemplateMutation.mutate(template.id)}>
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
                               </Button>
@@ -973,9 +996,13 @@ export default function AIFitnessPage() {
                   {!generatedPlan && allTemplates.length === 0 && (
                     <div className="col-span-2 text-center py-12">
                       <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground mb-4">Generate a plan first or browse templates</p>
+                      <p className="text-muted-foreground mb-4">
+                        {canUseAi ? 'Generate a plan first or browse templates' : 'Browse available templates to assign to a member'}
+                      </p>
                       <div className="flex gap-3 justify-center">
-                        <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-1 h-4 w-4" /> Generate Plan</Button>
+                        {canUseAi && (
+                          <Button onClick={() => setActiveTab("generate")}><Sparkles className="mr-1 h-4 w-4" /> Generate Plan</Button>
+                        )}
                         <Button variant="outline" onClick={() => setActiveTab("templates")}><Library className="mr-1 h-4 w-4" /> Browse Templates</Button>
                       </div>
                     </div>

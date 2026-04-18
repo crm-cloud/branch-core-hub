@@ -3790,19 +3790,26 @@ export type Database = {
       }
       members: {
         Row: {
+          activity_level: string | null
+          allergies: string[]
           assigned_trainer_id: string | null
           biometric_enrolled: boolean | null
           biometric_photo_url: string | null
           branch_id: string
           created_at: string
           created_by: string | null
+          cuisine_preference: string | null
           custom_welcome_message: string | null
+          dietary_preference: string | null
+          equipment_availability: string[]
           fitness_goals: string | null
+          fitness_level: string | null
           gstin: string | null
           hardware_access_enabled: boolean | null
           hardware_access_status: string | null
           health_conditions: string | null
           id: string
+          injuries_limitations: string | null
           joined_at: string
           lead_id: string | null
           member_code: string | null
@@ -3819,19 +3826,26 @@ export type Database = {
           wiegand_code: string | null
         }
         Insert: {
+          activity_level?: string | null
+          allergies?: string[]
           assigned_trainer_id?: string | null
           biometric_enrolled?: boolean | null
           biometric_photo_url?: string | null
           branch_id: string
           created_at?: string
           created_by?: string | null
+          cuisine_preference?: string | null
           custom_welcome_message?: string | null
+          dietary_preference?: string | null
+          equipment_availability?: string[]
           fitness_goals?: string | null
+          fitness_level?: string | null
           gstin?: string | null
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
           id?: string
+          injuries_limitations?: string | null
           joined_at?: string
           lead_id?: string | null
           member_code?: string | null
@@ -3848,19 +3862,26 @@ export type Database = {
           wiegand_code?: string | null
         }
         Update: {
+          activity_level?: string | null
+          allergies?: string[]
           assigned_trainer_id?: string | null
           biometric_enrolled?: boolean | null
           biometric_photo_url?: string | null
           branch_id?: string
           created_at?: string
           created_by?: string | null
+          cuisine_preference?: string | null
           custom_welcome_message?: string | null
+          dietary_preference?: string | null
+          equipment_availability?: string[]
           fitness_goals?: string | null
+          fitness_level?: string | null
           gstin?: string | null
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
           id?: string
+          injuries_limitations?: string | null
           joined_at?: string
           lead_id?: string | null
           member_code?: string | null
