@@ -305,6 +305,10 @@ export default function WhatsAppChatPage() {
     enabled: !!selectedContact,
   });
 
+  // Play sound on incoming inbound message arrival
+  const inboundCount = messages.filter((m) => m.direction === 'inbound').length;
+  useChatSound(inboundCount);
+
   // AI Tool Logs for this contact (for thought banners)
   const { data: aiToolLogs = [] } = useQuery({
     queryKey: ['ai-tool-logs-chat', selectedContact?.phone_number],
