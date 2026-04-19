@@ -418,8 +418,9 @@ const RegisterModal = () => {
             </form>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+    </ResponsiveSheet>
+  );
+};
   );
 };
 
