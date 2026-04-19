@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+} from "@/components/ui/ResponsiveSheet";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/PhoneInput";
 import { Label } from "@/components/ui/label";
@@ -159,44 +163,43 @@ const RegisterModal = () => {
   );
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="w-[min(100vw-1rem,36rem)] sm:max-w-md gap-0 bg-card border-border p-0 overflow-hidden max-h-[90dvh] overflow-y-auto rounded-2xl">
-        {isSuccess ? (
-          <div className="p-6 sm:p-8 flex flex-col items-center text-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center animate-in zoom-in-50 duration-300">
-              <CheckCircle className="w-8 h-8 text-primary" />
-            </div>
-            <h3 className="text-2xl font-black text-foreground">You're In!</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              Welcome to the INCLINE founding members list. We'll reach out with exclusive updates and early access
-              details.
-            </p>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="mt-2 px-6 py-3 bg-primary text-primary-foreground font-bold text-sm tracking-wider uppercase rounded-xl hover:bg-primary/90 transition-colors"
-            >
-              Done
-            </button>
+    <ResponsiveSheet open={isOpen} onOpenChange={setIsOpen} width="lg">
+      {isSuccess ? (
+        <div className="p-2 sm:p-4 flex flex-col items-center text-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center animate-in zoom-in-50 duration-300">
+            <CheckCircle className="w-8 h-8 text-primary" />
           </div>
-        ) : (
-          <>
-            <DialogHeader className="p-5 sm:p-6 pb-0 text-left">
-              <DialogTitle className="text-xl font-black text-foreground leading-tight">
-                {step === 1 ? (
-                  <>
-                    Join the <span className="text-primary">INCLINE</span> Waitlist
-                  </>
-                ) : (
-                  <>
-                    Tell us about <span className="text-primary">You</span>
-                  </>
-                )}
-              </DialogTitle>
-              <p className="text-muted-foreground text-sm mt-1">
-                {step === 1 ? "Secure your spot as a founding member." : "Help us personalize your experience."}
-              </p>
-              {stepIndicator}
-            </DialogHeader>
+          <h3 className="text-2xl font-black text-foreground">You're In!</h3>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Welcome to the INCLINE founding members list. We'll reach out with exclusive updates and early access
+            details.
+          </p>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="mt-2 px-6 py-3 bg-primary text-primary-foreground font-bold text-sm tracking-wider uppercase rounded-xl hover:bg-primary/90 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      ) : (
+        <>
+          <ResponsiveSheetHeader className="text-left pb-0">
+            <ResponsiveSheetTitle className="text-xl font-black text-foreground leading-tight">
+              {step === 1 ? (
+                <>
+                  Join the <span className="text-primary">INCLINE</span> Waitlist
+                </>
+              ) : (
+                <>
+                  Tell us about <span className="text-primary">You</span>
+                </>
+              )}
+            </ResponsiveSheetTitle>
+            <p className="text-muted-foreground text-sm mt-1">
+              {step === 1 ? "Secure your spot as a founding member." : "Help us personalize your experience."}
+            </p>
+            {stepIndicator}
+          </ResponsiveSheetHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-6 pt-2 space-y-4">
               {step === 1 && (
                 <div className="space-y-4 animate-in slide-in-from-left-4 duration-200">
@@ -415,8 +418,7 @@ const RegisterModal = () => {
             </form>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+    </ResponsiveSheet>
   );
 };
 

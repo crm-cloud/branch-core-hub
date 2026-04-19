@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { format, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, getDay, subDays, addDays } from 'date-fns';
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ResponsiveSheet, ResponsiveSheetHeader, ResponsiveSheetTitle, ResponsiveSheetDescription } from '@/components/ui/ResponsiveSheet';
 import {
   BarChart,
   Bar,
@@ -971,28 +971,26 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Renewal members dialog */}
-      <Dialog open={renewalDialog.open} onOpenChange={(open) => setRenewalDialog((p) => ({ ...p, open }))}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Expiring — {renewalDialog.bucket}</DialogTitle>
-            <DialogDescription>
-              Members whose plans are expiring in the selected time window.
-            </DialogDescription>
-          </DialogHeader>
-          {renewalDialog.members.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No members expiring in this window.</p>
-          ) : (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {renewalDialog.members.map((m) => (
-                <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0" data-testid={`renewal-member-${m.id}`}>
-                  <p className="text-sm font-medium text-foreground">{m.name}</p>
-                  <Badge variant="outline" className="text-xs">{format(new Date(m.endDate), 'dd MMM yyyy')}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ResponsiveSheet open={renewalDialog.open} onOpenChange={(open) => setRenewalDialog((p) => ({ ...p, open }))} width="md">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>Expiring — {renewalDialog.bucket}</ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Members whose plans are expiring in the selected time window.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        {renewalDialog.members.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No members expiring in this window.</p>
+        ) : (
+          <div className="space-y-2 max-h-80 overflow-y-auto mt-3">
+            {renewalDialog.members.map((m) => (
+              <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0" data-testid={`renewal-member-${m.id}`}>
+                <p className="text-sm font-medium text-foreground">{m.name}</p>
+                <Badge variant="outline" className="text-xs">{format(new Date(m.endDate), 'dd MMM yyyy')}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResponsiveSheet>
     </AppLayout>
   );
 }

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ResponsiveSheet, ResponsiveSheetHeader, ResponsiveSheetTitle, ResponsiveSheetDescription, ResponsiveSheetFooter } from '@/components/ui/ResponsiveSheet';
 import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -697,51 +697,49 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Invoice Dialog */}
-      <Dialog open={showInvoice} onOpenChange={setShowInvoice}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-green-500" />
-              Sale Complete!
-            </DialogTitle>
-            <DialogDescription>
-              Invoice has been created and payment recorded.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="border rounded p-4 space-y-2">
-              {lastSale?.items?.map((item: any) => (
-                <div key={item.product.id} className="flex justify-between text-sm">
-                  <span>{item.product.name} x{item.quantity}</span>
-                  <span>₹{(item.product.price * item.quantity).toLocaleString()}</span>
-                </div>
-              ))}
-              <div className="border-t pt-2 flex justify-between font-bold">
-                <span>Total</span>
-                <span>₹{lastSale?.total?.toLocaleString()}</span>
+      {/* Invoice Drawer */}
+      <ResponsiveSheet open={showInvoice} onOpenChange={setShowInvoice} width="md">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-green-500" />
+            Sale Complete!
+          </ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Invoice has been created and payment recorded.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        <div className="space-y-4 mt-4 flex-1">
+          <div className="border rounded p-4 space-y-2">
+            {lastSale?.items?.map((item: any) => (
+              <div key={item.product.id} className="flex justify-between text-sm">
+                <span>{item.product.name} x{item.quantity}</span>
+                <span>₹{(item.product.price * item.quantity).toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Payment Method</span>
-                <span className="capitalize">{lastSale?.paymentMethod}</span>
-              </div>
+            ))}
+            <div className="border-t pt-2 flex justify-between font-bold">
+              <span>Total</span>
+              <span>₹{lastSale?.total?.toLocaleString()}</span>
             </div>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setShowInvoice(false)} className="flex-1">
-                Close
-              </Button>
-              <Button variant="outline" onClick={() => navigate('/invoices')} className="flex-1">
-                <FileText className="h-4 w-4 mr-2" />
-                View Invoices
-              </Button>
-              <Button onClick={printInvoice} className="flex-1">
-                <Receipt className="h-4 w-4 mr-2" />
-                Print Receipt
-              </Button>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Payment Method</span>
+              <span className="capitalize">{lastSale?.paymentMethod}</span>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setShowInvoice(false)}>
+            Close
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/invoices')}>
+            <FileText className="h-4 w-4 mr-2" />
+            View Invoices
+          </Button>
+          <Button onClick={printInvoice}>
+            <Receipt className="h-4 w-4 mr-2" />
+            Print Receipt
+          </Button>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
     </AppLayout>
   );
 }
