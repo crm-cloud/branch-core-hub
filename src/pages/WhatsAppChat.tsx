@@ -1392,7 +1392,7 @@ export default function WhatsAppChatPage() {
       </Dialog>
 
       {/* Transfer to Staff Sheet */}
-      <ResponsiveSheet open={transferStaffOpen} onOpenChange={setTransferStaffOpen} widthClass="sm:max-w-md">
+      <ResponsiveSheet open={transferStaffOpen} onOpenChange={setTransferStaffOpen} width="md">
         <ResponsiveSheetHeader>
           <ResponsiveSheetTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-primary" />
