@@ -16,23 +16,137 @@ import { format } from 'date-fns';
 import {
   Activity, ToggleLeft, FlaskConical, ChevronDown, ChevronRight,
   Phone, Clock, RefreshCw, Play, Loader2, ExternalLink, AlertTriangle,
-  Bot, Brain, MessageSquare,
+  Bot, Brain, MessageSquare, Search, Power, PowerOff,
+  IdCard, Gift, CalendarDays, CalendarPlus, CalendarX, Dumbbell, UserCog,
+  CreditCard, Receipt, Wallet, Link2, FileText, Snowflake, RotateCcw,
+  Users, Star, ShoppingBag, Bell, MapPin, ClipboardList,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
 import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
 import { LeadNurtureSettings } from '@/components/settings/LeadNurtureSettings';
 
-// Tool definitions matching the edge function
-const AI_TOOLS = [
-  { name: 'get_membership_status', description: 'Check membership status, plan, expiry, and pending dues' },
-  { name: 'get_benefit_balance', description: 'Get remaining benefit credits (sauna, ice bath, classes)' },
-  { name: 'get_available_slots', description: 'List available facility booking slots' },
-  { name: 'book_facility_slot', description: 'Book a specific facility slot for a member' },
-  { name: 'cancel_facility_booking', description: 'Cancel an existing facility booking' },
-  { name: 'get_pt_balance', description: 'Get personal training session balance' },
-  { name: 'transfer_to_human', description: 'Transfer conversation to human staff' },
+type ToolDef = {
+  name: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  risk: 'read' | 'write' | 'payment' | 'escalation';
+};
+
+type ToolCategory = {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  accent: string; // tailwind classes for icon badge
+  tools: ToolDef[];
+};
+
+// Grouped tool registry — covers self-service, bookings, payments, lifecycle, engagement
+const TOOL_CATEGORIES: ToolCategory[] = [
+  {
+    id: 'membership',
+    label: 'Membership & Account',
+    description: 'Status, plans, dues and member identity',
+    icon: IdCard,
+    accent: 'bg-violet-50 text-violet-600 ring-violet-100',
+    tools: [
+      { name: 'get_membership_status', label: 'Membership Status', description: 'Check plan, expiry date, days remaining and pending dues', icon: IdCard, risk: 'read' },
+      { name: 'get_member_profile', label: 'Member Profile', description: 'Fetch member details, contact, branch and join date', icon: UserCog, risk: 'read' },
+      { name: 'update_member_contact', label: 'Update Contact', description: 'Update member email or phone (verified)', icon: UserCog, risk: 'write' },
+      { name: 'request_freeze', label: 'Freeze Membership', description: 'Submit a freeze request for approval', icon: Snowflake, risk: 'write' },
+      { name: 'request_resume', label: 'Resume Membership', description: 'Resume from freeze before scheduled end date', icon: RotateCcw, risk: 'write' },
+    ],
+  },
+  {
+    id: 'benefits',
+    label: 'Benefits & Bookings',
+    description: 'Sauna, ice bath, classes and facility slots',
+    icon: Gift,
+    accent: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+    tools: [
+      { name: 'get_benefit_balance', label: 'Benefit Balance', description: 'Remaining credits for sauna, ice bath, classes', icon: Gift, risk: 'read' },
+      { name: 'get_available_slots', label: 'Available Slots', description: 'List bookable facility slots by date', icon: CalendarDays, risk: 'read' },
+      { name: 'book_facility_slot', label: 'Book Slot', description: 'Book a facility slot for the member', icon: CalendarPlus, risk: 'write' },
+      { name: 'cancel_facility_booking', label: 'Cancel Booking', description: 'Cancel an existing facility booking', icon: CalendarX, risk: 'write' },
+      { name: 'list_my_bookings', label: 'My Bookings', description: 'Upcoming bookings for the member', icon: ClipboardList, risk: 'read' },
+    ],
+  },
+  {
+    id: 'training',
+    label: 'Personal Training',
+    description: 'PT sessions, trainers and bookings',
+    icon: Dumbbell,
+    accent: 'bg-orange-50 text-orange-600 ring-orange-100',
+    tools: [
+      { name: 'get_pt_balance', label: 'PT Balance', description: 'Personal training session balance and expiry', icon: Dumbbell, risk: 'read' },
+      { name: 'list_trainers', label: 'List Trainers', description: 'Available trainers at the member’s branch', icon: Users, risk: 'read' },
+      { name: 'book_pt_session', label: 'Book PT Session', description: 'Book a PT session with a specific trainer', icon: CalendarPlus, risk: 'write' },
+      { name: 'cancel_pt_session', label: 'Cancel PT Session', description: 'Cancel an upcoming PT session', icon: CalendarX, risk: 'write' },
+    ],
+  },
+  {
+    id: 'payments',
+    label: 'Payments & Billing',
+    description: 'Invoices, dues, payment links and wallet',
+    icon: CreditCard,
+    accent: 'bg-sky-50 text-sky-600 ring-sky-100',
+    tools: [
+      { name: 'get_outstanding_dues', label: 'Outstanding Dues', description: 'Total pending invoice amount for the member', icon: Receipt, risk: 'read' },
+      { name: 'list_invoices', label: 'List Invoices', description: 'Recent invoices with status (paid / due / overdue)', icon: FileText, risk: 'read' },
+      { name: 'send_invoice_pdf', label: 'Send Invoice PDF', description: 'Email/WhatsApp the invoice PDF to the member', icon: FileText, risk: 'write' },
+      { name: 'create_payment_link', label: 'Create Payment Link', description: 'Generate a Razorpay payment link for an invoice', icon: Link2, risk: 'payment' },
+      { name: 'get_wallet_balance', label: 'Wallet Balance', description: 'Member wallet balance and recent transactions', icon: Wallet, risk: 'read' },
+      { name: 'pay_with_wallet', label: 'Pay With Wallet', description: 'Apply wallet credit toward an open invoice', icon: Wallet, risk: 'payment' },
+    ],
+  },
+  {
+    id: 'engagement',
+    label: 'Engagement & Loyalty',
+    description: 'Rewards, referrals, store and announcements',
+    icon: Star,
+    accent: 'bg-amber-50 text-amber-600 ring-amber-100',
+    tools: [
+      { name: 'get_rewards_balance', label: 'Rewards Balance', description: 'Loyalty points and tier status', icon: Star, risk: 'read' },
+      { name: 'redeem_reward', label: 'Redeem Reward', description: 'Redeem points against a benefit or store credit', icon: Gift, risk: 'write' },
+      { name: 'get_referral_link', label: 'Referral Link', description: 'Personalised referral link with tracking', icon: Link2, risk: 'read' },
+      { name: 'list_announcements', label: 'Announcements', description: 'Active branch announcements and offers', icon: Bell, risk: 'read' },
+      { name: 'list_store_products', label: 'Store Products', description: 'Browse merchandise and supplements', icon: ShoppingBag, risk: 'read' },
+    ],
+  },
+  {
+    id: 'branch',
+    label: 'Branch Info',
+    description: 'Hours, location and class schedules',
+    icon: MapPin,
+    accent: 'bg-slate-100 text-slate-600 ring-slate-200',
+    tools: [
+      { name: 'get_branch_info', label: 'Branch Info', description: 'Address, phone, opening hours and amenities', icon: MapPin, risk: 'read' },
+      { name: 'get_class_schedule', label: 'Class Schedule', description: 'Group class timings by day or trainer', icon: CalendarDays, risk: 'read' },
+    ],
+  },
+  {
+    id: 'escalation',
+    label: 'Escalation',
+    description: 'Hand off to humans when needed',
+    icon: MessageSquare,
+    accent: 'bg-rose-50 text-rose-600 ring-rose-100',
+    tools: [
+      { name: 'transfer_to_human', label: 'Transfer to Human', description: 'Hand off conversation to gym staff', icon: MessageSquare, risk: 'escalation' },
+    ],
+  },
 ];
+
+// Flat list for legacy lookups (test lab, etc.)
+const AI_TOOLS = TOOL_CATEGORIES.flatMap((c) => c.tools.map((t) => ({ name: t.name, description: t.description })));
+
+const RISK_BADGE: Record<ToolDef['risk'], { label: string; className: string }> = {
+  read: { label: 'Read', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  write: { label: 'Write', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  payment: { label: 'Payment', className: 'bg-sky-50 text-sky-700 border-sky-200' },
+  escalation: { label: 'Escalation', className: 'bg-rose-50 text-rose-700 border-rose-200' },
+};
 
 export function AIAgentControlCenter() {
   return (
@@ -289,6 +403,7 @@ function ToolsTab() {
   const [testArgs, setTestArgs] = useState('{}');
   const [testResult, setTestResult] = useState<any>(null);
   const [testRunning, setTestRunning] = useState(false);
+  const [search, setSearch] = useState('');
 
   const { data: orgSettings, isLoading: configLoading } = useQuery({
     queryKey: ['ai-tool-config'],
@@ -322,14 +437,27 @@ function ToolsTab() {
     onError: () => toast.error('Failed to update tool config'),
   });
 
+  const bulkToggle = useMutation({
+    mutationFn: async ({ toolNames, enabled }: { toolNames: string[]; enabled: boolean }) => {
+      if (!orgSettings?.id) throw new Error('Organization settings not found');
+      const newConfig = { ...toolConfig };
+      toolNames.forEach((n) => { newConfig[n] = enabled; });
+      const { error } = await supabase
+        .from('organization_settings')
+        .update({ ai_tool_config: newConfig })
+        .eq('id', orgSettings.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['ai-tool-config'] });
+      toast.success(vars.enabled ? 'Tools enabled' : 'Tools disabled');
+    },
+    onError: () => toast.error('Bulk update failed'),
+  });
+
   const handleTestExecute = async () => {
     if (!testTool) { toast.error('Select a tool first'); return; }
-    try {
-      JSON.parse(testArgs);
-    } catch {
-      toast.error('Invalid JSON arguments');
-      return;
-    }
+    try { JSON.parse(testArgs); } catch { toast.error('Invalid JSON arguments'); return; }
     setTestRunning(true);
     setTestResult(null);
     try {
@@ -345,77 +473,216 @@ function ToolsTab() {
     }
   };
 
+  // Filter categories by search
+  const filteredCategories = TOOL_CATEGORIES
+    .map((cat) => ({
+      ...cat,
+      tools: cat.tools.filter((t) =>
+        !search ||
+        t.name.toLowerCase().includes(search.toLowerCase()) ||
+        t.label.toLowerCase().includes(search.toLowerCase()) ||
+        t.description.toLowerCase().includes(search.toLowerCase())
+      ),
+    }))
+    .filter((cat) => cat.tools.length > 0);
+
+  // Stats across all tools
+  const allTools = TOOL_CATEGORIES.flatMap((c) => c.tools);
+  const enabledCount = allTools.filter((t) => toolConfig[t.name] !== false).length;
+  const totalCount = allTools.length;
+
   return (
     <div className="space-y-6">
-      {/* Tool Toggle Panel */}
-      <Card className="rounded-xl shadow-lg shadow-slate-200/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <ToggleLeft className="h-5 w-5 text-primary" />
-            Tool Toggle Panel
-          </CardTitle>
-          <CardDescription>Enable or disable specific AI tools. Disabled tools will not be available to the AI agent.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {configLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+      {/* Hero summary */}
+      <Card className="rounded-2xl shadow-lg shadow-slate-200/50 overflow-hidden border-0">
+        <div className="bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 text-white p-5 md:p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/15 backdrop-blur p-3 rounded-2xl ring-1 ring-white/20">
+                <ToggleLeft className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg md:text-xl font-bold">AI Tool Library</h3>
+                <p className="text-sm text-white/80">
+                  {enabledCount} of {totalCount} tools enabled across {TOOL_CATEGORIES.length} categories
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-1">
-              {AI_TOOLS.map((tool) => {
-                const isEnabled = toolConfig[tool.name] !== false;
-                return (
-                  <div
-                    key={tool.name}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-sm font-medium text-foreground">{tool.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{tool.description}</p>
-                    </div>
-                    <Switch
-                      checked={isEnabled}
-                      onCheckedChange={(checked) => toggleTool.mutate({ toolName: tool.name, enabled: checked })}
-                    />
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-lg bg-white/15 hover:bg-white/25 text-white border-0 backdrop-blur gap-1.5"
+                onClick={() => bulkToggle.mutate({ toolNames: allTools.map((t) => t.name), enabled: true })}
+                disabled={bulkToggle.isPending}
+              >
+                <Power className="h-3.5 w-3.5" /> Enable all
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-lg bg-white/15 hover:bg-white/25 text-white border-0 backdrop-blur gap-1.5"
+                onClick={() => bulkToggle.mutate({ toolNames: allTools.map((t) => t.name), enabled: false })}
+                disabled={bulkToggle.isPending}
+              >
+                <PowerOff className="h-3.5 w-3.5" /> Disable all
+              </Button>
             </div>
-          )}
+          </div>
+          {/* Progress bar */}
+          <div className="mt-4 h-1.5 w-full bg-white/15 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-300 rounded-full transition-all"
+              style={{ width: `${totalCount ? (enabledCount / totalCount) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+        {/* Search bar */}
+        <CardContent className="p-4 bg-white">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tools by name or description..."
+              className="w-full h-10 pl-9 pr-3 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
+            />
+          </div>
         </CardContent>
       </Card>
 
+      {/* Categories */}
+      {configLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
+        </div>
+      ) : filteredCategories.length === 0 ? (
+        <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No tools match "{search}"</p>
+          </CardContent>
+        </Card>
+      ) : (
+        filteredCategories.map((category) => {
+          const Icon = category.icon;
+          const catEnabled = category.tools.filter((t) => toolConfig[t.name] !== false).length;
+          const catTotal = category.tools.length;
+          return (
+            <Card key={category.id} className="rounded-2xl shadow-lg shadow-slate-200/50 overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ring-1 ${category.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">{category.label}</CardTitle>
+                      <CardDescription className="text-xs">{category.description}</CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="rounded-full text-xs font-medium">
+                      {catEnabled}/{catTotal} on
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs rounded-lg"
+                      onClick={() => bulkToggle.mutate({
+                        toolNames: category.tools.map((t) => t.name),
+                        enabled: catEnabled < catTotal,
+                      })}
+                    >
+                      {catEnabled < catTotal ? 'Enable all' : 'Disable all'}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {category.tools.map((tool) => {
+                    const isEnabled = toolConfig[tool.name] !== false;
+                    const ToolIcon = tool.icon;
+                    const risk = RISK_BADGE[tool.risk];
+                    return (
+                      <div
+                        key={tool.name}
+                        className={`group flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                          isEnabled
+                            ? 'bg-white border-slate-200 hover:border-primary/30 hover:shadow-md hover:shadow-slate-200/60'
+                            : 'bg-slate-50/60 border-slate-200/60 opacity-70'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${category.accent} shrink-0`}>
+                          <ToolIcon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-foreground truncate">{tool.label}</p>
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 rounded-md ${risk.className}`}>
+                              {risk.label}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{tool.description}</p>
+                          <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 truncate">{tool.name}</p>
+                        </div>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) => toggleTool.mutate({ toolName: tool.name, enabled: checked })}
+                          className="mt-1"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
+
       {/* Manual Test Lab */}
-      <Card className="rounded-xl shadow-lg shadow-slate-200/50">
+      <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-primary" />
+            <div className="bg-emerald-50 text-emerald-600 p-2 rounded-lg ring-1 ring-emerald-100">
+              <FlaskConical className="h-4 w-4" />
+            </div>
             Manual Test Lab
           </CardTitle>
-          <CardDescription>Test AI tool functions directly with custom arguments.</CardDescription>
+          <CardDescription>Execute any AI tool with custom JSON arguments to verify behaviour.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Select Tool</label>
+              <label className="text-sm font-medium text-foreground">Select Tool</label>
               <Select value={testTool} onValueChange={setTestTool}>
                 <SelectTrigger className="rounded-lg">
                   <SelectValue placeholder="Choose a tool..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {AI_TOOLS.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                  {TOOL_CATEGORIES.map((cat) => (
+                    <div key={cat.id}>
+                      <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        {cat.label}
+                      </div>
+                      {cat.tools.map((t) => (
+                        <SelectItem key={t.name} value={t.name}>
+                          <span className="font-mono text-xs">{t.name}</span>
+                        </SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Arguments (JSON)</label>
+              <label className="text-sm font-medium text-foreground">Arguments (JSON)</label>
               <Textarea
                 value={testArgs}
                 onChange={(e) => setTestArgs(e.target.value)}
-                placeholder='{"key": "value"}'
+                placeholder='{"member_id": "..."}'
                 className="font-mono text-xs rounded-lg min-h-[80px]"
               />
             </div>
