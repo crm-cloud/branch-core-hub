@@ -1391,68 +1391,65 @@ export default function WhatsAppChatPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Transfer to Staff Dialog */}
-      <Dialog open={transferStaffOpen} onOpenChange={setTransferStaffOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Transfer to Staff
-            </DialogTitle>
-            <DialogDescription>
-              Assign this conversation to a staff member.
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-64">
-            <div className="space-y-1">
-              {staffList.map((staff: any) => (
-                <button
-                  key={staff.id}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/80 transition-colors text-left"
-                  onClick={async () => {
-                    if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
-                    await supabase.from('whatsapp_chat_settings').upsert(
-                      {
-                        branch_id: selectedBranch,
-                        phone_number: selectedContact.phone_number,
-                        assigned_to: staff.id,
-                        bot_active: false,
-                      },
-                      { onConflict: 'branch_id,phone_number' }
-                    );
-                    // Send in-app notification to assigned staff
-                    await supabase.from('notifications').insert({
-                      user_id: staff.id,
+      {/* Transfer to Staff Sheet */}
+      <ResponsiveSheet open={transferStaffOpen} onOpenChange={setTransferStaffOpen} widthClass="sm:max-w-md">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-primary" />
+            Transfer to Staff
+          </ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Assign this conversation to a staff member.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        <ScrollArea className="max-h-[60dvh] sm:max-h-[70vh] mt-4">
+          <div className="space-y-1 pr-2">
+            {staffList.map((staff: any) => (
+              <button
+                key={staff.id}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/80 transition-colors text-left"
+                onClick={async () => {
+                  if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
+                  await supabase.from('whatsapp_chat_settings').upsert(
+                    {
                       branch_id: selectedBranch,
-                      title: 'WhatsApp Chat Assigned',
-                      message: `A chat with ${selectedContact.contact_name || selectedContact.phone_number} has been assigned to you.`,
-                      type: 'info',
-                      category: 'communication',
-                    });
-                    setBotActive(false);
-                    queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
-                    setTransferStaffOpen(false);
-                    toast.success(`Chat assigned to ${staff.full_name}`);
-                  }}
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                      {staff.full_name?.[0]?.toUpperCase() || '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{staff.full_name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{staff.role}</p>
-                  </div>
-                </button>
-              ))}
-              {staffList.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">Loading staff...</p>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+                      phone_number: selectedContact.phone_number,
+                      assigned_to: staff.id,
+                      bot_active: false,
+                    },
+                    { onConflict: 'branch_id,phone_number' }
+                  );
+                  await supabase.from('notifications').insert({
+                    user_id: staff.id,
+                    branch_id: selectedBranch,
+                    title: 'WhatsApp Chat Assigned',
+                    message: `A chat with ${selectedContact.contact_name || selectedContact.phone_number} has been assigned to you.`,
+                    type: 'info',
+                    category: 'communication',
+                  });
+                  setBotActive(false);
+                  queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
+                  setTransferStaffOpen(false);
+                  toast.success(`Chat assigned to ${staff.full_name}`);
+                }}
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                    {staff.full_name?.[0]?.toUpperCase() || '?'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{staff.full_name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{staff.role}</p>
+                </div>
+              </button>
+            ))}
+            {staffList.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Loading staff...</p>
+            )}
+          </div>
+        </ScrollArea>
+      </ResponsiveSheet>
 
       {/* Convert to Lead Drawer */}
       <AddLeadDrawer
