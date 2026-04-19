@@ -87,3 +87,6 @@ verify_jwt = false
 [functions.send-message]
 verify_jwt = false
 
+[functions.fetch-image-url]
+verify_jwt = true
+

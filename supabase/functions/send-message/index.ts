@@ -134,6 +134,7 @@ serve(async (req) => {
       const igAccountId = integration.config?.instagram_account_id || integration.config?.page_id;
       metaUrl = `https://graph.facebook.com/v25.0/${igAccountId}/messages`;
       metaPayload = {
+        messaging_product: "instagram",
         recipient: { id: recipientId },
         message: message_type === "image" && media_url
           ? { attachment: { type: "image", payload: { url: media_url } } }
