@@ -6,7 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+  ResponsiveSheetDescription,
+  ResponsiveSheetFooter,
+} from '@/components/ui/ResponsiveSheet';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -16,7 +22,7 @@ type CategoryType = 'income' | 'expense';
 
 function CategoryTable({ type }: { type: CategoryType }) {
   const queryClient = useQueryClient();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', description: '' });
 
@@ -26,10 +32,7 @@ function CategoryTable({ type }: { type: CategoryType }) {
   const { data: categories = [], isLoading } = useQuery({
     queryKey: [queryKey],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .order('name');
+      const { data, error } = await supabase.from(tableName).select('*').order('name');
       if (error) throw error;
       return data;
     },
@@ -53,7 +56,7 @@ function CategoryTable({ type }: { type: CategoryType }) {
     onSuccess: () => {
       toast.success(editingCategory ? 'Category updated' : 'Category created');
       queryClient.invalidateQueries({ queryKey: [queryKey] });
-      setIsDialogOpen(false);
+      setIsOpen(false);
       resetForm();
     },
     onError: (error: any) => toast.error(error.message || 'Failed to save category'),
@@ -61,10 +64,7 @@ function CategoryTable({ type }: { type: CategoryType }) {
 
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
-        .from(tableName)
-        .update({ is_active: !is_active })
-        .eq('id', id);
+      const { error } = await supabase.from(tableName).update({ is_active: !is_active }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -82,119 +82,147 @@ function CategoryTable({ type }: { type: CategoryType }) {
   const handleEdit = (category: any) => {
     setEditingCategory(category);
     setFormData({ name: category.name, description: category.description || '' });
-    setIsDialogOpen(true);
+    setIsOpen(true);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setIsOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) { toast.error('Name is required'); return; }
+    if (!formData.name) {
+      toast.error('Name is required');
+      return;
+    }
     saveMutation.mutate();
   };
 
   const label = type === 'income' ? 'Income' : 'Expense';
 
   return (
-    <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-bold text-foreground">{label} Categories</CardTitle>
-            <CardDescription>Manage {label.toLowerCase()} categories for financial tracking</CardDescription>
+    <>
+      <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-bold text-foreground">{label} Categories</CardTitle>
+              <CardDescription>Manage {label.toLowerCase()} categories for financial tracking</CardDescription>
+            </div>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Category
+            </Button>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Category
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editingCategory ? 'Edit Category' : `Add ${label} Category`}</DialogTitle>
-                <DialogDescription>
-                  {editingCategory ? `Update ${label.toLowerCase()} category details` : `Create a new ${label.toLowerCase()} category`}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cat-name">Name *</Label>
-                  <Input
-                    id="cat-name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder={type === 'income' ? 'Membership Fees' : 'Utilities'}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cat-desc">Description</Label>
-                  <Input
-                    id="cat-desc"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder={type === 'income' ? 'Revenue from memberships' : 'Electricity, Water, Internet'}
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">Cancel</Button>
-                  <Button type="submit" disabled={saveMutation.isPending} className="flex-1">
-                    {saveMutation.isPending ? 'Saving...' : editingCategory ? 'Update' : 'Create'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          </div>
-        ) : categories.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">No {label.toLowerCase()} categories found</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {categories.map((category: any) => (
-                <TableRow key={category.id}>
-                  <TableCell className="font-medium">{category.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{category.description || '-'}</TableCell>
-                  <TableCell>
-                    <Badge variant={category.is_active ? 'default' : 'secondary'}>
-                      {category.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(category)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleActiveMutation.mutate({ id: category.id, is_active: category.is_active })}
-                        title={category.is_active ? 'Deactivate' : 'Activate'}
-                      >
-                        {category.is_active ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
-                      </Button>
-                    </div>
-                  </TableCell>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : categories.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No {label.toLowerCase()} categories found</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+              </TableHeader>
+              <TableBody>
+                {categories.map((category: any) => (
+                  <TableRow key={category.id}>
+                    <TableCell className="font-medium">{category.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{category.description || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={category.is_active ? 'default' : 'secondary'}>
+                        {category.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(category)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            toggleActiveMutation.mutate({ id: category.id, is_active: category.is_active })
+                          }
+                          title={category.is_active ? 'Deactivate' : 'Activate'}
+                        >
+                          {category.is_active ? (
+                            <ToggleRight className="h-4 w-4 text-primary" />
+                          ) : (
+                            <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <ResponsiveSheet
+        open={isOpen}
+        onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open) resetForm();
+        }}
+        width="md"
+      >
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>
+            {editingCategory ? 'Edit Category' : `Add ${label} Category`}
+          </ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            {editingCategory
+              ? `Update ${label.toLowerCase()} category details`
+              : `Create a new ${label.toLowerCase()} category`}
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4 flex-1 flex flex-col">
+          <div className="space-y-4 flex-1">
+            <div className="space-y-2">
+              <Label htmlFor="cat-name">Name *</Label>
+              <Input
+                id="cat-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder={type === 'income' ? 'Membership Fees' : 'Utilities'}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cat-desc">Description</Label>
+              <Input
+                id="cat-desc"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder={type === 'income' ? 'Revenue from memberships' : 'Electricity, Water, Internet'}
+              />
+            </div>
+          </div>
+          <ResponsiveSheetFooter>
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Saving...' : editingCategory ? 'Update' : 'Create'}
+            </Button>
+          </ResponsiveSheetFooter>
+        </form>
+      </ResponsiveSheet>
+    </>
   );
 }
 

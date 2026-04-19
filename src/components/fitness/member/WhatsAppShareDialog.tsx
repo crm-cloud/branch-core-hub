@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+  ResponsiveSheetDescription,
+  ResponsiveSheetFooter,
+} from '@/components/ui/ResponsiveSheet';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,7 +39,6 @@ export function WhatsAppShareDialog({
 
   useEffect(() => {
     if (open) {
-      // PhoneInput strips +91 for display, so feed it the raw 10-digit number
       const cleaned = (defaultPhone || '').replace(/\D/g, '').replace(/^91/, '').slice(-10);
       setPhone(cleaned);
       setContent(message);
@@ -89,50 +93,44 @@ export function WhatsAppShareDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            We'll send this message through your gym's WhatsApp channel.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="wa-phone">Recipient phone</Label>
-            <PhoneInput
-              id="wa-phone"
-              value={phone}
-              onChange={(v) => setPhone(v)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="wa-msg">Message</Label>
-            <Textarea
-              id="wa-msg"
-              rows={10}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </div>
+    <ResponsiveSheet open={open} onOpenChange={onOpenChange} width="lg">
+      <ResponsiveSheetHeader className="px-0 sm:px-0">
+        <ResponsiveSheetTitle>{title}</ResponsiveSheetTitle>
+        <ResponsiveSheetDescription>
+          We'll send this message through your gym's WhatsApp channel.
+        </ResponsiveSheetDescription>
+      </ResponsiveSheetHeader>
+      <div className="space-y-3 mt-4">
+        <div>
+          <Label htmlFor="wa-phone">Recipient phone</Label>
+          <PhoneInput id="wa-phone" value={phone} onChange={(v) => setPhone(v)} />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
-            Cancel
-          </Button>
-          <Button onClick={send} disabled={sending || !content.trim()}>
-            {sending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending…
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" /> Send
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div>
+          <Label htmlFor="wa-msg">Message</Label>
+          <Textarea
+            id="wa-msg"
+            rows={10}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+        </div>
+      </div>
+      <ResponsiveSheetFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
+          Cancel
+        </Button>
+        <Button onClick={send} disabled={sending || !content.trim()}>
+          {sending ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending…
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4 mr-2" /> Send
+            </>
+          )}
+        </Button>
+      </ResponsiveSheetFooter>
+    </ResponsiveSheet>
   );
 }

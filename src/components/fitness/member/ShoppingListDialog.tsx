@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+  ResponsiveSheetDescription,
+  ResponsiveSheetFooter,
+} from '@/components/ui/ResponsiveSheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -81,19 +87,19 @@ export function ShoppingListDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <>
+      <ResponsiveSheet open={open} onOpenChange={onOpenChange} width="lg">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-accent" />
             Shopping List
-          </DialogTitle>
-          <DialogDescription>
+          </ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
             Aggregated ingredients from your meal plan, grouped by category.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
 
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 mt-3">
           <div className="flex-1">
             <Label className="text-xs">Days to plan for</Label>
             <Input
@@ -106,7 +112,7 @@ export function ShoppingListDialog({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1 mt-3">
           {isLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-accent" />
@@ -137,7 +143,7 @@ export function ShoppingListDialog({
           )}
         </div>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2">
+        <ResponsiveSheetFooter>
           <Button variant="outline" size="sm" onClick={handleCopy} disabled={!data}>
             <Copy className="h-4 w-4 mr-1" /> Copy
           </Button>
@@ -147,8 +153,9 @@ export function ShoppingListDialog({
           <Button size="sm" onClick={handleShareWhatsApp} disabled={!data}>
             <Share2 className="h-4 w-4 mr-1" /> WhatsApp
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
+
       <WhatsAppShareDialog
         open={shareOpen}
         onOpenChange={setShareOpen}
@@ -158,6 +165,6 @@ export function ShoppingListDialog({
         message={allText}
         title="Share shopping list"
       />
-    </Dialog>
+    </>
   );
 }

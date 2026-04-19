@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+  ResponsiveSheetDescription,
+  ResponsiveSheetFooter,
+} from '@/components/ui/ResponsiveSheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -127,99 +133,97 @@ export function MealSwapDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-accent" />
-            Swap "{currentMeal.name}"
-          </DialogTitle>
-          <DialogDescription>
-            Pick an alternative from the catalog
-            {dietaryType ? ` · ${dietaryType.replace('_', ' ')}` : ''}
-            {cuisine ? ` · ${cuisine}` : ''}
-            {currentCalories ? ` · ~${currentCalories} kcal` : ''}
-          </DialogDescription>
-        </DialogHeader>
+    <ResponsiveSheet open={open} onOpenChange={onOpenChange} width="2xl">
+      <ResponsiveSheetHeader>
+        <ResponsiveSheetTitle className="flex items-center gap-2">
+          <ChefHat className="h-5 w-5 text-accent" />
+          Swap "{currentMeal.name}"
+        </ResponsiveSheetTitle>
+        <ResponsiveSheetDescription>
+          Pick an alternative from the catalog
+          {dietaryType ? ` · ${dietaryType.replace('_', ' ')}` : ''}
+          {cuisine ? ` · ${cuisine}` : ''}
+          {currentCalories ? ` · ~${currentCalories} kcal` : ''}
+        </ResponsiveSheetDescription>
+      </ResponsiveSheetHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-3">
-          <Input
-            placeholder="Search meals..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="flex-1 overflow-hidden flex flex-col gap-3 mt-3">
+        <Input
+          placeholder="Search meals..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
 
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-            {isLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-accent" />
-              </div>
-            ) : sorted.length === 0 ? (
-              <Card>
-                <CardContent className="py-6 text-center text-sm text-muted-foreground">
-                  No matching meals in the catalog yet.
-                </CardContent>
-              </Card>
-            ) : (
-              sorted.map((item) => {
-                const diff = currentCalories ? item.calories - currentCalories : 0;
-                return (
-                  <Card key={item.id} className="hover:border-accent/50 transition-colors">
-                    <CardContent className="p-3 flex items-start gap-3">
-                      <div className="p-2 rounded-md bg-muted shrink-0">
-                        <Utensils className="h-4 w-4 text-accent" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm truncate">{item.name}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-1">
-                              {item.description || item.default_quantity || '—'}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => performSwap(item)}
-                            disabled={!!submitting}
-                          >
-                            {submitting === item.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              'Select'
-                            )}
-                          </Button>
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+            </div>
+          ) : sorted.length === 0 ? (
+            <Card>
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                No matching meals in the catalog yet.
+              </CardContent>
+            </Card>
+          ) : (
+            sorted.map((item) => {
+              const diff = currentCalories ? item.calories - currentCalories : 0;
+              return (
+                <Card key={item.id} className="hover:border-accent/50 transition-colors">
+                  <CardContent className="p-3 flex items-start gap-3">
+                    <div className="p-2 rounded-md bg-muted shrink-0">
+                      <Utensils className="h-4 w-4 text-accent" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{item.name}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-1">
+                            {item.description || item.default_quantity || '—'}
+                          </p>
                         </div>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          <Badge variant="secondary" className="text-[10px]">
-                            <Flame className="h-3 w-3 mr-0.5" />
-                            {Math.round(item.calories)} kcal
-                            {currentCalories && diff !== 0 && (
-                              <span className={diff > 0 ? 'text-amber-500 ml-1' : 'text-emerald-500 ml-1'}>
-                                ({diff > 0 ? '+' : ''}{Math.round(diff)})
-                              </span>
-                            )}
-                          </Badge>
-                          <Badge variant="outline" className="text-[10px]">P {Math.round(item.protein)}g</Badge>
-                          <Badge variant="outline" className="text-[10px]">C {Math.round(item.carbs)}g</Badge>
-                          <Badge variant="outline" className="text-[10px]">F {Math.round(item.fats)}g</Badge>
-                          {item.tags?.slice(0, 2).map((t) => (
-                            <Badge key={t} variant="outline" className="text-[10px] capitalize">{t}</Badge>
-                          ))}
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => performSwap(item)}
+                          disabled={!!submitting}
+                        >
+                          {submitting === item.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Select'
+                          )}
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
-          </div>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        <Badge variant="secondary" className="text-[10px]">
+                          <Flame className="h-3 w-3 mr-0.5" />
+                          {Math.round(item.calories)} kcal
+                          {currentCalories && diff !== 0 && (
+                            <span className={diff > 0 ? 'text-amber-500 ml-1' : 'text-emerald-500 ml-1'}>
+                              ({diff > 0 ? '+' : ''}{Math.round(diff)})
+                            </span>
+                          )}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">P {Math.round(item.protein)}g</Badge>
+                        <Badge variant="outline" className="text-[10px]">C {Math.round(item.carbs)}g</Badge>
+                        <Badge variant="outline" className="text-[10px]">F {Math.round(item.fats)}g</Badge>
+                        {item.tags?.slice(0, 2).map((t) => (
+                          <Badge key={t} variant="outline" className="text-[10px] capitalize">{t}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
         </div>
+      </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <ResponsiveSheetFooter>
+        <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
+      </ResponsiveSheetFooter>
+    </ResponsiveSheet>
   );
 }
