@@ -158,7 +158,10 @@ async function processInstagramEvent(payload: any) {
       const branchId = integration?.branch_id || await getFallbackBranchId();
       if (!branchId) continue;
 
-      const isOutbound = senderId === recipientId;
+      // Use is_echo flag (correct way for IG/Messenger to detect outbound echo)
+      const isOutbound = message.is_echo === true;
+      // Determine the contact phone (the customer, not the page/account)
+      const contactId = isOutbound ? recipientId : senderId;
       const content = message.text || (message.attachments?.[0]?.type === "image" ? "[Image]" : "[Attachment]");
       const messageType = message.attachments?.[0]?.type || "text";
       const mediaUrl = message.attachments?.[0]?.payload?.url || null;
@@ -175,7 +178,7 @@ async function processInstagramEvent(payload: any) {
         .from("whatsapp_messages")
         .insert({
           branch_id: branchId,
-          phone_number: senderId,
+          phone_number: contactId,
           contact_name: null,
           message_type: messageType,
           content,
@@ -195,11 +198,11 @@ async function processInstagramEvent(payload: any) {
 
       if (!isOutbound && inserted) {
         await supabase.from("whatsapp_chat_settings").upsert(
-          { branch_id: branchId, phone_number: senderId, is_unread: true, platform: "instagram" as any },
+          { branch_id: branchId, phone_number: contactId, is_unread: true, platform: "instagram" as any },
           { onConflict: "branch_id,phone_number" }
         );
 
-        await triggerAiReply(inserted.id, senderId, branchId, "instagram", integration);
+        await triggerAiReply(inserted.id, contactId, branchId, "instagram", integration);
       }
     }
   }
@@ -227,6 +230,7 @@ async function processMessengerEvent(payload: any) {
       if (!branchId) continue;
 
       const isOutbound = message.is_echo === true;
+      const contactId = isOutbound ? recipientId : senderId;
       const content = message.text || (message.attachments?.[0]?.type === "image" ? "[Image]" : "[Attachment]");
       const messageType = message.attachments?.[0]?.type || "text";
       const mediaUrl = message.attachments?.[0]?.payload?.url || null;
@@ -243,7 +247,7 @@ async function processMessengerEvent(payload: any) {
         .from("whatsapp_messages")
         .insert({
           branch_id: branchId,
-          phone_number: senderId,
+          phone_number: contactId,
           contact_name: null,
           message_type: messageType,
           content,
@@ -263,10 +267,10 @@ async function processMessengerEvent(payload: any) {
 
       if (!isOutbound && inserted) {
         await supabase.from("whatsapp_chat_settings").upsert(
-          { branch_id: branchId, phone_number: senderId, is_unread: true, platform: "messenger" as any },
+          { branch_id: branchId, phone_number: contactId, is_unread: true, platform: "messenger" as any },
           { onConflict: "branch_id,phone_number" }
         );
-        await triggerAiReply(inserted.id, senderId, branchId, "messenger", integration);
+        await triggerAiReply(inserted.id, contactId, branchId, "messenger", integration);
       }
     }
   }
