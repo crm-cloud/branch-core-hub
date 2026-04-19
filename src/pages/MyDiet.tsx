@@ -140,7 +140,7 @@ export default function MyDiet() {
     <AppLayout>
       <div className="space-y-6 pb-8">
         {/* ===== HERO ===== */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-success/90 via-success to-emerald-700 p-6 sm:p-8 text-success-foreground shadow-lg shadow-success/20">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-success via-success to-success/80 p-6 sm:p-8 text-success-foreground shadow-lg shadow-success/20">
           <div className="absolute inset-0 opacity-20 pointer-events-none">
             <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/30 blur-3xl" />
             <div className="absolute -left-8 bottom-0 h-32 w-32 rounded-full bg-white/20 blur-2xl" />

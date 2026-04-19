@@ -148,7 +148,7 @@ export default function MyWorkout() {
     <AppLayout>
       <div className="space-y-6 pb-8">
         {/* ===== HERO ===== */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-purple-700 p-6 sm:p-8 text-white shadow-lg shadow-indigo-500/20">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-accent p-6 sm:p-8 text-primary-foreground shadow-lg shadow-primary/20">
           <div className="absolute inset-0 opacity-20 pointer-events-none">
             <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/30 blur-3xl" />
             <div className="absolute -left-8 bottom-0 h-32 w-32 rounded-full bg-white/20 blur-2xl" />
