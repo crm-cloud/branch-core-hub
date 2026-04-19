@@ -215,78 +215,76 @@ export default function MealCatalog() {
         </Card>
       </div>
 
-      <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Meal' : 'Add Meal'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <ResponsiveSheet open={draftOpen} onOpenChange={setDraftOpen} width="lg">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>{editing ? 'Edit Meal' : 'Add Meal'}</ResponsiveSheetTitle>
+        </ResponsiveSheetHeader>
+        <div className="space-y-3 mt-4 flex-1">
+          <div className="space-y-1">
+            <Label>Name *</Label>
+            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
-              <Label>Name *</Label>
-              <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label>Diet</Label>
-                <Select value={draft.dietary_type} onValueChange={(v) => setDraft({ ...draft, dietary_type: v as any })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {DIETARY_PREFERENCES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Cuisine</Label>
-                <Select value={draft.cuisine} onValueChange={(v) => setDraft({ ...draft, cuisine: v as any })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CUISINE_PREFERENCES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Meal type</Label>
-                <Select value={draft.meal_type} onValueChange={(v) => setDraft({ ...draft, meal_type: v as MealType })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {MEAL_TYPES.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Label>Diet</Label>
+              <Select value={draft.dietary_type} onValueChange={(v) => setDraft({ ...draft, dietary_type: v as any })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DIETARY_PREFERENCES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
-              <Label>Default quantity</Label>
-              <Input value={draft.default_quantity || ''} onChange={(e) => setDraft({ ...draft, default_quantity: e.target.value })} placeholder="e.g. 1 bowl, 200g" />
-            </div>
-            <div className="grid grid-cols-5 gap-2">
-              {(['calories', 'protein', 'carbs', 'fats', 'fiber'] as const).map((k) => (
-                <div key={k} className="space-y-1">
-                  <Label className="text-xs capitalize">{k === 'calories' ? 'kcal' : `${k} g`}</Label>
-                  <Input
-                    type="number"
-                    value={draft[k] as number}
-                    onChange={(e) => setDraft({ ...draft, [k]: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-              ))}
+              <Label>Cuisine</Label>
+              <Select value={draft.cuisine} onValueChange={(v) => setDraft({ ...draft, cuisine: v as any })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CUISINE_PREFERENCES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
-              <Label>Tags (comma-separated)</Label>
-              <Input
-                value={draft.tags.join(', ')}
-                onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-              />
+              <Label>Meal type</Label>
+              <Select value={draft.meal_type} onValueChange={(v) => setDraft({ ...draft, meal_type: v as MealType })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MEAL_TYPES.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDraftOpen(false)}>Cancel</Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editing ? 'Save changes' : 'Add Meal'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="space-y-1">
+            <Label>Default quantity</Label>
+            <Input value={draft.default_quantity || ''} onChange={(e) => setDraft({ ...draft, default_quantity: e.target.value })} placeholder="e.g. 1 bowl, 200g" />
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {(['calories', 'protein', 'carbs', 'fats', 'fiber'] as const).map((k) => (
+              <div key={k} className="space-y-1">
+                <Label className="text-xs capitalize">{k === 'calories' ? 'kcal' : `${k} g`}</Label>
+                <Input
+                  type="number"
+                  value={draft[k] as number}
+                  onChange={(e) => setDraft({ ...draft, [k]: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1">
+            <Label>Tags (comma-separated)</Label>
+            <Input
+              value={draft.tags.join(', ')}
+              onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+            />
+          </div>
+        </div>
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setDraftOpen(false)}>Cancel</Button>
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {editing ? 'Save changes' : 'Add Meal'}
+          </Button>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
     </AppLayout>
   );
 }
