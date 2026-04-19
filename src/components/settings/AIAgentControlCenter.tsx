@@ -403,6 +403,7 @@ function ToolsTab() {
   const [testArgs, setTestArgs] = useState('{}');
   const [testResult, setTestResult] = useState<any>(null);
   const [testRunning, setTestRunning] = useState(false);
+  const [search, setSearch] = useState('');
 
   const { data: orgSettings, isLoading: configLoading } = useQuery({
     queryKey: ['ai-tool-config'],
@@ -436,14 +437,27 @@ function ToolsTab() {
     onError: () => toast.error('Failed to update tool config'),
   });
 
+  const bulkToggle = useMutation({
+    mutationFn: async ({ toolNames, enabled }: { toolNames: string[]; enabled: boolean }) => {
+      if (!orgSettings?.id) throw new Error('Organization settings not found');
+      const newConfig = { ...toolConfig };
+      toolNames.forEach((n) => { newConfig[n] = enabled; });
+      const { error } = await supabase
+        .from('organization_settings')
+        .update({ ai_tool_config: newConfig })
+        .eq('id', orgSettings.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['ai-tool-config'] });
+      toast.success(vars.enabled ? 'Tools enabled' : 'Tools disabled');
+    },
+    onError: () => toast.error('Bulk update failed'),
+  });
+
   const handleTestExecute = async () => {
     if (!testTool) { toast.error('Select a tool first'); return; }
-    try {
-      JSON.parse(testArgs);
-    } catch {
-      toast.error('Invalid JSON arguments');
-      return;
-    }
+    try { JSON.parse(testArgs); } catch { toast.error('Invalid JSON arguments'); return; }
     setTestRunning(true);
     setTestResult(null);
     try {
@@ -459,77 +473,216 @@ function ToolsTab() {
     }
   };
 
+  // Filter categories by search
+  const filteredCategories = TOOL_CATEGORIES
+    .map((cat) => ({
+      ...cat,
+      tools: cat.tools.filter((t) =>
+        !search ||
+        t.name.toLowerCase().includes(search.toLowerCase()) ||
+        t.label.toLowerCase().includes(search.toLowerCase()) ||
+        t.description.toLowerCase().includes(search.toLowerCase())
+      ),
+    }))
+    .filter((cat) => cat.tools.length > 0);
+
+  // Stats across all tools
+  const allTools = TOOL_CATEGORIES.flatMap((c) => c.tools);
+  const enabledCount = allTools.filter((t) => toolConfig[t.name] !== false).length;
+  const totalCount = allTools.length;
+
   return (
     <div className="space-y-6">
-      {/* Tool Toggle Panel */}
-      <Card className="rounded-xl shadow-lg shadow-slate-200/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <ToggleLeft className="h-5 w-5 text-primary" />
-            Tool Toggle Panel
-          </CardTitle>
-          <CardDescription>Enable or disable specific AI tools. Disabled tools will not be available to the AI agent.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {configLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
+      {/* Hero summary */}
+      <Card className="rounded-2xl shadow-lg shadow-slate-200/50 overflow-hidden border-0">
+        <div className="bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 text-white p-5 md:p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/15 backdrop-blur p-3 rounded-2xl ring-1 ring-white/20">
+                <ToggleLeft className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg md:text-xl font-bold">AI Tool Library</h3>
+                <p className="text-sm text-white/80">
+                  {enabledCount} of {totalCount} tools enabled across {TOOL_CATEGORIES.length} categories
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-1">
-              {AI_TOOLS.map((tool) => {
-                const isEnabled = toolConfig[tool.name] !== false;
-                return (
-                  <div
-                    key={tool.name}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-sm font-medium text-foreground">{tool.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{tool.description}</p>
-                    </div>
-                    <Switch
-                      checked={isEnabled}
-                      onCheckedChange={(checked) => toggleTool.mutate({ toolName: tool.name, enabled: checked })}
-                    />
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-lg bg-white/15 hover:bg-white/25 text-white border-0 backdrop-blur gap-1.5"
+                onClick={() => bulkToggle.mutate({ toolNames: allTools.map((t) => t.name), enabled: true })}
+                disabled={bulkToggle.isPending}
+              >
+                <Power className="h-3.5 w-3.5" /> Enable all
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-lg bg-white/15 hover:bg-white/25 text-white border-0 backdrop-blur gap-1.5"
+                onClick={() => bulkToggle.mutate({ toolNames: allTools.map((t) => t.name), enabled: false })}
+                disabled={bulkToggle.isPending}
+              >
+                <PowerOff className="h-3.5 w-3.5" /> Disable all
+              </Button>
             </div>
-          )}
+          </div>
+          {/* Progress bar */}
+          <div className="mt-4 h-1.5 w-full bg-white/15 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-300 rounded-full transition-all"
+              style={{ width: `${totalCount ? (enabledCount / totalCount) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+        {/* Search bar */}
+        <CardContent className="p-4 bg-white">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tools by name or description..."
+              className="w-full h-10 pl-9 pr-3 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
+            />
+          </div>
         </CardContent>
       </Card>
 
+      {/* Categories */}
+      {configLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-2xl" />)}
+        </div>
+      ) : filteredCategories.length === 0 ? (
+        <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No tools match "{search}"</p>
+          </CardContent>
+        </Card>
+      ) : (
+        filteredCategories.map((category) => {
+          const Icon = category.icon;
+          const catEnabled = category.tools.filter((t) => toolConfig[t.name] !== false).length;
+          const catTotal = category.tools.length;
+          return (
+            <Card key={category.id} className="rounded-2xl shadow-lg shadow-slate-200/50 overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ring-1 ${category.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">{category.label}</CardTitle>
+                      <CardDescription className="text-xs">{category.description}</CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="rounded-full text-xs font-medium">
+                      {catEnabled}/{catTotal} on
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs rounded-lg"
+                      onClick={() => bulkToggle.mutate({
+                        toolNames: category.tools.map((t) => t.name),
+                        enabled: catEnabled < catTotal,
+                      })}
+                    >
+                      {catEnabled < catTotal ? 'Enable all' : 'Disable all'}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {category.tools.map((tool) => {
+                    const isEnabled = toolConfig[tool.name] !== false;
+                    const ToolIcon = tool.icon;
+                    const risk = RISK_BADGE[tool.risk];
+                    return (
+                      <div
+                        key={tool.name}
+                        className={`group flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                          isEnabled
+                            ? 'bg-white border-slate-200 hover:border-primary/30 hover:shadow-md hover:shadow-slate-200/60'
+                            : 'bg-slate-50/60 border-slate-200/60 opacity-70'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${category.accent} shrink-0`}>
+                          <ToolIcon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-foreground truncate">{tool.label}</p>
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 rounded-md ${risk.className}`}>
+                              {risk.label}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{tool.description}</p>
+                          <p className="font-mono text-[10px] text-muted-foreground/70 mt-1 truncate">{tool.name}</p>
+                        </div>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) => toggleTool.mutate({ toolName: tool.name, enabled: checked })}
+                          className="mt-1"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
+
       {/* Manual Test Lab */}
-      <Card className="rounded-xl shadow-lg shadow-slate-200/50">
+      <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-primary" />
+            <div className="bg-emerald-50 text-emerald-600 p-2 rounded-lg ring-1 ring-emerald-100">
+              <FlaskConical className="h-4 w-4" />
+            </div>
             Manual Test Lab
           </CardTitle>
-          <CardDescription>Test AI tool functions directly with custom arguments.</CardDescription>
+          <CardDescription>Execute any AI tool with custom JSON arguments to verify behaviour.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Select Tool</label>
+              <label className="text-sm font-medium text-foreground">Select Tool</label>
               <Select value={testTool} onValueChange={setTestTool}>
                 <SelectTrigger className="rounded-lg">
                   <SelectValue placeholder="Choose a tool..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {AI_TOOLS.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                  {TOOL_CATEGORIES.map((cat) => (
+                    <div key={cat.id}>
+                      <div className="px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        {cat.label}
+                      </div>
+                      {cat.tools.map((t) => (
+                        <SelectItem key={t.name} value={t.name}>
+                          <span className="font-mono text-xs">{t.name}</span>
+                        </SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Arguments (JSON)</label>
+              <label className="text-sm font-medium text-foreground">Arguments (JSON)</label>
               <Textarea
                 value={testArgs}
                 onChange={(e) => setTestArgs(e.target.value)}
-                placeholder='{"key": "value"}'
+                placeholder='{"member_id": "..."}'
                 className="font-mono text-xs rounded-lg min-h-[80px]"
               />
             </div>
