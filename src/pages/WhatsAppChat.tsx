@@ -25,6 +25,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  ResponsiveSheet,
+  ResponsiveSheetHeader,
+  ResponsiveSheetTitle,
+  ResponsiveSheetDescription,
+  ResponsiveSheetFooter,
+} from '@/components/ui/ResponsiveSheet';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1304,66 +1311,64 @@ export default function WhatsAppChatPage() {
         </div>
       </div>
 
-      {/* ── New Chat Dialog ────────────────────────────────────────────────── */}
-      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-emerald-500/10">
-                <MessageSquare className="h-4 w-4 text-emerald-500" />
-              </div>
-              New Chat
-            </DialogTitle>
-            <DialogDescription>
-              Enter a phone number to start a new WhatsApp conversation.
-            </DialogDescription>
-          </DialogHeader>
+      {/* ── New Chat Drawer ────────────────────────────────────────────────── */}
+      <ResponsiveSheet open={newChatOpen} onOpenChange={setNewChatOpen} width="md">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10">
+              <MessageSquare className="h-4 w-4 text-emerald-500" />
+            </div>
+            New Chat
+          </ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Enter a phone number to start a new WhatsApp conversation.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="new-chat-phone">Phone Number *</Label>
-              <Input
-                id="new-chat-phone"
-                placeholder="+91 98765 43210"
-                value={newChatPhone}
-                onChange={(e) => setNewChatPhone(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
-                data-testid="input-new-chat-phone"
-              />
-              <p className="text-xs text-muted-foreground">
-                Include country code (e.g. +91 for India)
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-chat-name">Contact Name (optional)</Label>
-              <Input
-                id="new-chat-name"
-                placeholder="e.g. John Doe"
-                value={newChatName}
-                onChange={(e) => setNewChatName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
-                data-testid="input-new-chat-name"
-              />
-            </div>
+        <div className="space-y-4 py-4 flex-1">
+          <div className="space-y-2">
+            <Label htmlFor="new-chat-phone">Phone Number *</Label>
+            <Input
+              id="new-chat-phone"
+              placeholder="+91 98765 43210"
+              value={newChatPhone}
+              onChange={(e) => setNewChatPhone(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
+              data-testid="input-new-chat-phone"
+            />
+            <p className="text-xs text-muted-foreground">
+              Include country code (e.g. +91 for India)
+            </p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-chat-name">Contact Name (optional)</Label>
+            <Input
+              id="new-chat-name"
+              placeholder="e.g. John Doe"
+              value={newChatName}
+              onChange={(e) => setNewChatName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleStartNewChat()}
+              data-testid="input-new-chat-name"
+            />
+          </div>
+        </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewChatOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStartNewChat}
-              disabled={!newChatPhone.trim()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              data-testid="button-start-chat"
-            >
-              Open Chat
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setNewChatOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleStartNewChat}
+            disabled={!newChatPhone.trim()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            data-testid="button-start-chat"
+          >
+            Open Chat
+          </Button>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
 
-      {/* ── Clear Chat Confirmation Dialog ──────────────────────────────── */}
+      {/* ── Clear Chat Confirmation Dialog (destructive — kept as Dialog) ──── */}
       <Dialog open={clearChatConfirmOpen} onOpenChange={setClearChatConfirmOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
