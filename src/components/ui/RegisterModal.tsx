@@ -421,7 +421,6 @@ const RegisterModal = () => {
     </ResponsiveSheet>
   );
 };
-  );
-};
 
+export default RegisterModal;
 export default RegisterModal;
