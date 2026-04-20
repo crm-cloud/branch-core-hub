@@ -459,6 +459,7 @@ async function triggerAiReply(
   const choice = aiResult?.choices?.[0];
   const toolCalls = choice?.message?.tool_calls;
   let replyText: string | null = choice?.message?.content || null;
+  console.log(`[AI:${platform}] reply len=${replyText?.length || 0} toolCalls=${toolCalls?.length || 0}`);
 
   if (toolCalls?.length && tools) {
     const toolMessages: any[] = [];
