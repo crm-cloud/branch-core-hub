@@ -22,12 +22,13 @@ let _orgAiConfigFetchedAt = 0;
 
 async function getOrgAiConfig() {
   if (_orgAiConfig && Date.now() - _orgAiConfigFetchedAt < 60_000) return _orgAiConfig;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("organization_settings")
-    .select("whatsapp_ai_config, gym_name")
+    .select("whatsapp_ai_config, name")
     .limit(1)
     .maybeSingle();
-  _orgAiConfig = data || {};
+  if (error) console.error("[meta-webhook] getOrgAiConfig error:", error.message);
+  _orgAiConfig = data ? { whatsapp_ai_config: (data as any).whatsapp_ai_config, gym_name: (data as any).name } : {};
   _orgAiConfigFetchedAt = Date.now();
   return _orgAiConfig;
 }
