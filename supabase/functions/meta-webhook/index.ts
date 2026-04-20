@@ -334,6 +334,7 @@ async function triggerAiReply(
   platform: Platform,
   integration?: any
 ) {
+  console.log(`[AI:${platform}] triggerAiReply start sender=${senderId} branch=${branchId}`);
   // Check chat-level bot_active flag
   const { data: settings } = await supabase
     .from("whatsapp_chat_settings")
@@ -341,7 +342,10 @@ async function triggerAiReply(
     .eq("branch_id", branchId)
     .eq("phone_number", senderId)
     .maybeSingle();
-  if (settings?.bot_active === false) return;
+  if (settings?.bot_active === false) {
+    console.log(`[AI:${platform}] bot_active=false, skipping`);
+    return;
+  }
 
   const orgConfig = await getOrgAiConfig();
   const aiConfig = orgConfig?.whatsapp_ai_config as any;
