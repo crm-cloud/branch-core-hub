@@ -22,12 +22,13 @@ let _orgAiConfigFetchedAt = 0;
 
 async function getOrgAiConfig() {
   if (_orgAiConfig && Date.now() - _orgAiConfigFetchedAt < 60_000) return _orgAiConfig;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("organization_settings")
-    .select("whatsapp_ai_config, gym_name")
+    .select("whatsapp_ai_config, name")
     .limit(1)
     .maybeSingle();
-  _orgAiConfig = data || {};
+  if (error) console.error("[meta-webhook] getOrgAiConfig error:", error.message);
+  _orgAiConfig = data ? { whatsapp_ai_config: (data as any).whatsapp_ai_config, gym_name: (data as any).name } : {};
   _orgAiConfigFetchedAt = Date.now();
   return _orgAiConfig;
 }
@@ -334,6 +335,7 @@ async function triggerAiReply(
   platform: Platform,
   integration?: any
 ) {
+  console.log(`[AI:${platform}] triggerAiReply start sender=${senderId} branch=${branchId}`);
   // Check chat-level bot_active flag
   const { data: settings } = await supabase
     .from("whatsapp_chat_settings")
@@ -341,14 +343,23 @@ async function triggerAiReply(
     .eq("branch_id", branchId)
     .eq("phone_number", senderId)
     .maybeSingle();
-  if (settings?.bot_active === false) return;
+  if (settings?.bot_active === false) {
+    console.log(`[AI:${platform}] bot_active=false, skipping`);
+    return;
+  }
 
   const orgConfig = await getOrgAiConfig();
   const aiConfig = orgConfig?.whatsapp_ai_config as any;
-  if (!aiConfig?.auto_reply_enabled) return;
+  if (!aiConfig?.auto_reply_enabled) {
+    console.log(`[AI:${platform}] auto_reply_enabled=false`);
+    return;
+  }
 
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return;
+  if (!LOVABLE_API_KEY) {
+    console.log(`[AI:${platform}] LOVABLE_API_KEY missing`);
+    return;
+  }
 
   // Try to identify member by IG/FB sender id (members.platform_ids JSON or fallback unknown)
   const { data: memberMatch } = await supabase
@@ -449,6 +460,7 @@ async function triggerAiReply(
   const choice = aiResult?.choices?.[0];
   const toolCalls = choice?.message?.tool_calls;
   let replyText: string | null = choice?.message?.content || null;
+  console.log(`[AI:${platform}] reply len=${replyText?.length || 0} toolCalls=${toolCalls?.length || 0}`);
 
   if (toolCalls?.length && tools) {
     const toolMessages: any[] = [];
