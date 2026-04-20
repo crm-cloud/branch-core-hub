@@ -95,15 +95,21 @@ Deno.serve(async (req) => {
       if (!member?.user_id) continue;
       if (!isReminderEnabled(reminder.branch_id, "payment_due")) continue;
       const name = member.profiles?.full_name || "Member";
+      const reminderCopy =
+        reminder.reminder_type === "due_soon" || reminder.reminder_type === "before_due"
+          ? "due soon"
+          : reminder.reminder_type === "on_due"
+          ? "due today"
+          : "overdue";
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
-        message: `Hi ${name}, your payment is ${reminder.reminder_type === "before_due" ? "due soon" : reminder.reminder_type === "on_due" ? "due today" : "overdue"}.`,
+        message: `Hi ${name}, your payment is ${reminderCopy}.`,
         type: "warning", category: "payment", action_url: "/my-invoices",
       });
       commLogs.push({
         branch_id: reminder.branch_id, type: "notification",
         recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-        subject: "Payment Reminder", content: `Payment ${reminder.reminder_type} reminder for ${name}`,
+        subject: "Payment Reminder", content: `Payment ${reminderCopy} reminder for ${name}`,
         status: "sent", member_id: reminder.member_id, sent_at: now.toISOString(),
       });
       await adminClient.from("payment_reminders").update({ status: "sent", sent_at: now.toISOString() }).eq("id", reminder.id);
@@ -222,10 +228,24 @@ Deno.serve(async (req) => {
             .eq("member_id", member.member_id)
             .gt("stage_level", 0);
 
-          const { data: staffUsers } = await adminClient.from("user_roles").select("user_id").in("role", ["owner", "admin", "staff"]);
-          for (const staff of staffUsers || []) {
+          // ✅ Scope inactive-member alerts to staff at THIS branch only.
+          const { data: branchStaff } = await adminClient
+            .from("staff_branches")
+            .select("user_id")
+            .eq("branch_id", branch.id);
+          const branchStaffIds = (branchStaff || []).map((s: any) => s.user_id);
+
+          // Always include owners/admins (cross-branch oversight).
+          const { data: ownersAdmins } = await adminClient
+            .from("user_roles")
+            .select("user_id")
+            .in("role", ["owner", "admin"]);
+          const ownerAdminIds = (ownersAdmins || []).map((r: any) => r.user_id);
+
+          const recipientIds = Array.from(new Set([...branchStaffIds, ...ownerAdminIds]));
+          for (const uid of recipientIds) {
             notifications.push({
-              user_id: staff.user_id, branch_id: branch.id,
+              user_id: uid, branch_id: branch.id,
               title: "⚠️ Warm Follow-Up Needed",
               message: `${member.full_name} (${member.member_code}) has been absent ${member.days_absent || '21+'}d. Automated nudges: ${Math.min(nudgeCount || 0, 3)}/3. Please call.`,
               type: "warning", category: "retention",
