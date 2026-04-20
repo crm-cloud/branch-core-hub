@@ -4,15 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Dumbbell, Download } from 'lucide-react';
+import { Plus, Dumbbell, Download, Pencil, Copy } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { exportToCSV } from '@/lib/csvExport';
+import { toast } from 'sonner';
 
 export default function EquipmentPage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  const [equipmentToEdit, setEquipmentToEdit] = useState<any | null>(null);
   const { branchFilter, effectiveBranchId } = useBranchContext();
   
   const { data: equipment = [], isLoading } = useQuery({
@@ -40,6 +42,20 @@ export default function EquipmentPage() {
   };
 
   const currentBranchId = effectiveBranchId || '';
+
+  const copyModelNumber = async (item: any) => {
+    const modelValue = item.model || item.serial_number;
+    if (!modelValue) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(modelValue);
+      toast.success('Model number copied');
+    } catch {
+      toast.error('Failed to copy model number');
+    }
+  };
 
   return (
     <AppLayout>
@@ -125,10 +141,12 @@ export default function EquipmentPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Model Number</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Warranty</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -141,8 +159,26 @@ export default function EquipmentPage() {
                           </div>
                           <div>
                             <div className="font-medium">{item.name}</div>
-                            <div className="text-sm text-muted-foreground">{item.brand} {item.model}</div>
+                            <div className="text-sm text-muted-foreground">{item.brand || '-'}</div>
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span>{item.model || item.serial_number || '-'}</span>
+                          {(item.model || item.serial_number) && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => copyModelNumber(item)}
+                              aria-label="Copy model number"
+                              title="Copy model number"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{item.category || 'General'}</TableCell>
@@ -156,11 +192,23 @@ export default function EquipmentPage() {
                           : '-'
                         }
                       </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEquipmentToEdit(item);
+                            setAddDrawerOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {equipment.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                         No equipment found
                       </TableCell>
                     </TableRow>
@@ -174,8 +222,14 @@ export default function EquipmentPage() {
       
       <AddEquipmentDrawer
         open={addDrawerOpen}
-        onOpenChange={setAddDrawerOpen}
+        onOpenChange={(open) => {
+          setAddDrawerOpen(open);
+          if (!open) {
+            setEquipmentToEdit(null);
+          }
+        }}
         branchId={currentBranchId}
+        equipmentToEdit={equipmentToEdit}
       />
     </AppLayout>
   );

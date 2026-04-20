@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
 import { useState } from 'react';
@@ -21,12 +21,14 @@ export default function EquipmentMaintenancePage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  const [equipmentToEdit, setEquipmentToEdit] = useState<any | null>(null);
   const queryClient = useQueryClient();
   const { effectiveBranchId = '' } = useBranchContext();
+  const currentBranchId = effectiveBranchId || undefined;
 
   const { data: equipment = [], isLoading } = useQuery({
-    queryKey: ['equipment-list'],
-    queryFn: () => fetchEquipment(),
+    queryKey: ['equipment-list', currentBranchId],
+    queryFn: () => fetchEquipment(currentBranchId),
   });
 
   const { data: maintenanceRecords = [] } = useQuery({
@@ -35,13 +37,13 @@ export default function EquipmentMaintenancePage() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['equipment-stats'],
-    queryFn: () => getEquipmentStats(),
+    queryKey: ['equipment-stats', currentBranchId],
+    queryFn: () => getEquipmentStats(currentBranchId),
   });
 
   const { data: monthlyCosts } = useQuery({
-    queryKey: ['maintenance-costs'],
-    queryFn: () => getMaintenanceCostsByMonth(),
+    queryKey: ['maintenance-costs', currentBranchId],
+    queryFn: () => getMaintenanceCostsByMonth(currentBranchId),
   });
 
   const createMaintenanceMutation = useMutation({
@@ -85,6 +87,21 @@ export default function EquipmentMaintenancePage() {
   };
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
+
+  const copyModelNumber = async (item: any) => {
+    const modelValue = item.model || item.serial_number;
+    if (!modelValue) {
+      toast.error('No model number to copy');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(modelValue);
+      toast.success('Model number copied');
+    } catch {
+      toast.error('Failed to copy model number');
+    }
+  };
 
   return (
     <AppLayout>
@@ -160,7 +177,8 @@ export default function EquipmentMaintenancePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Equipment</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Model Number</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Purchase Price</TableHead>
@@ -179,8 +197,26 @@ export default function EquipmentMaintenancePage() {
                               </div>
                               <div>
                                 <div className="font-medium">{item.name}</div>
-                                <div className="text-sm text-muted-foreground">{item.brand} {item.model}</div>
+                                <div className="text-sm text-muted-foreground">{item.brand || '-'}</div>
                               </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span>{item.model || item.serial_number || '-'}</span>
+                              {(item.model || item.serial_number) && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  onClick={() => copyModelNumber(item)}
+                                  aria-label="Copy model number"
+                                  title="Copy model number"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>{item.category || '-'}</TableCell>
@@ -214,6 +250,16 @@ export default function EquipmentMaintenancePage() {
                                   <SelectItem value="retired">Retired</SelectItem>
                                 </SelectContent>
                               </Select>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEquipmentToEdit(item);
+                                  setAddDrawerOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
                               <Sheet open={maintenanceDialogOpen && selectedEquipment === item.id} onOpenChange={(open) => {
                                 setMaintenanceDialogOpen(open);
                                 if (open) setSelectedEquipment(item.id);
@@ -283,7 +329,7 @@ export default function EquipmentMaintenancePage() {
                       ))}
                       {equipment.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No equipment found
                           </TableCell>
                         </TableRow>
@@ -349,8 +395,14 @@ export default function EquipmentMaintenancePage() {
         </Tabs>
         <AddEquipmentDrawer
           open={addDrawerOpen}
-          onOpenChange={setAddDrawerOpen}
+          onOpenChange={(open) => {
+            setAddDrawerOpen(open);
+            if (!open) {
+              setEquipmentToEdit(null);
+            }
+          }}
           branchId={effectiveBranchId}
+          equipmentToEdit={equipmentToEdit}
         />
       </div>
     </AppLayout>

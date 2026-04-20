@@ -5,15 +5,29 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createEquipment } from '@/services/equipmentService';
+import { createEquipment, updateEquipment, type Equipment } from '@/services/equipmentService';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface AddEquipmentDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId: string;
+  equipmentToEdit?: Equipment | null;
 }
+
+const getInitialFormData = (equipment?: Equipment | null) => ({
+  name: equipment?.name || '',
+  brand: equipment?.brand || '',
+  model: equipment?.model || '',
+  serialNumber: equipment?.serial_number || '',
+  category: equipment?.category || '',
+  location: equipment?.location || '',
+  purchaseDate: equipment?.purchase_date || '',
+  purchasePrice: equipment?.purchase_price ? String(equipment.purchase_price) : '',
+  warrantyExpiry: equipment?.warranty_expiry || '',
+  notes: equipment?.notes || '',
+});
 
 const CATEGORIES = [
   'Cardio',
@@ -25,20 +39,21 @@ const CATEGORIES = [
   'Other',
 ];
 
-export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmentDrawerProps) {
+export function AddEquipmentDrawer({ open, onOpenChange, branchId, equipmentToEdit }: AddEquipmentDrawerProps) {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
-    name: '',
-    brand: '',
-    model: '',
-    serialNumber: '',
-    category: '',
-    location: '',
-    purchaseDate: '',
-    purchasePrice: '',
-    warrantyExpiry: '',
-    notes: '',
-  });
+  const [formData, setFormData] = useState(getInitialFormData(equipmentToEdit));
+
+  const invalidateEquipmentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['equipment', branchId] });
+    queryClient.invalidateQueries({ queryKey: ['equipment'] });
+    queryClient.invalidateQueries({ queryKey: ['equipment-list'] });
+    queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData(getInitialFormData(equipmentToEdit));
+  }, [open, equipmentToEdit]);
 
   const createMutation = useMutation({
     mutationFn: () => createEquipment({
@@ -55,9 +70,7 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
     }),
     onSuccess: () => {
       toast.success('Equipment added successfully');
-      // Invalidate with proper branch filter to refresh list
-      queryClient.invalidateQueries({ queryKey: ['equipment', branchId] });
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      invalidateEquipmentQueries();
       resetForm();
       onOpenChange(false);
     },
@@ -72,19 +85,35 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      if (!equipmentToEdit) throw new Error('Equipment not selected for edit');
+      return updateEquipment(equipmentToEdit.id, {
+        name: formData.name,
+        brand: formData.brand || null,
+        model: formData.model || null,
+        serial_number: formData.serialNumber || null,
+        category: formData.category || null,
+        location: formData.location || null,
+        purchase_date: formData.purchaseDate || null,
+        purchase_price: formData.purchasePrice ? parseFloat(formData.purchasePrice) : null,
+        warranty_expiry: formData.warrantyExpiry || null,
+        notes: formData.notes || null,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Equipment updated successfully');
+      invalidateEquipmentQueries();
+      resetForm();
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      toast.error('Failed to update equipment: ' + (error.message || 'Unknown error'));
+    },
+  });
+
   const resetForm = () => {
-    setFormData({
-      name: '',
-      brand: '',
-      model: '',
-      serialNumber: '',
-      category: '',
-      location: '',
-      purchaseDate: '',
-      purchasePrice: '',
-      warrantyExpiry: '',
-      notes: '',
-    });
+    setFormData(getInitialFormData(null));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -93,20 +122,28 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
       toast.error('Equipment name is required');
       return;
     }
-    if (!branchId) {
+    if (!equipmentToEdit && !branchId) {
       toast.error('Branch is not selected');
       return;
     }
-    console.log('Creating equipment with branchId:', branchId, 'formData:', formData);
+    if (equipmentToEdit) {
+      updateMutation.mutate();
+      return;
+    }
     createMutation.mutate();
   };
+
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
+  const isEditMode = Boolean(equipmentToEdit);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Add New Equipment</SheetTitle>
-          <SheetDescription>Add equipment to track in your gym</SheetDescription>
+          <SheetTitle>{isEditMode ? 'Edit Equipment' : 'Add New Equipment'}</SheetTitle>
+          <SheetDescription>
+            {isEditMode ? 'Update machine details and tracking metadata' : 'Add equipment to track in your gym'}
+          </SheetDescription>
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
@@ -214,12 +251,22 @@ export function AddEquipmentDrawer({ open, onOpenChange, branchId }: AddEquipmen
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Optional notes about this machine"
+            />
+          </div>
+
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Adding...' : 'Add Equipment'}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (isEditMode ? 'Saving...' : 'Adding...') : (isEditMode ? 'Save Changes' : 'Add Equipment')}
             </Button>
           </SheetFooter>
         </form>
