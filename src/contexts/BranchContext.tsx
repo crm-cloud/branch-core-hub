@@ -141,26 +141,33 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return 'ready';
   }, [user, branchesLoading, branchesError, managerError, staffError, memberError, branches, isRestrictedRole, isOwnerOrAdmin, isManager, staffBranch, memberBranch, managerBranches, hasAnyRole]);
 
-  // Auto-initialize branch selection for restricted roles
+  // Auto-initialize branch selection for restricted roles.
+  // Honour any previously-saved selection that is still valid for this user.
   useEffect(() => {
     if (initialized) return;
     if (isOwnerOrAdmin) {
       setInitialized(true);
       return;
     }
+    const stored = localStorage.getItem('incline-selected-branch');
+    const isValid = (id?: string | null) => !!id && branches.some(b => b.id === id);
+
     if (isManager && !isOwnerOrAdmin && managerBranches.length > 0) {
-      setSelectedBranch(managerBranches[0].id);
+      if (!isValid(stored)) setSelectedBranch(managerBranches[0].id);
       setInitialized(true);
+      return;
     }
     if (staffBranch) {
+      // staff/trainer are pinned to their assigned branch — always enforce
       setSelectedBranch(staffBranch.id);
       setInitialized(true);
+      return;
     }
     if (memberBranch) {
       setSelectedBranch(memberBranch.id);
       setInitialized(true);
     }
-  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, initialized]);
+  }, [isOwnerOrAdmin, isManager, managerBranches, staffBranch, memberBranch, branches, initialized]);
 
   const isLoading = branchesLoading;
 
