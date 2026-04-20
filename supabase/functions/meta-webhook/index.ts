@@ -334,6 +334,190 @@ async function triggerAiReply(
   platform: Platform,
   integration?: any
 ) {
+  // Check chat-level bot_active flag
+  const { data: settings } = await supabase
+    .from("whatsapp_chat_settings")
+    .select("bot_active")
+    .eq("branch_id", branchId)
+    .eq("phone_number", senderId)
+    .maybeSingle();
+  if (settings?.bot_active === false) return;
+
+  const orgConfig = await getOrgAiConfig();
+  const aiConfig = orgConfig?.whatsapp_ai_config as any;
+  if (!aiConfig?.auto_reply_enabled) return;
+
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return;
+
+  // Try to identify member by IG/FB sender id (members.platform_ids JSON or fallback unknown)
+  const { data: memberMatch } = await supabase
+    .from("members")
+    .select("id, branch_id, profiles(full_name)")
+    .or(`whatsapp_id.eq.${senderId}`)
+    .maybeSingle()
+    .then((r: any) => r, () => ({ data: null }));
+
+  const memberId = memberMatch?.id || null;
+  let membershipId: string | null = null;
+  let planId: string | null = null;
+  let memberName = "Guest";
+
+  if (memberId) {
+    memberName = (memberMatch as any).profiles?.full_name || "Member";
+    const { data: ms } = await supabase
+      .from("memberships")
+      .select("id, plan_id")
+      .eq("member_id", memberId)
+      .eq("status", "active")
+      .order("end_date", { ascending: false })
+      .limit(1).maybeSingle();
+    if (ms) { membershipId = ms.id; planId = ms.plan_id; }
+  }
+
+  // Conversation history
+  const { data: recentMessages } = await supabase
+    .from("whatsapp_messages")
+    .select("content, direction")
+    .eq("phone_number", senderId)
+    .eq("branch_id", branchId)
+    .eq("platform", platform)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  const history = (recentMessages || []).reverse().map((m: any) => ({
+    role: (m.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
+    content: m.content || "",
+  }));
+
+  const platformLabel = platform === "instagram" ? "Instagram DM" : "Facebook Messenger";
+  const gymName = orgConfig?.gym_name || "Incline Fitness";
+  const customPrompt = aiConfig?.system_prompt || "";
+  const baseRole = customPrompt
+    ? customPrompt
+    : `You are a helpful gym assistant for "${gymName}".`;
+  const systemPrompt = `${baseRole}\n\nYou are responding on ${platformLabel}. Keep replies short (1-3 sentences), warm and professional. Use tools to answer membership/booking/payment questions when applicable.`;
+
+  // Filter tools by org config
+  let tools: any[] | undefined = memberId ? getAllToolDefinitions() : undefined;
+  if (tools) {
+    try {
+      const { data: orgRow } = await supabase.from("organization_settings").select("ai_tool_config").limit(1).maybeSingle();
+      const cfg = (orgRow?.ai_tool_config as Record<string, boolean>) || {};
+      tools = tools.filter((t: any) => cfg[t.function.name] !== false);
+      if (tools.length === 0) tools = undefined;
+    } catch (_e) { /* keep all */ }
+  }
+
+  const ctx = {
+    isMember: !!memberId,
+    memberId: memberId || undefined,
+    memberName,
+    branchId,
+    membershipId: membershipId || undefined,
+    planId: planId || undefined,
+    contextPrompt: memberId ? `Member: ${memberName}` : "Speaking to a guest/lead.",
+  };
+
+  const messages: any[] = [
+    { role: "system", content: `${systemPrompt}\n\n${ctx.contextPrompt}` },
+    ...history,
+  ];
+
+  let aiResult: any;
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: aiConfig?.model || "google/gemini-2.5-flash",
+        messages,
+        ...(tools ? { tools, tool_choice: "auto" } : {}),
+      }),
+    });
+    if (!resp.ok) {
+      console.error(`[meta-webhook] AI error ${platform}:`, resp.status);
+      return;
+    }
+    aiResult = await resp.json();
+  } catch (e) {
+    console.error(`[meta-webhook] AI fetch failed:`, e);
+    return;
+  }
+
+  // Tool-call loop (1 round)
+  const choice = aiResult?.choices?.[0];
+  const toolCalls = choice?.message?.tool_calls;
+  let replyText: string | null = choice?.message?.content || null;
+
+  if (toolCalls?.length && tools) {
+    const toolMessages: any[] = [];
+    for (const tc of toolCalls) {
+      let parsedArgs: any = {};
+      try { parsedArgs = JSON.parse(tc.function.arguments || "{}"); } catch { /* ignore */ }
+      const result = await executeSharedToolCall(
+        supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+        tc.function.name, parsedArgs, ctx, senderId, branchId, platform,
+      );
+      toolMessages.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: JSON.stringify(result),
+      });
+    }
+
+    try {
+      const followup = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: aiConfig?.model || "google/gemini-2.5-flash",
+          messages: [...messages, choice.message, ...toolMessages],
+        }),
+      });
+      const followupData = await followup.json();
+      replyText = followupData?.choices?.[0]?.message?.content || replyText;
+    } catch (e) {
+      console.error(`[meta-webhook] follow-up failed:`, e);
+    }
+  }
+
+  if (!replyText) return;
+
+  // Store the AI reply
+  const { data: replyMsg } = await supabase
+    .from("whatsapp_messages")
+    .insert({
+      branch_id: branchId,
+      phone_number: senderId,
+      content: replyText,
+      direction: "outbound",
+      status: "pending",
+      message_type: "text",
+      platform: platform as any,
+    })
+    .select("id")
+    .single();
+
+  if (!replyMsg) return;
+
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({
+        message_id: replyMsg.id,
+        recipient_id: senderId,
+        content: replyText,
+        branch_id: branchId,
+        platform,
+      }),
+    });
+  } catch (sendErr) {
+    console.error(`[meta-webhook] send ${platform} reply failed:`, sendErr);
+  }
+}
+
   // Check if bot is active for this contact
   const { data: settings } = await supabase
     .from("whatsapp_chat_settings")
