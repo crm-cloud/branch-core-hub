@@ -510,8 +510,11 @@ async function hydrateContactContext(phoneNumber: string, branchId: string): Pro
 // ─── Epic 2: Production Tool Declarations ──────────────────────────────────────
 
 function getMemberTools() {
-  return [
-    {
+  // v5.0.0 — Use shared registry (25+ tools across membership, bookings, payments, loyalty)
+  return getAllToolDefinitions();
+}
+
+function _legacyMemberTools() {
       type: "function",
       function: {
         name: "get_membership_status",
