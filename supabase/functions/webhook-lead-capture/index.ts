@@ -106,22 +106,38 @@ Deno.serve(async (req) => {
 
     console.log('Webhook lead created:', lead.id, 'source:', source, 'branch:', branchId);
 
-    // Fire-and-forget: trigger lead notifications via unified dispatcher
-    try {
-      const notifyUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-lead-created`;
-      fetch(notifyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        },
-        body: JSON.stringify({ lead_id: lead.id, branch_id: branchId }),
-      }).catch(e => console.error('Lead notification dispatch failed:', e));
-    } catch (e) {
-      console.error('Lead notification setup error:', e);
+    // Build response immediately, defer heavy work (notifications, scoring, WhatsApp triggers)
+    const response = new Response(
+      JSON.stringify({ success: true, lead_id: lead.id }),
+      { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+
+    const heavyWork = (async () => {
+      try {
+        const notifyUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-lead-created`;
+        await fetch(notifyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({ lead_id: lead.id, branch_id: branchId }),
+        });
+      } catch (e) {
+        console.error('Lead notification dispatch failed:', e);
+      }
+    })();
+
+    // @ts-ignore — EdgeRuntime is provided by Supabase Edge runtime
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(heavyWork);
+    } else {
+      // Fallback: don't await, but ensure it doesn't block
+      heavyWork.catch(e => console.error('Lead heavy-work error:', e));
     }
 
-    return new Response(JSON.stringify({ success: true, lead_id: lead.id }), { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return response;
   } catch (error) {
     console.error('Webhook lead capture error:', error);
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
