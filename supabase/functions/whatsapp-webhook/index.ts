@@ -1,6 +1,8 @@
-// v4.0.0 — Transactional AI Agent: real tool calling, context hydration, human handoff
+// v5.0.0 — Transactional AI Agent: 25+ self-service tools, payments, IG/FB parity
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
+import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
