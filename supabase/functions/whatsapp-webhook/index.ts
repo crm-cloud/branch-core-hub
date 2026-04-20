@@ -1,6 +1,8 @@
-// v4.0.0 — Transactional AI Agent: real tool calling, context hydration, human handoff
+// v5.0.0 — Transactional AI Agent: 25+ self-service tools, payments, IG/FB parity
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
+import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -508,96 +510,10 @@ async function hydrateContactContext(phoneNumber: string, branchId: string): Pro
 // ─── Epic 2: Production Tool Declarations ──────────────────────────────────────
 
 function getMemberTools() {
-  return [
-    {
-      type: "function",
-      function: {
-        name: "get_membership_status",
-        description: "Get the member's current membership status including plan name, expiry date, days remaining, and any pending dues.",
-        parameters: { type: "object", properties: {}, required: [] },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_benefit_balance",
-        description: "Get the member's remaining benefit credits (sauna, ice bath, group classes, etc.). Optionally filter by a specific benefit type.",
-        parameters: {
-          type: "object",
-          properties: {
-            benefit_type: { type: "string", description: "Optional filter: e.g. 'sauna', 'ice_bath', 'group_classes'. Leave empty for all." },
-          },
-          required: [],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_available_slots",
-        description: "List available facility booking slots for a specific facility type and date. Returns slot IDs, times, and remaining capacity.",
-        parameters: {
-          type: "object",
-          properties: {
-            facility_type: { type: "string", description: "Type of facility: 'sauna', 'ice_bath', or other facility code" },
-            date: { type: "string", description: "Date in YYYY-MM-DD format. Defaults to today if not specified." },
-          },
-          required: ["facility_type"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "book_facility_slot",
-        description: "Book a specific facility slot for the member. Requires a slot_id from get_available_slots. Will validate credits and capacity.",
-        parameters: {
-          type: "object",
-          properties: {
-            slot_id: { type: "string", description: "The UUID of the slot to book (from get_available_slots results)" },
-          },
-          required: ["slot_id"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "cancel_facility_booking",
-        description: "Cancel an existing facility booking for the member.",
-        parameters: {
-          type: "object",
-          properties: {
-            booking_id: { type: "string", description: "The UUID of the booking to cancel" },
-          },
-          required: ["booking_id"],
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_pt_balance",
-        description: "Get the member's personal training (PT) session balance including remaining sessions and package expiry.",
-        parameters: { type: "object", properties: {}, required: [] },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "transfer_to_human",
-        description: "Transfer the conversation to a human staff member. Use this when: the member asks for a manager, makes a complaint, requests something you cannot handle, or if you encounter repeated errors.",
-        parameters: {
-          type: "object",
-          properties: {
-            reason: { type: "string", description: "Brief reason for the transfer" },
-          },
-          required: [],
-        },
-      },
-    },
-  ];
+  // v5.0.0 — Use shared registry (25+ tools across membership, bookings, payments, loyalty)
+  return getAllToolDefinitions();
 }
+
 
 // ─── Epic 3: Tool Execution Router ─────────────────────────────────────────────
 
@@ -927,7 +843,26 @@ async function executeToolCall(
       }
 
       default:
-        return { error: `Unknown tool: ${toolName}` };
+        // v5.0.0 — delegate unknown tools to shared executor
+        return await executeSharedToolCall(
+          supabase,
+          SUPABASE_URL!,
+          SUPABASE_SERVICE_ROLE_KEY!,
+          toolName,
+          args,
+          {
+            isMember: ctx.isMember ?? !!ctx.memberId,
+            memberId: ctx.memberId,
+            memberName: ctx.memberName,
+            branchId,
+            membershipId: ctx.membershipId,
+            planId: ctx.planId,
+            contextPrompt: "",
+          },
+          phoneNumber,
+          branchId,
+          "whatsapp",
+        );
     }
   } catch (err) {
     console.error(`Tool execution error [${toolName}]:`, err);

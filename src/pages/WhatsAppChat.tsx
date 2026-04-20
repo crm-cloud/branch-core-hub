@@ -1377,7 +1377,7 @@ export default function WhatsAppChatPage() {
               Delete Chat History
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to permanently delete this entire chat history? This action cannot be undone.
+              This permanently removes the chat history from your CRM database. <strong>The recipient will still see all messages on their {selectedContact?.platform === 'instagram' ? 'Instagram' : selectedContact?.platform === 'messenger' ? 'Messenger' : 'WhatsApp'}</strong> — Meta does not allow apps to delete messages from a user's phone. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
