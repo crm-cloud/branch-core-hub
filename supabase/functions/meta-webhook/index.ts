@@ -1,7 +1,9 @@
-// v2.0.0 — Unified Meta Webhook: WhatsApp, Instagram DM, Facebook Messenger
-// Hardened with org AI config, appsecret_proof, tool-calling support
+// v3.0.0 — Unified Meta Webhook: WhatsApp + Instagram DM + Facebook Messenger
+// Adds: tool-calling AI agent parity with WhatsApp on IG/FB
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
+import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
