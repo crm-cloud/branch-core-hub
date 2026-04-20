@@ -155,7 +155,7 @@ export function PurchaseMembershipDrawer({
       if (!selectedPlan) throw new Error('Please select a plan');
 
       const isPaymentLink = paymentMethod === 'razorpay_link';
-      
+
       // Validate partial payment
       if (isPartialPayment && !isPaymentLink) {
         if (amountPaying <= 0) throw new Error('Please enter amount paying now');
@@ -163,20 +163,30 @@ export function PurchaseMembershipDrawer({
         if (!paymentDueDate) throw new Error('Please set a due date for remaining amount');
       }
 
-      const endDate = calculateEndDate();
+      // ✅ Renewal: if member has an active membership, start the new one the day after current expiry.
+      const effectiveStartDate = activeMembership && canRenew && activeMembership.end_date
+        ? format(addDays(new Date(activeMembership.end_date), 1), 'yyyy-MM-dd')
+        : startDate;
+
+      // Recompute end date from the effective start date so the duration is honoured.
+      const computedEndDate = format(
+        addDays(new Date(effectiveStartDate), selectedPlan.duration_days - 1),
+        'yyyy-MM-dd'
+      );
+
       const totalAmount = calculateTotal();
       const actualAmountPaid = isPaymentLink ? 0 : (isPartialPayment ? amountPaying : totalAmount);
 
-      // Create membership
+      // 1. Create membership
       const { data: membership, error: membershipError } = await supabase
         .from('memberships')
         .insert({
           member_id: memberId,
           plan_id: selectedPlanId,
           branch_id: branchId,
-          start_date: startDate,
-          end_date: endDate,
-          original_end_date: endDate,
+          start_date: effectiveStartDate,
+          end_date: computedEndDate,
+          original_end_date: computedEndDate,
           price_paid: totalAmount,
           discount_amount: discountAmount,
           discount_reason: discountReason || null,
@@ -190,23 +200,20 @@ export function PurchaseMembershipDrawer({
       // Determine invoice status
       const invoiceStatus = isPaymentLink ? 'pending' : (isPartialPayment ? 'partial' : 'paid');
 
-      // Create invoice with partial payment support
-      // Generate unique invoice number
-      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-      
+      // 2. Create invoice — let the DB trigger (generate_invoice_number) assign the number.
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
           branch_id: branchId,
           member_id: memberId,
-          invoice_number: invoiceNumber,
           subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
           discount_amount: discountAmount,
           tax_amount: calculateGstAmount(),
           total_amount: totalAmount,
           status: invoiceStatus as any,
-          due_date: isPartialPayment ? paymentDueDate : startDate,
-          amount_paid: actualAmountPaid,
+          due_date: isPartialPayment ? paymentDueDate : effectiveStartDate,
+          // amount_paid will be set by record_payment RPC; keep 0 here for the manual-payment path
+          amount_paid: isPaymentLink ? 0 : 0,
           payment_due_date: isPartialPayment ? paymentDueDate : null,
           is_gst_invoice: includeGst,
           gst_rate: includeGst ? gstRate : 0,
@@ -214,9 +221,13 @@ export function PurchaseMembershipDrawer({
         .select()
         .single();
 
-      if (invoiceError) throw invoiceError;
+      if (invoiceError) {
+        // Rollback orphan membership
+        await supabase.from('memberships').delete().eq('id', membership.id);
+        throw invoiceError;
+      }
 
-      // Create invoice items
+      // 3. Create invoice items
       const items: any[] = [
         {
           invoice_id: invoice.id,
@@ -241,35 +252,46 @@ export function PurchaseMembershipDrawer({
         });
       }
 
-      await supabase.from('invoice_items').insert(items);
+      const { error: itemsError } = await supabase.from('invoice_items').insert(items);
+      if (itemsError) {
+        await supabase.from('invoices').delete().eq('id', invoice.id);
+        await supabase.from('memberships').delete().eq('id', membership.id);
+        throw itemsError;
+      }
 
-      // Record payment or generate payment link
+      // 4. Record payment or generate payment link
       if (isPaymentLink) {
-        // Generate Razorpay payment link
         const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
           body: { invoiceId: invoice.id, amount: totalAmount, branchId },
         });
         if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
         if (linkData?.error) throw new Error(linkData.error);
-        
-        // Copy link and show toast
+
         if (linkData?.short_url) {
           await navigator.clipboard.writeText(linkData.short_url);
           toast.success(`Payment link copied: ${linkData.short_url}`);
         }
       } else if (actualAmountPaid > 0) {
-        await supabase.from('payments').insert({
-          branch_id: branchId,
-          member_id: memberId,
-          invoice_id: invoice.id,
-          amount: actualAmountPaid,
-          payment_method: paymentMethod as any,
-          status: 'completed',
-          payment_date: new Date().toISOString(),
+        // ✅ Use unified record_payment RPC — handles invoice status, audit, wallet, membership activation atomically.
+        const { data: payRes, error: payErr } = await supabase.rpc('record_payment', {
+          p_branch_id: branchId,
+          p_invoice_id: invoice.id,
+          p_member_id: memberId,
+          p_amount: actualAmountPaid,
+          p_payment_method: paymentMethod as any,
+          p_transaction_id: null,
+          p_notes: null,
+          p_received_by: null,
+          p_income_category_id: null,
         });
+        if (payErr) throw payErr;
+        const payResult = payRes as any;
+        if (payResult && payResult.success === false) {
+          throw new Error(payResult.error || 'Payment failed');
+        }
       }
 
-      // Create payment reminders if partial payment and reminders enabled
+      // 5. Create payment reminders if partial payment and reminders enabled
       if (isPartialPayment && sendReminders && remainingAmount > 0) {
         const dueDate = new Date(paymentDueDate);
         const reminderDates = [
@@ -290,7 +312,7 @@ export function PurchaseMembershipDrawer({
         }
       }
 
-      // Update member status to active
+      // 6. Update member status to active
       await supabase
         .from('members')
         .update({ status: 'active' })
