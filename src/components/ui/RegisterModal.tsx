@@ -124,6 +124,8 @@ const RegisterModal = () => {
 
   const onSubmit = async (data: LeadFormData) => {
     setIsSubmitting(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
       const payload = {
         full_name: data.full_name,
@@ -138,15 +140,23 @@ const RegisterModal = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error("Submission failed");
+      if (!res.ok && res.status !== 200 && res.status !== 201) {
+        throw new Error("Submission failed");
+      }
 
       setIsSuccess(true);
       reset();
-    } catch {
-      toast.error("Something went wrong. Please try again.");
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        toast.error("The request is taking longer than expected. Please try again.");
+      } else {
+        toast.error("Something went wrong. Please try again.");
+      }
     } finally {
+      clearTimeout(timeoutId);
       setIsSubmitting(false);
     }
   };

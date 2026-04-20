@@ -2,12 +2,12 @@
 // v1.0.0 — extended self-service & payment tools
 
 export type MemberContext = {
-  isMember: boolean;
+  isMember?: boolean;
   memberId?: string;
   memberName: string;
   branchId: string;
-  membershipId?: string;
-  planId?: string;
+  membershipId?: string | null;
+  planId?: string | null;
   contextPrompt: string;
 };
 

@@ -178,7 +178,7 @@ export async function executeSharedToolCall(
           due_date: i.due_date,
           status: i.status,
         }));
-        const total = items.reduce((s, i) => s + i.balance, 0);
+        const total = items.reduce((s: number, i: { balance: number }) => s + i.balance, 0);
         return { total_due: `₹${total.toFixed(2)}`, count: items.length, invoices: items };
       }
 
