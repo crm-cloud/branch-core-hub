@@ -932,7 +932,26 @@ async function executeToolCall(
       }
 
       default:
-        return { error: `Unknown tool: ${toolName}` };
+        // v5.0.0 — delegate unknown tools to shared executor
+        return await executeSharedToolCall(
+          supabase,
+          SUPABASE_URL!,
+          SUPABASE_SERVICE_ROLE_KEY!,
+          toolName,
+          args,
+          {
+            isMember: ctx.isMember ?? !!ctx.memberId,
+            memberId: ctx.memberId,
+            memberName: ctx.memberName,
+            branchId,
+            membershipId: ctx.membershipId,
+            planId: ctx.planId,
+            contextPrompt: "",
+          },
+          phoneNumber,
+          branchId,
+          "whatsapp",
+        );
     }
   } catch (err) {
     console.error(`Tool execution error [${toolName}]:`, err);
