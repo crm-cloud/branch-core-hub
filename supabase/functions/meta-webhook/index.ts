@@ -349,10 +349,16 @@ async function triggerAiReply(
 
   const orgConfig = await getOrgAiConfig();
   const aiConfig = orgConfig?.whatsapp_ai_config as any;
-  if (!aiConfig?.auto_reply_enabled) return;
+  if (!aiConfig?.auto_reply_enabled) {
+    console.log(`[AI:${platform}] auto_reply_enabled=false`);
+    return;
+  }
 
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return;
+  if (!LOVABLE_API_KEY) {
+    console.log(`[AI:${platform}] LOVABLE_API_KEY missing`);
+    return;
+  }
 
   // Try to identify member by IG/FB sender id (members.platform_ids JSON or fallback unknown)
   const { data: memberMatch } = await supabase
