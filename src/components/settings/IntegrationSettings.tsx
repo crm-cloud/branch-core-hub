@@ -1094,6 +1094,9 @@ function IntegrationConfigSheet({
                   if (error) throw error;
                   if (data?.success) {
                     toast.success(data.message || 'Connection verified ✓');
+                    if (data?.warning) {
+                      toast.warning(data.warning, { duration: 10000 });
+                    }
                   } else {
                     const errorMessage = data?.error || 'Connection test failed';
                     toast.error(

@@ -25,12 +25,12 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('templates')
-        .select('id, name, content, trigger_event, channel, is_active')
-        .eq('channel', 'whatsapp')
-        .eq('is_active', true)
+        .select('id, name, content, type, meta_template_status, meta_template_name')
+        .eq('type', 'whatsapp')
+        .eq('meta_template_status', 'APPROVED')
         .order('name', { ascending: true });
       if (error) throw error;
-      return (data || []) as Array<{ id: string; name: string; content: string; trigger_event: string | null; channel: string; is_active: boolean }>;
+      return (data || []) as Array<{ id: string; name: string; content: string; type: string; meta_template_status: string; meta_template_name: string | null }>;
     },
     enabled: open,
   });
@@ -43,7 +43,6 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
         ?.replace(/\{\{name\}\}/gi, recipientName)
         ?.replace(/\{\{1\}\}/g, recipientName);
 
-      // First create a whatsapp_messages record to get the message_id
       const { data: msgRecord, error: msgError } = await (supabase as any)
         .from('whatsapp_messages')
         .insert({
@@ -52,7 +51,6 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
           direction: 'outbound',
           content,
           status: 'pending',
-          template_name: selectedTemplate.name,
         })
         .select('id')
         .single();
@@ -60,12 +58,7 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
       if (msgError) throw msgError;
 
       const { error } = await supabase.functions.invoke('send-whatsapp', {
-        body: {
-          message_id: msgRecord.id,
-          phone_number: phoneNumber,
-          content,
-          branch_id: branchId,
-        },
+        body: { message_id: msgRecord.id, phone_number: phoneNumber, content, branch_id: branchId },
       });
       if (error) throw error;
       toast.success(`Template "${selectedTemplate.name}" sent to ${recipientName}`);
@@ -91,7 +84,7 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
 
         <div className="space-y-3 py-4">
           {templates.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">No WhatsApp templates found. Add templates in Settings → Templates.</p>
+            <p className="text-center text-muted-foreground py-8 text-sm">No approved WhatsApp templates found. Add templates in Settings → Templates.</p>
           ) : (
             templates.map((t: any) => (
               <Card
@@ -106,7 +99,7 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-medium text-sm">{t.name}</p>
-                    <Badge variant="outline" className="text-xs">{t.trigger_event || 'Manual'}</Badge>
+                    <Badge variant="outline" className="text-xs">{t.meta_template_status || 'Manual'}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-3">{t.content}</p>
                 </CardContent>
@@ -131,25 +124,70 @@ export function WhatsAppTemplateDrawer({ open, onOpenChange, phoneNumber, recipi
   );
 }
 
-/** Auto-send a WhatsApp template by trigger event name */
-export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber: string, recipientName: string, branchId: string) {
+/**
+ * E5: Auto-send a WhatsApp template by mapped trigger event.
+ * Looks up `whatsapp_triggers` for the (event_name, branch_id) pair, with global fallback,
+ * resolves the linked template, substitutes simple variables, inserts a `whatsapp_messages`
+ * row, and dispatches via the `send-whatsapp` edge function. Failures are logged to
+ * `communication_logs` (status=failed) for auditability.
+ */
+export async function autoSendWhatsAppTemplate(
+  triggerEvent: string,
+  phoneNumber: string,
+  recipientName: string,
+  branchId: string,
+  vars: Record<string, string | number> = {},
+) {
   try {
-    const { data: templates } = await (supabase as any)
-      .from('templates')
-      .select('id, content, name')
-      .eq('channel', 'whatsapp')
-      .eq('trigger_event', triggerEvent)
+    // 1. Find branch-specific trigger; fall back to global (branch_id IS NULL)
+    let { data: trigger } = await (supabase as any)
+      .from('whatsapp_triggers')
+      .select('id, template_id, is_active, branch_id')
+      .eq('event_name', triggerEvent)
+      .eq('branch_id', branchId)
       .eq('is_active', true)
-      .limit(1);
+      .maybeSingle();
 
-    if (!templates?.length) return;
+    if (!trigger) {
+      const { data: globalTrigger } = await (supabase as any)
+        .from('whatsapp_triggers')
+        .select('id, template_id, is_active, branch_id')
+        .eq('event_name', triggerEvent)
+        .is('branch_id', null)
+        .eq('is_active', true)
+        .maybeSingle();
+      trigger = globalTrigger;
+    }
 
-    const content = templates[0].content
-      ?.replace(/\{\{name\}\}/gi, recipientName)
-      ?.replace(/\{\{1\}\}/g, recipientName);
+    if (!trigger?.template_id) {
+      console.log(`[autoSendWhatsAppTemplate] no trigger for event=${triggerEvent} branch=${branchId}`);
+      return { skipped: true, reason: 'no_trigger' };
+    }
 
-    // Create message record first
-    const { data: msgRecord } = await (supabase as any)
+    // 2. Load the template
+    const { data: template, error: tplErr } = await (supabase as any)
+      .from('templates')
+      .select('id, name, content, meta_template_status')
+      .eq('id', trigger.template_id)
+      .maybeSingle();
+
+    if (tplErr || !template?.content) {
+      throw new Error(tplErr?.message || 'Template not found or empty');
+    }
+
+    // 3. Variable substitution
+    const allVars: Record<string, string> = {
+      name: recipientName,
+      '1': recipientName,
+      ...Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, String(v)])),
+    };
+    let content = template.content as string;
+    for (const [k, v] of Object.entries(allVars)) {
+      content = content.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, 'gi'), v);
+    }
+
+    // 4. Insert message record
+    const { data: msgRecord, error: msgError } = await (supabase as any)
       .from('whatsapp_messages')
       .insert({
         branch_id: branchId,
@@ -157,22 +195,33 @@ export async function autoSendWhatsAppTemplate(triggerEvent: string, phoneNumber
         direction: 'outbound',
         content,
         status: 'pending',
-        template_name: templates[0].name,
       })
       .select('id')
       .single();
 
-    if (!msgRecord) return;
+    if (msgError || !msgRecord) throw new Error(msgError?.message || 'Failed to create message record');
 
-    await supabase.functions.invoke('send-whatsapp', {
-      body: {
-        message_id: msgRecord.id,
-        phone_number: phoneNumber,
-        content,
-        branch_id: branchId,
-      },
+    // 5. Dispatch via send-whatsapp
+    const { error: invokeErr } = await supabase.functions.invoke('send-whatsapp', {
+      body: { message_id: msgRecord.id, phone_number: phoneNumber, content, branch_id: branchId },
     });
-  } catch {
-    // Silently fail for auto-triggers — don't block the main flow
+
+    if (invokeErr) throw invokeErr;
+
+    return { success: true, message_id: msgRecord.id, template_name: template.name };
+  } catch (err: any) {
+    // Audit failure to communication_logs instead of swallowing silently
+    console.error(`[autoSendWhatsAppTemplate] event=${triggerEvent} failed:`, err?.message || err);
+    try {
+      await (supabase as any).from('communication_logs').insert({
+        branch_id: branchId,
+        recipient: phoneNumber,
+        type: 'whatsapp',
+        content: `[auto-trigger ${triggerEvent} failed] ${err?.message || 'unknown error'}`,
+        status: 'failed',
+        sent_at: new Date().toISOString(),
+      });
+    } catch { /* ignore log failure */ }
+    return { success: false, error: err?.message || 'Unknown error' };
   }
 }
