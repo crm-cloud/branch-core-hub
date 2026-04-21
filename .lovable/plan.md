@@ -1,106 +1,141 @@
 
 
-## Scope assessment
+## Phase D — Notifications & Chat Audit
 
-Eight large items in one turn would mean shallow fixes everywhere. I'll **stage** the work — blockers + quick wins now, deeper audits across follow-up turns. Build errors must clear first or nothing else can deploy.
+### D1. Eliminate duplicate notifications at the source
 
-### Phase A — This turn (blockers + quick wins)
+**Root causes found:**
+- `notify_lead_created` DB trigger fans out to **all** owner/admin/manager/staff users with **no `branch_id` filter** on recipients → managers at Branch B receive Branch A leads.
+- `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring` have the same problem (broadcast to all owners/admins/staff regardless of branch).
+- `RegisterModal.tsx` lead path: `webhook-lead-capture` inserts the lead → DB trigger creates in-app notification rows. The current `fetchNotifications` client-side dedupe (1-min bucket on title+message) hides the symptom but doesn't fix the cause. Verified live data shows `dup_count: 2` for the same lead.
+- The dup of 2 comes from the trigger inserting one row per matched role (`owner` + `admin` for the same user when a user holds two roles, or the trigger firing twice if a duplicate trigger exists on the table).
 
-**A1. Fix 5 TypeScript build errors blocking all edge-function deploys**
-- `_shared/ai-tool-executor.ts:181` — type the `reduce` callback.
-- `_shared/ai-tools.ts` — relax `MemberContext`: `isMember?`, `membershipId?: string | null`, `planId?: string | null` so it accepts the caller's nullable values.
-- Redeploy `whatsapp-webhook`, `meta-webhook` and verify green.
+**Fix (single migration):**
+1. Rewrite all 5 notifier trigger functions (`notify_lead_created`, `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring`) to:
+   - **Branch-scope recipients**: owners + admins get all branches; managers get only their `branch_managers` rows; staff/trainers get only their `staff_branches` / `employees.branch_id` rows.
+   - **DISTINCT user_id** in the SELECT to prevent dup rows when a user holds multiple roles.
+2. Drop any duplicate triggers on the same table (audit `pg_trigger`, keep one per event).
+3. Add a unique partial index `notifications_dedupe_idx` on `(user_id, title, message, date_trunc('minute', created_at))` `WHERE is_read = false` — guarantees no exact dup row inside a 1-minute window even if a code path double-fires.
+4. Remove the client-side dedupe filter in `fetchNotifications` (no longer needed).
 
-**A2. Speed up Register Modal lead submission (item #1)**
-- Root cause: `RegisterModal.tsx` does a raw `fetch()` and waits for the edge function to finish lead-scoring + staff notifications + WhatsApp triggers before showing the success screen.
-- Fix: switch to `supabase.functions.invoke('webhook-lead-capture')`, add a 12s client timeout, and inside the edge function move heavy work into `EdgeRuntime.waitUntil(...)` so the HTTP response returns the moment the lead row is inserted.
+### D2. Role-based notification routing
 
-**A3. Theme + branch persistence verification (item #6)**
-- Confirm `next-themes` localStorage isn't reset on auth events.
-- Confirm `BranchContext` honours saved `selectedBranch` for managers/staff/trainers (not just admins) and only auto-picks when nothing is stored.
+For each notification type, restrict recipients:
 
-### Phase B — Follow-up turn (Meta + Google question)
+| Event | Recipients |
+|---|---|
+| New lead | Owner/Admin (all) + Manager (lead's branch) + Staff (lead's branch) |
+| New member | Owner/Admin (all) + Manager/Staff (member's branch) |
+| Payment received | Owner/Admin (all) + Manager (branch) |
+| Membership expiring (member) | The member only |
+| Membership expiring (staff) | Owner/Admin + Manager (branch) |
+| Locker assigned | Owner/Admin + Manager/Staff (branch) |
+| Referral converted | The referrer only (already correct) |
+| Booking confirmation/cancel | The member only (already correct) |
 
-**B1. Instagram → Google Business Profile (item #2)**
-- Meta Graph API has **no** path that pushes IG posts to Google Business Profile. The Google share link you sent is just a share URL, not a sync endpoint.
-- Real options need your pick (see Question 2).
+Trainers receive **only** notifications about their own clients/sessions. Members receive **only** their own notifications.
 
-### Phase C — Staged deeper audits (one focus per turn)
+### D3. Realtime chat sound — global subscription
 
-| Turn | Focus | Scope |
-|---|---|---|
-| C1 | Items #5a — Member enrollment → membership → invoice → payment → reminders end-to-end | Trace + fix broken links |
-| C2 | Items #5b — MIPS sync, role triggers, trainer/staff/email/WhatsApp flows | Verify automation pipeline |
-| C3 | Item #4 — Staff & Member Dashboard click-through audit | Every link/button checked |
-| C4 | Items #3 + #7 + #8 — UI/UX polish, dead-table cleanup, Import/Export backup page | Vuexy sweep + new `/settings/backup` |
+Currently `useChatSound(inboundCount)` only fires when the user has the WhatsApp chat page open with a contact selected.
 
----
+**Fix:**
+- Create new hook `useGlobalChatSound()` mounted in `AppHeader` (always rendered when authenticated).
+- It subscribes to `postgres_changes` on `public.whatsapp_messages` filtered by `direction=eq.inbound` (and branch when applicable) and plays `playPing()` whenever a new inbound message arrives, respecting the existing `isChatSoundEnabled()` preference.
+- Verify `whatsapp_messages` is in `supabase_realtime` publication; if not, add it via migration.
 
-## Technical details (Phase A)
+### D4. Remove duplicate Data Export from SecuritySettings
 
-**Type fix**
-```ts
-// _shared/ai-tools.ts
-export type MemberContext = {
-  isMember?: boolean;
-  memberId?: string;
-  memberName: string;
-  branchId: string;
-  membershipId?: string | null;
-  planId?: string | null;
-  contextPrompt: string;
-};
+`SecuritySettings.tsx` lines 188–216 contain a "Data Export" card that duplicates the new `/settings → Backup & Restore` tab built in C4.
 
-// _shared/ai-tool-executor.ts:181
-const total = items.reduce(
-  (s: number, i: { balance: number }) => s + i.balance,
-  0,
-);
-```
-
-**Edge function fast-return pattern**
-```ts
-const { data: lead } = await supabase.from('leads').insert(...).select().single();
-
-EdgeRuntime.waitUntil((async () => {
-  await scoreLeadAsync(lead.id);
-  await notifyStaffAsync(lead);
-  await fireWhatsAppTriggers(lead);
-})());
-
-return new Response(JSON.stringify({ success: true, lead_id: lead.id }), {
-  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-});
-```
-
-**Files touched in Phase A**
-- `supabase/functions/_shared/ai-tools.ts`
-- `supabase/functions/_shared/ai-tool-executor.ts`
-- `supabase/functions/webhook-lead-capture/index.ts`
-- `src/components/ui/RegisterModal.tsx`
-- `src/contexts/BranchContext.tsx` (verify-only, edit only if bug found)
+**Fix:** Delete the Data Export card from `SecuritySettings.tsx` (and the `handleExportData`, `isExporting` state, `Download`/`Loader2` imports if no longer used). Keep only Password Policy + Session Management.
 
 ---
 
-## Decisions needed before I start
+## Files touched
 
-**Q1 — Confirm Phase A scope**
-- (a) **Phase A only this turn** (recommended, ships clean) — fix build errors, speed up Register Modal, verify theme/branch persistence.
-- (b) Phase A + start C1 (enrollment→payment audit) — bigger turn, partial audit.
-- (c) Different priority — tell me which item to do first.
+| File | Change |
+|---|---|
+| `supabase/migrations/<new>.sql` | Rewrite 5 notifier functions with branch scoping + DISTINCT, drop dup triggers, add dedupe partial index, ensure `whatsapp_messages` in realtime publication |
+| `src/services/notificationService.ts` | Remove client-side 1-minute dedupe loop in `fetchNotifications` |
+| `src/hooks/useChatSound.ts` | Add new export `useGlobalChatSound()` |
+| `src/components/layout/AppHeader.tsx` | Mount `useGlobalChatSound()` |
+| `src/components/settings/SecuritySettings.tsx` | Remove Data Export card + unused imports |
 
-**Q2 — Item #2 (Instagram → Google)**
-- (a) Build Google Business Profile API connector (new OAuth + GBP API approval, 2–3 turns).
-- (b) Use Zapier/Make/Buffer bridge (no app code, I'll document setup).
-- (c) Skip — keep IG and Google separate.
+## Verification after deploy
 
-**Q3 — Item #8 (Import/Export backup)**
-- (a) Full DB JSON export + JSON import with conflict strategy.
-- (b) Per-table CSV export only.
-- (c) Both — JSON backup + per-table CSV.
+1. Trigger a new lead via the Register Modal → check `notifications` table has exactly N rows where N = unique recipient count, no duplicates.
+2. Send an inbound WhatsApp message while sitting on `/dashboard` → ping sound plays.
+3. As a manager of Branch A, confirm no new-lead notification appears for a Branch B lead.
+4. `/settings → Security` shows only Password Policy + Session Management. `/settings → Backup & Restore` is the only place to export.
 
-**Q4 — Item #7 (Dead tables)**
-- (a) Document only on System Health page.
-- (b) Migration to drop confirmed-empty tables (`role_permissions`, `settings`, `payment_transactions`, `payroll_rules`).
-- (c) Migrate org-wide data into branch-scoped tables (multi-turn refactor).
+</plan>I'll just present the plan directly using the proper tag format.
+
+<lov-plan>
+
+## Phase D — Notifications & Chat Audit
+
+### D1. Eliminate duplicate notifications at the source
+
+**Root causes found (verified live):**
+- `notify_lead_created`, `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring` triggers fan out to **all** owner/admin/manager/staff users with **no `branch_id` recipient filter** and **no `DISTINCT user_id`**, so a user holding two roles (e.g. owner + admin) gets the same notification inserted twice.
+- Live data confirms `dup_count: 2` for "kuldeep salvi" with the same `branch_id` and timestamp bucket.
+- The current client-side 1-minute dedupe in `fetchNotifications` only hides the symptom — the unread **count** still reflects the duplicate row.
+
+**Fix (single migration):**
+1. Rewrite all 5 trigger functions to:
+   - Branch-scope recipients (owners/admins → all; managers → their `branch_managers`; staff/trainers → their `staff_branches`/`employees.branch_id`).
+   - `SELECT DISTINCT user_id` so multi-role users get one row.
+2. Audit `pg_trigger` and drop any duplicate triggers on the same table.
+3. Add a **unique partial index** `notifications_dedupe_idx` on `(user_id, title, message, date_trunc('minute', created_at)) WHERE is_read = false` — guarantees no exact dup row inside a 1-minute window even if a code path double-fires.
+4. Remove the now-redundant client-side dedupe in `fetchNotifications`.
+
+### D2. Role-based notification routing
+
+| Event | Recipients |
+|---|---|
+| New lead | Owner/Admin (all) + Manager (lead's branch) + Staff (lead's branch) |
+| New member | Owner/Admin (all) + Manager/Staff (member's branch) |
+| Payment received | Owner/Admin (all) + Manager (branch) |
+| Membership expiring (member-facing) | The member only |
+| Membership expiring (staff-facing) | Owner/Admin + Manager (branch) |
+| Locker assigned | Owner/Admin + Manager/Staff (branch) |
+| Referral converted | The referrer only (already correct) |
+| Booking confirmation/cancel | The member only (already correct) |
+
+Trainers receive **only** notifications about their own clients/sessions. Members receive **only** their own notifications.
+
+### D3. Realtime chat sound — global subscription
+
+Currently `useChatSound(inboundCount)` only fires when the WhatsApp chat page is open with a contact selected.
+
+**Fix:**
+- Add new export `useGlobalChatSound()` in `src/hooks/useChatSound.ts` that subscribes to `postgres_changes` on `public.whatsapp_messages` (filter `direction=eq.inbound`) and plays the ping whenever a new inbound message arrives, respecting `isChatSoundEnabled()`.
+- Mount it in `AppHeader` (always rendered for authenticated users).
+- Migration ensures `whatsapp_messages` is in the `supabase_realtime` publication.
+
+### D4. Remove duplicate Data Export from Security tab
+
+`SecuritySettings.tsx` (lines 188–216) duplicates the `/settings → Backup & Restore` tab built in Phase C4.
+
+**Fix:** Delete the Data Export card + `handleExportData` + `isExporting` state + unused `Download`/`Loader2` imports. Keep only Password Policy + Session Management.
+
+---
+
+## Files touched
+
+| File | Change |
+|---|---|
+| `supabase/migrations/<new>.sql` | Rewrite 5 notifier functions with branch scoping + DISTINCT, drop dup triggers, add dedupe partial index, add `whatsapp_messages` to realtime publication |
+| `src/services/notificationService.ts` | Remove client-side 1-minute dedupe |
+| `src/hooks/useChatSound.ts` | Add `useGlobalChatSound()` |
+| `src/components/layout/AppHeader.tsx` | Mount `useGlobalChatSound()` |
+| `src/components/settings/SecuritySettings.tsx` | Remove Data Export card + unused imports |
+
+## Verification after deploy
+
+1. New lead via Register Modal → exactly N unread rows where N = unique recipient count, badge count matches.
+2. Inbound WhatsApp message while on `/dashboard` → ping sound plays without opening chat.
+3. As Branch A manager, no Branch B lead notification appears.
+4. `/settings → Security` shows only Password Policy + Session Management; export lives only under Backup & Restore.
 
