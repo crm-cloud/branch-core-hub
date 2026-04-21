@@ -55,28 +55,8 @@ export function SecuritySettings() {
     onError: () => toast.error('Failed to save settings'),
   });
 
-  const handleExportData = async () => {
-    setIsExporting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('export-data');
-      if (error) throw error;
 
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `system-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Data export downloaded');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to export data');
-    } finally {
-      setIsExporting(false);
-    }
-  };
+
 
   return (
     <div className="space-y-6">
