@@ -12,6 +12,7 @@ import { Printer, Save, FileSignature, Eraser, Dumbbell, Shield, HeartPulse, Use
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { e } from '@/utils/htmlEscape';
 
 interface RegistrationFormData {
   memberName: string;
@@ -178,7 +179,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
 
     const signatureDataUrl = hasSigned ? canvasRef.current?.toDataURL('image/png') : null;
 
-    const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${data.memberName}</title>
+    const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${e(data.memberName)}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; color: #1e293b; max-width: 800px; margin: 0 auto; font-size: 13px; }
@@ -204,58 +205,58 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       @media print { body { padding: 15px; } }
     </style></head><body>
       <div class="header">
-        <h1>${data.branchName || 'FITNESS CENTER'}</h1>
+        <h1>${e(data.branchName || 'FITNESS CENTER')}</h1>
         <p>Membership Registration & Agreement Form</p>
-        <div class="badge">REG-${data.memberCode}</div>
+        <div class="badge">REG-${e(data.memberCode)}</div>
       </div>
       <div class="title">MEMBERSHIP AGREEMENT</div>
       <div class="section">
         <div class="section-title">👤 Member Information</div>
         <div class="grid">
-          <div class="field"><label>Full Name</label><div class="val">${data.memberName}</div></div>
-          <div class="field"><label>Member Code</label><div class="val">${data.memberCode}</div></div>
-          <div class="field"><label>Email</label><div class="val">${data.email || '—'}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${data.phone || '—'}</div></div>
-          <div class="field"><label>Gender</label><div class="val">${data.gender || '—'}</div></div>
+          <div class="field"><label>Full Name</label><div class="val">${e(data.memberName)}</div></div>
+          <div class="field"><label>Member Code</label><div class="val">${e(data.memberCode)}</div></div>
+          <div class="field"><label>Email</label><div class="val">${e(data.email || '—')}</div></div>
+          <div class="field"><label>Phone</label><div class="val">${e(data.phone || '—')}</div></div>
+          <div class="field"><label>Gender</label><div class="val">${e(data.gender || '—')}</div></div>
           <div class="field"><label>Date of Birth</label><div class="val">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '—'}</div></div>
-          <div class="field full"><label>Address</label><div class="val">${[data.address, data.city, data.state].filter(Boolean).join(', ') || '—'}</div></div>
+          <div class="field full"><label>Address</label><div class="val">${e([data.address, data.city, data.state].filter(Boolean).join(', ') || '—')}</div></div>
         </div>
       </div>
       <div class="section">
         <div class="section-title">🪪 Government ID</div>
         <div class="grid">
-          <div class="field"><label>ID Type</label><div class="val">${govIdType.toUpperCase()}</div></div>
-          <div class="field"><label>ID Number</label><div class="val">${govIdNumber || '—'}</div></div>
+          <div class="field"><label>ID Type</label><div class="val">${e(govIdType.toUpperCase())}</div></div>
+          <div class="field"><label>ID Number</label><div class="val">${e(govIdNumber || '—')}</div></div>
         </div>
       </div>
       <div class="section">
         <div class="section-title">🚨 Emergency Contact</div>
         <div class="grid">
-          <div class="field"><label>Name</label><div class="val">${data.emergencyContactName || '—'}</div></div>
-          <div class="field"><label>Phone</label><div class="val">${data.emergencyContactPhone || '—'}</div></div>
+          <div class="field"><label>Name</label><div class="val">${e(data.emergencyContactName || '—')}</div></div>
+          <div class="field"><label>Phone</label><div class="val">${e(data.emergencyContactPhone || '—')}</div></div>
         </div>
       </div>
       <div class="section">
         <div class="section-title">💪 Health & Fitness</div>
         <div class="grid">
-          <div class="field full"><label>Fitness Goals</label><div class="val">${fitnessGoals || '—'}</div></div>
-          <div class="field full"><label>Medical Conditions</label><div class="val">${medicalConditions || 'None declared'}</div></div>
+          <div class="field full"><label>Fitness Goals</label><div class="val">${e(fitnessGoals || '—')}</div></div>
+          <div class="field full"><label>Medical Conditions</label><div class="val">${e(medicalConditions || 'None declared')}</div></div>
         </div>
       </div>
       <div class="section">
         <div class="section-title">📋 Membership Details</div>
         <div class="grid">
-          <div class="field"><label>Plan</label><div class="val">${data.planName || '—'}</div></div>
+          <div class="field"><label>Plan</label><div class="val">${e(data.planName || '—')}</div></div>
           <div class="field"><label>Amount</label><div class="val">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '—'}</div></div>
           <div class="field"><label>Start Date</label><div class="val">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '—'}</div></div>
           <div class="field"><label>End Date</label><div class="val">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '—'}</div></div>
           <div class="field"><label>Registration Date</label><div class="val">${format(new Date(), 'dd MMM yyyy')}</div></div>
-          <div class="field"><label>Branch</label><div class="val">${data.branchName || '—'}</div></div>
+          <div class="field"><label>Branch</label><div class="val">${e(data.branchName || '—')}</div></div>
         </div>
       </div>
       <div class="terms">
         <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
-        <ol>${DEFAULT_TERMS.map(t => `<li>${t}</li>`).join('')}${customTerms ? `<li>${customTerms}</li>` : ''}</ol>
+        <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}${customTerms ? `<li>${e(customTerms)}</li>` : ''}</ol>
       </div>
       <div class="sig-section">
         <div class="sig-box">
@@ -267,7 +268,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         </div>
       </div>
       <div class="footer">
-        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • REF: ${data.memberCode} • This is a computer-generated document</p>
+        <p>Generated on ${new Date().toLocaleDateString('en-IN')} • REF: ${e(data.memberCode)} • This is a computer-generated document</p>
       </div>
     </body></html>`;
 
@@ -446,7 +447,7 @@ export function printRegistrationForm(data: RegistrationFormData) {
   const printWindow = window.open('', '_blank');
   if (!printWindow) { alert('Please allow popups to print'); return; }
 
-  const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${data.memberName}</title>
+  const html = `<!DOCTYPE html><html><head><title>Membership Registration - ${e(data.memberName)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
@@ -469,32 +470,32 @@ export function printRegistrationForm(data: RegistrationFormData) {
     .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; }
     @media print { body { padding: 20px; } }
   </style></head><body>
-    <div class="header"><h1>${data.branchName || 'FITNESS CENTER'}</h1><p>Membership Registration Form</p></div>
+    <div class="header"><h1>${e(data.branchName || 'FITNESS CENTER')}</h1><p>Membership Registration Form</p></div>
     <div class="title">MEMBERSHIP AGREEMENT</div>
     <div class="section"><div class="section-title">Member Details</div>
       <div class="info-grid">
-        <div class="info-item"><label>Full Name</label><div class="value">${data.memberName}</div></div>
-        <div class="info-item"><label>Member Code</label><div class="value">${data.memberCode}</div></div>
-        <div class="info-item"><label>Email</label><div class="value">${data.email || '___'}</div></div>
-        <div class="info-item"><label>Phone</label><div class="value">${data.phone || '___'}</div></div>
-        <div class="info-item"><label>Gender</label><div class="value">${data.gender || '___'}</div></div>
+        <div class="info-item"><label>Full Name</label><div class="value">${e(data.memberName)}</div></div>
+        <div class="info-item"><label>Member Code</label><div class="value">${e(data.memberCode)}</div></div>
+        <div class="info-item"><label>Email</label><div class="value">${e(data.email || '___')}</div></div>
+        <div class="info-item"><label>Phone</label><div class="value">${e(data.phone || '___')}</div></div>
+        <div class="info-item"><label>Gender</label><div class="value">${e(data.gender || '___')}</div></div>
         <div class="info-item"><label>Date of Birth</label><div class="value">${data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : '___'}</div></div>
-        <div class="info-item" style="grid-column:span 2"><label>Address</label><div class="value">${data.address || '___'}</div></div>
+        <div class="info-item" style="grid-column:span 2"><label>Address</label><div class="value">${e(data.address || '___')}</div></div>
       </div></div>
     <div class="section"><div class="section-title">Emergency Contact</div>
       <div class="info-grid">
-        <div class="info-item"><label>Name</label><div class="value">${data.emergencyContactName || '___'}</div></div>
-        <div class="info-item"><label>Phone</label><div class="value">${data.emergencyContactPhone || '___'}</div></div>
+        <div class="info-item"><label>Name</label><div class="value">${e(data.emergencyContactName || '___')}</div></div>
+        <div class="info-item"><label>Phone</label><div class="value">${e(data.emergencyContactPhone || '___')}</div></div>
       </div></div>
     <div class="section"><div class="section-title">Membership Details</div>
       <div class="info-grid">
-        <div class="info-item"><label>Plan</label><div class="value">${data.planName || '___'}</div></div>
+        <div class="info-item"><label>Plan</label><div class="value">${e(data.planName || '___')}</div></div>
         <div class="info-item"><label>Amount</label><div class="value">${data.pricePaid ? '₹' + data.pricePaid.toLocaleString('en-IN') : '___'}</div></div>
         <div class="info-item"><label>Start Date</label><div class="value">${data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : '___'}</div></div>
         <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___'}</div></div>
       </div></div>
     <div class="terms"><div class="section-title" style="color:#333">Terms & Conditions</div>
-      <ol>${DEFAULT_TERMS.map(t => `<li>${t}</li>`).join('')}</ol></div>
+      <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}</ol></div>
     <div class="signature-section">
       <div class="signature-box"><div class="signature-line">Member Signature<br/><small>Date: ___</small></div></div>
       <div class="signature-box"><div class="signature-line">Staff Signature<br/><small>Date: ___</small></div></div>

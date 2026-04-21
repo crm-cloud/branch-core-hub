@@ -226,8 +226,8 @@ export function generatePlanPDF(plan: PlanData): void {
     </head>
     <body>
       <div class="header">
-        <h1>${plan.name}</h1>
-        <p>${plan.description || (isWorkout ? 'Personalized Workout Plan' : 'Personalized Diet Plan')}</p>
+        <h1>${escapeHtml(plan.name)}</h1>
+        <p>${escapeHtml(plan.description || (isWorkout ? 'Personalized Workout Plan' : 'Personalized Diet Plan'))}</p>
       </div>
       
       <div class="meta">
@@ -372,8 +372,8 @@ export function generateContractPDF(contract: ContractData): void {
     </head>
     <body>
       <div class="header">
-        <div class="company-name">${contract.companyName || 'FITNESS CENTER'}</div>
-        <div class="company-address">${contract.companyAddress || 'Udaipur, Rajasthan'}</div>
+        <div class="company-name">${escapeHtml(contract.companyName || 'FITNESS CENTER')}</div>
+        <div class="company-address">${escapeHtml(contract.companyAddress || 'Udaipur, Rajasthan')}</div>
       </div>
 
       <div class="title">EMPLOYMENT CONTRACT</div>
@@ -383,27 +383,27 @@ export function generateContractPDF(contract: ContractData): void {
         <div class="info-grid">
           <div class="info-item">
             <label>Employee Name:</label>
-            <span>${contract.employeeName}</span>
+            <span>${escapeHtml(contract.employeeName)}</span>
           </div>
           <div class="info-item">
             <label>Employee Code:</label>
-            <span>${contract.employeeCode}</span>
+            <span>${escapeHtml(contract.employeeCode)}</span>
           </div>
           <div class="info-item">
             <label>Email:</label>
-            <span>${contract.employeeEmail || '-'}</span>
+            <span>${escapeHtml(contract.employeeEmail || '-')}</span>
           </div>
           <div class="info-item">
             <label>Phone:</label>
-            <span>${contract.employeePhone || '-'}</span>
+            <span>${escapeHtml(contract.employeePhone || '-')}</span>
           </div>
           <div class="info-item">
             <label>Position:</label>
-            <span>${contract.position || '-'}</span>
+            <span>${escapeHtml(contract.position || '-')}</span>
           </div>
           <div class="info-item">
             <label>Department:</label>
-            <span>${contract.department || '-'}</span>
+            <span>${escapeHtml(contract.department || '-')}</span>
           </div>
         </div>
       </div>
@@ -655,7 +655,7 @@ export function generatePayslipPDF(data: PayslipData): void {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Payslip - ${data.employeeName} - ${data.month}</title>
+      <title>Payslip - ${escapeHtml(data.employeeName)} - ${escapeHtml(data.month)}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
@@ -678,14 +678,14 @@ export function generatePayslipPDF(data: PayslipData): void {
     </head>
     <body>
       <div class="header">
-        <h1>${data.companyName || 'PAYSLIP'}</h1>
-        <p>Pay Period: ${data.month}</p>
+        <h1>${escapeHtml(data.companyName || 'PAYSLIP')}</h1>
+        <p>Pay Period: ${escapeHtml(data.month)}</p>
       </div>
       <div class="info-grid">
-        <div class="info-item"><strong>Employee:</strong> ${data.employeeName}</div>
-        <div class="info-item"><strong>Code:</strong> ${data.employeeCode}</div>
-        <div class="info-item"><strong>Department:</strong> ${data.department || '-'}</div>
-        <div class="info-item"><strong>Position:</strong> ${data.position || '-'}</div>
+        <div class="info-item"><strong>Employee:</strong> ${escapeHtml(data.employeeName)}</div>
+        <div class="info-item"><strong>Code:</strong> ${escapeHtml(data.employeeCode)}</div>
+        <div class="info-item"><strong>Department:</strong> ${escapeHtml(data.department || '-')}</div>
+        <div class="info-item"><strong>Position:</strong> ${escapeHtml(data.position || '-')}</div>
         <div class="info-item"><strong>Days Present:</strong> ${data.daysPresent} / ${data.workingDays}</div>
         <div class="info-item"><strong>Base Salary:</strong> ₹${data.baseSalary.toLocaleString('en-IN')}</div>
       </div>
@@ -785,17 +785,17 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
   </head><body>
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #6366f1;">
       <div>
-        ${data.logo_url ? `<img src="${data.logo_url}" alt="Logo" style="height:50px;margin-bottom:8px;">` : ''}
+        ${data.logo_url ? `<img src="${escapeHtml(data.logo_url)}" alt="Logo" style="height:50px;margin-bottom:8px;">` : ''}
         <h1 style="font-size:24px;color:#6366f1;font-weight:800;">Incline Fitness</h1>
-        <p style="font-size:12px;color:#64748b;margin-top:4px;">${data.branch_name}</p>
-        <p style="font-size:12px;color:#64748b;">${data.branch_address || ''}</p>
-        <p style="font-size:12px;color:#64748b;">${data.branch_phone || ''} ${data.branch_email ? '· ' + data.branch_email : ''}</p>
-        ${data.gst_number ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${data.gst_number}</p>` : ''}
+        <p style="font-size:12px;color:#64748b;margin-top:4px;">${escapeHtml(data.branch_name)}</p>
+        <p style="font-size:12px;color:#64748b;">${escapeHtml(data.branch_address || '')}</p>
+        <p style="font-size:12px;color:#64748b;">${escapeHtml(data.branch_phone || '')} ${data.branch_email ? '· ' + escapeHtml(data.branch_email) : ''}</p>
+        ${data.gst_number ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${escapeHtml(data.gst_number)}</p>` : ''}
       </div>
       <div style="text-align:right;">
-        <h2 style="font-size:28px;font-weight:800;color:#1e293b;">${invoiceTitle}</h2>
-        <p style="font-size:14px;font-family:monospace;color:#64748b;margin-top:4px;">${data.invoice_number}</p>
-        <span style="display:inline-block;background:${statusColor};color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;margin-top:8px;">${data.status}</span>
+        <h2 style="font-size:28px;font-weight:800;color:#1e293b;">${escapeHtml(invoiceTitle)}</h2>
+        <p style="font-size:14px;font-family:monospace;color:#64748b;margin-top:4px;">${escapeHtml(data.invoice_number)}</p>
+        <span style="display:inline-block;background:${statusColor};color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;margin-top:8px;">${escapeHtml(data.status)}</span>
       </div>
     </div>
 
@@ -803,10 +803,10 @@ export function generateInvoicePDF(data: InvoicePDFData): void {
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;">
         <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Bill To</p>
         <p style="font-weight:600;">${escapeHtml(data.member_name)}</p>
-        ${data.member_code ? `<p style="font-size:12px;color:#64748b;font-family:monospace;">${data.member_code}</p>` : ''}
-        ${data.member_email ? `<p style="font-size:12px;color:#64748b;">${data.member_email}</p>` : ''}
-        ${data.member_phone ? `<p style="font-size:12px;color:#64748b;">${data.member_phone}</p>` : ''}
-        ${data.customer_gstin ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${data.customer_gstin}</p>` : ''}
+        ${data.member_code ? `<p style="font-size:12px;color:#64748b;font-family:monospace;">${escapeHtml(data.member_code)}</p>` : ''}
+        ${data.member_email ? `<p style="font-size:12px;color:#64748b;">${escapeHtml(data.member_email)}</p>` : ''}
+        ${data.member_phone ? `<p style="font-size:12px;color:#64748b;">${escapeHtml(data.member_phone)}</p>` : ''}
+        ${data.customer_gstin ? `<p style="font-size:11px;color:#94a3b8;margin-top:4px;">GSTIN: ${escapeHtml(data.customer_gstin)}</p>` : ''}
       </div>
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;text-align:right;">
         <p style="font-size:12px;color:#64748b;">Date: <strong>${new Date(data.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}</strong></p>
@@ -877,13 +877,13 @@ export function generateThermalReceipt(data: InvoicePDFData): void {
   </head><body>
     <div style="text-align:center;margin-bottom:6px;">
       <strong style="font-size:14px;">INCLINE FITNESS</strong><br>
-      <span style="font-size:10px;">${data.branch_name}</span><br>
-      ${data.branch_phone ? `<span style="font-size:10px;">Tel: ${data.branch_phone}</span><br>` : ''}
-      ${data.gst_number ? `<span style="font-size:9px;">GSTIN: ${data.gst_number}</span>` : ''}
+      <span style="font-size:10px;">${escapeHtml(data.branch_name)}</span><br>
+      ${data.branch_phone ? `<span style="font-size:10px;">Tel: ${escapeHtml(data.branch_phone)}</span><br>` : ''}
+      ${data.gst_number ? `<span style="font-size:9px;">GSTIN: ${escapeHtml(data.gst_number)}</span>` : ''}
     </div>
     <div class="dash"></div>
     <div style="display:flex;justify-content:space-between;font-size:11px;">
-      <span>${data.invoice_number}</span>
+      <span>${escapeHtml(data.invoice_number)}</span>
       <span>${new Date(data.created_at).toLocaleDateString('en-IN')}</span>
     </div>
     <div style="font-size:11px;margin:2px 0;">Customer: ${escapeHtml(data.member_name)}</div>
