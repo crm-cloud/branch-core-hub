@@ -16,7 +16,6 @@ export function SecuritySettings() {
   const queryClient = useQueryClient();
   const [sessionTimeout, setSessionTimeout] = useState(8);
   const [sessionTimeoutEnabled, setSessionTimeoutEnabled] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch org settings
   const { data: orgSettings, isLoading } = useQuery({
