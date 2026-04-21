@@ -244,11 +244,15 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
         return { success: false, error: formatMetaError(result.error || "Meta WhatsApp API test failed", "whatsapp") };
       }
 
+      const usedFallback = result.usedFallback && !!credentials?.app_secret;
       return {
         success: true,
-        message: result.usedFallback
+        message: usedFallback
           ? "Meta WhatsApp API connected ✓ (verified without app secret proof)"
           : "Meta WhatsApp API connected ✓",
+        warning: usedFallback
+          ? "App Secret was provided but Meta rejected the proof. Calls that require appsecret_proof will fail later. Verify your app secret matches the one in Meta Dashboard → App Settings → Basic, or remove it to disable proof."
+          : undefined,
       };
     }
     case "wati": {
@@ -305,9 +309,13 @@ async function testInstagram(config: any, credentials: any) {
     ? `@${entity.data.username}`
     : entity.data?.name || pageId;
 
+  const usedFallback = entity.usedFallback && !!credentials?.app_secret;
   return {
     success: true,
-    message: `Instagram connected ✓ (${label}${me.ok && me.data?.name ? ` via ${me.data.name}` : ""})${entity.usedFallback ? " — without appsecret_proof" : ""}`,
+    message: `Instagram connected ✓ (${label}${me.ok && me.data?.name ? ` via ${me.data.name}` : ""})${usedFallback ? " — without appsecret_proof" : ""}`,
+    warning: usedFallback
+      ? "App Secret was provided but Meta rejected the proof. Outbound DMs may fail later if your app requires appsecret_proof. Verify the app secret matches Meta Dashboard → App Settings → Basic."
+      : undefined,
   };
 }
 
