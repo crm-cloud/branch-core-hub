@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useGlobalChatSound } from '@/hooks/useChatSound';
 
 function mapRoleLabel(role: string): string {
   return role === 'owner' ? 'Admin' : role;
