@@ -386,6 +386,31 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
+          {(() => {
+            const metaIntegrations = integrations.filter((i: any) =>
+              ['whatsapp', 'instagram', 'messenger'].includes(i.integration_type) && i.is_active
+            );
+            const missingSecret = metaIntegrations.filter((i: any) => !i.credentials?.app_secret);
+            if (metaIntegrations.length === 0 || missingSecret.length === 0) return null;
+            return (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 flex items-start gap-3">
+                <div className="rounded-full bg-amber-100 dark:bg-amber-900/40 p-2 mt-0.5">
+                  <XCircle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                    Webhook signature verification disabled for {missingSecret.length} integration(s)
+                  </p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300/90">
+                    Add the <strong>App Secret</strong> from Meta App Dashboard → Settings → Basic to{' '}
+                    {missingSecret.map((i: any) => i.provider).join(', ')}. Without it, anyone with the
+                    webhook URL could inject fake messages into your CRM.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Nested tabs for Meta platforms */}
           <Tabs defaultValue="whatsapp_meta" className="space-y-4">
             <TabsList className="flex flex-wrap gap-1 h-auto p-1 w-full">

@@ -1,6 +1,7 @@
-// v2.0.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger
-// E2: IG sends via Page endpoint primary, IG-account fallback, surface Meta error codes
+// v2.1.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0) via shared config.
+// v2.0.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
@@ -8,8 +9,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const GRAPH_VERSION = "v23.0";
 
 async function generateAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
   const enc = new TextEncoder();
@@ -152,8 +151,8 @@ serve(async (req) => {
     const attempts: Attempt[] = [];
 
     if (platform === "instagram") {
-      if (pageId) attempts.push({ url: `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/messages`, igProduct: false, label: "page" });
-      if (igAccountId) attempts.push({ url: `https://graph.facebook.com/${GRAPH_VERSION}/${igAccountId}/messages`, igProduct: true, label: "ig-account" });
+      if (pageId) attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
+      if (igAccountId) attempts.push({ url: `${META_API_BASE}/${igAccountId}/messages`, igProduct: true, label: "ig-account" });
     } else {
       // Messenger
       if (!pageId) {
@@ -163,7 +162,7 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      attempts.push({ url: `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/messages`, igProduct: false, label: "page" });
+      attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
     }
 
     if (attempts.length === 0) {

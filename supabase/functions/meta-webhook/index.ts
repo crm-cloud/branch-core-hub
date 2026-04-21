@@ -1,10 +1,12 @@
-// v3.1.0 — Unified Meta Webhook: WhatsApp + Instagram DM + Facebook Messenger
-// E1: IG-via-Page detection inside Messenger handler
-// E3: Cross-platform AI memory (history not filtered by platform)
+// v4.0.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0), HMAC signature
+//                   verification, IG comments + mentions + story replies,
+//                   Instagram sender profile resolution.
+// v3.1.0 — IG-via-Page detection; cross-platform AI memory.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
+import { META_API_BASE, verifyXHubSignature } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +105,20 @@ async function handleVerification(req: Request) {
 
 async function handleIncomingEvent(req: Request) {
   const bodyText = await req.text();
+
+  // F2: HMAC-SHA256 signature verification
+  const sigHeader = req.headers.get("x-hub-signature-256");
+  const sigCheck = await verifyAgainstAnyAppSecret(bodyText, sigHeader);
+  if (!sigCheck.accepted) {
+    console.error(`[meta-webhook] signature mismatch (header=${sigHeader ? "present" : "missing"})`);
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (sigCheck.skipped) {
+    console.warn("[meta-webhook] no integration has app_secret configured — accepting unsigned request (back-compat)");
+  }
+
   let payload: any;
   try { payload = JSON.parse(bodyText); }
   catch {
@@ -142,6 +158,45 @@ async function handleIncomingEvent(req: Request) {
   });
 }
 
+// ─── F2: signature verification helper ─────────────────────────────────────────
+
+let _appSecretsCache: { secrets: string[]; fetchedAt: number } = { secrets: [], fetchedAt: 0 };
+async function getActiveAppSecrets(): Promise<string[]> {
+  if (Date.now() - _appSecretsCache.fetchedAt < 60_000 && _appSecretsCache.secrets.length) {
+    return _appSecretsCache.secrets;
+  }
+  const { data } = await supabase
+    .from("integration_settings")
+    .select("credentials")
+    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .eq("is_active", true);
+  const set = new Set<string>();
+  for (const row of data || []) {
+    const secret = (row as any).credentials?.app_secret;
+    if (typeof secret === "string" && secret.length > 0) set.add(secret);
+  }
+  _appSecretsCache = { secrets: Array.from(set), fetchedAt: Date.now() };
+  return _appSecretsCache.secrets;
+}
+
+async function verifyAgainstAnyAppSecret(
+  rawBody: string,
+  sigHeader: string | null,
+): Promise<{ accepted: boolean; skipped: boolean }> {
+  const secrets = await getActiveAppSecrets();
+  if (secrets.length === 0) {
+    // No app_secret configured anywhere — accept (back-compat); UI shows banner.
+    return { accepted: true, skipped: true };
+  }
+  if (!sigHeader) return { accepted: false, skipped: false };
+  for (const s of secrets) {
+    if (await verifyXHubSignature(rawBody, sigHeader, s)) {
+      return { accepted: true, skipped: false };
+    }
+  }
+  return { accepted: false, skipped: false };
+}
+
 // ─── Page-envelope router (IG-via-Page OR pure Messenger) ─────────────────────
 
 async function processPageEnvelopeEvent(payload: any) {
@@ -165,11 +220,29 @@ async function processPageEnvelopeEvent(payload: any) {
 async function processInstagramEvent(payload: any) {
   const entries = Array.isArray(payload.entry) ? payload.entry : [];
   for (const entry of entries) {
+    // F3a: DMs (incl. story replies under messaging[].message.reply_to.story)
     const messaging = Array.isArray(entry.messaging) ? entry.messaging : [];
     for (const event of messaging) {
       if (!event.message) continue;
       console.log(`[IG] direct-object event sender=${event.sender?.id} recipient=${event.recipient?.id}`);
       await ingestMessagingEvent(event, "instagram");
+    }
+
+    // F3b: comments / mentions arrive under entry.changes[]
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    for (const change of changes) {
+      const igAccountId = String(entry.id || "");
+      try {
+        if (change.field === "comments") {
+          await ingestInstagramComment(change.value, igAccountId);
+        } else if (change.field === "mentions") {
+          await ingestInstagramMention(change.value, igAccountId);
+        } else {
+          console.log(`[IG] unhandled change field=${change.field}`);
+        }
+      } catch (e) {
+        console.error(`[IG] change handler error field=${change.field}:`, e);
+      }
     }
   }
 }
@@ -190,8 +263,19 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
 
   const isOutbound = message.is_echo === true;
   const contactId = isOutbound ? recipientId : senderId;
-  const content = message.text || (message.attachments?.[0]?.type === "image" ? "[Image]" : "[Attachment]");
-  const messageType = message.attachments?.[0]?.type || "text";
+
+  // F3c: detect IG story reply (DM that quotes a story)
+  const isStoryReply = !!(message.reply_to?.story || event.story);
+  let messageType = message.attachments?.[0]?.type || "text";
+  if (isStoryReply) messageType = "story_reply";
+
+  const baseContent = message.text
+    || (message.attachments?.[0]?.type === "image" ? "[Image]" : message.attachments?.[0]?.type ? `[${message.attachments[0].type}]` : "[Attachment]");
+  const storyRef = message.reply_to?.story?.id || event.story?.id;
+  const content = isStoryReply && storyRef
+    ? `[Story reply → ${storyRef}] ${baseContent}`
+    : baseContent;
+
   const mediaUrl = message.attachments?.[0]?.payload?.url || null;
 
   if (message.mid) {
@@ -206,12 +290,18 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
     }
   }
 
+  // F4: resolve IG sender display name on first contact
+  let contactName: string | null = null;
+  if (platform === "instagram" && !isOutbound && integration) {
+    contactName = await resolveInstagramSenderName(contactId, integration);
+  }
+
   const { data: inserted, error } = await supabase
     .from("whatsapp_messages")
     .insert({
       branch_id: branchId,
       phone_number: contactId,
-      contact_name: null,
+      contact_name: contactName,
       message_type: messageType,
       content,
       media_url: mediaUrl,
@@ -227,7 +317,7 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
     console.error(`[${platform}] insert failed:`, error.message);
     return;
   }
-  console.log(`[${platform}] stored ${isOutbound ? "outbound" : "inbound"} msg id=${inserted?.id}`);
+  console.log(`[${platform}] stored ${isOutbound ? "outbound" : "inbound"} type=${messageType} msg id=${inserted?.id}`);
 
   if (!isOutbound && inserted) {
     await supabase.from("whatsapp_chat_settings").upsert(
@@ -235,6 +325,144 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
       { onConflict: "branch_id,phone_number" }
     );
     await triggerAiReply(inserted.id, contactId, branchId, platform, integration);
+  }
+}
+
+// ─── F3: Instagram comments + mentions ────────────────────────────────────────
+
+async function ingestInstagramComment(value: any, igAccountId: string) {
+  if (!value) return;
+  const commentId = String(value.id || "");
+  const fromId = String(value.from?.id || "");
+  const fromUsername = value.from?.username ? `@${value.from.username}` : null;
+  const text = String(value.text || "[no text]");
+  const mediaId = String(value.media?.id || "");
+  if (!commentId || !fromId) {
+    console.log("[IG] comment missing id/from, skipping");
+    return;
+  }
+
+  const integration = await findIntegrationByPageId(igAccountId, "instagram");
+  const branchId = integration?.branch_id || await getFallbackBranchId();
+  if (!branchId) return;
+
+  // Dedup by platform_message_id = comment_id
+  const { data: existing } = await supabase
+    .from("whatsapp_messages")
+    .select("id")
+    .eq("platform_message_id", commentId)
+    .maybeSingle();
+  if (existing) {
+    console.log(`[IG] dedup comment id=${commentId}`);
+    return;
+  }
+
+  const content = `[Comment on ${mediaId || "media"}] ${text}`;
+  const { data: inserted, error } = await supabase
+    .from("whatsapp_messages")
+    .insert({
+      branch_id: branchId,
+      phone_number: fromId,
+      contact_name: fromUsername,
+      message_type: "comment",
+      content,
+      direction: "inbound",
+      status: "received",
+      platform: "instagram" as any,
+      platform_message_id: commentId,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[IG] comment insert failed:", error.message);
+    return;
+  }
+  console.log(`[IG] stored comment id=${inserted?.id} from=${fromUsername || fromId}`);
+
+  await supabase.from("whatsapp_chat_settings").upsert(
+    { branch_id: branchId, phone_number: fromId, is_unread: true, platform: "instagram" as any },
+    { onConflict: "branch_id,phone_number" }
+  );
+
+  // Auto-reply on comments only when explicitly enabled
+  const orgConfig = await getOrgAiConfig();
+  const aiConfig = orgConfig?.whatsapp_ai_config as any;
+  if (aiConfig?.instagram_auto_reply_comments === true && inserted) {
+    await triggerAiReply(inserted.id, fromId, branchId, "instagram", integration);
+  }
+}
+
+async function ingestInstagramMention(value: any, igAccountId: string) {
+  if (!value) return;
+  const commentId = String(value.comment_id || value.media_id || "");
+  const mediaId = String(value.media_id || "");
+  const fromId = String(value.from?.id || "");
+  const fromUsername = value.from?.username ? `@${value.from.username}` : null;
+  if (!commentId) {
+    console.log("[IG] mention missing id, skipping");
+    return;
+  }
+
+  const integration = await findIntegrationByPageId(igAccountId, "instagram");
+  const branchId = integration?.branch_id || await getFallbackBranchId();
+  if (!branchId) return;
+
+  const { data: existing } = await supabase
+    .from("whatsapp_messages")
+    .select("id")
+    .eq("platform_message_id", commentId)
+    .maybeSingle();
+  if (existing) return;
+
+  const content = `[@mention on ${mediaId || "media"}] (open Instagram to view context)`;
+  const { error } = await supabase
+    .from("whatsapp_messages")
+    .insert({
+      branch_id: branchId,
+      phone_number: fromId || `mention:${commentId}`,
+      contact_name: fromUsername,
+      message_type: "mention",
+      content,
+      direction: "inbound",
+      status: "received",
+      platform: "instagram" as any,
+      platform_message_id: commentId,
+    });
+  if (error) {
+    console.error("[IG] mention insert failed:", error.message);
+    return;
+  }
+  console.log(`[IG] stored mention id=${commentId} from=${fromUsername || fromId}`);
+}
+
+// ─── F4: Instagram sender profile resolution ──────────────────────────────────
+
+const _igProfileCache = new Map<string, { name: string | null; ts: number }>();
+async function resolveInstagramSenderName(igUserId: string, integration: any): Promise<string | null> {
+  const cached = _igProfileCache.get(igUserId);
+  if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) return cached.name;
+
+  const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
+  if (!accessToken) return null;
+
+  try {
+    const url = `${META_API_BASE}/${igUserId}?fields=name,username,profile_pic`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.warn(`[IG profile] resolve failed for ${igUserId}: ${data?.error?.message || resp.status}`);
+      _igProfileCache.set(igUserId, { name: null, ts: Date.now() });
+      return null;
+    }
+    const username = data.username ? `@${data.username}` : null;
+    const display = data.name || username || null;
+    _igProfileCache.set(igUserId, { name: display, ts: Date.now() });
+    return display;
+  } catch (e) {
+    console.warn(`[IG profile] error for ${igUserId}:`, e instanceof Error ? e.message : e);
+    return null;
   }
 }
 
