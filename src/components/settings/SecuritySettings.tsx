@@ -164,35 +164,6 @@ export function SecuritySettings() {
         </CardContent>
       </Card>
 
-      {/* Data Export */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Download className="h-5 w-5 text-primary" />
-            <CardTitle>Data Export</CardTitle>
-          </div>
-          <CardDescription>Download a full JSON export of your system data for backup or migration</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            This generates a JSON file containing all your members, plans, invoices, attendance records, and configuration.
-            Use this for backup purposes or when migrating to a new setup.
-          </p>
-          <Button onClick={handleExportData} disabled={isExporting} variant="outline">
-            {isExporting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Generate System Dump
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
