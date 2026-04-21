@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { createPOSSale, type CartItem } from '@/services/storeService';
 import { useNavigate } from 'react-router-dom';
 import { useBranchContext } from '@/contexts/BranchContext';
+import { escapeHtml } from '@/utils/htmlEscape';
 
 export default function POSPage() {
   const queryClient = useQueryClient();
