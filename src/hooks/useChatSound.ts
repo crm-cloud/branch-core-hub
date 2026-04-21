@@ -61,3 +61,46 @@ export function useChatSoundPreference() {
   const set = useCallback(setChatSoundEnabled, []);
   return { get, set };
 }
+
+/**
+ * Globally subscribes to inbound WhatsApp messages via Supabase Realtime
+ * and plays the ping sound — independent of which page the user is on.
+ * Mount once in a top-level layout (e.g. AppHeader).
+ */
+export function useGlobalChatSound(enabled: boolean = true) {
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    let channel: any = null;
+
+    import('@/integrations/supabase/client').then(({ supabase }) => {
+      if (cancelled) return;
+      const channelName = `global-chat-sound-${Math.random().toString(36).slice(2, 8)}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'whatsapp_messages',
+            filter: 'direction=eq.inbound',
+          },
+          () => {
+            if (isChatSoundEnabled()) playPing();
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      cancelled = true;
+      if (channel) {
+        import('@/integrations/supabase/client').then(({ supabase }) => {
+          supabase.removeChannel(channel);
+        });
+      }
+    };
+  }, [enabled]);
+}
