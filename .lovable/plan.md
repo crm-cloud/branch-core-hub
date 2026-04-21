@@ -1,54 +1,68 @@
 
 
-## Phase D — Notifications & Chat Audit
+## Phase E — Meta (IG/FB) deep audit + WhatsApp trigger repair
 
-### D1. Eliminate duplicate notifications at the source
+### E1. Fix Instagram inbound webhook routing (REAL ISSUE)
 
-**Root causes found:**
-- `notify_lead_created` DB trigger fans out to **all** owner/admin/manager/staff users with **no `branch_id` filter** on recipients → managers at Branch B receive Branch A leads.
-- `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring` have the same problem (broadcast to all owners/admins/staff regardless of branch).
-- `RegisterModal.tsx` lead path: `webhook-lead-capture` inserts the lead → DB trigger creates in-app notification rows. The current `fetchNotifications` client-side dedupe (1-min bucket on title+message) hides the symptom but doesn't fix the cause. Verified live data shows `dup_count: 2` for the same lead.
-- The dup of 2 comes from the trigger inserting one row per matched role (`owner` + `admin` for the same user when a user holds two roles, or the trigger firing twice if a duplicate trigger exists on the table).
+**Finding:** `whatsapp_messages` contains zero real Instagram messages — only synthetic `IG_TEST_*` rows from earlier curl tests. Real DMs from `@theinclinelife` never reached the CRM.
 
-**Fix (single migration):**
-1. Rewrite all 5 notifier trigger functions (`notify_lead_created`, `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring`) to:
-   - **Branch-scope recipients**: owners + admins get all branches; managers get only their `branch_managers` rows; staff/trainers get only their `staff_branches` / `employees.branch_id` rows.
-   - **DISTINCT user_id** in the SELECT to prevent dup rows when a user holds multiple roles.
-2. Drop any duplicate triggers on the same table (audit `pg_trigger`, keep one per event).
-3. Add a unique partial index `notifications_dedupe_idx` on `(user_id, title, message, date_trunc('minute', created_at))` `WHERE is_read = false` — guarantees no exact dup row inside a 1-minute window even if a code path double-fires.
-4. Remove the client-side dedupe filter in `fetchNotifications` (no longer needed).
-
-### D2. Role-based notification routing
-
-For each notification type, restrict recipients:
-
-| Event | Recipients |
-|---|---|
-| New lead | Owner/Admin (all) + Manager (lead's branch) + Staff (lead's branch) |
-| New member | Owner/Admin (all) + Manager/Staff (member's branch) |
-| Payment received | Owner/Admin (all) + Manager (branch) |
-| Membership expiring (member) | The member only |
-| Membership expiring (staff) | Owner/Admin + Manager (branch) |
-| Locker assigned | Owner/Admin + Manager/Staff (branch) |
-| Referral converted | The referrer only (already correct) |
-| Booking confirmation/cancel | The member only (already correct) |
-
-Trainers receive **only** notifications about their own clients/sessions. Members receive **only** their own notifications.
-
-### D3. Realtime chat sound — global subscription
-
-Currently `useChatSound(inboundCount)` only fires when the user has the WhatsApp chat page open with a contact selected.
+**Root cause (per latest Meta docs):** With "Instagram Login via Facebook Login for Business" (the current standard for Page-linked IG Business accounts), Meta delivers DMs as `object: "page"` with the Page ID as recipient — same envelope as Messenger. Our router only routes `object: "instagram"` events to `processInstagramEvent`. IG-with-Pages traffic falls into `processMessengerEvent` and gets stored as platform `messenger` (or filtered out).
 
 **Fix:**
-- Create new hook `useGlobalChatSound()` mounted in `AppHeader` (always rendered when authenticated).
-- It subscribes to `postgres_changes` on `public.whatsapp_messages` filtered by `direction=eq.inbound` (and branch when applicable) and plays `playPing()` whenever a new inbound message arrives, respecting the existing `isChatSoundEnabled()` preference.
-- Verify `whatsapp_messages` is in `supabase_realtime` publication; if not, add it via migration.
+- Inside `processMessengerEvent`, detect Instagram-origin events by matching `recipient.id` against any active `integration_settings.instagram` row's `page_id` / `instagram_account_id`. Re-route to IG handler with `platform = "instagram"`.
+- In `meta-webhook` GET verifier: also accept the new `field: "messages"` subscription used for IG (no code change needed, just verify config).
+- Add structured logging (`console.log` with `[IG]`/`[FB]` prefix + sender/recipient/page IDs) so future diagnosis takes seconds.
 
-### D4. Remove duplicate Data Export from SecuritySettings
+### E2. Fix Instagram outbound send (failed: 1)
 
-`SecuritySettings.tsx` lines 188–216 contain a "Data Export" card that duplicates the new `/settings → Backup & Restore` tab built in C4.
+**Finding:** Existing IG outbound row is `failed`. `send-message` posts to `https://graph.facebook.com/v25.0/{ig_id}/messages` with `messaging_product:"instagram"`. Per current Meta docs (Apr 2025), IG messages must be sent via the **Page** endpoint when the IG account is connected through a Facebook Page:
+```
+POST /v23.0/{PAGE_ID}/messages   (NOT /{IG_ID}/messages)
+body: { recipient:{id}, message:{text}, messaging_type:"RESPONSE" }
+```
+Only standalone IG Business accounts (with IG User Access Token, no Page) use the IG-account endpoint.
 
-**Fix:** Delete the Data Export card from `SecuritySettings.tsx` (and the `handleExportData`, `isExporting` state, `Download`/`Loader2` imports if no longer used). Keep only Password Policy + Session Management.
+**Fix:** Update `send-message/index.ts` Instagram branch to:
+1. Try `POST /{page_id}/messages` first (Page-linked, the common case).
+2. Fall back to `POST /{ig_id}/messages` with `messaging_product:"instagram"` only if `page_id` is absent.
+3. Accept image/audio/video attachments using the new `attachment` payload format (max 25 MB, public URL).
+4. Surface the actual Meta `error.code` + `error.error_subcode` in the message row's `error` column for UI debugging.
+
+### E3. Unified AI brain across WhatsApp + IG + FB
+
+**Status:** `meta-webhook` already calls `getAllToolDefinitions()` and `executeSharedToolCall` — same brain as `whatsapp-webhook`. ✅
+**Gap:** History query in `meta-webhook` filters by `platform=eq.{platform}`, so a customer who messages on both IG and WhatsApp gets two disjoint memories.
+
+**Fix:** Build conversation history by `phone_number` (the IG/FB sender ID is stored there) without platform filter, but tag each turn with `(via {platform})` in the system prompt so the model knows context. Identifier dedup remains per-platform via `platform_message_id`.
+
+### E4. App Secret Proof — verify on save, not just test
+
+**Finding:** Test Connection succeeds without `appsecret_proof` (fallback). UI doesn't warn when the app has "Require App Secret Proof for Server API calls" enabled in Meta — calls will silently fail later.
+
+**Fix:** In `test-integration`, when `app_secret` is provided AND fallback path was used (proof failed), return `{ success: true, warning: "..." }` so the UI shows an amber banner: *"Connected, but app_secret proof rejected — verify your app secret matches the one in Meta Dashboard → App Settings → Basic"*.
+
+### E5. WhatsApp automation triggers — broken silently
+
+**Finding:**
+- `whatsapp_triggers` table has **0 rows** (zero configured triggers).
+- `autoSendWhatsAppTemplate` (in `WhatsAppTemplateDrawer.tsx`) queries `templates.channel = 'whatsapp'` and `templates.trigger_event = ?` — neither column exists on the `templates` table (real columns are `type` and there is no `trigger_event`). Every call fails silently in its `catch{}` block.
+- 27 approved WhatsApp templates exist but nothing wires events → templates → sends.
+
+**Fix:**
+1. Rewrite `autoSendWhatsAppTemplate` to:
+   - Look up `whatsapp_triggers` by `event_name` + `branch_id` (with global fallback when branch row missing).
+   - Join template, replace `{{var}}` placeholders, insert message, invoke `send-whatsapp`.
+2. Migration to seed sensible defaults in `whatsapp_triggers` mapped to existing approved templates: `member_created` → "New Member Welcome", `payment_received` → "Payment Received", `lead_created` → "Lead Welcome", `membership_expiring_7d` → "Renewal Reminder 7 Days", `membership_expiring_1d` → "Renewal Reminder 1 Day", `membership_expired` → "Membership Expired", `pt_session_booked` → "PT Session Booked", `class_booked` → "Class Booking Confirmed", `feedback_request` → "Feedback Request", `birthday` → "Birthday Wish", `freeze_confirmed` → "Freeze Confirmation", `unfreeze_confirmed` → "Unfreeze Confirmation", `referral_reward` → "Referral Reward".
+3. Remove the silent `catch {}` — log to `communication_logs` so failures are auditable.
+
+### E6. End-to-end curl validation
+
+After deploy, run live curl tests through `supabase--curl_edge_functions`:
+1. `meta-webhook` GET verification with the saved Instagram verify token → 200 + challenge echo.
+2. `meta-webhook` POST simulated **Page-object IG** event (real Meta envelope) → assert one inbound row appears with `platform='instagram'`.
+3. `meta-webhook` POST real IG `object:"instagram"` event → same assertion.
+4. `send-message` POST `platform:"instagram"` with the real IG sender ID → check Meta returns `message_id`, row updates to `sent`.
+5. Trigger fake `member_created` event → assert `whatsapp_messages` row created via `autoSendWhatsAppTemplate`.
 
 ---
 
@@ -56,86 +70,17 @@ Currently `useChatSound(inboundCount)` only fires when the user has the WhatsApp
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | Rewrite 5 notifier functions with branch scoping + DISTINCT, drop dup triggers, add dedupe partial index, ensure `whatsapp_messages` in realtime publication |
-| `src/services/notificationService.ts` | Remove client-side 1-minute dedupe loop in `fetchNotifications` |
-| `src/hooks/useChatSound.ts` | Add new export `useGlobalChatSound()` |
-| `src/components/layout/AppHeader.tsx` | Mount `useGlobalChatSound()` |
-| `src/components/settings/SecuritySettings.tsx` | Remove Data Export card + unused imports |
+| `supabase/functions/meta-webhook/index.ts` | E1 IG-via-Page detection + cross-platform history (E3) + structured logging |
+| `supabase/functions/send-message/index.ts` | E2 Page-endpoint primary route, IG-account fallback, surface Meta error codes |
+| `supabase/functions/test-integration/index.ts` | E4 return warning when proof-fallback used |
+| `src/components/communication/WhatsAppTemplateDrawer.tsx` | E5 rewrite `autoSendWhatsAppTemplate` against real schema |
+| `src/components/settings/IntegrationConfigSheet.tsx` (or equivalent) | E4 amber banner on warning response |
+| `supabase/migrations/<new>.sql` | E5 seed default `whatsapp_triggers` rows |
 
-## Verification after deploy
+## Verification gates
 
-1. Trigger a new lead via the Register Modal → check `notifications` table has exactly N rows where N = unique recipient count, no duplicates.
-2. Send an inbound WhatsApp message while sitting on `/dashboard` → ping sound plays.
-3. As a manager of Branch A, confirm no new-lead notification appears for a Branch B lead.
-4. `/settings → Security` shows only Password Policy + Session Management. `/settings → Backup & Restore` is the only place to export.
-
-</plan>I'll just present the plan directly using the proper tag format.
-
-<lov-plan>
-
-## Phase D — Notifications & Chat Audit
-
-### D1. Eliminate duplicate notifications at the source
-
-**Root causes found (verified live):**
-- `notify_lead_created`, `notify_new_member`, `notify_payment_received`, `notify_locker_assigned`, `notify_membership_expiring` triggers fan out to **all** owner/admin/manager/staff users with **no `branch_id` recipient filter** and **no `DISTINCT user_id`**, so a user holding two roles (e.g. owner + admin) gets the same notification inserted twice.
-- Live data confirms `dup_count: 2` for "kuldeep salvi" with the same `branch_id` and timestamp bucket.
-- The current client-side 1-minute dedupe in `fetchNotifications` only hides the symptom — the unread **count** still reflects the duplicate row.
-
-**Fix (single migration):**
-1. Rewrite all 5 trigger functions to:
-   - Branch-scope recipients (owners/admins → all; managers → their `branch_managers`; staff/trainers → their `staff_branches`/`employees.branch_id`).
-   - `SELECT DISTINCT user_id` so multi-role users get one row.
-2. Audit `pg_trigger` and drop any duplicate triggers on the same table.
-3. Add a **unique partial index** `notifications_dedupe_idx` on `(user_id, title, message, date_trunc('minute', created_at)) WHERE is_read = false` — guarantees no exact dup row inside a 1-minute window even if a code path double-fires.
-4. Remove the now-redundant client-side dedupe in `fetchNotifications`.
-
-### D2. Role-based notification routing
-
-| Event | Recipients |
-|---|---|
-| New lead | Owner/Admin (all) + Manager (lead's branch) + Staff (lead's branch) |
-| New member | Owner/Admin (all) + Manager/Staff (member's branch) |
-| Payment received | Owner/Admin (all) + Manager (branch) |
-| Membership expiring (member-facing) | The member only |
-| Membership expiring (staff-facing) | Owner/Admin + Manager (branch) |
-| Locker assigned | Owner/Admin + Manager/Staff (branch) |
-| Referral converted | The referrer only (already correct) |
-| Booking confirmation/cancel | The member only (already correct) |
-
-Trainers receive **only** notifications about their own clients/sessions. Members receive **only** their own notifications.
-
-### D3. Realtime chat sound — global subscription
-
-Currently `useChatSound(inboundCount)` only fires when the WhatsApp chat page is open with a contact selected.
-
-**Fix:**
-- Add new export `useGlobalChatSound()` in `src/hooks/useChatSound.ts` that subscribes to `postgres_changes` on `public.whatsapp_messages` (filter `direction=eq.inbound`) and plays the ping whenever a new inbound message arrives, respecting `isChatSoundEnabled()`.
-- Mount it in `AppHeader` (always rendered for authenticated users).
-- Migration ensures `whatsapp_messages` is in the `supabase_realtime` publication.
-
-### D4. Remove duplicate Data Export from Security tab
-
-`SecuritySettings.tsx` (lines 188–216) duplicates the `/settings → Backup & Restore` tab built in Phase C4.
-
-**Fix:** Delete the Data Export card + `handleExportData` + `isExporting` state + unused `Download`/`Loader2` imports. Keep only Password Policy + Session Management.
-
----
-
-## Files touched
-
-| File | Change |
-|---|---|
-| `supabase/migrations/<new>.sql` | Rewrite 5 notifier functions with branch scoping + DISTINCT, drop dup triggers, add dedupe partial index, add `whatsapp_messages` to realtime publication |
-| `src/services/notificationService.ts` | Remove client-side 1-minute dedupe |
-| `src/hooks/useChatSound.ts` | Add `useGlobalChatSound()` |
-| `src/components/layout/AppHeader.tsx` | Mount `useGlobalChatSound()` |
-| `src/components/settings/SecuritySettings.tsx` | Remove Data Export card + unused imports |
-
-## Verification after deploy
-
-1. New lead via Register Modal → exactly N unread rows where N = unique recipient count, badge count matches.
-2. Inbound WhatsApp message while on `/dashboard` → ping sound plays without opening chat.
-3. As Branch A manager, no Branch B lead notification appears.
-4. `/settings → Security` shows only Password Policy + Session Management; export lives only under Backup & Restore.
+- ✅ Sending a real DM from Instagram now creates a row in `whatsapp_messages` with `platform='instagram'`, `direction='inbound'`.
+- ✅ Sending a reply from CRM updates the row to `status='sent'` with a real `mid_*` `platform_message_id`.
+- ✅ Creating a test member fires `New Member Welcome` template via the WhatsApp send pipeline.
+- ✅ All 5 curl tests in E6 return success.
 
