@@ -1,6 +1,6 @@
 // v3.0.0 — AI-powered contextual lead nurture follow-up with retry reset + cooldown
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const serve = Deno.serve;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
