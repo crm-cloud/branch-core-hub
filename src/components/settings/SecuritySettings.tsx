@@ -62,7 +62,7 @@ export function SecuritySettings() {
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Security Settings</h2>
-        <p className="text-sm text-muted-foreground">Configure security, session management, and data exports</p>
+        <p className="text-sm text-muted-foreground">Configure security and session management. Backups live under the Backup &amp; Restore tab.</p>
       </div>
 
       {/* Password Policy */}
