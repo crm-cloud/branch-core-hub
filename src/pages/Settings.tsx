@@ -1,7 +1,8 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database } from 'lucide-react';
+import { BackupRestore } from '@/components/settings/BackupRestore';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
 import { BranchSettings } from '@/components/settings/BranchSettings';
 import { IntegrationSettings } from '@/components/settings/IntegrationSettings';
@@ -34,6 +35,7 @@ const SETTINGS_MENU = [
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'security', label: 'Security', icon: Shield },
   { value: 'website', label: 'Website', icon: Globe },
+  { value: 'backup', label: 'Backup & Restore', icon: Database },
 ];
 
 const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
@@ -52,6 +54,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   notifications: <NotificationSettings />,
   security: <SecuritySettings />,
   website: <WebsiteSettings />,
+  backup: <BackupRestore />,
 };
 
 export default function SettingsPage() {
