@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useGlobalChatSound } from '@/hooks/useChatSound';
 
 function mapRoleLabel(role: string): string {
   return role === 'owner' ? 'Admin' : role;
@@ -35,6 +36,9 @@ export function AppHeader() {
   const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
+
+  // Global realtime ping for inbound WhatsApp messages — works on any page.
+  useGlobalChatSound(!!user?.id);
 
   const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption, currentBranchName } = useBranchContext();
 

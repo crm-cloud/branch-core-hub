@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Shield, Clock, KeyRound, Download, Loader2, Monitor } from 'lucide-react';
+import { Clock, KeyRound, Monitor } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,7 +16,6 @@ export function SecuritySettings() {
   const queryClient = useQueryClient();
   const [sessionTimeout, setSessionTimeout] = useState(8);
   const [sessionTimeoutEnabled, setSessionTimeoutEnabled] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch org settings
   const { data: orgSettings, isLoading } = useQuery({
@@ -56,34 +55,14 @@ export function SecuritySettings() {
     onError: () => toast.error('Failed to save settings'),
   });
 
-  const handleExportData = async () => {
-    setIsExporting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('export-data');
-      if (error) throw error;
 
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `system-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Data export downloaded');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to export data');
-    } finally {
-      setIsExporting(false);
-    }
-  };
+
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">Security Settings</h2>
-        <p className="text-sm text-muted-foreground">Configure security, session management, and data exports</p>
+        <p className="text-sm text-muted-foreground">Configure security and session management. Backups live under the Backup &amp; Restore tab.</p>
       </div>
 
       {/* Password Policy */}
@@ -185,35 +164,6 @@ export function SecuritySettings() {
         </CardContent>
       </Card>
 
-      {/* Data Export */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Download className="h-5 w-5 text-primary" />
-            <CardTitle>Data Export</CardTitle>
-          </div>
-          <CardDescription>Download a full JSON export of your system data for backup or migration</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            This generates a JSON file containing all your members, plans, invoices, attendance records, and configuration.
-            Use this for backup purposes or when migrating to a new setup.
-          </p>
-          <Button onClick={handleExportData} disabled={isExporting} variant="outline">
-            {isExporting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Generate System Dump
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
