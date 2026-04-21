@@ -1,10 +1,12 @@
-// v3.1.0 — Unified Meta Webhook: WhatsApp + Instagram DM + Facebook Messenger
-// E1: IG-via-Page detection inside Messenger handler
-// E3: Cross-platform AI memory (history not filtered by platform)
+// v4.0.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0), HMAC signature
+//                   verification, IG comments + mentions + story replies,
+//                   Instagram sender profile resolution.
+// v3.1.0 — IG-via-Page detection; cross-platform AI memory.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
+import { META_API_BASE, verifyXHubSignature } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
