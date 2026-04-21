@@ -37,6 +37,9 @@ export function AppHeader() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
 
+  // Global realtime ping for inbound WhatsApp messages — works on any page.
+  useGlobalChatSound(!!user?.id);
+
   const { selectedBranch, setSelectedBranch, branches, showSelector, showAllOption, currentBranchName } = useBranchContext();
 
   const getInitials = (name: string | null) => {
