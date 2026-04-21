@@ -105,6 +105,20 @@ async function handleVerification(req: Request) {
 
 async function handleIncomingEvent(req: Request) {
   const bodyText = await req.text();
+
+  // F2: HMAC-SHA256 signature verification
+  const sigHeader = req.headers.get("x-hub-signature-256");
+  const sigCheck = await verifyAgainstAnyAppSecret(bodyText, sigHeader);
+  if (!sigCheck.accepted) {
+    console.error(`[meta-webhook] signature mismatch (header=${sigHeader ? "present" : "missing"})`);
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (sigCheck.skipped) {
+    console.warn("[meta-webhook] no integration has app_secret configured — accepting unsigned request (back-compat)");
+  }
+
   let payload: any;
   try { payload = JSON.parse(bodyText); }
   catch {
@@ -142,6 +156,45 @@ async function handleIncomingEvent(req: Request) {
   return new Response(JSON.stringify({ success: true }), {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// ─── F2: signature verification helper ─────────────────────────────────────────
+
+let _appSecretsCache: { secrets: string[]; fetchedAt: number } = { secrets: [], fetchedAt: 0 };
+async function getActiveAppSecrets(): Promise<string[]> {
+  if (Date.now() - _appSecretsCache.fetchedAt < 60_000 && _appSecretsCache.secrets.length) {
+    return _appSecretsCache.secrets;
+  }
+  const { data } = await supabase
+    .from("integration_settings")
+    .select("credentials")
+    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .eq("is_active", true);
+  const set = new Set<string>();
+  for (const row of data || []) {
+    const secret = (row as any).credentials?.app_secret;
+    if (typeof secret === "string" && secret.length > 0) set.add(secret);
+  }
+  _appSecretsCache = { secrets: Array.from(set), fetchedAt: Date.now() };
+  return _appSecretsCache.secrets;
+}
+
+async function verifyAgainstAnyAppSecret(
+  rawBody: string,
+  sigHeader: string | null,
+): Promise<{ accepted: boolean; skipped: boolean }> {
+  const secrets = await getActiveAppSecrets();
+  if (secrets.length === 0) {
+    // No app_secret configured anywhere — accept (back-compat); UI shows banner.
+    return { accepted: true, skipped: true };
+  }
+  if (!sigHeader) return { accepted: false, skipped: false };
+  for (const s of secrets) {
+    if (await verifyXHubSignature(rawBody, sigHeader, s)) {
+      return { accepted: true, skipped: false };
+    }
+  }
+  return { accepted: false, skipped: false };
 }
 
 // ─── Page-envelope router (IG-via-Page OR pure Messenger) ─────────────────────
