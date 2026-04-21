@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { communicationService } from '@/services/communicationService';
+import { e } from '@/utils/htmlEscape';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
@@ -142,17 +143,17 @@ Team Incline Fitness`;
         <div class="invoice-info">
           <div>
             <h3>Bill To:</h3>
-            <p><strong>${memberName}</strong></p>
-            <p>${memberProfile?.email || ''}</p>
-            <p>${memberProfile?.phone || ''}</p>
+            <p><strong>${e(memberName)}</strong></p>
+            <p>${e(memberProfile?.email || '')}</p>
+            <p>${e(memberProfile?.phone || '')}</p>
           </div>
           <div style="text-align: right;">
             <h3>Invoice Details:</h3>
-            <p><strong>${invoice.invoice_number}</strong></p>
+            <p><strong>${e(invoice.invoice_number)}</strong></p>
             <p>Date: ${format(new Date(invoice.created_at), 'dd MMM yyyy')}</p>
             <p>
               <span class="status ${invoice.status === 'paid' ? 'paid' : 'pending'}">
-                ${invoice.status.toUpperCase()}
+                ${e(String(invoice.status).toUpperCase())}
               </span>
             </p>
           </div>
@@ -170,7 +171,7 @@ Team Incline Fitness`;
           <tbody>
             ${invoice.invoice_items?.map((item: any) => `
               <tr>
-                <td>${item.description}</td>
+                <td>${e(item.description)}</td>
                 <td>${item.quantity || 1}</td>
                 <td>₹${item.unit_price.toLocaleString()}</td>
                 <td>₹${item.total_amount.toLocaleString()}</td>

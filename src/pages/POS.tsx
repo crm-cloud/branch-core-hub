@@ -315,12 +315,12 @@ export default function POSPage() {
         <div class="header">
           <h2>GYM STORE</h2>
           <p>${new Date().toLocaleString()}</p>
-          ${lastSale?.member ? `<p>Member: ${lastSale.member.member_code || lastSale.member.full_name}</p>` : ''}
-          ${lastSale?.invoice_id ? `<p class="invoice-number">Invoice: ${lastSale.id?.slice(0, 8)}</p>` : ''}
+          ${lastSale?.member ? `<p>Member: ${escapeHtml(lastSale.member.member_code || lastSale.member.full_name)}</p>` : ''}
+          ${lastSale?.invoice_id ? `<p class="invoice-number">Invoice: ${escapeHtml(lastSale.id?.slice(0, 8) ?? '')}</p>` : ''}
         </div>
         ${lastSale?.items?.map((item: any) => `
           <div class="item">
-            <span>${item.product.name} x${item.quantity}</span>
+            <span>${escapeHtml(item.product.name)} x${item.quantity}</span>
             <span>₹${(item.product.price * item.quantity).toLocaleString()}</span>
           </div>
         `).join('')}
