@@ -1,86 +1,289 @@
 
+## Phase G — Secure Measurement Foundation + Member 3D Progress
 
-## Phase F — Meta Integration v25 Hardening
+### What’s already in the codebase
+- `member_measurements` exists, but current RLS is too broad: staff/trainers can insert without proving member/branch authorization.
+- Progress photos are currently stored in public `member-photos` and the UI saves public URLs directly.
+- `RecordMeasurementDrawer.tsx` uploads files immediately and only removes them from local state on cancel/remove, so files can be orphaned.
+- Measurement writes are direct table inserts from the client with no server-side validation/RPC.
+- `MyProgress.tsx` and `MeasurementProgressView.tsx` already provide a member progress entry point that can be extended.
+- React Three Fiber / Three.js are already installed and used in the project, so the stack is ready.
 
-### Audit findings (verified against code, not the user's outdated summary)
+## Phase G1 — Lock down measurements and progress photo storage first
 
-| Claim by user | Reality |
-|---|---|
-| "API still on v18.0" | ❌ False. `send-whatsapp` and `manage-whatsapp-templates` are already on **v25.0** (Phase E). |
-| "send-message on old version" | ✅ True — sits at **v23.0**, should align to v25.0. |
-| "Instagram = lead webhook only" | ❌ False. `meta-webhook` already ingests IG DMs (with IG-via-Page detection) and `send-message` already replies via Page endpoint. |
-| "No webhook signature verification" | ✅ **True and serious** — `handleIncomingEvent` accepts any POST. Anyone with the URL can inject fake messages. |
-| "No Instagram comments/mentions/story replies" | ✅ True — only `messages` field is processed. |
-| "No Instagram profile sync" | ✅ True — sender name is left as the raw IG ID. |
+### Database and storage changes
+1. Extend `public.member_measurements` with the new fitting fields:
+   - `gender_presentation`
+   - `shoulder_cm`, `neck_cm`
+   - `forearm_left_cm`, `forearm_right_cm`
+   - `wrist_left_cm`, `wrist_right_cm`
+   - `ankle_left_cm`, `ankle_right_cm`
+   - `inseam_cm`, `torso_length_cm`, `abdomen_cm`
+   - future-ready nullable fields: `front_progress_photo_path`, `side_progress_photo_path`, `posture_type`, `body_shape_profile`
+2. Add `updated_at` if needed for easier lifecycle handling.
+3. Make progress photos private:
+   - update `storage.buckets` for `member-photos` to `public = false`
+   - replace broad public SELECT policy with role/member-scoped policies
+4. Replace loose measurement RLS with stricter policies:
+   - members can read only their own measurements
+   - staff/trainers can read/write only if they are authorized for that member and branch
+   - no direct broad insert/update access
 
-### F1. Pin a single Graph API version (v25.0)
+### Server-side authorization model
+Add security-definer helper functions in `public`:
+- `can_access_member_measurements(_user_id, _member_id)` → boolean
+- `can_write_member_measurements(_user_id, _member_id)` → boolean
+- optionally `get_member_measurement_photo_paths(_measurement_id)` for cleanup support
 
-Create `supabase/functions/_shared/meta-config.ts` exporting `META_GRAPH_VERSION = "v25.0"` and `META_API_BASE`. Replace hard-coded versions in `send-whatsapp`, `send-message`, `manage-whatsapp-templates`, `test-integration`, `meta-webhook`. One source of truth — next bump = one-line change.
+Authorization rules:
+- member can access self
+- owner/admin can access all
+- manager/staff limited to assigned branch
+- trainer limited to own branch and/or assigned clients / active PT relationship
+- no client-side-only branch checks
 
-### F2. Webhook signature verification (CRITICAL security gap)
+## Phase G2 — Move writes and validation into backend functions/RPC
 
-In `meta-webhook`, before `handleIncomingEvent` parses the body:
-1. Read the raw request text (not parsed JSON).
-2. Read `x-hub-signature-256` header.
-3. For each active `integration_settings` row of type `whatsapp`/`instagram`/`messenger`, attempt HMAC-SHA256 with that integration's `app_secret`. Accept if any matches.
-4. Reject `401` on no match. Log `[meta-webhook] signature mismatch`.
-5. If no integration has `app_secret` configured, log a warning and accept (back-compat) so existing setups don't break — surface this in the Integration UI as an amber banner.
+### New secure write path
+Create a security-definer RPC, e.g. `public.record_member_measurement(...)`, that:
+1. verifies `auth.uid()`
+2. verifies `can_write_member_measurements(auth.uid(), _member_id)`
+3. validates payload ranges and required data quality
+4. blocks blank rows
+5. inserts only normalized values
+6. stores photo paths, not public URLs
+7. returns inserted row id
 
-### F3. Instagram comments + mentions + story replies
+### Validation rules
+Implement validation in DB function/trigger layer:
+- trim notes / normalize blanks to `null`
+- reject rows where all measurement fields are null/empty
+- clamp or reject impossible values with realistic min/max ranges
+- ensure symmetric fields and body-fat/height/weight ranges are sane
+- validate enums such as `gender_presentation`
+- use trigger/function validation, not fragile CHECKs tied to time logic
 
-Extend `meta-webhook` to handle the additional Instagram subscription fields beyond `messages`:
-- `comments` → ingest as platform `instagram` with `message_type="comment"`, store post/comment IDs in `metadata` JSONB. Trigger AI auto-reply only if org setting `instagram_auto_reply_comments` is enabled.
-- `mentions` → ingest with `message_type="mention"`.
-- `story_insights` (story replies arrive as DMs already, this is just engagement signals — log to `whatsapp_messages` as `message_type="story_reply"` when `messaging.story` is present in payload).
+Suggested rule shape:
+- hard reject impossible values
+- calibration-safe numeric ranges for avatar mapping
+- allow partial records, but only if at least one real body metric is present
 
-Add `message_type` column allowance check (already exists; no migration needed — verified). Update inbox UI tag to render comment/mention badges.
+## Phase G3 — Fix upload lifecycle so photos are never orphaned
 
-### F4. Resolve Instagram sender profile
+### Upload strategy change
+Refactor `RecordMeasurementDrawer.tsx` so it no longer stores public URLs.
+Use a draft upload lifecycle:
+1. upload to a member-scoped private path like `member_id/drafts/session-id/...`
+2. keep returned storage paths in local draft state
+3. on photo remove: delete object immediately from storage
+4. on cancel: delete all draft paths
+5. on save: pass approved paths to RPC, which either:
+   - keeps draft paths as final references, or
+   - moves/copies them into a final measurement-scoped folder and stores final paths
 
-When a new IG sender ID arrives and we don't have a friendly name:
-- Call `GET /{ig_user_id}?fields=name,username,profile_pic` using the page access token.
-- Cache result on `whatsapp_messages.sender_name` and a new lightweight `whatsapp_contacts` upsert (already exists).
+### Read strategy change
+Where the member UI currently expects `photos` as URLs:
+- migrate to stored private paths
+- generate signed URLs at read time
+- batch/sign latest measurement photos only when needed
+- avoid public URL persistence in the table
 
-Falls back gracefully when token lacks `instagram_manage_messages` scope (logs warning, continues).
+## Phase G4 — Add signed URL photo reads for the progress UI
 
-### F5. Subscription field documentation
+### Data access updates
+Update member measurement readers (`useMemberData`, `MeasurementProgressView`, any trainer/member progress areas) so they:
+1. fetch measurement rows with private path fields / photo-path arrays
+2. request signed URLs client-side only for authorized users
+3. cache them briefly in React Query
+4. gracefully handle expired URLs by re-signing on refetch
 
-Add `supabase/functions/meta-webhook/SUBSCRIPTION_FIELDS.md` listing the exact webhook fields to subscribe in Meta App Dashboard:
-- WhatsApp Business Account: `messages`, `message_template_status_update`
-- Instagram (under Page product): `messages`, `messaging_postbacks`, `messaging_referrals`, `messaging_reactions`, `comments`, `mentions`, `message_reactions`
-- Page (Messenger): `messages`, `messaging_postbacks`, `messaging_referrals`
+### UI changes
+In `MeasurementProgressView.tsx`:
+- replace direct `<img src={storedUrl}>` usage with signed URLs
+- keep current photo grid, but secure it
+- support front/side future-ready dedicated photo slots when available
 
-Plus the required Meta App permissions: `whatsapp_business_messaging`, `whatsapp_business_management`, `instagram_basic`, `instagram_manage_messages`, `instagram_manage_comments`, `pages_messaging`, `pages_read_engagement`, `pages_manage_metadata`.
+## Phase G5 — Build reusable 3D avatar architecture
 
-### F6. End-to-end curl validation
+### New reusable modules
+Add a modular 3D body system:
 
-Through `supabase--curl_edge_functions`:
-1. `meta-webhook` POST without signature → expect 401 (after F2 ships, when at least one integration has app_secret).
-2. `meta-webhook` POST with valid HMAC → 200 + row inserted.
-3. `meta-webhook` POST simulated IG `comments` field → row with `message_type='comment'`.
-4. `send-message` POST IG → confirm v25.0 URL in logs.
-5. `send-whatsapp` POST template → confirm v25.0 URL in logs.
+1. `src/lib/measurements/measurementValidation.ts`
+   - shared client-side mirror of server rules
+   - input normalization helpers
 
----
+2. `src/lib/measurements/measurementToAvatar.ts`
+   - reusable measurement-to-morph-target mapper
+   - normalized ranges
+   - calibration multipliers
+   - delta summary helpers
 
-### Files touched
+3. `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
+   - top-level viewer shell
+   - fallback boundary
+   - mobile/performance guards
 
-| File | Change |
-|---|---|
-| `supabase/functions/_shared/meta-config.ts` (new) | Single Graph version constant |
-| `supabase/functions/send-message/index.ts` | Use shared version (v23 → v25) |
-| `supabase/functions/send-whatsapp/index.ts` | Use shared version |
-| `supabase/functions/manage-whatsapp-templates/index.ts` | Use shared version |
-| `supabase/functions/test-integration/index.ts` | Use shared version |
-| `supabase/functions/meta-webhook/index.ts` | F1 version, F2 signature verify, F3 comments/mentions, F4 profile resolve |
-| `supabase/functions/meta-webhook/SUBSCRIPTION_FIELDS.md` (new) | F5 setup reference |
-| `src/components/settings/IntegrationSettings.tsx` | Amber banner if `app_secret` missing (signature verify cannot enforce) |
+4. `src/components/progress3d/BodyModel.tsx`
+   - loads male/female GLB
+   - applies morph target influences
+   - TODO markers for final morph target names if assets are absent
 
-### Verification gates
+5. `src/components/progress3d/BodyComparisonView.tsx`
+   - current vs previous avatar cards
+   - delta summary / callouts
+   - latest update badge
 
-- ✅ All 5 curl tests pass.
-- ✅ Forged webhook POST rejected with 401 once any integration has `app_secret`.
-- ✅ A test comment on the IG business account produces a `whatsapp_messages` row with `message_type='comment'`.
-- ✅ Inbox shows resolved IG handle (e.g. "@theinclinelife") instead of raw numeric ID.
-- ✅ All Meta API calls in logs use `v25.0`.
+6. `src/components/progress3d/BodyFallbackCard.tsx`
+   - non-3D fallback if Canvas/model fails
 
+### 3D interaction behavior
+- slow default autorotation
+- drag to rotate
+- controlled camera limits
+- reduced effects on mobile / low-end devices
+- optional pause autorotation while dragging
+
+## Phase G6 — Measurement-to-morph mapping logic
+
+### Mapping approach
+Use a calibrated influence model rather than literal geometry generation:
+- choose base model by `gender_presentation` (`male`, `female`, fallback neutral behavior for `other`)
+- convert measurements into normalized scores per region:
+  - torso: chest, shoulder, abdomen, waist, hips
+  - arms: biceps, forearms, wrists
+  - legs: thighs, calves, ankles, inseam
+  - global: weight, body fat, height, torso length, neck
+- combine correlated inputs so one odd value does not distort the mesh
+- clamp all morph influences to safe ranges
+- apply smoothing/calibration constants to keep results believable and motivating
+
+### Comparison logic
+Compute:
+- latest avatar state
+- previous avatar state
+- delta summary for key metrics:
+  - waist reduced/increased
+  - chest increased/decreased
+  - weight changed
+  - body fat changed
+- visible “before / now” framing rather than raw clinical numbers only
+
+## Phase G7 — Upgrade the member progress UI
+
+### Page updates
+In `src/pages/MyProgress.tsx`:
+- keep top-level progress area
+- inside the progress experience, add a premium toggle/tab group:
+  - Measurements
+  - Photos
+  - 3D Body
+
+### 3D Body tab contents
+Show:
+- current avatar
+- previous avatar
+- overlay delta summary
+- latest update date
+- motivational callouts
+
+### Measurements / Photos split
+Refactor current `MeasurementProgressView` so it can support:
+- measurement summary
+- secured photo gallery
+- reusable data source shared by the 3D view
+
+### Design direction
+Keep existing project memory and UX rules:
+- Vuexy-inspired premium cards
+- no modal-based forms
+- rounded-xl/2xl cards
+- rich but lightweight gradients/badges
+- mobile-first spacing using existing viewport standards
+
+## Phase G8 — Fallbacks, performance, and asset-missing behavior
+
+### Performance protections
+- lazy-load 3D tab content only when opened
+- lazy-load GLB assets
+- memoize morph calculations
+- use simpler lights/materials on mobile
+- keep shadows/effects minimal
+- use suspense + error boundary for model load failures
+
+### Missing asset strategy
+If male/female GLB models are not present:
+- scaffold full 3D architecture now
+- render a placeholder body mesh/silhouette viewer
+- add explicit TODO comments for:
+  - model file paths
+  - morph target names
+  - calibration tuning constants
+- keep full mapping/util layers ready so real assets can be dropped in later
+
+## Files to change
+
+### Database / backend
+- `supabase/migrations/<new>.sql`
+  - new measurement fields
+  - private photo storage policies
+  - helper auth functions
+  - validation trigger/function
+  - secure measurement RPC
+- `src/integrations/supabase/types.ts`
+  - auto-regenerated from schema changes, not edited manually
+
+### Member measurement UI/data
+- `src/components/members/RecordMeasurementDrawer.tsx`
+  - draft photo lifecycle
+  - private path handling
+  - call RPC instead of direct insert
+- `src/components/members/MeasurementProgressView.tsx`
+  - signed photo URLs
+  - measurements/photos split support
+- `src/hooks/useMemberData.ts`
+  - secure measurement reads + signed photo URL hydration
+- `src/pages/MyProgress.tsx`
+  - new Measurements / Photos / 3D Body experience
+
+### New 3D modules
+- `src/lib/measurements/measurementValidation.ts`
+- `src/lib/measurements/measurementToAvatar.ts`
+- `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
+- `src/components/progress3d/BodyModel.tsx`
+- `src/components/progress3d/BodyComparisonView.tsx`
+- `src/components/progress3d/BodyFallbackCard.tsx`
+
+### Assets
+- `public/models/body-male.glb` and `public/models/body-female.glb` if available
+- otherwise scaffold with placeholder + TODO markers
+
+## Verification checklist
+
+1. A member can open My Progress and see secure measurement data.
+2. Progress photos no longer use public URLs.
+3. Photo remove and drawer cancel both delete draft uploads.
+4. Unauthorized trainer/staff write attempts are rejected server-side.
+5. Empty measurement rows are rejected.
+6. Impossible measurement values are rejected server-side.
+7. The 3D Body tab loads a rotating avatar from latest measurements.
+8. Male/female base selection works.
+9. Latest vs previous comparison is visible and understandable.
+10. If model loading fails or assets are missing, the page falls back to a static comparison card without breaking.
+11. Mobile experience remains smooth and readable.
+
+## Technical details
+```text
+Client form
+  -> private draft upload(s)
+  -> local draft paths only
+  -> secure RPC record_member_measurement(...)
+      -> auth check
+      -> member authorization check
+      -> validation
+      -> insert measurement row with private photo paths
+  -> member progress read
+      -> RLS-authorized select
+      -> signed URL generation for photo display
+      -> 3D mapper -> morph target influences
+      -> current vs previous avatar comparison
+```
