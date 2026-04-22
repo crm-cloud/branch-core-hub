@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { hydrateMeasurementPhotoUrls } from '@/lib/measurements/photoSigning';
 
 export function useMemberData() {
   const { user } = useAuth();
@@ -197,13 +198,13 @@ export function useMemberData() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('member_measurements')
-        .select('*')
+        .select('*, recorded_by_profile:profiles!member_measurements_recorded_by_fkey(full_name)')
         .eq('member_id', member!.id)
         .order('recorded_at', { ascending: false })
         .limit(10);
       
       if (error) throw error;
-      return data || [];
+      return hydrateMeasurementPhotoUrls(data || []);
     },
   });
 

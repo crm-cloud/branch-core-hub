@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMemberData } from '@/hooks/useMemberData';
 import { MeasurementProgressView } from '@/components/members/MeasurementProgressView';
-import { TrendingUp, Activity, UtensilsCrossed, AlertCircle, Loader2, Scale, Ruler } from 'lucide-react';
+import { TrendingUp, Activity, UtensilsCrossed, AlertCircle, Loader2, Scale, Ruler, Box } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -78,7 +78,7 @@ export default function MyProgress() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My Progress</h1>
-          <p className="text-muted-foreground">Track your fitness journey</p>
+          <p className="text-muted-foreground">Track your fitness journey with secure photos and a premium 3D body view.</p>
         </div>
 
         <Tabs defaultValue="measurements">
@@ -98,7 +98,31 @@ export default function MyProgress() {
           </TabsList>
 
           <TabsContent value="measurements" className="space-y-6">
-            {/* Current Stats */}
+            <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-lg shadow-primary/5">
+              <CardContent className="grid gap-4 bg-gradient-to-r from-primary to-primary/85 p-6 text-primary-foreground md:grid-cols-[1.15fr_0.85fr] md:items-center">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-primary-foreground/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-primary-foreground/75">
+                    <Box className="h-3.5 w-3.5" />
+                    Member 3D Progress
+                  </div>
+                  <h2 className="text-2xl font-semibold">See your latest shape, private photos, and body changes in one place.</h2>
+                  <p className="max-w-2xl text-sm text-primary-foreground/80">
+                    Your progress tab now compares your latest and previous measurement snapshots with signed photo access and an interactive rotating avatar.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-primary-foreground/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-primary-foreground/70">Latest check-in</p>
+                    <p className="mt-2 text-2xl font-semibold">{latestMeasurement ? format(new Date(latestMeasurement.recorded_at), 'dd MMM') : '--'}</p>
+                  </div>
+                  <div className="rounded-2xl bg-primary-foreground/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-primary-foreground/70">Comparison ready</p>
+                    <p className="mt-2 text-2xl font-semibold">{measurements.length > 1 ? 'Yes' : 'Need 2 scans'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {latestMeasurement && (
               <div className="grid gap-4 md:grid-cols-4">
                 <Card className="border-border/50">
