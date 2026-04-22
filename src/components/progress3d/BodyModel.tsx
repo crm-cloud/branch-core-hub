@@ -70,19 +70,24 @@ export function BodyModel({ snapshot, interactiveRotationY, autoRotate = true }:
         <sphereGeometry args={[0.18 + proportions.massOffset, 32, 32]} />
       </mesh>
 
-      <mesh position={[0, proportions.bodyHeight * 0.72, 0]} material={torsoMaterial}>
+      <mesh
+        position={[0, proportions.bodyHeight * 0.72, 0]}
+        material={torsoMaterial}
+        scale={[1, 1.05, proportions.chestDepth / 0.34]}
+      >
         <capsuleGeometry args={[proportions.torsoWidth / 2 + proportions.softness, proportions.torsoHeight, 12, 24]} />
-        <scale args={[1, 1.05, proportions.chestDepth / 0.34]} />
       </mesh>
 
-      <mesh position={[0, proportions.bodyHeight * 0.53, proportions.abdomenDepth * 0.12]} material={torsoMaterial}>
+      <mesh
+        position={[0, proportions.bodyHeight * 0.53, proportions.abdomenDepth * 0.12]}
+        material={torsoMaterial}
+        scale={[1, 1, proportions.abdomenDepth / 0.24]}
+      >
         <capsuleGeometry args={[proportions.waistWidth / 2 + proportions.softness, 0.34, 12, 20]} />
-        <scale args={[1, 1, proportions.abdomenDepth / 0.24]} />
       </mesh>
 
-      <mesh position={[0, proportions.bodyHeight * 0.35, 0]} material={torsoMaterial}>
+      <mesh position={[0, proportions.bodyHeight * 0.35, 0]} material={torsoMaterial} scale={[1, 0.8, 0.92]}>
         <sphereGeometry args={[proportions.hipWidth / 2, 32, 32]} />
-        <scale args={[1, 0.8, 0.92]} />
       </mesh>
 
       <mesh position={[0, proportions.bodyHeight * 0.98, 0]} material={accentMaterial}>
