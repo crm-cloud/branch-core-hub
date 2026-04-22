@@ -3688,64 +3688,115 @@ export type Database = {
       }
       member_measurements: {
         Row: {
+          abdomen_cm: number | null
+          ankle_left_cm: number | null
+          ankle_right_cm: number | null
           biceps_left_cm: number | null
           biceps_right_cm: number | null
           body_fat_percentage: number | null
+          body_shape_profile: string | null
           calves_cm: number | null
           chest_cm: number | null
           created_at: string
+          forearm_left_cm: number | null
+          forearm_right_cm: number | null
+          front_progress_photo_path: string | null
+          gender_presentation: string | null
           height_cm: number | null
           hips_cm: number | null
           id: string
+          inseam_cm: number | null
           member_id: string
+          neck_cm: number | null
           notes: string | null
           photos: Json | null
+          posture_type: string | null
           recorded_at: string
           recorded_by: string | null
+          shoulder_cm: number | null
+          side_progress_photo_path: string | null
           thighs_left_cm: number | null
           thighs_right_cm: number | null
+          torso_length_cm: number | null
+          updated_at: string
           waist_cm: number | null
           weight_kg: number | null
+          wrist_left_cm: number | null
+          wrist_right_cm: number | null
         }
         Insert: {
+          abdomen_cm?: number | null
+          ankle_left_cm?: number | null
+          ankle_right_cm?: number | null
           biceps_left_cm?: number | null
           biceps_right_cm?: number | null
           body_fat_percentage?: number | null
+          body_shape_profile?: string | null
           calves_cm?: number | null
           chest_cm?: number | null
           created_at?: string
+          forearm_left_cm?: number | null
+          forearm_right_cm?: number | null
+          front_progress_photo_path?: string | null
+          gender_presentation?: string | null
           height_cm?: number | null
           hips_cm?: number | null
           id?: string
+          inseam_cm?: number | null
           member_id: string
+          neck_cm?: number | null
           notes?: string | null
           photos?: Json | null
+          posture_type?: string | null
           recorded_at?: string
           recorded_by?: string | null
+          shoulder_cm?: number | null
+          side_progress_photo_path?: string | null
           thighs_left_cm?: number | null
           thighs_right_cm?: number | null
+          torso_length_cm?: number | null
+          updated_at?: string
           waist_cm?: number | null
           weight_kg?: number | null
+          wrist_left_cm?: number | null
+          wrist_right_cm?: number | null
         }
         Update: {
+          abdomen_cm?: number | null
+          ankle_left_cm?: number | null
+          ankle_right_cm?: number | null
           biceps_left_cm?: number | null
           biceps_right_cm?: number | null
           body_fat_percentage?: number | null
+          body_shape_profile?: string | null
           calves_cm?: number | null
           chest_cm?: number | null
           created_at?: string
+          forearm_left_cm?: number | null
+          forearm_right_cm?: number | null
+          front_progress_photo_path?: string | null
+          gender_presentation?: string | null
           height_cm?: number | null
           hips_cm?: number | null
           id?: string
+          inseam_cm?: number | null
           member_id?: string
+          neck_cm?: number | null
           notes?: string | null
           photos?: Json | null
+          posture_type?: string | null
           recorded_at?: string
           recorded_by?: string | null
+          shoulder_cm?: number | null
+          side_progress_photo_path?: string | null
           thighs_left_cm?: number | null
           thighs_right_cm?: number | null
+          torso_length_cm?: number | null
+          updated_at?: string
           waist_cm?: number | null
           weight_kg?: number | null
+          wrist_left_cm?: number | null
+          wrist_right_cm?: number | null
         }
         Relationships: [
           {
@@ -6907,6 +6958,10 @@ export type Database = {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
       }
+      assert_measurement_range: {
+        Args: { _field: string; _max: number; _min: number; _value: number }
+        Returns: number
+      }
       auto_expire_memberships: { Args: never; Returns: undefined }
       book_class: {
         Args: { _class_id: string; _member_id: string }
@@ -6919,6 +6974,22 @@ export type Database = {
           p_slot_id: string
         }
         Returns: Json
+      }
+      can_access_member_measurement_photo: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
+      }
+      can_access_member_measurements: {
+        Args: { _member_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_write_member_measurement_photo: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
+      }
+      can_write_member_measurements: {
+        Args: { _member_id: string; _user_id: string }
+        Returns: boolean
       }
       cancel_class_booking: {
         Args: { _booking_id: string; _reason?: string }
@@ -6943,6 +7014,10 @@ export type Database = {
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
+      }
+      extract_member_id_from_storage_path: {
+        Args: { _path: string }
+        Returns: string
       }
       generate_renewal_invoices: { Args: never; Returns: undefined }
       get_inactive_members: {
@@ -7003,6 +7078,10 @@ export type Database = {
           _trainer_id: string
         }
         Returns: Json
+      }
+      record_member_measurement: {
+        Args: { p_member_id: string; p_payload: Json }
+        Returns: string
       }
       record_payment: {
         Args: {
