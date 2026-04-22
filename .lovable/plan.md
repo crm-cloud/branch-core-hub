@@ -1,289 +1,469 @@
 
-## Phase G — Secure Measurement Foundation + Member 3D Progress
+## Member Lifecycle Engine — End-to-end redesign plan
 
-### What’s already in the codebase
-- `member_measurements` exists, but current RLS is too broad: staff/trainers can insert without proving member/branch authorization.
-- Progress photos are currently stored in public `member-photos` and the UI saves public URLs directly.
-- `RecordMeasurementDrawer.tsx` uploads files immediately and only removes them from local state on cancel/remove, so files can be orphaned.
-- Measurement writes are direct table inserts from the client with no server-side validation/RPC.
-- `MyProgress.tsx` and `MeasurementProgressView.tsx` already provide a member progress entry point that can be extended.
-- React Three Fiber / Three.js are already installed and used in the project, so the stack is ready.
+### What the audit confirms
+The current lifecycle is split across UI, services, triggers, and edge functions, which creates duplicate writes and misleading states:
 
-## Phase G1 — Lock down measurements and progress photo storage first
+- Member onboarding is duplicated:
+  - `create-member-user` already inserts a referral and marks it `converted`
+  - `AddMemberDrawer.tsx` inserts another referral with status `new`
+- Membership purchase is not transactional:
+  - `PurchaseMembershipDrawer.tsx` creates membership, invoice, items, payment link/payment, reminders, member status, rewards, and locker assignment in separate client steps with partial rollback only
+  - `membershipService.purchaseMembership()` duplicates a second membership/invoice write path
+- Payment logic is only partially unified:
+  - `record_payment` exists, but some UI still inserts directly into `payments` (`Payments.tsx` standalone path)
+  - webhook flows and manual flows are not all routed through one lifecycle-aware authority
+- Referral lifecycle is fragmented:
+  - current states include `new`, `pending`, `converted`, `expired`
+  - reward issuance also happens in triggers and UI code
+- Reward claim is non-atomic:
+  - `referralService.claimReward()` credits wallet first, then marks reward claimed
+- Reminder statuses are not truthful:
+  - `send-reminders` marks reminders/logs as `sent` while only creating app notifications, not guaranteed outbound delivery
+- Storage policy is inconsistent:
+  - progress photos are now private/signed
+  - avatars still use public `avatars` bucket/public URLs
+  - biometric flows and personnel sync still depend on public URLs and mixed buckets
+- Hardware access is only partially aligned:
+  - `revoke-mips-access` restores based on active membership dates, but not on an explicit dues grace rule
+  - device sync is triggered from multiple places instead of a single lifecycle decision layer
 
-### Database and storage changes
-1. Extend `public.member_measurements` with the new fitting fields:
-   - `gender_presentation`
-   - `shoulder_cm`, `neck_cm`
-   - `forearm_left_cm`, `forearm_right_cm`
-   - `wrist_left_cm`, `wrist_right_cm`
-   - `ankle_left_cm`, `ankle_right_cm`
-   - `inseam_cm`, `torso_length_cm`, `abdomen_cm`
-   - future-ready nullable fields: `front_progress_photo_path`, `side_progress_photo_path`, `posture_type`, `body_shape_profile`
-2. Add `updated_at` if needed for easier lifecycle handling.
-3. Make progress photos private:
-   - update `storage.buckets` for `member-photos` to `public = false`
-   - replace broad public SELECT policy with role/member-scoped policies
-4. Replace loose measurement RLS with stricter policies:
-   - members can read only their own measurements
-   - staff/trainers can read/write only if they are authorized for that member and branch
-   - no direct broad insert/update access
+### Business decisions captured
+- Hardware access rule: block after a grace period when dues remain unpaid.
+- Welcome communication defaults: WhatsApp, SMS, and Email when configured.
 
-### Server-side authorization model
-Add security-definer helper functions in `public`:
-- `can_access_member_measurements(_user_id, _member_id)` → boolean
-- `can_write_member_measurements(_user_id, _member_id)` → boolean
-- optionally `get_member_measurement_photo_paths(_measurement_id)` for cleanup support
+## Phase H1 — Introduce one authoritative lifecycle domain model
 
-Authorization rules:
-- member can access self
-- owner/admin can access all
-- manager/staff limited to assigned branch
-- trainer limited to own branch and/or assigned clients / active PT relationship
-- no client-side-only branch checks
+### New lifecycle principles
+Create a small set of backend authorities and route all write paths through them:
 
-## Phase G2 — Move writes and validation into backend functions/RPC
+1. `member_onboarding` authority
+2. `membership_purchase` authority
+3. `payment_settlement` authority
+4. `referral_lifecycle` authority
+5. `reward_claim` authority
+6. `reminder_dispatch` authority
+7. `access_evaluation` authority
+8. `media_asset` authority
 
-### New secure write path
-Create a security-definer RPC, e.g. `public.record_member_measurement(...)`, that:
-1. verifies `auth.uid()`
-2. verifies `can_write_member_measurements(auth.uid(), _member_id)`
-3. validates payload ranges and required data quality
-4. blocks blank rows
-5. inserts only normalized values
-6. stores photo paths, not public URLs
-7. returns inserted row id
+### Core rule
+Client code should no longer orchestrate business-critical multi-step writes. The UI becomes form collection + status display; the backend becomes the state machine.
 
-### Validation rules
-Implement validation in DB function/trigger layer:
-- trim notes / normalize blanks to `null`
-- reject rows where all measurement fields are null/empty
-- clamp or reject impossible values with realistic min/max ranges
-- ensure symmetric fields and body-fat/height/weight ranges are sane
-- validate enums such as `gender_presentation`
-- use trigger/function validation, not fragile CHECKs tied to time logic
+## Phase H2 — Normalize statuses and audit trail
 
-Suggested rule shape:
-- hard reject impossible values
-- calibration-safe numeric ranges for avatar mapping
-- allow partial records, but only if at least one real body metric is present
+### Referral lifecycle redesign
+Replace the loose referral flow with one authoritative lifecycle:
 
-## Phase G3 — Fix upload lifecycle so photos are never orphaned
+- `invited`
+- `joined`
+- `purchased`
+- `converted`
+- `rewarded`
+- `claimed`
 
-### Upload strategy change
-Refactor `RecordMeasurementDrawer.tsx` so it no longer stores public URLs.
-Use a draft upload lifecycle:
-1. upload to a member-scoped private path like `member_id/drafts/session-id/...`
-2. keep returned storage paths in local draft state
-3. on photo remove: delete object immediately from storage
-4. on cancel: delete all draft paths
-5. on save: pass approved paths to RPC, which either:
-   - keeps draft paths as final references, or
-   - moves/copies them into a final measurement-scoped folder and stores final paths
+### Add lifecycle logs
+Introduce append-only workflow/event tables for auditable transitions, for example:
 
-### Read strategy change
-Where the member UI currently expects `photos` as URLs:
-- migrate to stored private paths
-- generate signed URLs at read time
-- batch/sign latest measurement photos only when needed
-- avoid public URL persistence in the table
+- `member_lifecycle_events`
+- `referral_lifecycle_events`
+- `payment_lifecycle_events`
+- `hardware_access_events`
+- `communication_delivery_events`
 
-## Phase G4 — Add signed URL photo reads for the progress UI
+These should store:
+- actor
+- member/referral/invoice/payment id
+- event type
+- previous state
+- new state
+- reason / metadata
+- idempotency key where relevant
 
-### Data access updates
-Update member measurement readers (`useMemberData`, `MeasurementProgressView`, any trainer/member progress areas) so they:
-1. fetch measurement rows with private path fields / photo-path arrays
-2. request signed URLs client-side only for authorized users
-3. cache them briefly in React Query
-4. gracefully handle expired URLs by re-signing on refetch
+This preserves auditability without relying on scattered console logs or partial UI toasts.
 
-### UI changes
-In `MeasurementProgressView.tsx`:
-- replace direct `<img src={storedUrl}>` usage with signed URLs
-- keep current photo grid, but secure it
-- support front/side future-ready dedicated photo slots when available
+## Phase H3 — Transactional member onboarding flow
 
-## Phase G5 — Build reusable 3D avatar architecture
+### New authoritative backend entry point
+Create a server-side onboarding RPC or backend function such as `onboard_member(...)` that atomically:
 
-### New reusable modules
-Add a modular 3D body system:
+1. validates caller role/branch scope
+2. finds or creates auth user safely
+3. upserts profile
+4. inserts member row
+5. creates exactly one referral row if a valid referrer exists
+6. records lifecycle/audit events
+7. schedules welcome communications
+8. returns canonical IDs and resulting state
 
-1. `src/lib/measurements/measurementValidation.ts`
-   - shared client-side mirror of server rules
-   - input normalization helpers
+### Important fixes
+- Remove duplicate referral creation from `AddMemberDrawer.tsx`
+- Remove “auto-converted on member create” behavior from `create-member-user`
+- On onboarding:
+  - referral becomes `joined`, not `converted`
+  - conversion only happens after qualifying purchase conditions
+- Keep welcome communication optional but default-on when channels are configured
 
-2. `src/lib/measurements/measurementToAvatar.ts`
-   - reusable measurement-to-morph-target mapper
-   - normalized ranges
-   - calibration multipliers
-   - delta summary helpers
+### Files affected
+- `supabase/functions/create-member-user/index.ts` or replace with new authoritative function
+- `src/components/members/AddMemberDrawer.tsx`
+- referral trigger logic and migrations
+- communication scheduling layer
 
-3. `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
-   - top-level viewer shell
-   - fallback boundary
-   - mobile/performance guards
+## Phase H4 — Transactional membership purchase engine
 
-4. `src/components/progress3d/BodyModel.tsx`
-   - loads male/female GLB
-   - applies morph target influences
-   - TODO markers for final morph target names if assets are absent
+### New authoritative backend entry point
+Create a security-definer RPC such as `purchase_member_membership(...)` that performs one transaction for:
 
-5. `src/components/progress3d/BodyComparisonView.tsx`
-   - current vs previous avatar cards
-   - delta summary / callouts
-   - latest update badge
+1. membership draft creation
+2. invoice creation
+3. invoice items creation
+4. payment intent / transaction record creation
+5. payment reminder scheduling for partials
+6. referral lifecycle advancement
+7. reward eligibility issuance
+8. member status update
+9. hardware/access evaluation scheduling
+10. locker assignment if included
+11. lifecycle event logging
 
-6. `src/components/progress3d/BodyFallbackCard.tsx`
-   - non-3D fallback if Canvas/model fails
+### Required state model
+Use explicit statuses so no misleading records exist:
+- membership: `draft`, `pending_payment`, `active`, `frozen`, `expired`, `cancelled`
+- invoice: `draft`, `pending`, `partial`, `paid`, `overdue`, `voided`, `cancelled`
+- payment transaction: `created`, `pending_confirmation`, `settled`, `failed`, `voided`
 
-### 3D interaction behavior
-- slow default autorotation
-- drag to rotate
-- controlled camera limits
-- reduced effects on mobile / low-end devices
-- optional pause autorotation while dragging
+### Critical behavior
+- Never create an immediately active membership before qualifying payment conditions
+- For online link flows:
+  - create membership as `pending_payment`
+  - invoice as `pending`
+  - payment transaction as `created`
+- For manual full payment/wallet:
+  - same backend flow calls unified settlement path before finalizing `active`
+- For partial payment:
+  - membership activation policy must be explicit:
+    - if business allows active-on-partial, store that as a controlled rule
+    - otherwise remain `pending_payment`
+  - the plan should encode that rule centrally, not per component
 
-## Phase G6 — Measurement-to-morph mapping logic
+### UI migration
+Refactor:
+- `PurchaseMembershipDrawer.tsx`
+- `membershipService.purchaseMembership()`
+to call only the new backend flow.
 
-### Mapping approach
-Use a calibrated influence model rather than literal geometry generation:
-- choose base model by `gender_presentation` (`male`, `female`, fallback neutral behavior for `other`)
-- convert measurements into normalized scores per region:
-  - torso: chest, shoulder, abdomen, waist, hips
-  - arms: biceps, forearms, wrists
-  - legs: thighs, calves, ankles, inseam
-  - global: weight, body fat, height, torso length, neck
-- combine correlated inputs so one odd value does not distort the mesh
-- clamp all morph influences to safe ranges
-- apply smoothing/calibration constants to keep results believable and motivating
+## Phase H5 — Unified payment authority
 
-### Comparison logic
-Compute:
-- latest avatar state
-- previous avatar state
-- delta summary for key metrics:
-  - waist reduced/increased
-  - chest increased/decreased
-  - weight changed
-  - body fat changed
-- visible “before / now” framing rather than raw clinical numbers only
+### One path for every payment source
+Route all payment entry points through a single settlement authority, extending the existing `record_payment` concept into a richer `settle_payment(...)` workflow:
 
-## Phase G7 — Upgrade the member progress UI
+Sources:
+- manual recording
+- wallet
+- gateway webhook
+- payment link completion
+- future QR/UPI flows
 
-### Page updates
-In `src/pages/MyProgress.tsx`:
-- keep top-level progress area
-- inside the progress experience, add a premium toggle/tab group:
-  - Measurements
-  - Photos
-  - 3D Body
+### Responsibilities
+The payment authority must atomically:
+1. lock invoice/payment transaction rows
+2. validate idempotency and duplicate transaction IDs
+3. insert/update payment record
+4. update invoice amount/status
+5. activate or reevaluate membership state
+6. advance referral lifecycle if purchase threshold is crossed
+7. reevaluate access eligibility
+8. trigger device sync if access state changed
+9. write lifecycle/audit events
 
-### 3D Body tab contents
-Show:
-- current avatar
-- previous avatar
-- overlay delta summary
-- latest update date
-- motivational callouts
+### Specific fixes
+- Remove direct standalone `payments` table insert from `Payments.tsx`
+- Make `payment-webhook` resolve and settle through the same authority as manual and wallet flows
+- Make `create-razorpay-link` create only a payment intent/transaction, not business state changes
+- Strengthen `record_payment` to:
+  - enforce branch/member consistency
+  - detect overpayment/duplicate settlement
+  - support idempotency keys/webhook replay safety
+  - reevaluate hardware access on both pay and void
+- Strengthen `void_payment` to also reevaluate membership/access state
 
-### Measurements / Photos split
-Refactor current `MeasurementProgressView` so it can support:
-- measurement summary
-- secured photo gallery
-- reusable data source shared by the 3D view
+## Phase H6 — Unified referral lifecycle and reward issuance
 
-### Design direction
-Keep existing project memory and UX rules:
-- Vuexy-inspired premium cards
-- no modal-based forms
-- rounded-xl/2xl cards
-- rich but lightweight gradients/badges
-- mobile-first spacing using existing viewport standards
+### Referral model
+Referrals should become authoritative and monotonic:
+- one referral row per referral relationship / invite event
+- no duplicate creation in multiple places
+- lifecycle advanced only by backend authorities
 
-## Phase G8 — Fallbacks, performance, and asset-missing behavior
+### Transition rules
+- onboarding with referral code: `invited` → `joined`
+- qualifying membership purchase created: `joined` → `purchased`
+- payment fully/qualifying settled: `purchased` → `converted`
+- reward rows issued: `converted` → `rewarded`
+- reward actually claimed: `rewarded` → `claimed`
 
-### Performance protections
-- lazy-load 3D tab content only when opened
-- lazy-load GLB assets
-- memoize morph calculations
-- use simpler lights/materials on mobile
-- keep shadows/effects minimal
-- use suspense + error boundary for model load failures
+### Reward issuance
+Move reward creation fully out of:
+- UI conversion logic in `Referrals.tsx`
+- referral conversion trigger side effects that can duplicate issuance
 
-### Missing asset strategy
-If male/female GLB models are not present:
-- scaffold full 3D architecture now
-- render a placeholder body mesh/silhouette viewer
-- add explicit TODO comments for:
-  - model file paths
-  - morph target names
-  - calibration tuning constants
-- keep full mapping/util layers ready so real assets can be dropped in later
+Replace with one backend function that checks:
+- qualifying invoice/payment threshold
+- reward settings
+- whether rewards already exist
+- branch scoping
 
-## Files to change
+## Phase H7 — Atomic and idempotent reward claim
 
-### Database / backend
-- `supabase/migrations/<new>.sql`
-  - new measurement fields
-  - private photo storage policies
-  - helper auth functions
-  - validation trigger/function
-  - secure measurement RPC
-- `src/integrations/supabase/types.ts`
-  - auto-regenerated from schema changes, not edited manually
+### New authoritative backend entry point
+Create `claim_referral_reward(...)` RPC that atomically:
+1. locks reward row
+2. confirms unclaimed state
+3. creates wallet credit transaction
+4. updates wallet balance
+5. marks reward claimed
+6. logs claim event
+7. returns idempotent success if already claimed under retry
 
-### Member measurement UI/data
-- `src/components/members/RecordMeasurementDrawer.tsx`
-  - draft photo lifecycle
-  - private path handling
-  - call RPC instead of direct insert
-- `src/components/members/MeasurementProgressView.tsx`
-  - signed photo URLs
-  - measurements/photos split support
+### Fixes
+Replace client-side sequence in `referralService.claimReward()` with the RPC.
+Update:
+- `MemberReferrals.tsx`
+- `Referrals.tsx`
+
+This eliminates double-credit risk.
+
+## Phase H8 — Truthful reminder dispatch engine
+
+### New model
+Split reminder lifecycle into real delivery states:
+- `scheduled`
+- `sending`
+- `sent`
+- `failed`
+- `skipped`
+
+### Dispatch behavior
+Refactor `send-reminders` so it:
+1. selects due reminders
+2. marks batch rows `sending`
+3. attempts actual outbound channel delivery via configured provider
+4. records per-channel result
+5. sets final status truthfully
+
+### Channel rules
+- WhatsApp: use configured backend send function
+- SMS: use configured backend send function
+- Email: use configured backend send function
+- In-app notifications: optional companion channel, not a substitute for outbound delivery
+
+### Welcome sequence
+Support new reminder/communication types:
+- welcome
+- payment due
+- overdue
+- membership expiry
+- class/PT/benefit reminders
+- future nurture sequences
+
+### Logging
+Create/standardize a delivery log that stores:
+- reminder id
+- channel
+- provider response id
+- status
+- error message
+- attempt count
+- timestamps
+
+### UI impact
+Settings/reminder UI can stay mostly intact, but must reflect the truthful statuses.
+
+## Phase H9 — Unified private media/storage strategy
+
+### Problem to solve
+Progress photos are private, but avatars and biometric photos still assume public URL access. This must become one coherent model.
+
+### New storage design
+Use private buckets/paths and store storage paths, not public URLs, for:
+- profile avatars
+- biometric/facial enrollment photos
+- progress/measurement photos
+
+Recommended structure:
+```text
+member-media/
+  members/{member_id}/avatar/current.jpg
+  members/{member_id}/biometric/source.jpg
+  members/{member_id}/progress/{measurement_id}/front.jpg
+  members/{member_id}/progress/{measurement_id}/side.jpg
+staff-media/
+  employees/{employee_id}/avatar/current.jpg
+  trainers/{trainer_id}/avatar/current.jpg
+```
+
+### Access approach
+- UI reads via signed URLs
+- device/backend sync fetches secure URLs or file bytes server-side
+- no long-lived public URLs saved in app tables
+
+### Required refactors
+- `MemberAvatarUpload.tsx`
+- `biometricService.ts`
+- personnel/device sync uploaders
+- profile/avatar consumers
+- member progress signed URL refresh logic
+
+### Compatibility layer
+Add a migration-safe fallback reader so older public URLs can still be recognized and gradually normalized to storage paths.
+
+## Phase H10 — Biometric, hardware, and access reevaluation engine
+
+### New access policy authority
+Create `evaluate_member_access_state(member_id)` backend authority that computes access from:
+
+- membership status
+- expiry dates
+- freeze status
+- suspension/blacklist state
+- dues grace rule
+- biometric enrollment readiness if required by device flow
+
+### Dues grace rule
+Since you chose “Block after grace”, add configurable policy data such as:
+- `block_access_on_overdue boolean`
+- `overdue_grace_days integer`
+
+This evaluation should determine:
+- app-visible hardware access status
+- whether to revoke/restore turnstile validity
+- whether device resync is needed
+
+### Required change
+All flows that can affect access must call the same reevaluator:
+- membership purchase
+- payment settlement
+- void/refund
+- freeze approval
+- unfreeze
+- expiry automation
+- suspension/reactivation
+- biometric enrollment state changes if required
+
+### Result
+No more ad-hoc revoke/restore decisions in scattered UI/service files.
+
+## Phase H11 — Preserve and harden progress / 3D body readiness
+
+### Keep current improvements
+Preserve:
+- private progress photos
+- signed URL hydration
+- current 3D body UI architecture
+
+### Additional hardening
+- refresh signed URLs on focus/refetch so long-lived sessions do not break
+- move photo hydration behind a reusable secure media service
+- ensure 3D tab only consumes signed/private sources
+- keep placeholder/GLB-ready structure intact for future real male/female assets and morph targets
+
+### Files likely touched
+- `src/lib/measurements/photoSigning.ts`
 - `src/hooks/useMemberData.ts`
-  - secure measurement reads + signed photo URL hydration
+- `src/components/members/MeasurementProgressView.tsx`
 - `src/pages/MyProgress.tsx`
-  - new Measurements / Photos / 3D Body experience
+- progress 3D components only if API shape changes
 
-### New 3D modules
-- `src/lib/measurements/measurementValidation.ts`
-- `src/lib/measurements/measurementToAvatar.ts`
-- `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
-- `src/components/progress3d/BodyModel.tsx`
-- `src/components/progress3d/BodyComparisonView.tsx`
-- `src/components/progress3d/BodyFallbackCard.tsx`
+## Phase H12 — UI integration migration
 
-### Assets
-- `public/models/body-male.glb` and `public/models/body-female.glb` if available
-- otherwise scaffold with placeholder + TODO markers
+### Keep UI mostly intact, swap backend calls
+Update current flows to call the new authoritative APIs:
 
-## Verification checklist
+- `AddMemberDrawer.tsx` → onboarding authority
+- `PurchaseMembershipDrawer.tsx` → purchase authority
+- `Payments.tsx` / `RecordPaymentDrawer.tsx` → unified payment authority only
+- `Referrals.tsx` / `MemberReferrals.tsx` → lifecycle-aware referral/reward APIs
+- member progress/photo/avatar/biometric components → unified media service
+- reminder admin actions → truthful reminder dispatch/statuses
 
-1. A member can open My Progress and see secure measurement data.
-2. Progress photos no longer use public URLs.
-3. Photo remove and drawer cancel both delete draft uploads.
-4. Unauthorized trainer/staff write attempts are rejected server-side.
-5. Empty measurement rows are rejected.
-6. Impossible measurement values are rejected server-side.
-7. The 3D Body tab loads a rotating avatar from latest measurements.
-8. Male/female base selection works.
-9. Latest vs previous comparison is visible and understandable.
-10. If model loading fails or assets are missing, the page falls back to a static comparison card without breaking.
-11. Mobile experience remains smooth and readable.
+### Preserve UX conventions
+- continue using Sheets for workflows
+- keep Vuexy-style cards/badges
+- keep TanStack Query as orchestration layer
+- add clearer lifecycle-specific toasts based on authoritative backend responses
+
+## Phase H13 — Migration strategy
+
+### First pass: authoritative backend layer
+Build the server-side lifecycle layer first:
+1. schema/status additions
+2. new RPCs/functions
+3. audit/event tables
+4. storage policy normalization
+5. access evaluation engine
+
+### Second pass: adapt existing UI
+Switch UI files one by one to the new backend flows without redesigning every screen.
+
+### Third pass: retire duplicates
+Remove or deprecate legacy paths:
+- duplicate referral inserts
+- direct payments inserts
+- old purchaseMembership client orchestration
+- trigger-based reward issuance that conflicts with new lifecycle engine
+
+## Files most likely to change
+
+### Backend / database
+- `supabase/migrations/<new>.sql`
+- `supabase/functions/create-member-user/index.ts` or replacement onboarding function
+- `supabase/functions/payment-webhook/index.ts`
+- `supabase/functions/create-razorpay-link/index.ts`
+- `supabase/functions/send-reminders/index.ts`
+- `supabase/functions/revoke-mips-access/index.ts`
+- possibly a new shared lifecycle helper function set in SQL and/or shared edge code
+
+### Frontend
+- `src/components/members/AddMemberDrawer.tsx`
+- `src/components/members/PurchaseMembershipDrawer.tsx`
+- `src/pages/Payments.tsx`
+- `src/components/invoices/RecordPaymentDrawer.tsx`
+- `src/services/membershipService.ts`
+- `src/services/billingService.ts`
+- `src/services/referralService.ts`
+- `src/services/walletService.ts`
+- `src/services/biometricService.ts`
+- `src/components/members/MemberAvatarUpload.tsx`
+- `src/hooks/useMemberData.ts`
+- `src/components/members/MeasurementProgressView.tsx`
+- `src/pages/MyProgress.tsx`
+
+## Acceptance checks
+1. Member onboarding creates one authoritative referral state only.
+2. Membership purchase cannot leave active membership/invoice side effects after downstream failure.
+3. Manual, wallet, and webhook payments converge to one lifecycle authority.
+4. Reward claim cannot double-credit under retries.
+5. Reminders are only marked `sent` after actual outbound success; otherwise `failed` or `skipped`.
+6. Avatar, biometric, and progress photos all work through private storage + signed access.
+7. Hardware access reflects expiry, freeze, suspension, and overdue-after-grace rules consistently.
+8. The existing 3D progress feature continues working without privacy regressions.
+9. Existing UI remains functional while moving to backend-first workflows.
 
 ## Technical details
 ```text
-Client form
-  -> private draft upload(s)
-  -> local draft paths only
-  -> secure RPC record_member_measurement(...)
-      -> auth check
-      -> member authorization check
-      -> validation
-      -> insert measurement row with private photo paths
-  -> member progress read
-      -> RLS-authorized select
-      -> signed URL generation for photo display
-      -> 3D mapper -> morph target influences
-      -> current vs previous avatar comparison
+UI sheets/forms
+  -> call authoritative lifecycle RPC / backend function
+  -> backend performs validation, locking, state transitions, audit logging
+  -> backend returns canonical lifecycle result
+  -> UI invalidates queries and renders resulting state
+
+Authoritative engines:
+  onboard_member
+  purchase_member_membership
+  settle_payment / void_payment
+  advance_referral_lifecycle
+  claim_referral_reward
+  dispatch_reminders
+  evaluate_member_access_state
+  media signing / secure asset resolution
 ```
