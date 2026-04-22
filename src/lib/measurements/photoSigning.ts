@@ -1,6 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { MemberMeasurementRecord } from './types';
 
+type MeasurementPhotoSource = Omit<MemberMeasurementRecord, 'photos' | 'signedPhotoUrls' | 'frontProgressPhotoUrl' | 'sideProgressPhotoUrl'> & {
+  photos?: unknown;
+};
+
 const PHOTO_BUCKET = 'member-photos';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -13,7 +17,7 @@ function normalizePhotoPaths(photos: unknown) {
   return photos.filter((photo): photo is string => typeof photo === 'string');
 }
 
-export async function hydrateMeasurementPhotoUrls<T extends MemberMeasurementRecord>(measurements: T[]) {
+export async function hydrateMeasurementPhotoUrls<T extends MeasurementPhotoSource>(measurements: T[]) {
   if (!measurements.length) return measurements;
 
   const normalizedMeasurements = measurements.map((measurement) => ({
