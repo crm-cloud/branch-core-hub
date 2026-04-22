@@ -1,7 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { MemberMeasurementRecord } from './types';
 
-type MeasurementPhotoSource = Omit<MemberMeasurementRecord, 'photos' | 'signedPhotoUrls' | 'frontProgressPhotoUrl' | 'sideProgressPhotoUrl'> & {
+type MeasurementPhotoSource = Omit<MemberMeasurementRecord, 'gender_presentation' | 'photos' | 'signedPhotoUrls' | 'frontProgressPhotoUrl' | 'sideProgressPhotoUrl'> & {
+  gender_presentation?: string | null;
   photos?: unknown;
 };
 
