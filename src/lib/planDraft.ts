@@ -23,6 +23,9 @@ export interface PlanDraft {
   dietaryType?: string;
   // The actual plan content payload (weeks/days/exercises or meals)
   content: any;
+  /** Optional id of the originating template — preserved through the
+   * preview/assign flow so member assignments can back-reference it. */
+  templateId?: string;
   createdAt: string;
 }
 

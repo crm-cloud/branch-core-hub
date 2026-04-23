@@ -12,6 +12,7 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { createPlanTemplate } from '@/services/fitnessService';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { normalizeDietPlan, normalizeWorkoutPlan } from '@/lib/planNormalizer';
 
 export default function PreviewPlanPage() {
   const { planId } = useParams<{ planId: string }>();
@@ -166,6 +167,7 @@ export default function PreviewPlanPage() {
           type: draft.type,
           description: draft.description,
           content: draft.content,
+          template_id: savedTemplateId || draft.templateId,
         }}
         branchId={effectiveBranchId ?? undefined}
       />
@@ -174,26 +176,26 @@ export default function PreviewPlanPage() {
 }
 
 function WorkoutPreview({ content }: { content: any }) {
-  const weeks = content?.weeks || [];
-  if (!weeks.length) {
+  const plan = normalizeWorkoutPlan(content);
+  if (!plan.weeks.length) {
     return <p className="text-sm text-muted-foreground">No workout days configured.</p>;
   }
   return (
     <div className="space-y-5">
-      {weeks.map((wk: any, wi: number) => (
+      {plan.weeks.map((wk, wi) => (
         <div key={wi} className="space-y-3">
-          {weeks.length > 1 && <h4 className="font-semibold text-sm text-primary">Week {wk.week}</h4>}
-          {(wk.days || []).map((d: any, di: number) => (
+          {plan.weeks.length > 1 && <h4 className="font-semibold text-sm text-primary">Week {wk.week}</h4>}
+          {wk.days.map((d, di) => (
             <div key={di} className="rounded-lg border p-3">
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <p className="font-semibold text-sm">{d.day}</p>
-                  <p className="text-xs text-muted-foreground">{d.focus}</p>
+                  {d.focus && <p className="text-xs text-muted-foreground">{d.focus}</p>}
                 </div>
-                <Badge variant="secondary" className="text-xs">{d.exercises?.length || 0} exercises</Badge>
+                <Badge variant="secondary" className="text-xs">{d.exercises.length} exercises</Badge>
               </div>
               <ul className="space-y-1.5">
-                {(d.exercises || []).map((ex: any, ei: number) => (
+                {d.exercises.map((ex, ei) => (
                   <li key={ei} className="text-sm flex items-start justify-between gap-2 py-1.5 px-2 rounded hover:bg-muted/40">
                     <div className="min-w-0">
                       <p className="font-medium">{ei + 1}. {ex.name}</p>
@@ -214,48 +216,48 @@ function WorkoutPreview({ content }: { content: any }) {
 }
 
 function DietPreview({ content }: { content: any }) {
-  // Manual diet stores `slots`; AI diet stores `meals` (array of days)
-  if (content?.slots?.length) {
-    return (
-      <div className="space-y-3">
-        {content.slots.map((s: any, i: number) => (
-          <div key={i} className="rounded-lg border p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="font-semibold text-sm">{s.name} <span className="text-xs text-muted-foreground">• {s.time}</span></p>
-              <Badge variant="secondary" className="text-xs">{Math.round(s.totals?.calories || 0)} cal</Badge>
+  const plan = normalizeDietPlan(content);
+  if (!plan.days.length) {
+    return <p className="text-sm text-muted-foreground">No meals configured.</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {plan.days.map((d, di) => (
+        <div key={di} className="space-y-2">
+          {plan.days.length > 1 && (
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm text-primary">{d.day}</h4>
+              <span className="text-xs text-muted-foreground">{Math.round(d.totals.calories)} cal</span>
             </div>
-            <ul className="space-y-1">
-              {(s.items || []).map((it: any, ii: number) => (
-                <li key={ii} className="text-sm flex items-center justify-between py-1">
-                  <span>{it.food} <span className="text-xs text-muted-foreground">{it.quantity}</span></span>
-                  <span className="text-xs text-muted-foreground">
-                    {Math.round(it.calories)}cal · P{it.protein} C{it.carbs} F{it.fats}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (content?.meals?.length) {
-    return (
-      <div className="space-y-3">
-        {content.meals.map((d: any, di: number) => (
-          <div key={di} className="rounded-lg border p-3">
-            <p className="font-semibold text-sm mb-2">{d.day}</p>
-            <ul className="space-y-1 text-sm">
-              {d.breakfast && <li className="flex justify-between"><span>🌅 {d.breakfast.meal}</span><span className="text-xs text-muted-foreground">{d.breakfast.calories} cal</span></li>}
-              {d.snack1 && <li className="flex justify-between"><span>🍎 {d.snack1.meal}</span><span className="text-xs text-muted-foreground">{d.snack1.calories} cal</span></li>}
-              {d.lunch && <li className="flex justify-between"><span>🍽️ {d.lunch.meal}</span><span className="text-xs text-muted-foreground">{d.lunch.calories} cal</span></li>}
-              {d.snack2 && <li className="flex justify-between"><span>🥜 {d.snack2.meal}</span><span className="text-xs text-muted-foreground">{d.snack2.calories} cal</span></li>}
-              {d.dinner && <li className="flex justify-between"><span>🌙 {d.dinner.meal}</span><span className="text-xs text-muted-foreground">{d.dinner.calories} cal</span></li>}
-            </ul>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return <p className="text-sm text-muted-foreground">No meals configured.</p>;
+          )}
+          {d.slots.map((s, si) => (
+            <div key={si} className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-semibold text-sm">
+                  {s.name}{s.time && <span className="text-xs text-muted-foreground"> • {s.time}</span>}
+                </p>
+                <Badge variant="secondary" className="text-xs">{Math.round(s.totals.calories)} cal</Badge>
+              </div>
+              <ul className="space-y-1">
+                {s.items.map((it, ii) => (
+                  <li key={ii} className="text-sm flex items-center justify-between gap-2 py-1">
+                    <span className="min-w-0 flex items-center gap-2">
+                      <span className="truncate">{it.food}</span>
+                      {it.quantity && <span className="text-xs text-muted-foreground">{it.quantity}</span>}
+                      {it.unmatched && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">not in catalog</Badge>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {Math.round(it.calories)}cal · P{it.protein} C{it.carbs} F{it.fats}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }

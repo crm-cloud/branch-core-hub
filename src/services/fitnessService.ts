@@ -107,6 +107,67 @@ export async function createPlanTemplate(template: {
   };
 }
 
+// Update an existing plan template in place (name, description, content, etc.)
+export async function updatePlanTemplate(
+  id: string,
+  patch: Partial<{
+    name: string;
+    description: string | null;
+    difficulty: string | null;
+    goal: string | null;
+    content: FitnessPlanContent;
+    is_public: boolean;
+  }>,
+): Promise<FitnessPlanTemplate> {
+  const dbPatch: Record<string, unknown> = { ...patch };
+  if (patch.content) dbPatch.content = toJsonContent(patch.content);
+  const { data, error } = await supabase
+    .from('fitness_plan_templates')
+    .update(dbPatch)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return {
+    ...data,
+    type: data.type as 'workout' | 'diet',
+    content: narrowPlanContent(data.content),
+  };
+}
+
+// Soft-delete a template (sets is_active = false). Existing assignments are
+// preserved because plan content is snapshotted at assign-time.
+export async function softDeletePlanTemplate(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('fitness_plan_templates')
+    .update({ is_active: false })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// Returns a map of template_id → number of active member assignments.
+export async function getTemplateUsageCounts(
+  templateIds: string[],
+): Promise<Record<string, number>> {
+  if (templateIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('member_fitness_plans')
+    .select('template_id')
+    .in('template_id', templateIds);
+  if (error) {
+    // template_id column may not yet be migrated in older environments —
+    // surface zero counts rather than crashing the templates page.
+    console.warn('getTemplateUsageCounts failed:', error.message);
+    return {};
+  }
+  const counts: Record<string, number> = {};
+  for (const row of data || []) {
+    if (!row.template_id) continue;
+    counts[row.template_id] = (counts[row.template_id] || 0) + 1;
+  }
+  return counts;
+}
+
 // Fetch a single plan template by id
 export async function getPlanTemplate(id: string): Promise<FitnessPlanTemplate | null> {
   const { data, error } = await supabase
@@ -194,6 +255,9 @@ export interface BulkAssignParams {
   valid_until?: string;
   branch_id?: string;
   channels?: NotificationChannel[];
+  /** Optional back-reference to the originating template — lets trainers
+   * see "X members are on Template A" and re-push template updates. */
+  template_id?: string | null;
 }
 
 interface MemberContact {
@@ -317,6 +381,7 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
     valid_until: params.valid_until,
     branch_id: params.branch_id,
     created_by: user?.id,
+    template_id: params.template_id ?? null,
   }));
 
   const { data: inserted, error } = await supabase
@@ -326,7 +391,9 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
   if (error) throw error;
 
   const planIdByMember = new Map<string, string>();
-  for (const row of inserted || []) planIdByMember.set((row as any).member_id, (row as any).id);
+  for (const row of inserted || []) {
+    if (row.member_id) planIdByMember.set(row.member_id, row.id);
+  }
 
   const results: BulkAssignResult[] = [];
   for (const member_id of params.member_ids) {

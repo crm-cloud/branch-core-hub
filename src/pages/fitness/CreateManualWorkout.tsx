@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlanTemplate } from '@/services/fitnessService';
+import { getPlanTemplate, updatePlanTemplate } from '@/services/fitnessService';
+import type { WorkoutPlanContent } from '@/types/fitnessPlan';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,7 @@ export default function CreateManualWorkoutPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const templateId = searchParams.get('template');
+  const editMode = searchParams.get('edit') === '1' && !!templateId;
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -125,6 +127,52 @@ export default function CreateManualWorkoutPage() {
 
   const totalExercises = days.reduce((s, d) => s + d.exercises.length, 0);
 
+  const buildContent = (): WorkoutPlanContent => ({
+    name: planName,
+    type: 'workout' as const,
+    difficulty,
+    goal,
+    description,
+    weeks: [{
+      week: 1,
+      days: days
+        .filter(d => d.exercises.length > 0)
+        .map(d => ({
+          day: d.day,
+          focus: d.focus,
+          exercises: d.exercises.map(ex => ({
+            name: ex.name,
+            sets: ex.sets,
+            reps: ex.reps,
+            rest: `${ex.rest_seconds}s`,
+            weight: ex.weight || undefined,
+            notes: ex.form_tips || undefined,
+            video_url: ex.video_url || undefined,
+            video_file_path: ex.video_file_path || undefined,
+          })),
+        })),
+    }],
+  });
+
+  const handleSaveTemplate = async () => {
+    if (!planName.trim()) { toast.error('Plan name is required'); return; }
+    if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
+    if (!templateId) return;
+    try {
+      await updatePlanTemplate(templateId, {
+        name: planName.trim(),
+        description: description.trim() || null,
+        difficulty: difficulty || null,
+        goal: goal || null,
+        content: buildContent(),
+      });
+      toast.success('Template updated');
+      navigate('/fitness/templates');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update template');
+    }
+  };
+
   const handlePreview = () => {
     if (!planName.trim()) { toast.error('Plan name is required'); return; }
     if (totalExercises === 0) { toast.error('Add at least one exercise'); return; }
@@ -133,6 +181,7 @@ export default function CreateManualWorkoutPage() {
     saveDraft({
       id,
       source: 'manual-workout',
+      templateId: templateId || undefined,
       type: 'workout',
       name: planName,
       description,
@@ -141,32 +190,7 @@ export default function CreateManualWorkoutPage() {
       memberId: member?.id,
       memberName: member?.full_name,
       memberCode: member?.member_code,
-      content: {
-        name: planName,
-        type: 'workout',
-        difficulty,
-        goal,
-        description,
-        weeks: [{
-          week: 1,
-          days: days
-            .filter(d => d.exercises.length > 0)
-            .map(d => ({
-              day: d.day,
-              focus: d.focus,
-              exercises: d.exercises.map(ex => ({
-                name: ex.name,
-                sets: ex.sets,
-                reps: ex.reps,
-                rest: `${ex.rest_seconds}s`,
-                weight: ex.weight || undefined,
-                notes: ex.form_tips || undefined,
-                video_url: ex.video_url || undefined,
-                video_file_path: ex.video_file_path || undefined,
-              })),
-            })),
-        }],
-      },
+      content: buildContent(),
       createdAt: new Date().toISOString(),
     });
     navigate(`/fitness/preview/${id}`);
@@ -174,11 +198,24 @@ export default function CreateManualWorkoutPage() {
 
   return (
     <CreateFlowLayout
-      title="Manual Workout Plan"
-      subtitle="Build a day-by-day program"
+      title={editMode ? 'Edit Workout Template' : 'Manual Workout Plan'}
+      subtitle={editMode ? 'Update exercises in this template' : 'Build a day-by-day program'}
       step="build"
-      backTo="/fitness/create"
-      actions={<Button onClick={handlePreview} disabled={!planName.trim() || totalExercises === 0}>Continue to Preview</Button>}
+      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      actions={
+        editMode ? (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/fitness/templates')}>Cancel</Button>
+            <Button onClick={handleSaveTemplate} disabled={!planName.trim() || totalExercises === 0}>
+              Save Template
+            </Button>
+          </div>
+        ) : (
+          <Button onClick={handlePreview} disabled={!planName.trim() || totalExercises === 0}>
+            Continue to Preview
+          </Button>
+        )
+      }
     >
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">

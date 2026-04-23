@@ -8,6 +8,17 @@ const corsHeaders = {
 
 const ALLOWED_AI_ROLES = ["owner", "admin", "manager"] as const;
 
+interface CatalogMeal {
+  id: string;
+  name: string;
+  meal_type?: string | null;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fats?: number;
+  default_quantity?: string | null;
+}
+
 interface GeneratePlanRequest {
   type: "workout" | "diet";
   memberInfo: {
@@ -23,6 +34,10 @@ interface GeneratePlanRequest {
   };
   durationWeeks?: number;
   caloriesTarget?: number;
+  /** Optional list of meals from the gym's meal_catalog the AI should
+   * prefer when composing diet plans. Items the AI proposes outside of
+   * this list are flagged as `unmatched` so the trainer can review. */
+  availableMeals?: CatalogMeal[];
 }
 
 serve(async (req) => {
@@ -71,7 +86,7 @@ serve(async (req) => {
       );
     }
 
-    const { type, memberInfo, durationWeeks = 4, caloriesTarget } = await req.json() as GeneratePlanRequest;
+    const { type, memberInfo, durationWeeks = 4, caloriesTarget, availableMeals = [] } = await req.json() as GeneratePlanRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -153,7 +168,14 @@ serve(async (req) => {
          
          Create a balanced, practical meal plan suitable for their goals.`;
 
-    console.log(`Generating ${type} plan for member:`, memberInfo.name);
+    const catalogPrompt = type === "diet" && availableMeals.length > 0
+      ? `\n\nIMPORTANT — prefer meals from this gym-stocked catalog whenever possible. Use the EXACT meal name when picking from the catalog so it can be tracked back to inventory. If you must propose something outside the catalog, do so sparingly.\n\n${availableMeals
+          .slice(0, 80)
+          .map((m) => `- ${m.name}${m.meal_type ? ` [${m.meal_type}]` : ""}${m.calories ? ` (${m.calories} kcal, P${m.protein ?? 0}/C${m.carbs ?? 0}/F${m.fats ?? 0})` : ""}`)
+          .join("\n")}`
+      : "";
+
+    console.log(`Generating ${type} plan for member:`, memberInfo.name, `with ${availableMeals.length} catalog meals`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -165,7 +187,7 @@ serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          { role: "user", content: userPrompt + catalogPrompt },
         ],
         response_format: { type: "json_object" },
       }),
@@ -202,6 +224,52 @@ serve(async (req) => {
     } catch (e) {
       console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse AI response");
+    }
+
+    // Post-process: for diet plans, attempt to map each AI-suggested meal back
+    // to a catalog row by name (case-insensitive substring match). Stamps the
+    // catalog id onto matched entries and flags everything else as unmatched.
+    if (type === "diet" && Array.isArray(plan?.meals) && availableMeals.length > 0) {
+      const lookup = availableMeals.map((m) => ({
+        ...m,
+        _key: m.name.toLowerCase().trim(),
+      }));
+      const findMatch = (name?: string) => {
+        if (!name) return null;
+        const k = name.toLowerCase().trim();
+        return (
+          lookup.find((m) => m._key === k) ||
+          lookup.find((m) => m._key.includes(k) || k.includes(m._key)) ||
+          null
+        );
+      };
+      const slotKeys = ["breakfast", "snack1", "lunch", "snack2", "dinner", "pre_workout", "post_workout"];
+      let matchedCount = 0;
+      let totalCount = 0;
+      for (const day of plan.meals) {
+        for (const k of slotKeys) {
+          const entry = day?.[k];
+          if (!entry || typeof entry !== "object") continue;
+          totalCount++;
+          const match = findMatch(entry.meal || entry.name);
+          if (match) {
+            entry.catalog_id = match.id;
+            entry.unmatched = false;
+            matchedCount++;
+            // Backfill macros from catalog when AI omitted them.
+            if (entry.calories === undefined && match.calories !== undefined) entry.calories = match.calories;
+            if (entry.protein === undefined && match.protein !== undefined) entry.protein = match.protein;
+            if (entry.carbs === undefined && match.carbs !== undefined) entry.carbs = match.carbs;
+            if (entry.fats === undefined && match.fats !== undefined) entry.fats = match.fats;
+            if (!entry.quantity && match.default_quantity) entry.quantity = match.default_quantity;
+          } else {
+            entry.catalog_id = null;
+            entry.unmatched = true;
+          }
+        }
+      }
+      plan.catalogMatchSummary = { matched: matchedCount, total: totalCount };
+      console.log(`Catalog match: ${matchedCount}/${totalCount} meals mapped to catalog ids.`);
     }
 
     console.log(`Successfully generated ${type} plan:`, plan.name);

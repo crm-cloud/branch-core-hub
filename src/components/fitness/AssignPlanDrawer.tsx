@@ -42,6 +42,9 @@ interface AssignPlanDrawerProps {
     type: 'workout' | 'diet';
     description?: string;
     content: any;
+    /** Optional: template this plan was loaded from. Stored on the
+     * assignment so trainers can later see "N members on Template A". */
+    template_id?: string | null;
   } | null;
   branchId?: string;
 }
@@ -115,6 +118,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         valid_until: validUntil,
         branch_id: branchId,
         channels,
+        template_id: plan?.template_id ?? null,
       }),
     onSuccess: (data) => {
       const ok = data.filter((r) => r.success).length;

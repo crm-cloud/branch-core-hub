@@ -17,6 +17,8 @@ export interface ExerciseEntry {
   video_file_path?: string;
   /** Optional bullet/sentence form-cue tips shown alongside the exercise. */
   form_tips?: string[] | string;
+  /** Optional working weight, free-text to allow units like "20kg" or "BW". */
+  weight?: string;
 }
 
 export interface WorkoutDayEntry {
@@ -38,6 +40,7 @@ export interface WorkoutPlanContent {
   description?: string;
   goal?: string;
   difficulty?: 'beginner' | 'intermediate' | 'advanced' | string;
+  type?: 'workout';
   weeks?: WorkoutWeekEntry[];
   days?: WorkoutDayEntry[];
   notes?: string;
@@ -71,14 +74,28 @@ export interface MealEntry {
   recipe_link?: string;
 }
 
+export interface MealSlotEntry {
+  name: string;
+  time?: string;
+  items?: MealItemEntry[];
+  totals?: { calories: number; protein: number; carbs: number; fats: number };
+  recipe_link?: string;
+  prep_video_url?: string;
+  prep_video_file_path?: string;
+}
+
 export interface DietPlanContent {
   name?: string;
   description?: string;
   type?: string;
+  dietaryType?: string;
+  cuisine?: string;
   dailyCalories?: number;
   caloriesTarget?: number;
   macros?: { protein?: string; carbs?: string; fat?: string };
   meals?: MealEntry[];
+  slots?: MealSlotEntry[];
+  totals?: { calories: number; protein: number; carbs: number; fats: number };
   hydration?: string;
   supplements?: string[];
   notes?: string;

@@ -305,7 +305,23 @@ export async function generateFitnessPlan(
     experience?: string;
     preferences?: string;
   },
-  options?: { durationWeeks?: number; caloriesTarget?: number }
+  options?: {
+    durationWeeks?: number;
+    caloriesTarget?: number;
+    /** Subset of meal_catalog rows the AI is allowed/encouraged to use.
+     * Mapped back to catalog ids in the response so the diet page can show
+     * which AI meals correspond to gym-stocked items vs custom suggestions. */
+    availableMeals?: Array<{
+      id: string;
+      name: string;
+      meal_type?: string | null;
+      calories?: number;
+      protein?: number;
+      carbs?: number;
+      fats?: number;
+      default_quantity?: string | null;
+    }>;
+  }
 ): Promise<any> {
   const { data, error } = await supabase.functions.invoke("generate-fitness-plan", {
     body: {
@@ -313,6 +329,7 @@ export async function generateFitnessPlan(
       memberInfo,
       durationWeeks: options?.durationWeeks || 4,
       caloriesTarget: options?.caloriesTarget,
+      availableMeals: options?.availableMeals,
     },
   });
 

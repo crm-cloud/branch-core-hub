@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,23 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPlanTemplates,
   FitnessPlanTemplate,
+  softDeletePlanTemplate,
+  getTemplateUsageCounts,
 } from "@/services/fitnessService";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Pencil, Users } from "lucide-react";
 import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
 import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
 const DEFAULT_TEMPLATES = [
@@ -236,24 +248,31 @@ export default function FitnessTemplatesPage() {
   const [shuffledWorkout, setShuffledWorkout] = useState<{ name: string; exercises: any[] } | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<FitnessPlanTemplate | null>(null);
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["fitness-templates", planType],
     queryFn: () => fetchPlanTemplates(undefined, planType),
   });
 
+  // Number of member assignments per template — surfaced as a badge so trainers
+  // can tell which templates are actually being used before editing/deleting.
+  const templateIds = useMemo(() => templates.map((t) => t.id), [templates]);
+  const { data: usageCounts = {} } = useQuery({
+    queryKey: ["fitness-template-usage", templateIds],
+    queryFn: () => getTemplateUsageCounts(templateIds),
+    enabled: templateIds.length > 0,
+  });
+
   const deleteTemplateMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      const { error } = await supabase
-        .from("fitness_plan_templates")
-        .update({ is_active: false })
-        .eq("id", templateId);
-      if (error) throw error;
-    },
+    mutationFn: (templateId: string) => softDeletePlanTemplate(templateId),
     onSuccess: () => {
       toast.success("Template deleted");
       queryClient.invalidateQueries({ queryKey: ["fitness-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["fitness-template-usage"] });
+      setDeleteTarget(null);
     },
+    onError: (err: any) => toast.error(err?.message || "Failed to delete template"),
   });
 
   const handleQuickShuffle = () => {
@@ -473,88 +492,119 @@ export default function FitnessTemplatesPage() {
                   Your Saved Templates
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {templates.map((template: FitnessPlanTemplate) => (
-                    <Card
-                      key={template.id}
-                      className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30"
-                    >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-base">{template.name}</CardTitle>
-                            <CardDescription className="text-xs mt-1">
-                              {template.description}
-                            </CardDescription>
-                          </div>
-                          <Badge
-                            className={`border text-xs ${getDifficultyColor(template.difficulty)}`}
-                          >
-                            {template.difficulty || "intermediate"}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-2 mb-3">
-                          <Badge variant="outline" className="text-xs">
-                            {template.type === "workout" ? (
-                              <Dumbbell className="h-3 w-3 mr-1" />
-                            ) : (
-                              <Utensils className="h-3 w-3 mr-1" />
-                            )}
-                            {template.type}
-                          </Badge>
-                          {template.goal && (
-                            <Badge variant="secondary" className="text-xs">
-                              {template.goal}
+                  {templates.map((template: FitnessPlanTemplate) => {
+                    const usage = usageCounts[template.id] || 0;
+                    return (
+                      <Card
+                        key={template.id}
+                        className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30"
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <CardTitle className="text-base truncate">{template.name}</CardTitle>
+                              <CardDescription className="text-xs mt-1">
+                                {template.description}
+                              </CardDescription>
+                            </div>
+                            <Badge
+                              className={`border text-xs shrink-0 ${getDifficultyColor(template.difficulty)}`}
+                            >
+                              {template.difficulty || "intermediate"}
                             </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => handleAssignTemplate(template)}
-                          >
-                            <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              generatePlanPDF({
-                                name: template.name,
-                                type: template.type,
-                                data: template.content as any,
-                              })
-                            }
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const path =
-                                template.type === "workout"
-                                  ? "/fitness/create/manual/workout"
-                                  : "/fitness/create/manual/diet";
-                              navigate(`${path}?template=${template.id}`);
-                            }}
-                            title="Use as starting point"
-                          >
-                            <FilePlus className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => deleteTemplateMutation.mutate(template.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            <Badge variant="outline" className="text-xs">
+                              {template.type === "workout" ? (
+                                <Dumbbell className="h-3 w-3 mr-1" />
+                              ) : (
+                                <Utensils className="h-3 w-3 mr-1" />
+                              )}
+                              {template.type}
+                            </Badge>
+                            {template.goal && (
+                              <Badge variant="secondary" className="text-xs">
+                                {template.goal}
+                              </Badge>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className="text-xs gap-1"
+                              title={`Assigned to ${usage} member${usage === 1 ? "" : "s"}`}
+                            >
+                              <Users className="h-3 w-3" />
+                              {usage} {usage === 1 ? "use" : "uses"}
+                            </Badge>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleAssignTemplate(template)}
+                            >
+                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                generatePlanPDF({
+                                  name: template.name,
+                                  type: template.type,
+                                  data: template.content,
+                                })
+                              }
+                              title="Download PDF"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const path =
+                                  template.type === "workout"
+                                    ? "/fitness/create/manual/workout"
+                                    : "/fitness/create/manual/diet";
+                                navigate(`${path}?template=${template.id}`);
+                              }}
+                              title="Use as starting point"
+                            >
+                              <FilePlus className="h-3.5 w-3.5" />
+                            </Button>
+                            {canCreate && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const path =
+                                    template.type === "workout"
+                                      ? "/fitness/create/manual/workout"
+                                      : "/fitness/create/manual/diet";
+                                  navigate(`${path}?template=${template.id}&edit=1`);
+                                }}
+                                title="Edit template content"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {canCreate && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDeleteTarget(template)}
+                                title="Delete template"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -572,10 +622,42 @@ export default function FitnessTemplatesPage() {
                 type: selectedTemplate.type as "workout" | "diet",
                 description: selectedTemplate.description || undefined,
                 content: selectedTemplate.content,
+                template_id: selectedTemplate.id?.startsWith("default-") ? undefined : selectedTemplate.id,
               }
             : null
         }
       />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (usageCounts[deleteTarget.id] || 0) > 0 ? (
+                <>
+                  This template is currently used by{" "}
+                  <strong>{usageCounts[deleteTarget.id]}</strong> member plan
+                  {usageCounts[deleteTarget.id] === 1 ? "" : "s"}. Existing assignments will keep
+                  working — they hold their own snapshot — but the template will no longer appear
+                  in this list.
+                </>
+              ) : (
+                "The template will be hidden from this list. Existing assignments are unaffected."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && deleteTemplateMutation.mutate(deleteTarget.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
+

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getPlanTemplate } from '@/services/fitnessService';
+import { getPlanTemplate, updatePlanTemplate } from '@/services/fitnessService';
+import type { DietPlanContent } from '@/types/fitnessPlan';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +58,7 @@ export default function CreateManualDietPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const templateId = searchParams.get('template');
+  const editMode = searchParams.get('edit') === '1' && !!templateId;
 
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -162,17 +164,66 @@ export default function CreateManualDietPage() {
     toast.success(`Swapped to ${entry.name}`);
   };
 
-  const handlePreview = () => {
-    if (!planName.trim()) { toast.error('Plan name is required'); return; }
-    if (!dietaryType) { toast.error('Dietary type is required'); return; }
-    if (!cuisine) { toast.error('Cuisine is required'); return; }
+  const buildContent = (): DietPlanContent => ({
+    name: planName,
+    type: 'diet',
+    description,
+    dailyCalories: calTarget,
+    dietaryType,
+    cuisine,
+    macros: { protein: `${proteinTarget}g`, carbs: `${carbsTarget}g`, fat: `${fatTarget}g` },
+    slots: slots.map(s => ({
+      name: s.name,
+      time: s.time,
+      items: s.items.filter(i => i.food),
+      recipe_link: s.recipe_link || undefined,
+      prep_video_url: s.prep_video_url || undefined,
+      prep_video_file_path: s.prep_video_file_path || undefined,
+      totals: s.items.reduce((a, i) => ({
+        calories: a.calories + (Number(i.calories) || 0),
+        protein: a.protein + (Number(i.protein) || 0),
+        carbs: a.carbs + (Number(i.carbs) || 0),
+        fats: a.fats + (Number(i.fats) || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fats: 0 }),
+    })),
+    totals,
+  });
+
+  const validateContent = (): string | null => {
+    if (!planName.trim()) return 'Plan name is required';
+    if (!dietaryType) return 'Dietary type is required';
+    if (!cuisine) return 'Cuisine is required';
     const totalItems = slots.reduce((s, m) => s + m.items.filter(i => i.food).length, 0);
-    if (totalItems === 0) { toast.error('Add at least one meal item'); return; }
+    if (totalItems === 0) return 'Add at least one meal item';
+    return null;
+  };
+
+  const handleSaveTemplate = async () => {
+    const err = validateContent();
+    if (err) { toast.error(err); return; }
+    if (!templateId) return;
+    try {
+      await updatePlanTemplate(templateId, {
+        name: planName.trim(),
+        description: description.trim() || null,
+        content: buildContent(),
+      });
+      toast.success('Template updated');
+      navigate('/fitness/templates');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update template');
+    }
+  };
+
+  const handlePreview = () => {
+    const err = validateContent();
+    if (err) { toast.error(err); return; }
 
     const id = newDraftId();
     saveDraft({
       id,
       source: 'manual-diet',
+      templateId: templateId || undefined,
       type: 'diet',
       name: planName,
       description,
@@ -182,30 +233,7 @@ export default function CreateManualDietPage() {
       memberCode: member?.member_code,
       dietaryType,
       cuisine,
-      content: {
-        name: planName,
-        type: 'diet',
-        description,
-        dailyCalories: calTarget,
-        dietaryType,
-        cuisine,
-        macros: { protein: `${proteinTarget}g`, carbs: `${carbsTarget}g`, fat: `${fatTarget}g` },
-        slots: slots.map(s => ({
-          name: s.name,
-          time: s.time,
-          items: s.items.filter(i => i.food),
-          recipe_link: s.recipe_link || undefined,
-          prep_video_url: s.prep_video_url || undefined,
-          prep_video_file_path: s.prep_video_file_path || undefined,
-          totals: s.items.reduce((a, i) => ({
-            calories: a.calories + (Number(i.calories) || 0),
-            protein: a.protein + (Number(i.protein) || 0),
-            carbs: a.carbs + (Number(i.carbs) || 0),
-            fats: a.fats + (Number(i.fats) || 0),
-          }), { calories: 0, protein: 0, carbs: 0, fats: 0 }),
-        })),
-        totals,
-      },
+      content: buildContent(),
       createdAt: new Date().toISOString(),
     });
     navigate(`/fitness/preview/${id}`);
@@ -213,11 +241,20 @@ export default function CreateManualDietPage() {
 
   return (
     <CreateFlowLayout
-      title="Manual Diet Plan"
-      subtitle="Build daily meals with live macro tracking"
+      title={editMode ? 'Edit Diet Template' : 'Manual Diet Plan'}
+      subtitle={editMode ? 'Update meals in this template' : 'Build daily meals with live macro tracking'}
       step="build"
-      backTo="/fitness/create"
-      actions={<Button onClick={handlePreview}>Continue to Preview</Button>}
+      backTo={editMode ? '/fitness/templates' : '/fitness/create'}
+      actions={
+        editMode ? (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/fitness/templates')}>Cancel</Button>
+            <Button onClick={handleSaveTemplate}>Save Template</Button>
+          </div>
+        ) : (
+          <Button onClick={handlePreview}>Continue to Preview</Button>
+        )
+      }
     >
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">

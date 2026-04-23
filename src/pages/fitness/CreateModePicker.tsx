@@ -2,19 +2,91 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Hand, Dumbbell, UtensilsCrossed, ChevronRight, Library, Users } from 'lucide-react';
+import { Sparkles, Hand, Dumbbell, UtensilsCrossed, ChevronRight, Library, Users, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { FitnessHubTabs } from '@/components/fitness/FitnessHubTabs';
+import { useQuery } from '@tanstack/react-query';
+import { fetchPlanTemplates } from '@/services/fitnessService';
+import { fetchMealCatalog } from '@/services/mealCatalogService';
+import { useBranchContext } from '@/contexts/BranchContext';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function CreateModePickerPage() {
   const navigate = useNavigate();
   const { hasAnyRole } = useAuth();
   const isAdmin = hasAnyRole(['owner', 'admin']);
+  const canSeePipeline = hasAnyRole(['owner', 'admin', 'manager']);
+  const { effectiveBranchId } = useBranchContext();
+
+  // Lightweight pipeline counts so the landing surfaces the Catalog →
+  // Templates → Assignments flow at a glance. All queries are gated behind
+  // canSeePipeline so members never trigger them.
+  const { data: catalogCount = 0 } = useQuery({
+    queryKey: ['fitness-pipeline-catalog', effectiveBranchId],
+    queryFn: async () => {
+      const rows = await fetchMealCatalog({ branchId: effectiveBranchId ?? null });
+      return rows.length;
+    },
+    enabled: canSeePipeline,
+  });
+  const { data: templateCount = 0 } = useQuery({
+    queryKey: ['fitness-pipeline-templates', effectiveBranchId],
+    queryFn: async () => {
+      const rows = await fetchPlanTemplates(effectiveBranchId ?? undefined);
+      return rows.length;
+    },
+    enabled: canSeePipeline,
+  });
+  const { data: assignmentCount = 0 } = useQuery({
+    queryKey: ['fitness-pipeline-assignments', effectiveBranchId],
+    queryFn: async () => {
+      let q = supabase.from('member_fitness_plans').select('id', { count: 'exact', head: true });
+      if (effectiveBranchId) q = q.eq('branch_id', effectiveBranchId);
+      const { count, error } = await q;
+      if (error) {
+        console.warn('assignment count failed:', error.message);
+        return 0;
+      }
+      return count ?? 0;
+    },
+    enabled: canSeePipeline,
+  });
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <FitnessHubTabs />
+        {canSeePipeline && (
+          <div className="flex flex-col sm:flex-row sm:items-stretch gap-2">
+            <PipelineTile
+              icon={<UtensilsCrossed className="h-5 w-5" />}
+              title="Meal Catalog"
+              count={catalogCount}
+              label={catalogCount === 1 ? 'meal' : 'meals'}
+              hint="Source ingredients & macros"
+              onClick={() => navigate('/fitness/meal-catalog')}
+            />
+            <PipelineArrow />
+            <PipelineTile
+              icon={<Library className="h-5 w-5" />}
+              title="Plan Templates"
+              count={templateCount}
+              label={templateCount === 1 ? 'template' : 'templates'}
+              hint="Reusable plans for any goal"
+              onClick={() => navigate('/fitness/templates')}
+            />
+            <PipelineArrow />
+            <PipelineTile
+              icon={<Users className="h-5 w-5" />}
+              title="Member Assignments"
+              count={assignmentCount}
+              label={assignmentCount === 1 ? 'plan' : 'plans'}
+              hint="Active workout & diet plans"
+              onClick={() => navigate('/fitness/member-plans')}
+            />
+          </div>
+        )}
+
         <div className="max-w-5xl space-y-2">
           <h2 className="text-xl font-semibold tracking-tight">Create a Plan</h2>
           <p className="text-sm text-muted-foreground">
@@ -108,5 +180,51 @@ export default function CreateModePickerPage() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+function PipelineTile({
+  icon,
+  title,
+  count,
+  label,
+  hint,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-1 text-left rounded-2xl border bg-card hover:border-primary/40 hover:shadow-md transition-all p-4 group"
+    >
+      <div className="flex items-center gap-3 mb-2">
+        <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate">{title}</p>
+          <p className="text-xs text-muted-foreground truncate">{hint}</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+      </div>
+      <p className="text-2xl font-bold tabular-nums">
+        {count}
+        <span className="ml-1 text-xs font-normal text-muted-foreground">{label}</span>
+      </p>
+    </button>
+  );
+}
+
+function PipelineArrow() {
+  return (
+    <div className="hidden sm:flex items-center justify-center text-muted-foreground/60">
+      <ArrowRight className="h-4 w-4" />
+    </div>
   );
 }

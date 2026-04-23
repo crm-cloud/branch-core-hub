@@ -163,7 +163,20 @@ export function useGenerateFitnessPlan() {
         experience?: string;
         preferences?: string;
       };
-      options?: { durationWeeks?: number; caloriesTarget?: number };
+      options?: {
+        durationWeeks?: number;
+        caloriesTarget?: number;
+        availableMeals?: Array<{
+          id: string;
+          name: string;
+          meal_type?: string | null;
+          calories?: number;
+          protein?: number;
+          carbs?: number;
+          fats?: number;
+          default_quantity?: string | null;
+        }>;
+      };
     }) => generateFitnessPlan(type, memberInfo, options),
   });
 }

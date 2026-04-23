@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +41,8 @@ import {
   removeMealCompletion,
   applySwapsToDiet,
 } from '@/services/memberPlanProgressService';
-import type { DietPlanContent, MealEntry, WorkoutPlanContent } from '@/types/fitnessPlan';
+import type { DietPlanContent, MealEntry, MealItemEntry, WorkoutPlanContent } from '@/types/fitnessPlan';
+import { normalizeDietPlan, normalizeWorkoutPlan } from '@/lib/planNormalizer';
 import { ExerciseVideoPlayer } from '@/components/fitness/member/ExerciseVideoPlayer';
 import { MealSwapDialog } from '@/components/fitness/member/MealSwapDialog';
 import { ShoppingListDialog } from '@/components/fitness/member/ShoppingListDialog';
@@ -64,6 +65,8 @@ interface UnifiedPlan {
 }
 
 function normalizeWorkout(p: any, src: UnifiedPlan['source']): UnifiedPlan {
+  const raw = (p.plan_data || p.workout_data || {}) as any;
+  const content = { ...raw, ...normalizeWorkoutPlan(raw) } as WorkoutPlanContent;
   return {
     id: p.id,
     source: src,
@@ -75,11 +78,52 @@ function normalizeWorkout(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
     raw: p,
-    content: (p.plan_data || p.workout_data || {}) as WorkoutPlanContent,
+    content,
   };
 }
 
 function normalizeDiet(p: any, src: UnifiedPlan['source']): UnifiedPlan {
+  const raw = (p.plan_data || p.meal_plan || {}) as any;
+  const normalized = normalizeDietPlan(raw);
+
+  // Derive a flat meals[] from canonical day[0].slots so per-meal UI
+  // (toggles, swaps) works uniformly for AI and manual diet shapes.
+  const day0 = normalized.days[0];
+  const derivedMeals: MealEntry[] = day0
+    ? day0.slots.map<MealEntry>((s) => ({
+        name: s.name,
+        time: s.time,
+        items: s.items.map<MealItemEntry>((it) => ({
+          food: it.food,
+          quantity: it.quantity,
+          calories: it.calories,
+          protein: it.protein,
+          carbs: it.carbs,
+          fats: it.fats,
+        })),
+        calories: s.totals.calories,
+        protein: s.totals.protein,
+        carbs: s.totals.carbs,
+        fats: s.totals.fats,
+        recipe_link: s.recipe_link,
+        prep_video_url: s.prep_video_url,
+      }))
+    : [];
+
+  // The legacy AI shape stores meals as days ([{ day, breakfast, ... }])
+  // which have no `name`; only keep raw.meals when it's a true MealEntry[].
+  const isFlatMealArray =
+    Array.isArray(raw.meals) &&
+    raw.meals.length > 0 &&
+    typeof raw.meals[0] === 'object' &&
+    raw.meals[0] !== null &&
+    typeof raw.meals[0].name === 'string';
+
+  const content = {
+    ...raw,
+    meals: isFlatMealArray ? raw.meals : derivedMeals,
+  } as DietPlanContent;
+
   return {
     id: p.id,
     source: src,
@@ -92,7 +136,7 @@ function normalizeDiet(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
     raw: p,
-    content: (p.plan_data || p.meal_plan || {}) as DietPlanContent,
+    content,
   };
 }
 

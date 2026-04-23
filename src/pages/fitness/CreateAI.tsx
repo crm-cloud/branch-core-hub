@@ -15,6 +15,9 @@ import { MemberSearchPicker, PickedMember } from '@/components/fitness/create/Me
 import { MemberProfileCard, MemberProfileOverrides } from '@/components/fitness/create/MemberProfileCard';
 import { useGenerateFitnessPlan } from '@/hooks/usePTPackages';
 import { newDraftId, saveDraft } from '@/lib/planDraft';
+import { fetchMealCatalog } from '@/services/mealCatalogService';
+import { useQuery } from '@tanstack/react-query';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function CreateAIPage() {
   const navigate = useNavigate();
@@ -34,6 +37,21 @@ export default function CreateAIPage() {
   const [fatTarget, setFatTarget] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const { effectiveBranchId } = useBranchContext();
+
+  // Pull catalog meals matching the selected diet/cuisine so we can pass them
+  // to the AI as the gym's preferred food list. Cached because the catalog
+  // doesn't change often within a session.
+  const { data: catalogMeals = [] } = useQuery({
+    queryKey: ['meal-catalog-ai', profile.dietary_preference, profile.cuisine, effectiveBranchId],
+    queryFn: () =>
+      fetchMealCatalog({
+        dietaryType: profile.dietary_preference || null,
+        cuisine: profile.cuisine || null,
+        branchId: effectiveBranchId ?? null,
+      }),
+    enabled: type === 'diet' && !!profile.dietary_preference && !!profile.cuisine,
+  });
 
   useEffect(() => {
     if (!templateId) return;
@@ -104,8 +122,28 @@ export default function CreateAIPage() {
         options: {
           durationWeeks,
           caloriesTarget: caloriesTarget ? parseInt(caloriesTarget) : undefined,
+          availableMeals: type === 'diet'
+            ? catalogMeals.slice(0, 80).map((m) => ({
+                id: m.id,
+                name: m.name,
+                meal_type: m.meal_type,
+                calories: m.calories,
+                protein: m.protein,
+                carbs: m.carbs,
+                fats: m.fats,
+                default_quantity: m.default_quantity,
+              }))
+            : undefined,
         },
       });
+
+      const matchSummary = (plan as any)?.catalogMatchSummary;
+      if (type === 'diet' && matchSummary?.total) {
+        const { matched, total } = matchSummary;
+        if (matched < total) {
+          toast.message(`AI used catalog for ${matched}/${total} meals — review the rest before assigning`);
+        }
+      }
 
       clearTimeout(slow);
       setProgressMsg(null);
@@ -114,6 +152,7 @@ export default function CreateAIPage() {
       saveDraft({
         id,
         source: 'ai',
+        templateId: templateId || undefined,
         type,
         name: plan.name || planName,
         description: plan.description,
