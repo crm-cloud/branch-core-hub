@@ -1575,30 +1575,30 @@ export function MemberProfileDrawer({
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Recent Visits
+                    Recent Activity
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {attendance.length > 0 ? (
+                  {recentActivity.length > 0 ? (
                     <div className="space-y-2">
-                      {attendance.map((att: any) => (
-                        <div key={att.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-success" />
-                            <span className="text-sm">
-                              {format(new Date(att.check_in), 'dd MMM yyyy, HH:mm')}
-                            </span>
+                      {recentActivity.map((item) => (
+                        <div key={item.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-muted/50">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">{item.badge}</Badge>
+                              <p className="text-sm font-medium">{item.title}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{format(new Date(item.timestamp), 'dd MMM yyyy, HH:mm')}</p>
+                            {item.subtitle && <p className="text-xs text-muted-foreground">{item.subtitle}</p>}
                           </div>
-                          {att.check_out && (
-                            <span className="text-xs text-muted-foreground">
-                              Out: {format(new Date(att.check_out), 'HH:mm')}
-                            </span>
+                          {typeof item.amount === 'number' && (
+                            <p className="text-sm font-medium whitespace-nowrap">₹{item.amount.toLocaleString('en-IN')}</p>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No attendance records</p>
+                    <p className="text-sm text-muted-foreground">No recent activity</p>
                   )}
                 </CardContent>
               </Card>
