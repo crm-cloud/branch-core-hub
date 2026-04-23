@@ -14,6 +14,7 @@ import { format, addDays, differenceInDays } from 'date-fns';
 import { usePlans } from '@/hooks/usePlans';
 import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock, Wallet } from 'lucide-react';
 import { useGstRates } from '@/hooks/useGstRates';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -383,15 +384,13 @@ export function PurchaseMembershipDrawer({
     },
     onSuccess: () => {
       toast.success('Membership purchased successfully');
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['all-rewards'] });
       queryClient.invalidateQueries({ queryKey: ['lockers'] });
       queryClient.invalidateQueries({ queryKey: ['available-lockers'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
-      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
       queryClient.invalidateQueries({ queryKey: ['active-membership'] });
       queryClient.invalidateQueries({ queryKey: ['member-pending-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['member-pt-packages'] });

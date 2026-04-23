@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getSyncStatus } from '@/services/biometricService';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface HardwareBiometricsTabProps {
   memberId: string;
@@ -61,8 +62,7 @@ export function HardwareBiometricsTab({
     },
     onSuccess: () => {
       toast.success('Hardware settings saved');
-      queryClient.invalidateQueries({ queryKey: ['member-details', memberId] });
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
     },
     onError: () => toast.error('Failed to save hardware settings'),
   });

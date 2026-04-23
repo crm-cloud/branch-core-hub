@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface TransferMembershipDrawerProps {
   open: boolean;
@@ -191,9 +192,7 @@ export function TransferMembershipDrawer({ open, onOpenChange, memberId, memberN
       } else {
         toast.success(`Membership transferred to ${selectedTarget?.full_name}`);
       }
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
-      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['active-membership'] });
       queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
       setSelectedTarget(null);

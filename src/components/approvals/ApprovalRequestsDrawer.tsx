@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { CheckCircle, XCircle, Clock, Pause, Calendar } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { revokeHardwareAccess } from '@/services/membershipService';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface ApprovalRequestsDrawerProps {
   open: boolean;
@@ -108,8 +109,7 @@ export function ApprovalRequestsDrawer({ open, onOpenChange, branchId }: Approva
     onSuccess: (data) => {
       toast.success(data.approved ? 'Request approved' : 'Request rejected');
       queryClient.invalidateQueries({ queryKey: ['approval-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      invalidateMembersData(queryClient);
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to process request');

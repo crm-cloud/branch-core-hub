@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { differenceInDays, format } from 'date-fns';
 import { XCircle, AlertTriangle, IndianRupee, Calculator } from 'lucide-react';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface CancelMembershipDrawerProps {
   open: boolean;
@@ -164,7 +165,7 @@ export function CancelMembershipDrawer({
       );
       // Revoke hardware access on cancel
       revokeHardwareAccess(membership.member_id, `Membership cancelled: ${cancellationReason}`, membership.branch_id);
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['memberships'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });

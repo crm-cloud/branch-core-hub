@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Dumbbell, Star, Users, Zap, Info } from 'lucide-react';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface AssignTrainerDrawerProps {
   open: boolean;
@@ -125,8 +126,7 @@ export function AssignTrainerDrawer({
     },
     onSuccess: () => {
       toast.success(selectedTrainerId ? 'Trainer assigned successfully' : 'Trainer removed');
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
       onOpenChange(false);
     },

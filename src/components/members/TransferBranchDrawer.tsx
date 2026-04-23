@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface TransferBranchDrawerProps {
   open: boolean;
@@ -95,8 +96,7 @@ export function TransferBranchDrawer({ open, onOpenChange, memberId, memberName,
       } else {
         toast.success(`Member transferred to ${targetBranch?.name}`);
       }
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details', memberId] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
       setTargetBranchId('');
       setReason('');

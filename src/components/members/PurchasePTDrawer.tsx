@@ -12,6 +12,7 @@ import { Dumbbell, Calendar, IndianRupee, FileText, CheckCircle, Percent } from 
 import { createNotification } from '@/services/notificationService';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface PurchasePTDrawerProps {
   open: boolean;
@@ -73,12 +74,10 @@ export function PurchasePTDrawer({ open, onOpenChange, memberId, memberName, bra
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['finance-income'] });
       queryClient.invalidateQueries({ queryKey: ['trainers-utilization'] });
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['member-pt-packages'] });
       queryClient.invalidateQueries({ queryKey: ['active-membership'] });
       queryClient.invalidateQueries({ queryKey: ['member-pending-invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['member-memberships'] });
 
       // Send notifications for PT purchase
       try {

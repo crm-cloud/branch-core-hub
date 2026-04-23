@@ -38,6 +38,7 @@ import { MemberRegistrationFormDrawer } from './MemberRegistrationForm';
 import { TransferBranchDrawer } from './TransferBranchDrawer';
 import { TransferMembershipDrawer } from './TransferMembershipDrawer';
 import { RewardsWalletCard } from './RewardsWalletCard';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 // ─── Pending Invoices Section ───
 function PendingInvoicesSection({ memberId, branchId }: { memberId: string; branchId: string }) {
@@ -479,8 +480,7 @@ export function MemberProfileDrawer({
       
       if (error) throw error;
       toast.success(newStatus === 'active' ? 'Member activated' : 'Member deactivated');
-      queryClient.invalidateQueries({ queryKey: ['members'] });
-      queryClient.invalidateQueries({ queryKey: ['member-details', member.id] });
+      invalidateMembersData(queryClient);
     } catch (error) {
       toast.error('Failed to update member status');
     } finally {
