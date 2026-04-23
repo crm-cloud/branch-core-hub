@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -697,13 +697,12 @@ export function MemberProfileDrawer({
   };
 
   const [theme, setTheme] = useState<any>(null);
-  
-  // Load theme for gym name
-  useState(() => {
+
+  useEffect(() => {
     import('@/services/cmsService').then(({ cmsService }) => {
       setTheme(cmsService.getTheme());
     });
-  });
+  }, []);
 
   if (!member) return null;
 
@@ -908,9 +907,9 @@ export function MemberProfileDrawer({
             <Card>
               <CardContent className="pt-4 text-center">
                 <div className="text-xl sm:text-2xl font-bold">
-                  {attendance.length}
+                  {recentActivity.length}
                 </div>
-                <p className="text-xs text-muted-foreground">Recent Visits</p>
+                <p className="text-xs text-muted-foreground">Recent Activity</p>
               </CardContent>
             </Card>
           </div>
@@ -1005,29 +1004,15 @@ export function MemberProfileDrawer({
                 <Share2 className="h-4 w-4 mr-2 shrink-0" /> Request Plan Transfer
               </Button>
             )}
-            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
-              setRegistrationFormOpen(true);
-            }}>
-              <FileText className="h-4 w-4 mr-2 shrink-0" /> Registration Form
-            </Button>
-            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
-              const p = profile;
-              const ms = activeMembership;
-              printRegistrationForm({
-                memberName: p?.full_name || 'N/A',
-                memberCode: member.member_code,
-                email: p?.email, phone: p?.phone,
-                gender: p?.gender, dateOfBirth: p?.date_of_birth,
-                address: p?.address,
-                emergencyContactName: p?.emergency_contact_name,
-                emergencyContactPhone: p?.emergency_contact_phone,
-                planName: ms?.membership_plans?.name,
-                startDate: ms?.start_date, endDate: ms?.end_date,
-                pricePaid: ms?.price_paid,
-                branchName: memberDetails?.branch?.name,
-              });
-            }}>
-              <Printer className="h-4 w-4 mr-2 shrink-0" /> Quick Print
+            <Button
+              variant="outline"
+              size="sm"
+              className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left"
+              onClick={() => setRegistrationFormOpen(true)}
+              disabled={hasRegistrationForm}
+            >
+              <FileText className="h-4 w-4 mr-2 shrink-0" />
+              {hasRegistrationForm ? 'Already Uploaded' : 'Registration Form'}
             </Button>
           </div>
 
@@ -1074,10 +1059,6 @@ export function MemberProfileDrawer({
                   <TabsTrigger value="documents" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
                     <FileText className="h-3.5 w-3.5" />
                     <span className="text-xs whitespace-nowrap">Docs</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="hardware" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
-                    <IdCard className="h-3.5 w-3.5" />
-                    <span className="text-xs whitespace-nowrap">Access</span>
                   </TabsTrigger>
                   <TabsTrigger value="plans" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
                     <Dumbbell className="h-3.5 w-3.5" />
@@ -1388,18 +1369,6 @@ export function MemberProfileDrawer({
             </TabsContent>
 
             <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} memberGender={(memberDetails?.profiles as any)?.gender} />
-
-            <HardwareBiometricsTab
-              memberId={member.id}
-              memberName={profile?.full_name || 'Member'}
-              memberStatus={member.status}
-              biometricPhotoUrl={(memberDetails as any)?.biometric_photo_url}
-              biometricEnrolled={(memberDetails as any)?.biometric_enrolled}
-              wiegandCode={(memberDetails as any)?.wiegand_code}
-              customWelcomeMessage={(memberDetails as any)?.custom_welcome_message}
-              hardwareAccessEnabled={(memberDetails as any)?.hardware_access_enabled}
-              branchId={member.branch_id}
-            />
 
             <TabsContent value="payments" className="space-y-4 mt-4">
               {/* Pending / Partial Invoices */}
