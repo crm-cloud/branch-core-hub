@@ -634,6 +634,23 @@ export function MemberProfileDrawer({
     enabled: !!member?.id && open,
   });
 
+  const { data: registrationFormDocument } = useQuery({
+    queryKey: ['member-registration-form', member?.id],
+    queryFn: async () => {
+      if (!member?.id) return null;
+      const { data, error } = await supabase
+        .from('member_documents')
+        .select('id, file_name, created_at, storage_path, file_url')
+        .eq('member_id', member.id)
+        .eq('document_type', 'registration_form')
+        .order('created_at', { ascending: false })
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!member?.id && open,
+  });
+
   // Fetch rewards
   const { data: rewards = [] } = useQuery({
     queryKey: ['member-rewards', member?.id],
@@ -693,6 +710,74 @@ export function MemberProfileDrawer({
   const profile = memberDetails?.profiles || member.profiles;
   const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active' || m.status === 'frozen');
   const activePTPackage = memberDetails?.member_pt_packages?.find((p: any) => p.status === 'active');
+  const hasRegistrationForm = !!registrationFormDocument;
+
+  const recentActivity = useMemo<RecentActivityItem[]>(() => {
+    const membershipItems = (memberDetails?.memberships || []).map((membership: any) => ({
+      id: `membership-${membership.id}`,
+      timestamp: membership.created_at || membership.start_date,
+      type: 'membership' as const,
+      title: membership.status === 'active' ? 'Membership purchased' : 'Membership updated',
+      subtitle: membership.membership_plans?.name
+        ? `${membership.membership_plans.name} · ${format(new Date(membership.start_date), 'dd MMM yyyy')} to ${format(new Date(membership.end_date), 'dd MMM yyyy')}`
+        : undefined,
+      amount: membership.price_paid,
+      badge: membership.status === 'active' ? 'Membership' : 'Renewal',
+    }));
+
+    const paymentItems = payments.map((payment: any) => ({
+      id: `payment-${payment.id}`,
+      timestamp: payment.payment_date,
+      type: 'payment' as const,
+      title: 'Payment received',
+      subtitle: payment.invoices?.invoice_number ? `Invoice ${payment.invoices.invoice_number}` : payment.received_by_name ? `Received by ${payment.received_by_name}` : undefined,
+      amount: payment.amount,
+      badge: 'Payment',
+    }));
+
+    const attendanceItems = attendance.flatMap((att: any) => {
+      const items: RecentActivityItem[] = [
+        {
+          id: `checkin-${att.id}`,
+          timestamp: att.check_in,
+          type: 'check_in',
+          title: 'Checked in',
+          subtitle: att.membership_id ? 'Attendance recorded' : undefined,
+          badge: 'Check-in',
+        },
+      ];
+
+      if (att.check_out) {
+        items.push({
+          id: `checkout-${att.id}`,
+          timestamp: att.check_out,
+          type: 'check_out',
+          title: 'Checked out',
+          subtitle: `Visit started ${format(new Date(att.check_in), 'dd MMM yyyy, HH:mm')}`,
+          badge: 'Check-out',
+        });
+      }
+
+      return items;
+    });
+
+    const ptPackageItems = (memberDetails?.member_pt_packages || []).map((pkg: any) => ({
+      id: `pt-${pkg.id}`,
+      timestamp: pkg.created_at,
+      type: 'pt_package' as const,
+      title: 'PT package purchased',
+      subtitle: pkg.pt_packages?.name
+        ? `${pkg.pt_packages.name} · ${pkg.sessions_remaining}/${pkg.sessions_total} sessions left`
+        : undefined,
+      amount: pkg.price_paid,
+      badge: 'PT',
+    }));
+
+    return [...attendanceItems, ...membershipItems, ...paymentItems, ...ptPackageItems]
+      .filter((item) => !!item.timestamp)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 12);
+  }, [attendance, memberDetails?.member_pt_packages, memberDetails?.memberships, payments]);
   
   const daysLeft = activeMembership 
     ? differenceInDays(new Date(activeMembership.end_date), new Date())
