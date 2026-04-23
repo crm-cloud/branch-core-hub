@@ -50,8 +50,21 @@ interface WebhookRow {
   created_at: string;
   updated_at: string;
   invoice_id: string | null;
+  member_id: string | null;
   webhook_data: unknown;
   response_body: unknown;
+  invoice?: {
+    invoice_number: string | null;
+    member_id: string | null;
+    members?: {
+      member_code: string | null;
+      profiles?: { full_name: string | null } | null;
+    } | null;
+  } | null;
+  member?: {
+    member_code: string | null;
+    profiles?: { full_name: string | null } | null;
+  } | null;
 }
 
 const PAGE_SIZE = 50;
@@ -94,7 +107,12 @@ export function WebhookActivityPanel() {
       const to = from + PAGE_SIZE - 1;
       let q = supabase
         .from('payment_transactions')
-        .select('*', { count: 'exact' })
+        .select(
+          `*,
+           invoice:invoices!payment_transactions_invoice_id_fkey(invoice_number, member_id, members(member_code, profiles:user_id(full_name))),
+           member:members!payment_transactions_member_id_fkey(member_code, profiles:user_id(full_name))`,
+          { count: 'exact' },
+        )
         .eq('source', 'webhook')
         .order('received_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
@@ -156,8 +174,13 @@ export function WebhookActivityPanel() {
     if (!search) return rows;
     const s = search.toLowerCase();
     return rows.filter(r => {
-      const hay = [r.gateway_order_id, r.gateway_payment_id, r.event_type, r.error_message]
-        .filter(Boolean).join(' ').toLowerCase();
+      const memberName = r.invoice?.members?.profiles?.full_name || r.member?.profiles?.full_name || '';
+      const memberCode = r.invoice?.members?.member_code || r.member?.member_code || '';
+      const invoiceNum = r.invoice?.invoice_number || '';
+      const hay = [
+        r.gateway_order_id, r.gateway_payment_id, r.event_type, r.error_message,
+        memberName, memberCode, invoiceNum,
+      ].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(s);
     });
   }, [rows, search]);
@@ -259,7 +282,7 @@ export function WebhookActivityPanel() {
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9 rounded-xl" placeholder="Order ID, payment ID, event, error..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input className="pl-9 rounded-xl" placeholder="Member, invoice, order ID, payment ID, event, error..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <Select value={gatewayFilter} onValueChange={setGatewayFilter}>
             <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
@@ -313,6 +336,7 @@ export function WebhookActivityPanel() {
                 <TableHead>HTTP</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Action taken</TableHead>
+                <TableHead>Member</TableHead>
                 <TableHead>Linked</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
@@ -320,10 +344,10 @@ export function WebhookActivityPanel() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Webhook className="h-8 w-8 opacity-30" />
                       <p className="font-medium text-foreground/70">No webhook deliveries yet</p>
@@ -343,7 +367,17 @@ export function WebhookActivityPanel() {
                 return (
                   <Collapsible key={r.id} open={expandedId === r.id} onOpenChange={(o) => setExpandedId(o ? r.id : null)} asChild>
                     <>
-                      <TableRow className="cursor-pointer hover:bg-muted/30">
+                      <TableRow
+                        className={`hover:bg-muted/30 ${r.invoice_id || r.invoice?.member_id || r.member_id ? 'cursor-pointer' : ''}`}
+                        onClick={() => {
+                          const memberId = r.invoice?.member_id || r.member_id;
+                          if (r.invoice_id) {
+                            window.open(`/invoices?invoice=${r.invoice_id}`, '_blank', 'noopener,noreferrer');
+                          } else if (memberId) {
+                            window.open(`/members?member=${memberId}`, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                      >
                         <TableCell>
                           <div className="flex flex-col">
                             <span className="text-sm">{format(new Date(ts), 'dd MMM HH:mm:ss')}</span>
@@ -373,14 +407,39 @@ export function WebhookActivityPanel() {
                           })()}
                         </TableCell>
                         <TableCell>
+                          {(() => {
+                            const memberName = r.invoice?.members?.profiles?.full_name || r.member?.profiles?.full_name;
+                            const memberCode = r.invoice?.members?.member_code || r.member?.member_code;
+                            const memberId = r.invoice?.member_id || r.member_id;
+                            if (!memberName && !memberCode) {
+                              return <span className="text-xs text-muted-foreground">—</span>;
+                            }
+                            return (
+                              <a
+                                href={memberId ? `/members?member=${memberId}` : '/members'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex flex-col text-xs hover:underline"
+                                title={memberName || memberCode || ''}
+                              >
+                                <span className="text-foreground font-medium truncate max-w-[160px]">{memberName || '—'}</span>
+                                {memberCode && <span className="text-muted-foreground font-mono">{memberCode}</span>}
+                              </a>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell>
                           {r.invoice_id ? (
                             <a
                               href={`/invoices?invoice=${r.invoice_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               className="text-xs font-mono text-primary hover:underline"
-                              title={r.invoice_id}
+                              title={r.invoice?.invoice_number || r.invoice_id}
                             >
-                              Invoice {r.invoice_id.slice(0, 8)}…
+                              {r.invoice?.invoice_number || `Invoice ${r.invoice_id.slice(0, 8)}…`}
                             </a>
                           ) : r.gateway_order_id ? (
                             <span className="text-xs font-mono text-muted-foreground" title={r.gateway_order_id}>
@@ -391,10 +450,10 @@ export function WebhookActivityPanel() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-medium">{r.amount ? `₹${r.amount.toLocaleString()}` : '—'}</TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <CollapsibleTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 px-2">
+                              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={(e) => e.stopPropagation()}>
                                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedId === r.id ? 'rotate-180' : ''}`} />
                               </Button>
                             </CollapsibleTrigger>
@@ -413,9 +472,24 @@ export function WebhookActivityPanel() {
                       </TableRow>
                       <CollapsibleContent asChild>
                         <TableRow className="bg-muted/20 hover:bg-muted/20">
-                          <TableCell colSpan={8} className="p-4">
+                          <TableCell colSpan={11} className="p-4">
                             <div className="grid gap-3 md:grid-cols-2 text-sm">
                               <div className="space-y-1.5">
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Member</span>
+                                  <span className="break-all">
+                                    {(r.invoice?.members?.profiles?.full_name || r.member?.profiles?.full_name) ?? '—'}
+                                    {(r.invoice?.members?.member_code || r.member?.member_code) && (
+                                      <span className="ml-2 text-muted-foreground font-mono">
+                                        {r.invoice?.members?.member_code || r.member?.member_code}
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Invoice number</span>
+                                  <span className="font-mono break-all">{r.invoice?.invoice_number || '—'}</span>
+                                </div>
                                 <div className="grid grid-cols-[140px_1fr] gap-2">
                                   <span className="text-muted-foreground">Order ID</span>
                                   <span className="font-mono break-all">{r.gateway_order_id || '—'}</span>
@@ -425,7 +499,7 @@ export function WebhookActivityPanel() {
                                   <span className="font-mono break-all">{r.gateway_payment_id || '—'}</span>
                                 </div>
                                 <div className="grid grid-cols-[140px_1fr] gap-2">
-                                  <span className="text-muted-foreground">Invoice</span>
+                                  <span className="text-muted-foreground">Invoice ID</span>
                                   <span className="font-mono break-all">{r.invoice_id || '—'}</span>
                                 </div>
                                 <div className="grid grid-cols-[140px_1fr] gap-2">

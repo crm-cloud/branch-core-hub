@@ -24,7 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { exportToCSV } from '@/lib/csvExport';
 
 import { useBranchContext } from '@/contexts/BranchContext';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { differenceInDays, format } from 'date-fns';
 
 const PAGE_SIZE = 20;
@@ -42,6 +42,42 @@ export default function MembersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const { selectedBranch, setSelectedBranch, effectiveBranchId, branchFilter, branches } = useBranchContext();
+
+  // Deep-link: /members?member=<id> auto-opens the member profile drawer.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const memberId = params.get('member');
+    if (!memberId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select(`
+          id, member_code, user_id, branch_id, status, created_at, assigned_trainer_id,
+          profiles:user_id(full_name, email, phone, avatar_url),
+          branch:branch_id(name, code),
+          memberships(id, status, start_date, end_date, plan_id, membership_plans(name))
+        `)
+        .eq('id', memberId)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      setSelectedMember({ ...data, joined_at: (data as any).created_at });
+      setProfileOpen(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Strip the ?member= param when the drawer closes so a refresh doesn't reopen it.
+  const handleProfileOpenChange = (open: boolean) => {
+    setProfileOpen(open);
+    if (!open) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('member')) {
+        url.searchParams.delete('member');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  };
 
   // Reset page on search/filter changes
   const handleSearchChange = (val: string) => { setSearch(val); setPage(0); };
@@ -609,7 +645,7 @@ export default function MembersPage() {
             />
             <MemberProfileDrawer
               open={profileOpen}
-              onOpenChange={setProfileOpen}
+              onOpenChange={handleProfileOpenChange}
               member={selectedMember}
               onPurchaseMembership={() => { setProfileOpen(false); setPurchaseOpen(true); }}
               onPurchasePT={() => { setProfileOpen(false); setPurchasePTOpen(true); }}
