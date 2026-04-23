@@ -11,9 +11,10 @@ import { BodyComparisonView } from '@/components/progress3d/BodyComparisonView';
 
 interface MeasurementProgressViewProps {
   memberId: string;
+  memberGender?: string | null;
 }
 
-export function MeasurementProgressView({ memberId }: MeasurementProgressViewProps) {
+export function MeasurementProgressView({ memberId, memberGender }: MeasurementProgressViewProps) {
   const { data: measurements = [], isLoading } = useQuery({
     queryKey: ['member-measurements', memberId],
     queryFn: async () => {
@@ -109,7 +110,7 @@ export function MeasurementProgressView({ memberId }: MeasurementProgressViewPro
       </TabsContent>
 
       <TabsContent value="body-3d" className="mt-0">
-        <BodyComparisonView latest={latest} previous={previous} />
+        <BodyComparisonView latest={latest} previous={previous} memberGender={memberGender} />
       </TabsContent>
     </Tabs>
   );

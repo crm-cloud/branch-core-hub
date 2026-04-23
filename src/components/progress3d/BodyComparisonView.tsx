@@ -9,6 +9,7 @@ import { MemberBodyAvatarCanvas } from './MemberBodyAvatarCanvas';
 interface BodyComparisonViewProps {
   latest?: MemberMeasurementRecord | null;
   previous?: MemberMeasurementRecord | null;
+  memberGender?: string | null;
 }
 
 function getCalloutIcon(direction: 'up' | 'down' | 'stable') {
@@ -17,14 +18,14 @@ function getCalloutIcon(direction: 'up' | 'down' | 'stable') {
   return Minus;
 }
 
-export function BodyComparisonView({ latest, previous }: BodyComparisonViewProps) {
+export function BodyComparisonView({ latest, previous, memberGender }: BodyComparisonViewProps) {
   const callouts = buildMeasurementCallouts(latest, previous).slice(0, 4);
 
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-[1.15fr_1.15fr_0.8fr]">
-        <MemberBodyAvatarCanvas measurement={previous} previousMeasurement={latest} label="Previous form" />
-        <MemberBodyAvatarCanvas measurement={latest} previousMeasurement={previous} label="Current form" />
+        <MemberBodyAvatarCanvas measurement={previous} previousMeasurement={latest} label="Previous form" memberGender={memberGender} />
+        <MemberBodyAvatarCanvas measurement={latest} previousMeasurement={previous} label="Current form" memberGender={memberGender} />
         <Card className="rounded-2xl border-border/60 bg-card shadow-lg shadow-primary/5">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -1417,7 +1417,7 @@ export function MemberProfileDrawer({
             </TabsContent>
 
             <TabsContent value="measurements" className="space-y-4 mt-4">
-              <MeasurementProgressView memberId={member.id} />
+              <MeasurementProgressView memberId={member.id} memberGender={profile?.gender} />
             </TabsContent>
 
             <TabsContent value="rewards" className="space-y-4 mt-4">
@@ -1644,6 +1644,7 @@ export function MemberProfileDrawer({
           onOpenChange={setMeasurementOpen}
           memberId={member.id}
           memberName={profile?.full_name}
+          memberGender={profile?.gender}
         />
         <EditProfileDrawer
           open={editProfileOpen}

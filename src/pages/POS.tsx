@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { ResponsiveSheet, ResponsiveSheetHeader, ResponsiveSheetTitle, ResponsiveSheetDescription, ResponsiveSheetFooter } from '@/components/ui/ResponsiveSheet';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2, Tag, X, Check } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -35,6 +36,14 @@ export default function POSPage() {
   const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
   const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
   const [watchingInvoiceId, setWatchingInvoiceId] = useState<string | null>(null);
+
+  // Coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null); // { id, code, discount_type, discount_value, min_purchase }
+  const [couponValidating, setCouponValidating] = useState(false);
+
+  // Wallet split: when on, deduct as much wallet as possible (up to balance & total) and bill the remainder
+  const [useWallet, setUseWallet] = useState(false);
 
   // Realtime subscription for invoice status updates
   useEffect(() => {
@@ -160,22 +169,23 @@ export default function POSPage() {
 
       const isPaymentLink = paymentMethod === 'razorpay_link';
 
-      // If paying with wallet, check balance
-      if (paymentMethod === 'wallet') {
-        if (!selectedMember) throw new Error('Please select a member to use wallet payment');
-        if (walletBalance < cartTotal) throw new Error('Insufficient wallet balance');
-
-        // Deduct from wallet
-        const { error: updateError } = await supabase
-          .from('wallets')
-          .update({ balance: walletBalance - cartTotal })
-          .eq('member_id', selectedMember.id);
-        if (updateError) throw updateError;
+      // Wallet split is only valid for in-person payments (not link)
+      if (useWallet && isPaymentLink) {
+        throw new Error('Wallet redemption cannot be combined with a payment link');
+      }
+      if (useWallet && !selectedMember) {
+        throw new Error('Select a member to redeem wallet credits');
       }
 
-      // Upload payment slip if provided
+      // If wallet covers the whole bill, the chosen "remainder" method is irrelevant —
+      // but if there IS a remainder, ensure the user picked a proper non-wallet method.
+      if (remainderDue > 0 && paymentMethod === 'wallet') {
+        throw new Error('Choose a payment method for the remaining amount');
+      }
+
+      // Upload payment slip if provided (only when there's a non-wallet remainder)
       let slipUrl: string | undefined;
-      if (slipFile && (paymentMethod === 'card' || paymentMethod === 'upi')) {
+      if (slipFile && remainderDue > 0 && (paymentMethod === 'card' || paymentMethod === 'upi')) {
         const ext = slipFile.name.split('.').pop() || 'jpg';
         const path = `${branchId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage.from('payment-slips').upload(path, slipFile);
@@ -183,17 +193,26 @@ export default function POSPage() {
         slipUrl = path;
       }
 
+      // Resolve the actual payment method to record for the remainder portion
+      const remainderMethod = remainderDue > 0
+        ? (isPaymentLink ? 'upi' : paymentMethod)
+        : 'wallet'; // wallet-only sale
+
       const sale = await createPOSSale({
         branchId,
         memberId: selectedMember?.id,
         items: cart,
-        paymentMethod: isPaymentLink ? 'upi' : paymentMethod,
+        paymentMethod: remainderMethod,
         transactionId: transactionId || undefined,
         slipUrl,
         guestName: !selectedMember ? guestInfo.name || undefined : undefined,
         guestPhone: !selectedMember ? guestInfo.phone || undefined : undefined,
         guestEmail: !selectedMember ? guestInfo.email || undefined : undefined,
         awaitingPayment: isPaymentLink,
+        discountAmount: couponDiscount > 0 ? couponDiscount : undefined,
+        discountCode: appliedCoupon?.code,
+        discountCodeId: appliedCoupon?.id,
+        walletApplied: walletApplied > 0 ? walletApplied : undefined,
       });
 
       // If payment link selected, generate Razorpay link instead of recording payment
@@ -231,6 +250,9 @@ export default function POSPage() {
       setSlipFile(null);
       setGuestInfo({ name: '', phone: '', email: '' });
       setShowGuestForm(false);
+      setAppliedCoupon(null);
+      setCouponInput('');
+      setUseWallet(false);
       queryClient.invalidateQueries({ queryKey: ['today-pos-sales'] });
       queryClient.invalidateQueries({ queryKey: ['member-wallet'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -287,8 +309,84 @@ export default function POSPage() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+
+  // Compute coupon discount on the current cart subtotal
+  const couponDiscount = (() => {
+    if (!appliedCoupon || cartSubtotal <= 0) return 0;
+    if (appliedCoupon.min_purchase && cartSubtotal < Number(appliedCoupon.min_purchase)) return 0;
+    const value = Number(appliedCoupon.discount_value) || 0;
+    if (appliedCoupon.discount_type === 'percentage') {
+      return Math.min(cartSubtotal, Math.round((cartSubtotal * value) / 100 * 100) / 100);
+    }
+    return Math.min(cartSubtotal, value);
+  })();
+
+  const cartTotal = Math.max(0, cartSubtotal - couponDiscount);
+  const walletApplied = useWallet && selectedMember
+    ? Math.min(walletBalance, cartTotal)
+    : 0;
+  const remainderDue = Math.max(0, cartTotal - walletApplied);
+
   const todayTotal = todaySales.reduce((sum: number, sale: any) => sum + sale.total_amount, 0);
+
+  const validateCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    if (cartSubtotal <= 0) {
+      toast.error('Add items to the cart first');
+      return;
+    }
+    setCouponValidating(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('discount_codes')
+        .select('id, code, discount_type, discount_value, min_purchase, max_uses, times_used, valid_from, valid_until, is_active, branch_id')
+        .ilike('code', code)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Invalid coupon code');
+        return;
+      }
+      if (!data.is_active) {
+        toast.error('This coupon is no longer active');
+        return;
+      }
+      if (data.valid_from && data.valid_from > today) {
+        toast.error('This coupon is not yet valid');
+        return;
+      }
+      if (data.valid_until && data.valid_until < today) {
+        toast.error('This coupon has expired');
+        return;
+      }
+      if (data.max_uses != null && (data.times_used || 0) >= data.max_uses) {
+        toast.error('This coupon has reached its usage limit');
+        return;
+      }
+      if (data.branch_id && effectiveBranchId && data.branch_id !== effectiveBranchId) {
+        toast.error('This coupon is not valid at this branch');
+        return;
+      }
+      if (data.min_purchase && cartSubtotal < Number(data.min_purchase)) {
+        toast.error(`Minimum purchase ₹${Number(data.min_purchase).toLocaleString()} required`);
+        return;
+      }
+      setAppliedCoupon(data);
+      toast.success(`Coupon ${data.code} applied`);
+    } catch (err: any) {
+      toast.error('Failed to validate coupon: ' + (err?.message || ''));
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+  };
 
   const filteredProducts = products.filter((p: any) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -583,29 +681,113 @@ export default function POSPage() {
                     </div>
 
                     <div className="border-t pt-4 space-y-3">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total</span>
-                        <span>₹{cartTotal.toLocaleString()}</span>
+                      {/* Coupon code input */}
+                      <div className="space-y-2">
+                        <Label className="text-xs flex items-center gap-1.5">
+                          <Tag className="h-3.5 w-3.5" />
+                          Discount Code
+                        </Label>
+                        {appliedCoupon ? (
+                          <div className="flex items-center justify-between gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Check className="h-4 w-4 text-success" />
+                              <div className="text-sm">
+                                <span className="font-mono font-semibold">{appliedCoupon.code}</span>
+                                <span className="text-muted-foreground ml-2">
+                                  {appliedCoupon.discount_type === 'percentage'
+                                    ? `${appliedCoupon.discount_value}% off`
+                                    : `₹${appliedCoupon.discount_value} off`}
+                                </span>
+                              </div>
+                            </div>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={removeCoupon}>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Enter coupon code"
+                              value={couponInput}
+                              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void validateCoupon(); } }}
+                              className="h-9 font-mono uppercase"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void validateCoupon()}
+                              disabled={couponValidating || !couponInput.trim() || cartSubtotal <= 0}
+                            >
+                              {couponValidating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply'}
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
-                      <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">💵 Cash</SelectItem>
-                          <SelectItem value="card">💳 Credit / Debit Card</SelectItem>
-                          <SelectItem value="upi">📱 UPI</SelectItem>
-                          <SelectItem value="razorpay_link">🔗 Payment Link</SelectItem>
-                          {selectedMember && (
-                            <SelectItem value="wallet" disabled={walletBalance < cartTotal}>
-                              👛 Wallet (₹{walletBalance.toLocaleString()})
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
+                      {/* Wallet split toggle (only for members with balance) */}
+                      {selectedMember && walletBalance > 0 && (
+                        <div className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
+                          <div className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium">Use Wallet</p>
+                              <p className="text-xs text-muted-foreground">
+                                Balance: ₹{walletBalance.toLocaleString()}
+                                {useWallet && walletApplied > 0 && (
+                                  <> — applying ₹{walletApplied.toLocaleString()}</>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <Switch checked={useWallet} onCheckedChange={setUseWallet} />
+                        </div>
+                      )}
 
-                      {(paymentMethod === 'card' || paymentMethod === 'upi') && (
+                      {/* Totals breakdown */}
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span>₹{cartSubtotal.toLocaleString()}</span>
+                        </div>
+                        {couponDiscount > 0 && (
+                          <div className="flex justify-between text-success">
+                            <span>Discount {appliedCoupon?.code ? `(${appliedCoupon.code})` : ''}</span>
+                            <span>−₹{couponDiscount.toLocaleString()}</span>
+                          </div>
+                        )}
+                        {walletApplied > 0 && (
+                          <div className="flex justify-between text-primary">
+                            <span>Wallet redemption</span>
+                            <span>−₹{walletApplied.toLocaleString()}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-lg font-bold pt-1.5 border-t">
+                          <span>{walletApplied > 0 ? 'Due now' : 'Total'}</span>
+                          <span>₹{remainderDue.toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      {remainderDue > 0 ? (
+                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">💵 Cash</SelectItem>
+                            <SelectItem value="card">💳 Credit / Debit Card</SelectItem>
+                            <SelectItem value="upi">📱 UPI</SelectItem>
+                            <SelectItem value="razorpay_link">🔗 Payment Link</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-primary text-center font-medium">
+                          {walletApplied > 0 ? '✓ Fully covered by wallet' : '✓ No payment due'}
+                        </div>
+                      )}
+
+                      {remainderDue > 0 && (paymentMethod === 'card' || paymentMethod === 'upi') && (
                         <div className="space-y-2 p-3 rounded-lg bg-muted/30 border">
                           <div className="space-y-1">
                             <Label htmlFor="txn-id" className="text-xs">Transaction / Reference ID (optional)</Label>

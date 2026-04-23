@@ -29,6 +29,15 @@ interface RecordMeasurementDrawerProps {
   onOpenChange: (open: boolean) => void;
   memberId: string;
   memberName: string;
+  /** Member profile gender — auto-fills body presentation. */
+  memberGender?: string | null;
+}
+
+function deriveBodyPresentation(gender?: string | null): 'male' | 'female' | 'other' {
+  const g = (gender || '').toString().trim().toLowerCase();
+  if (g === 'male' || g === 'm') return 'male';
+  if (g === 'female' || g === 'f') return 'female';
+  return 'other';
 }
 
 interface DraftPhoto {
@@ -70,11 +79,16 @@ export function RecordMeasurementDrawer({
   onOpenChange,
   memberId,
   memberName,
+  memberGender,
 }: RecordMeasurementDrawerProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
-  const [formData, setFormData] = useState<MeasurementDraft>(initialFormState);
+  const derivedPresentation = deriveBodyPresentation(memberGender);
+  const [formData, setFormData] = useState<MeasurementDraft>({
+    ...initialFormState,
+    gender_presentation: derivedPresentation,
+  });
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -85,9 +99,14 @@ export function RecordMeasurementDrawer({
     }
     if (!open) {
       sessionIdRef.current = crypto.randomUUID();
-      setFormData(initialFormState);
+      setFormData({ ...initialFormState, gender_presentation: derivedPresentation });
     }
-  }, [open]);
+  }, [open, derivedPresentation]);
+
+  // Keep auto-derived presentation in sync if the prop changes while open
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, gender_presentation: derivedPresentation }));
+  }, [derivedPresentation]);
 
   const calculateBMI = () => {
     const weight = Number.parseFloat(formData.weight_kg || '');
@@ -239,21 +258,17 @@ export function RecordMeasurementDrawer({
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-primary-foreground/80">Body presentation</Label>
-                <Select
-                  value={formData.gender_presentation}
-                  onValueChange={(value: 'male' | 'female' | 'other') =>
-                    setFormData((prev) => ({ ...prev, gender_presentation: value }))
-                  }
-                >
-                  <SelectTrigger className="border-primary-foreground/15 bg-primary-foreground/10 text-primary-foreground">
-                    <SelectValue placeholder="Select body base" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between rounded-md border border-primary-foreground/15 bg-primary-foreground/10 px-3 py-2 text-primary-foreground">
+                  <span className="capitalize">
+                    {formData.gender_presentation || 'Not set'}
+                  </span>
+                  <Badge variant="secondary" className="rounded-full bg-primary-foreground/15 text-primary-foreground">
+                    Auto from profile
+                  </Badge>
+                </div>
+                <p className="text-xs text-primary-foreground/70">
+                  Pulled from member profile gender. Update gender on the profile to change this.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {groupedFields.core.map((field) => (

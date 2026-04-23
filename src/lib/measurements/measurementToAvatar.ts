@@ -73,9 +73,21 @@ function ease(value: number, calibration = 0.82) {
   return clamp01(0.5 + centered * calibration);
 }
 
-export function measurementToAvatarSnapshot(measurement?: MemberMeasurementRecord | null): AvatarSnapshot {
+function normalizeGenderPresentation(value?: string | null): 'male' | 'female' | 'other' {
+  const g = (value || '').toString().trim().toLowerCase();
+  if (g === 'male' || g === 'm') return 'male';
+  if (g === 'female' || g === 'f') return 'female';
+  return 'other';
+}
+
+export function measurementToAvatarSnapshot(
+  measurement?: MemberMeasurementRecord | null,
+  fallbackGender?: string | null,
+): AvatarSnapshot {
+  const fallback = normalizeGenderPresentation(fallbackGender);
+
   if (!measurement) {
-    return { genderPresentation: 'other', morphs: MORPH_DEFAULTS };
+    return { genderPresentation: fallback, morphs: MORPH_DEFAULTS };
   }
 
   const arm = average(measurement.biceps_left_cm, measurement.biceps_right_cm);
@@ -128,7 +140,7 @@ export function measurementToAvatarSnapshot(measurement?: MemberMeasurementRecor
   };
 
   return {
-    genderPresentation: measurement.gender_presentation || 'other',
+    genderPresentation: normalizeGenderPresentation(measurement.gender_presentation || fallbackGender),
     morphs,
   };
 }

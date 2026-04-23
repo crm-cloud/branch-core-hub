@@ -11,13 +11,18 @@ interface MemberBodyAvatarCanvasProps {
   measurement?: MemberMeasurementRecord | null;
   previousMeasurement?: MemberMeasurementRecord | null;
   label: string;
+  /** Member profile gender — fallback when a measurement has no presentation. */
+  memberGender?: string | null;
 }
 
-export function MemberBodyAvatarCanvas({ measurement, previousMeasurement, label }: MemberBodyAvatarCanvasProps) {
+export function MemberBodyAvatarCanvas({ measurement, previousMeasurement, label, memberGender }: MemberBodyAvatarCanvasProps) {
   const isMobile = useIsMobile();
   const [dragRotation, setDragRotation] = useState(0);
   const [hasCanvasError, setHasCanvasError] = useState(false);
-  const snapshot = useMemo(() => measurementToAvatarSnapshot(measurement), [measurement]);
+  const snapshot = useMemo(
+    () => measurementToAvatarSnapshot(measurement, memberGender),
+    [measurement, memberGender],
+  );
 
   if (!measurement || hasCanvasError) {
     return <BodyFallbackCard latest={measurement} previous={previousMeasurement} title={label} />;
