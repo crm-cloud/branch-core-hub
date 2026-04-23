@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { createPOSSale, type CartItem } from '@/services/storeService';
+import { getOrCreateWallet } from '@/services/walletService';
 import { useNavigate } from 'react-router-dom';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { escapeHtml } from '@/utils/htmlEscape';
@@ -133,13 +134,10 @@ export default function POSPage() {
     queryKey: ['member-wallet', selectedMember?.id],
     queryFn: async () => {
       if (!selectedMember?.id) return 0;
-      const { data, error } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('member_id', selectedMember.id)
-        .maybeSingle();
-      if (error && error.code !== 'PGRST116') throw error;
-      return data?.balance || 0;
+      // Auto-create the wallet row on first POS reference so the UI is never "missing".
+      const wallet = await getOrCreateWallet(selectedMember.id);
+      // Postgres `numeric` is returned as a string by supabase-js — coerce defensively.
+      return Number(wallet?.balance) || 0;
     },
     enabled: !!selectedMember?.id,
   });
@@ -239,7 +237,15 @@ export default function POSPage() {
       } else {
         toast.success('Sale completed successfully! Invoice created.');
       }
-      setLastSale({ ...sale, items: cart, total: cartTotal, paymentMethod, member: selectedMember });
+      setLastSale({
+        ...sale,
+        items: cart,
+        total: cartTotal,
+        paymentMethod,
+        member: selectedMember,
+        walletApplied,
+        remainderDue,
+      });
       if (!sale.isPaymentLink) {
         setShowInvoice(true);
       }
@@ -425,6 +431,10 @@ export default function POSPage() {
         `).join('')}
         <div class="total">
           <div class="item"><span>TOTAL</span><span>₹${lastSale?.total?.toLocaleString()}</span></div>
+          ${lastSale?.walletApplied > 0 ? `
+            <div class="item"><span>Wallet applied</span><span>−₹${Number(lastSale.walletApplied).toLocaleString()}</span></div>
+            <div class="item"><span>Due paid</span><span>₹${Number(lastSale.remainderDue || 0).toLocaleString()}</span></div>
+          ` : ''}
           <div class="item"><span>Payment</span><span>${lastSale?.paymentMethod?.toUpperCase()}</span></div>
         </div>
         <div class="footer">
@@ -564,7 +574,7 @@ export default function POSPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-primary mt-1">Wallet: ₹{walletBalance.toLocaleString()}</p>
+                        <p className="text-xs text-primary mt-1">Wallet: ₹{Number(walletBalance).toLocaleString()}</p>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedMember(null)}>
                         <Trash2 className="h-4 w-4" />
@@ -726,22 +736,30 @@ export default function POSPage() {
                         )}
                       </div>
 
-                      {/* Wallet split toggle (only for members with balance) */}
-                      {selectedMember && walletBalance > 0 && (
+                      {/* Wallet status — always visible when a member is selected, so the
+                          cashier knows the wallet exists. Toggle is only enabled when balance > 0. */}
+                      {selectedMember && (
                         <div className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
                           <div className="flex items-center gap-2">
                             <Wallet className="h-4 w-4 text-primary" />
                             <div>
-                              <p className="text-sm font-medium">Use Wallet</p>
+                              <p className="text-sm font-medium">
+                                {walletBalance > 0 ? 'Use Wallet' : 'Wallet'}
+                              </p>
                               <p className="text-xs text-muted-foreground">
-                                Balance: ₹{walletBalance.toLocaleString()}
+                                Balance: ₹{Number(walletBalance).toLocaleString()}
+                                {walletBalance <= 0 && <> — no credit available</>}
                                 {useWallet && walletApplied > 0 && (
                                   <> — applying ₹{walletApplied.toLocaleString()}</>
                                 )}
                               </p>
                             </div>
                           </div>
-                          <Switch checked={useWallet} onCheckedChange={setUseWallet} />
+                          <Switch
+                            checked={useWallet}
+                            onCheckedChange={setUseWallet}
+                            disabled={walletBalance <= 0}
+                          />
                         </div>
                       )}
 
@@ -903,6 +921,12 @@ export default function POSPage() {
               <span>Total</span>
               <span>₹{lastSale?.total?.toLocaleString()}</span>
             </div>
+            {lastSale?.walletApplied > 0 && (
+              <div className="flex justify-between text-sm text-primary">
+                <span>₹{Number(lastSale.walletApplied).toLocaleString()} applied from wallet</span>
+                <span>−₹{Number(lastSale.walletApplied).toLocaleString()}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Payment Method</span>
               <span className="capitalize">{lastSale?.paymentMethod}</span>
