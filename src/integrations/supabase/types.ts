@@ -959,6 +959,7 @@ export type Database = {
         Row: {
           advance_booking_days: number | null
           auto_attendance_checkout: boolean | null
+          block_access_on_overdue: boolean
           branch_id: string
           cancellation_fee_rate: number | null
           checkout_after_hours: number | null
@@ -969,6 +970,7 @@ export type Database = {
           freeze_min_days: number | null
           id: string
           late_fee_rate: number | null
+          overdue_grace_days: number
           tax_rate: number | null
           updated_at: string
           waitlist_enabled: boolean | null
@@ -976,6 +978,7 @@ export type Database = {
         Insert: {
           advance_booking_days?: number | null
           auto_attendance_checkout?: boolean | null
+          block_access_on_overdue?: boolean
           branch_id: string
           cancellation_fee_rate?: number | null
           checkout_after_hours?: number | null
@@ -986,6 +989,7 @@ export type Database = {
           freeze_min_days?: number | null
           id?: string
           late_fee_rate?: number | null
+          overdue_grace_days?: number
           tax_rate?: number | null
           updated_at?: string
           waitlist_enabled?: boolean | null
@@ -993,6 +997,7 @@ export type Database = {
         Update: {
           advance_booking_days?: number | null
           auto_attendance_checkout?: boolean | null
+          block_access_on_overdue?: boolean
           branch_id?: string
           cancellation_fee_rate?: number | null
           checkout_after_hours?: number | null
@@ -1003,6 +1008,7 @@ export type Database = {
           freeze_min_days?: number | null
           id?: string
           late_fee_rate?: number | null
+          overdue_grace_days?: number
           tax_rate?: number | null
           updated_at?: string
           waitlist_enabled?: boolean | null
@@ -1249,13 +1255,75 @@ export type Database = {
           },
         ]
       }
+      communication_delivery_events: {
+        Row: {
+          actor_user_id: string | null
+          branch_id: string
+          channel: string
+          communication_log_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          member_id: string | null
+          metadata: Json
+          new_status: Database["public"]["Enums"]["reminder_delivery_status"]
+          previous_status:
+            | Database["public"]["Enums"]["reminder_delivery_status"]
+            | null
+          provider: string | null
+          provider_message_id: string | null
+          reminder_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          branch_id: string
+          channel: string
+          communication_log_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          member_id?: string | null
+          metadata?: Json
+          new_status: Database["public"]["Enums"]["reminder_delivery_status"]
+          previous_status?:
+            | Database["public"]["Enums"]["reminder_delivery_status"]
+            | null
+          provider?: string | null
+          provider_message_id?: string | null
+          reminder_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          branch_id?: string
+          channel?: string
+          communication_log_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          member_id?: string | null
+          metadata?: Json
+          new_status?: Database["public"]["Enums"]["reminder_delivery_status"]
+          previous_status?:
+            | Database["public"]["Enums"]["reminder_delivery_status"]
+            | null
+          provider?: string | null
+          provider_message_id?: string | null
+          reminder_id?: string | null
+        }
+        Relationships: []
+      }
       communication_logs: {
         Row: {
+          attempt_count: number
           branch_id: string
           content: string | null
           created_at: string
+          delivery_metadata: Json
+          delivery_status: Database["public"]["Enums"]["reminder_delivery_status"]
+          error_message: string | null
           id: string
           member_id: string | null
+          provider_message_id: string | null
           recipient: string
           sent_at: string | null
           status: string | null
@@ -1265,11 +1333,16 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          attempt_count?: number
           branch_id: string
           content?: string | null
           created_at?: string
+          delivery_metadata?: Json
+          delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
+          error_message?: string | null
           id?: string
           member_id?: string | null
+          provider_message_id?: string | null
           recipient: string
           sent_at?: string | null
           status?: string | null
@@ -1279,11 +1352,16 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          attempt_count?: number
           branch_id?: string
           content?: string | null
           created_at?: string
+          delivery_metadata?: Json
+          delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
+          error_message?: string | null
           id?: string
           member_id?: string | null
+          provider_message_id?: string | null
           recipient?: string
           sent_at?: string | null
           status?: string | null
@@ -1817,9 +1895,11 @@ export type Database = {
       }
       employees: {
         Row: {
+          avatar_storage_path: string | null
           bank_account: string | null
           bank_name: string | null
           biometric_enrolled: boolean | null
+          biometric_photo_path: string | null
           biometric_photo_url: string | null
           branch_id: string
           created_at: string
@@ -1840,9 +1920,11 @@ export type Database = {
           weekly_off: string | null
         }
         Insert: {
+          avatar_storage_path?: string | null
           bank_account?: string | null
           bank_name?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id: string
           created_at?: string
@@ -1863,9 +1945,11 @@ export type Database = {
           weekly_off?: string | null
         }
         Update: {
+          avatar_storage_path?: string | null
           bank_account?: string | null
           bank_name?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id?: string
           created_at?: string
@@ -2464,6 +2548,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hardware_access_events: {
+        Row: {
+          actor_user_id: string | null
+          branch_id: string
+          created_at: string
+          id: string
+          member_id: string
+          metadata: Json
+          new_status: string
+          previous_status: string | null
+          reason: string | null
+          requires_sync: boolean
+        }
+        Insert: {
+          actor_user_id?: string | null
+          branch_id: string
+          created_at?: string
+          id?: string
+          member_id: string
+          metadata?: Json
+          new_status: string
+          previous_status?: string | null
+          reason?: string | null
+          requires_sync?: boolean
+        }
+        Update: {
+          actor_user_id?: string | null
+          branch_id?: string
+          created_at?: string
+          id?: string
+          member_id?: string
+          metadata?: Json
+          new_status?: string
+          previous_status?: string | null
+          reason?: string | null
+          requires_sync?: boolean
+        }
+        Relationships: []
       }
       hardware_devices: {
         Row: {
@@ -3686,6 +3809,57 @@ export type Database = {
           },
         ]
       }
+      member_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          branch_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          event_type: string
+          id: string
+          idempotency_key: string | null
+          member_id: string
+          metadata: Json
+          new_state: string | null
+          previous_state: string | null
+          reason: string | null
+          source: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          branch_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          event_type: string
+          id?: string
+          idempotency_key?: string | null
+          member_id: string
+          metadata?: Json
+          new_state?: string | null
+          previous_state?: string | null
+          reason?: string | null
+          source?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          branch_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string | null
+          member_id?: string
+          metadata?: Json
+          new_state?: string | null
+          previous_state?: string | null
+          reason?: string | null
+          source?: string | null
+        }
+        Relationships: []
+      }
       member_measurements: {
         Row: {
           abdomen_cm: number | null
@@ -3907,7 +4081,9 @@ export type Database = {
           activity_level: string | null
           allergies: string[]
           assigned_trainer_id: string | null
+          avatar_storage_path: string | null
           biometric_enrolled: boolean | null
+          biometric_photo_path: string | null
           biometric_photo_url: string | null
           branch_id: string
           created_at: string
@@ -3926,6 +4102,7 @@ export type Database = {
           injuries_limitations: string | null
           joined_at: string
           lead_id: string | null
+          lifecycle_state: string
           member_code: string | null
           mips_person_id: string | null
           mips_person_sn: string | null
@@ -3943,7 +4120,9 @@ export type Database = {
           activity_level?: string | null
           allergies?: string[]
           assigned_trainer_id?: string | null
+          avatar_storage_path?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id: string
           created_at?: string
@@ -3962,6 +4141,7 @@ export type Database = {
           injuries_limitations?: string | null
           joined_at?: string
           lead_id?: string | null
+          lifecycle_state?: string
           member_code?: string | null
           mips_person_id?: string | null
           mips_person_sn?: string | null
@@ -3979,7 +4159,9 @@ export type Database = {
           activity_level?: string | null
           allergies?: string[]
           assigned_trainer_id?: string | null
+          avatar_storage_path?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id?: string
           created_at?: string
@@ -3998,6 +4180,7 @@ export type Database = {
           injuries_limitations?: string | null
           joined_at?: string
           lead_id?: string | null
+          lifecycle_state?: string
           member_code?: string | null
           mips_person_id?: string | null
           mips_person_sn?: string | null
@@ -4530,12 +4713,68 @@ export type Database = {
           },
         ]
       }
+      payment_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          branch_id: string
+          created_at: string
+          event_type: string
+          id: string
+          idempotency_key: string | null
+          invoice_id: string | null
+          member_id: string | null
+          metadata: Json
+          new_state: string | null
+          payment_id: string | null
+          payment_transaction_id: string | null
+          previous_state: string | null
+          source: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          branch_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          member_id?: string | null
+          metadata?: Json
+          new_state?: string | null
+          payment_id?: string | null
+          payment_transaction_id?: string | null
+          previous_state?: string | null
+          source?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          branch_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          member_id?: string | null
+          metadata?: Json
+          new_state?: string | null
+          payment_id?: string | null
+          payment_transaction_id?: string | null
+          previous_state?: string | null
+          source?: string | null
+        }
+        Relationships: []
+      }
       payment_reminders: {
         Row: {
+          attempt_count: number
           branch_id: string
+          channel: string
           created_at: string | null
+          delivery_metadata: Json
+          delivery_status: Database["public"]["Enums"]["reminder_delivery_status"]
           id: string
           invoice_id: string
+          last_error: string | null
           member_id: string
           reminder_type: string
           scheduled_for: string
@@ -4543,10 +4782,15 @@ export type Database = {
           status: string | null
         }
         Insert: {
+          attempt_count?: number
           branch_id: string
+          channel?: string
           created_at?: string | null
+          delivery_metadata?: Json
+          delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
           id?: string
           invoice_id: string
+          last_error?: string | null
           member_id: string
           reminder_type: string
           scheduled_for: string
@@ -4554,10 +4798,15 @@ export type Database = {
           status?: string | null
         }
         Update: {
+          attempt_count?: number
           branch_id?: string
+          channel?: string
           created_at?: string | null
+          delivery_metadata?: Json
+          delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
           id?: string
           invoice_id?: string
+          last_error?: string | null
           member_id?: string
           reminder_type?: string
           scheduled_for?: string
@@ -4599,8 +4848,13 @@ export type Database = {
           gateway_payment_id: string | null
           gateway_signature: string | null
           id: string
+          idempotency_key: string | null
           invoice_id: string | null
+          lifecycle_metadata: Json
+          lifecycle_status: Database["public"]["Enums"]["payment_transaction_status"]
           member_id: string | null
+          payment_link_url: string | null
+          settled_payment_id: string | null
           status: string
           updated_at: string | null
           webhook_data: Json | null
@@ -4615,8 +4869,13 @@ export type Database = {
           gateway_payment_id?: string | null
           gateway_signature?: string | null
           id?: string
+          idempotency_key?: string | null
           invoice_id?: string | null
+          lifecycle_metadata?: Json
+          lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
+          payment_link_url?: string | null
+          settled_payment_id?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
@@ -4631,8 +4890,13 @@ export type Database = {
           gateway_payment_id?: string | null
           gateway_signature?: string | null
           id?: string
+          idempotency_key?: string | null
           invoice_id?: string | null
+          lifecycle_metadata?: Json
+          lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
+          payment_link_url?: string | null
+          settled_payment_id?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
@@ -4667,14 +4931,19 @@ export type Database = {
           branch_id: string
           created_at: string
           id: string
+          idempotency_key: string | null
           income_category_id: string | null
           invoice_id: string | null
+          lifecycle_metadata: Json
+          lifecycle_status: Database["public"]["Enums"]["payment_transaction_status"]
           member_id: string | null
           notes: string | null
           original_payment_id: string | null
           payment_date: string
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_source: string
           received_by: string | null
+          settled_at: string | null
           slip_url: string | null
           status: Database["public"]["Enums"]["payment_status"]
           transaction_id: string | null
@@ -4687,14 +4956,19 @@ export type Database = {
           branch_id: string
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           income_category_id?: string | null
           invoice_id?: string | null
+          lifecycle_metadata?: Json
+          lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           notes?: string | null
           original_payment_id?: string | null
           payment_date?: string
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_source?: string
           received_by?: string | null
+          settled_at?: string | null
           slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
@@ -4707,14 +4981,19 @@ export type Database = {
           branch_id?: string
           created_at?: string
           id?: string
+          idempotency_key?: string | null
           income_category_id?: string | null
           invoice_id?: string | null
+          lifecycle_metadata?: Json
+          lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           notes?: string | null
           original_payment_id?: string | null
           payment_date?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_source?: string
           received_by?: string | null
+          settled_at?: string | null
           slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           transaction_id?: string | null
@@ -5065,6 +5344,7 @@ export type Database = {
       profiles: {
         Row: {
           address: string | null
+          avatar_storage_path: string | null
           avatar_url: string | null
           city: string | null
           country: string | null
@@ -5088,6 +5368,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          avatar_storage_path?: string | null
           avatar_url?: string | null
           city?: string | null
           country?: string | null
@@ -5111,6 +5392,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          avatar_storage_path?: string | null
           avatar_url?: string | null
           city?: string | null
           country?: string | null
@@ -5267,9 +5549,62 @@ export type Database = {
           },
         ]
       }
+      referral_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          metadata: Json
+          new_state: Database["public"]["Enums"]["referral_lifecycle_status"]
+          previous_state:
+            | Database["public"]["Enums"]["referral_lifecycle_status"]
+            | null
+          reason: string | null
+          referral_id: string
+          referred_member_id: string | null
+          referrer_member_id: string
+          source: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          new_state: Database["public"]["Enums"]["referral_lifecycle_status"]
+          previous_state?:
+            | Database["public"]["Enums"]["referral_lifecycle_status"]
+            | null
+          reason?: string | null
+          referral_id: string
+          referred_member_id?: string | null
+          referrer_member_id: string
+          source?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          new_state?: Database["public"]["Enums"]["referral_lifecycle_status"]
+          previous_state?:
+            | Database["public"]["Enums"]["referral_lifecycle_status"]
+            | null
+          reason?: string | null
+          referral_id?: string
+          referred_member_id?: string | null
+          referrer_member_id?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       referral_rewards: {
         Row: {
+          claim_idempotency_key: string | null
           claimed_at: string | null
+          claimed_wallet_txn_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -5280,7 +5615,9 @@ export type Database = {
           reward_value: number | null
         }
         Insert: {
+          claim_idempotency_key?: string | null
           claimed_at?: string | null
+          claimed_wallet_txn_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -5291,7 +5628,9 @@ export type Database = {
           reward_value?: number | null
         }
         Update: {
+          claim_idempotency_key?: string | null
           claimed_at?: string | null
+          claimed_wallet_txn_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -5370,39 +5709,57 @@ export type Database = {
       }
       referrals: {
         Row: {
+          claimed_at: string | null
           converted_at: string | null
           created_at: string
           id: string
+          last_status_change_at: string
+          lifecycle_status: Database["public"]["Enums"]["referral_lifecycle_status"]
+          metadata: Json
+          qualifying_invoice_id: string | null
           referral_code: string | null
           referred_email: string | null
           referred_member_id: string | null
           referred_name: string
           referred_phone: string
           referrer_member_id: string
+          rewarded_at: string | null
           status: Database["public"]["Enums"]["lead_status"]
         }
         Insert: {
+          claimed_at?: string | null
           converted_at?: string | null
           created_at?: string
           id?: string
+          last_status_change_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["referral_lifecycle_status"]
+          metadata?: Json
+          qualifying_invoice_id?: string | null
           referral_code?: string | null
           referred_email?: string | null
           referred_member_id?: string | null
           referred_name: string
           referred_phone: string
           referrer_member_id: string
+          rewarded_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
         }
         Update: {
+          claimed_at?: string | null
           converted_at?: string | null
           created_at?: string
           id?: string
+          last_status_change_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["referral_lifecycle_status"]
+          metadata?: Json
+          qualifying_invoice_id?: string | null
           referral_code?: string | null
           referred_email?: string | null
           referred_member_id?: string | null
           referred_name?: string
           referred_phone?: string
           referrer_member_id?: string
+          rewarded_at?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
         }
         Relationships: [
@@ -6240,8 +6597,10 @@ export type Database = {
       }
       trainers: {
         Row: {
+          avatar_storage_path: string | null
           bio: string | null
           biometric_enrolled: boolean | null
+          biometric_photo_path: string | null
           biometric_photo_url: string | null
           branch_id: string
           certifications: string[] | null
@@ -6265,8 +6624,10 @@ export type Database = {
           weekly_off: string | null
         }
         Insert: {
+          avatar_storage_path?: string | null
           bio?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id: string
           certifications?: string[] | null
@@ -6290,8 +6651,10 @@ export type Database = {
           weekly_off?: string | null
         }
         Update: {
+          avatar_storage_path?: string | null
           bio?: string | null
           biometric_enrolled?: boolean | null
+          biometric_photo_path?: string | null
           biometric_photo_url?: string | null
           branch_id?: string
           certifications?: string[] | null
@@ -6958,6 +7321,19 @@ export type Database = {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
       }
+      advance_referral_lifecycle: {
+        Args: {
+          p_actor_user_id?: string
+          p_idempotency_key?: string
+          p_metadata?: Json
+          p_qualifying_invoice_id?: string
+          p_reason?: string
+          p_referral_id: string
+          p_source?: string
+          p_target_status: Database["public"]["Enums"]["referral_lifecycle_status"]
+        }
+        Returns: Json
+      }
       assert_measurement_range: {
         Args: { _field: string; _max: number; _min: number; _value: number }
         Returns: number
@@ -6981,6 +7357,22 @@ export type Database = {
       }
       can_access_member_measurements: {
         Args: { _member_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_access_private_member_media: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
+      }
+      can_access_private_staff_media: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
+      }
+      can_manage_member_lifecycle: {
+        Args: { _member_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_manage_private_member_media: {
+        Args: { _path: string; _user_id: string }
         Returns: boolean
       }
       can_write_member_measurement_photo: {
@@ -7007,6 +7399,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_referral_reward: {
+        Args: {
+          p_actor_user_id?: string
+          p_idempotency_key?: string
+          p_member_id: string
+          p_reward_id: string
+        }
+        Returns: Json
+      }
       complete_pt_session: {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
@@ -7014,6 +7415,15 @@ export type Database = {
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
+      }
+      evaluate_member_access_state: {
+        Args: {
+          p_actor_user_id?: string
+          p_force_sync?: boolean
+          p_member_id: string
+          p_reason?: string
+        }
+        Returns: Json
       }
       extract_member_id_from_storage_path: {
         Args: { _path: string }
@@ -7055,6 +7465,33 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      issue_referral_reward: {
+        Args: {
+          p_actor_user_id?: string
+          p_idempotency_key?: string
+          p_invoice_id: string
+          p_referral_id: string
+          p_source?: string
+        }
+        Returns: Json
+      }
+      log_member_lifecycle_event: {
+        Args: {
+          _actor_user_id: string
+          _branch_id: string
+          _entity_id: string
+          _entity_type: string
+          _event_type: string
+          _idempotency_key: string
+          _member_id: string
+          _metadata?: Json
+          _new_state: string
+          _previous_state: string
+          _reason: string
+          _source: string
+        }
+        Returns: undefined
       }
       manages_branch: {
         Args: { _branch_id: string; _user_id: string }
@@ -7109,6 +7546,25 @@ export type Database = {
           member_status: string
           phone: string
         }[]
+      }
+      settle_payment: {
+        Args: {
+          p_amount: number
+          p_branch_id: string
+          p_gateway_payment_id?: string
+          p_idempotency_key?: string
+          p_income_category_id?: string
+          p_invoice_id: string
+          p_member_id: string
+          p_metadata?: Json
+          p_notes?: string
+          p_payment_method: string
+          p_payment_source?: string
+          p_payment_transaction_id?: string
+          p_received_by?: string
+          p_transaction_id?: string
+        }
+        Returns: Json
       }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
@@ -7223,6 +7679,12 @@ export type Database = {
         | "cheque"
         | "other"
       payment_status: "pending" | "completed" | "failed" | "refunded"
+      payment_transaction_status:
+        | "created"
+        | "pending_confirmation"
+        | "settled"
+        | "failed"
+        | "voided"
       pt_package_status: "active" | "expired" | "exhausted" | "cancelled"
       pt_session_status:
         | "scheduled"
@@ -7230,6 +7692,19 @@ export type Database = {
         | "cancelled"
         | "no_show"
         | "rescheduled"
+      referral_lifecycle_status:
+        | "invited"
+        | "joined"
+        | "purchased"
+        | "converted"
+        | "rewarded"
+        | "claimed"
+      reminder_delivery_status:
+        | "scheduled"
+        | "sending"
+        | "sent"
+        | "failed"
+        | "skipped"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_status: "pending" | "in_progress" | "completed" | "cancelled"
       wallet_txn_type:
@@ -7476,6 +7951,13 @@ export const Constants = {
         "other",
       ],
       payment_status: ["pending", "completed", "failed", "refunded"],
+      payment_transaction_status: [
+        "created",
+        "pending_confirmation",
+        "settled",
+        "failed",
+        "voided",
+      ],
       pt_package_status: ["active", "expired", "exhausted", "cancelled"],
       pt_session_status: [
         "scheduled",
@@ -7483,6 +7965,21 @@ export const Constants = {
         "cancelled",
         "no_show",
         "rescheduled",
+      ],
+      referral_lifecycle_status: [
+        "invited",
+        "joined",
+        "purchased",
+        "converted",
+        "rewarded",
+        "claimed",
+      ],
+      reminder_delivery_status: [
+        "scheduled",
+        "sending",
+        "sent",
+        "failed",
+        "skipped",
       ],
       task_priority: ["low", "medium", "high", "urgent"],
       task_status: ["pending", "in_progress", "completed", "cancelled"],
