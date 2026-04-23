@@ -4861,6 +4861,13 @@ export type Database = {
           status: string
           updated_at: string | null
           webhook_data: Json | null
+          signature_verified: boolean | null
+          http_status: number | null
+          error_message: string | null
+          event_type: string | null
+          source: string | null
+          received_at: string | null
+          response_body: Json | null
         }
         Insert: {
           amount: number
@@ -4882,6 +4889,13 @@ export type Database = {
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
+          signature_verified?: boolean | null
+          http_status?: number | null
+          error_message?: string | null
+          event_type?: string | null
+          source?: string | null
+          received_at?: string | null
+          response_body?: Json | null
         }
         Update: {
           amount?: number
@@ -4903,6 +4917,13 @@ export type Database = {
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
+          signature_verified?: boolean | null
+          http_status?: number | null
+          error_message?: string | null
+          event_type?: string | null
+          source?: string | null
+          received_at?: string | null
+          response_body?: Json | null
         }
         Relationships: [
           {

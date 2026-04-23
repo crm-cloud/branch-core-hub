@@ -15,8 +15,11 @@ COMMENT ON COLUMN public.payment_transactions.event_type IS 'Webhook event type 
 COMMENT ON COLUMN public.payment_transactions.source IS 'Origin of this row: order (created by app) | webhook (created by webhook delivery)';
 COMMENT ON COLUMN public.payment_transactions.received_at IS 'When the most recent webhook for this row was received';
 
+ALTER TABLE public.payment_transactions ADD COLUMN IF NOT EXISTS response_body jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_received_at ON public.payment_transactions (received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_gateway_received ON public.payment_transactions (gateway, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_source_received ON public.payment_transactions (source, received_at DESC);
 
 -- Tighten RLS: branch-scoped read access for managers/staff (owners/admins keep global access via manages_branch())
 DROP POLICY IF EXISTS "Staff can view payment transactions" ON public.payment_transactions;

@@ -55,9 +55,10 @@ interface Outcome {
   status: string | null; // 'created' | 'authorized' | 'captured' | 'failed' | 'received' | 'rejected'
   errorMessage: string | null;
   payload: unknown;
+  invoiceId: string | null;
 }
 
-async function persistOutcome(supabase: any, o: Outcome, httpStatus: number) {
+async function persistOutcome(supabase: any, o: Outcome, httpStatus: number, responseBody?: unknown) {
   // Skip if no valid branch (FK constraint requires a real branch_id).
   // We accept this as a known limitation — callers that hit this path also fail
   // gateway/branch validation and console.error is emitted upstream.
@@ -72,9 +73,11 @@ async function persistOutcome(supabase: any, o: Outcome, httpStatus: number) {
       gateway: o.gateway || 'unknown',
       gateway_order_id: o.gatewayOrderId,
       gateway_payment_id: o.gatewayPaymentId,
+      invoice_id: o.invoiceId,
       amount: o.amount ?? 0,
       status: o.status || 'received',
       webhook_data: o.payload || {},
+      response_body: responseBody ?? null,
       signature_verified: o.signatureVerified,
       http_status: httpStatus,
       error_message: o.errorMessage,
@@ -124,14 +127,30 @@ serve(async (req: Request) => {
   const outcome: Outcome = {
     branchId: null, gateway: null, signatureVerified: null, eventType: null,
     gatewayOrderId: null, gatewayPaymentId: null, amount: null, status: null,
-    errorMessage: null, payload: null,
+    errorMessage: null, payload: null, invoiceId: null,
   };
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const reply = async (body: unknown, status: number, errorMsg?: string) => {
     if (errorMsg) outcome.errorMessage = errorMsg;
     if (status >= 400 && !outcome.status) outcome.status = 'rejected';
-    await persistOutcome(supabase, outcome, status);
+    // Best-effort enrich with linked invoice from canonical order row
+    if (!outcome.invoiceId && outcome.gatewayOrderId && outcome.branchId && isValidUUID(outcome.branchId)) {
+      try {
+        const { data: order } = await supabase
+          .from('payment_transactions')
+          .select('invoice_id')
+          .eq('gateway_order_id', outcome.gatewayOrderId)
+          .eq('gateway', outcome.gateway || 'unknown')
+          .eq('branch_id', outcome.branchId)
+          .eq('source', 'order')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (order?.invoice_id) outcome.invoiceId = order.invoice_id;
+      } catch (_) { /* swallow */ }
+    }
+    await persistOutcome(supabase, outcome, status, body);
     return jsonResponse(body, status);
   };
 
@@ -404,6 +423,7 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingTxn) {
+      outcome.invoiceId = existingTxn.invoice_id;
       // We'll let persistOutcome handle the metadata enrichment in the unified path,
       // but still update invoice/payments side-effects here.
       if (transactionData.status === "captured" && existingTxn.invoice_id) {

@@ -66,17 +66,37 @@ export function WebhookActivityPanel() {
   const { data: rows = [], isLoading, refetch } = useQuery<WebhookRow[]>({
     queryKey: ['webhook-activity', branchFilter],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = supabase
         .from('payment_transactions')
         .select('*')
+        .eq('source', 'webhook')
         .order('received_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(100);
       if (branchFilter) q = q.eq('branch_id', branchFilter);
       const { data, error } = await q;
       if (error) throw error;
-      return (data as WebhookRow[]) || [];
+      return (data as unknown as WebhookRow[]) || [];
     },
+    refetchInterval: 30000,
+  });
+
+  // Pre-fetch invoice statuses for rows that have an invoice link, so the
+  // Reconcile button can be gated to invoices that are still pending.
+  const invoiceIds = useMemo(
+    () => Array.from(new Set(rows.map(r => r.invoice_id).filter((id): id is string => !!id))),
+    [rows],
+  );
+  const { data: invoiceStatuses = {} } = useQuery<Record<string, string>>({
+    queryKey: ['webhook-activity-invoice-status', invoiceIds],
+    queryFn: async () => {
+      if (invoiceIds.length === 0) return {};
+      const { data } = await supabase.from('invoices').select('id, status').in('id', invoiceIds);
+      const map: Record<string, string> = {};
+      (data || []).forEach((r: { id: string; status: string }) => { map[r.id] = r.status; });
+      return map;
+    },
+    enabled: invoiceIds.length > 0,
   });
 
   // Realtime subscription for live updates
@@ -121,6 +141,10 @@ export function WebhookActivityPanel() {
       toast.error('No invoice linked — cannot reconcile');
       return;
     }
+    if (row.signature_verified !== true) {
+      toast.error('Refusing to reconcile a webhook with unverified signature');
+      return;
+    }
     if (!row.amount || row.amount <= 0) {
       toast.error('Invalid amount on this webhook');
       return;
@@ -128,8 +152,11 @@ export function WebhookActivityPanel() {
     setReconcilingId(row.id);
     try {
       const { data: inv, error: invErr } = await supabase
-        .from('invoices').select('id, member_id, branch_id').eq('id', row.invoice_id).maybeSingle();
+        .from('invoices').select('id, member_id, branch_id, status').eq('id', row.invoice_id).maybeSingle();
       if (invErr || !inv) throw new Error(invErr?.message || 'Invoice not found');
+      if (inv.status !== 'pending') {
+        throw new Error(`Invoice is already ${inv.status}; nothing to reconcile`);
+      }
       const { data, error } = await supabase.rpc('record_payment', {
         p_branch_id: inv.branch_id,
         p_invoice_id: inv.id,
@@ -138,16 +165,17 @@ export function WebhookActivityPanel() {
         p_payment_method: 'online',
         p_transaction_id: row.gateway_payment_id || undefined,
         p_notes: `Manual reconcile — ${GATEWAY_LABEL[row.gateway] || row.gateway} ${row.gateway_payment_id || row.gateway_order_id || ''}`,
-      } as any);
+      });
       if (error) throw error;
-      const result = data as any;
+      const result = data as { success?: boolean; error?: string } | null;
       if (result?.success === false) throw new Error(result?.error || 'Reconcile RPC returned failure');
       toast.success('Payment reconciled — invoice updated');
       refetch();
+      qc.invalidateQueries({ queryKey: ['webhook-activity-invoice-status'] });
       qc.invalidateQueries({ queryKey: ['payments'] });
       qc.invalidateQueries({ queryKey: ['invoices'] });
-    } catch (e: any) {
-      toast.error(e?.message || 'Reconcile failed');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Reconcile failed');
     } finally {
       setReconcilingId(null);
     }
@@ -259,7 +287,12 @@ export function WebhookActivityPanel() {
               ) : filtered.map(r => {
                 const ts = r.received_at || r.updated_at || r.created_at;
                 const isOk = r.http_status !== null && r.http_status >= 200 && r.http_status < 300;
-                const canReconcile = r.invoice_id && r.amount && r.amount > 0 && r.status !== 'voided';
+                const invStatus = r.invoice_id ? invoiceStatuses[r.invoice_id] : undefined;
+                const canReconcile = !!r.invoice_id
+                  && r.signature_verified === true
+                  && !!r.amount && r.amount > 0
+                  && r.status !== 'voided'
+                  && invStatus === 'pending';
                 return (
                   <Collapsible key={r.id} open={expandedId === r.id} onOpenChange={(o) => setExpandedId(o ? r.id : null)} asChild>
                     <>
@@ -353,25 +386,35 @@ export function WebhookActivityPanel() {
   );
 }
 
+interface LastReceivedRow {
+  received_at: string | null;
+  http_status: number | null;
+  signature_verified: boolean | null;
+}
+
 export function GatewayLastReceivedBadge({ gateway, branchId }: { gateway: string; branchId?: string | null }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery<LastReceivedRow | null>({
     queryKey: ['gateway-last-received', gateway, branchId || 'all'],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = supabase
         .from('payment_transactions')
         .select('received_at, http_status, signature_verified')
         .eq('gateway', gateway)
+        .eq('source', 'webhook')
         .not('received_at', 'is', null)
         .order('received_at', { ascending: false })
         .limit(1);
       if (branchId) q = q.eq('branch_id', branchId);
       const { data } = await q;
-      return (data && data[0]) || null;
+      return ((data && data[0]) as LastReceivedRow | undefined) || null;
     },
     refetchInterval: 30000,
   });
-  if (!data?.received_at) return null;
-  const ok = data.http_status >= 200 && data.http_status < 300 && data.signature_verified !== false;
+  if (isLoading) return null;
+  if (!data?.received_at) {
+    return <div className="mt-2 text-xs text-muted-foreground">No deliveries yet</div>;
+  }
+  const ok = (data.http_status ?? 0) >= 200 && (data.http_status ?? 0) < 300 && data.signature_verified !== false;
   const Icon = ok ? CheckCircle2 : XCircle;
   return (
     <div className={`mt-2 flex items-center gap-1.5 text-xs ${ok ? 'text-emerald-600' : 'text-destructive'}`}>
