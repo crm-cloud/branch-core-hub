@@ -62,6 +62,48 @@ export default function InvoicesPage() {
     return () => { supabase.removeChannel(channel); };
   }, [branchFilter, queryClient]);
 
+  // Deep-link: /invoices?invoice=<id> auto-opens that invoice's view drawer.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invoiceId = params.get('invoice');
+    if (!invoiceId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          id, invoice_number, status, total_amount, amount_paid, due_date, created_at, member_id, pos_sale_id, branch_id,
+          members(member_code, profiles:user_id(full_name, email, phone, avatar_url)),
+          invoice_items(description, reference_type)
+        `)
+        .eq('id', invoiceId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        toast.error('Invoice link could not be opened — invoice not found');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('invoice');
+        window.history.replaceState({}, '', url.toString());
+        return;
+      }
+      setViewInvoice(data);
+    })();
+    return () => { cancelled = true; };
+  // Run once on mount; subsequent navigations within the page won't change ?invoice=
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Strip ?invoice= from the URL whenever the view drawer closes so a refresh
+  // doesn't re-open it.
+  const closeViewInvoice = () => {
+    setViewInvoice(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('invoice')) {
+      url.searchParams.delete('invoice');
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
   // Reset page on filter changes
   const handleStatusChange = (val: string) => { setStatusFilter(val); setPage(0); };
   const handleSearchChange = (val: string) => { setSearchTerm(val); setPage(0); };
@@ -465,11 +507,11 @@ export default function InvoicesPage() {
       {viewInvoice && (
         <InvoiceViewDrawer
           open={!!viewInvoice}
-          onOpenChange={(open) => !open && setViewInvoice(null)}
+          onOpenChange={(open) => !open && closeViewInvoice()}
           invoiceId={viewInvoice.id}
           onRecordPayment={() => {
             setPaymentInvoice(viewInvoice);
-            setViewInvoice(null);
+            closeViewInvoice();
           }}
         />
       )}
