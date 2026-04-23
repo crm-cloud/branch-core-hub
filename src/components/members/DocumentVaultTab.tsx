@@ -58,13 +58,12 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
         .upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
       const { data: { user } } = await supabase.auth.getUser();
 
       const { error: insertError } = await supabase.from('member_documents').insert({
         member_id: memberId,
         document_type: docType,
-        file_url: urlData.publicUrl,
+        file_url: '',
         storage_path: filePath,
         file_name: file.name,
         uploaded_by: user?.id,
