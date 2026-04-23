@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { downloadMemberDocument, openMemberDocument } from '@/lib/documents/memberDocumentUrls';
 
 interface DocumentVaultTabProps {
   memberId: string;
@@ -64,6 +65,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
         member_id: memberId,
         document_type: docType,
         file_url: urlData.publicUrl,
+        storage_path: filePath,
         file_name: file.name,
         uploaded_by: user?.id,
       });
@@ -149,14 +151,21 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
                     </div>
                   </div>
                   <div className="flex gap-1 ml-2">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => window.open(doc.file_url, '_blank')}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={async () => {
+                      try {
+                        await openMemberDocument(doc);
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Unable to open document');
+                      }
+                    }}>
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
-                      const a = document.createElement('a');
-                      a.href = doc.file_url;
-                      a.download = doc.file_name;
-                      a.click();
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={async () => {
+                      try {
+                        await downloadMemberDocument(doc);
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Unable to download document');
+                      }
                     }}>
                       <Download className="h-3.5 w-3.5" />
                     </Button>
