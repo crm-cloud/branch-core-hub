@@ -232,7 +232,12 @@ export async function fetchWorkoutCompletions(
     .eq('plan_source', planSource)
     .eq('plan_id', planId)
     .order('completed_at', { ascending: false });
-  if (error) throw error;
+  if (error) {
+    if ((error as { code?: string; message?: string }).code === 'PGRST205' || error.message?.includes('member_workout_completions')) {
+      return [];
+    }
+    throw error;
+  }
   return data || [];
 }
 

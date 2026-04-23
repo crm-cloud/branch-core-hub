@@ -72,7 +72,7 @@ export function WhatsAppShareDialog({
         .select('id')
         .single();
       if (insertErr) throw insertErr;
-      const { error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
+      const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
         body: {
           message_id: (msg as { id: string }).id,
           phone_number: fullPhone,
@@ -81,6 +81,9 @@ export function WhatsAppShareDialog({
         },
       });
       if (sendErr) throw sendErr;
+      if (sendData && typeof sendData === 'object' && 'error' in sendData && sendData.error) {
+        throw new Error(String((sendData as { error: unknown }).error));
+      }
       toast.success('WhatsApp message sent');
       onOpenChange(false);
     } catch (e) {
