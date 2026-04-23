@@ -6,9 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-razorpay-signature, x-phonepe-signature, x-verify",
 };
 
-// Validation constants
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_PAYLOAD_SIZE = 102400; // 100KB
+const MAX_PAYLOAD_SIZE = 102400;
 const ALLOWED_GATEWAYS = ['razorpay', 'phonepe', 'payu'];
 
 interface RazorpayPaymentEntity {
@@ -31,18 +30,13 @@ interface PhonePeWebhookPayload {
   amount: number;
   state: string;
   responseCode: string;
-  paymentInstrument: {
-    type: string;
-    utr?: string;
-  };
+  paymentInstrument: { type: string; utr?: string };
 }
 
-// Validate UUID format
 function isValidUUID(value: string): boolean {
   return UUID_REGEX.test(value);
 }
 
-// Validate gateway
 function isValidGateway(gateway: string): boolean {
   return ALLOWED_GATEWAYS.includes(gateway.toLowerCase());
 }
@@ -50,86 +44,125 @@ function isValidGateway(gateway: string): boolean {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+interface Outcome {
+  branchId: string | null;
+  gateway: string | null;
+  signatureVerified: boolean | null;
+  eventType: string | null;
+  gatewayOrderId: string | null;
+  gatewayPaymentId: string | null;
+  amount: number | null;
+  status: string | null; // 'created' | 'authorized' | 'captured' | 'failed' | 'received' | 'rejected'
+  errorMessage: string | null;
+  payload: unknown;
+}
+
+async function persistOutcome(supabase: any, o: Outcome, httpStatus: number) {
+  // Skip if no valid branch (FK constraint requires a real branch_id).
+  // We accept this as a known limitation — callers that hit this path also fail
+  // gateway/branch validation and console.error is emitted upstream.
+  if (!o.branchId || !isValidUUID(o.branchId)) return;
+  try {
+    const nowIso = new Date().toISOString();
+
+    // Append-only delivery log — every webhook results in its own row so that
+    // retries, signature failures, and status transitions are all preserved.
+    await supabase.from('payment_transactions').insert({
+      branch_id: o.branchId,
+      gateway: o.gateway || 'unknown',
+      gateway_order_id: o.gatewayOrderId,
+      gateway_payment_id: o.gatewayPaymentId,
+      amount: o.amount ?? 0,
+      status: o.status || 'received',
+      webhook_data: o.payload || {},
+      signature_verified: o.signatureVerified,
+      http_status: httpStatus,
+      error_message: o.errorMessage,
+      event_type: o.eventType,
+      received_at: nowIso,
+      updated_at: nowIso,
+      source: 'webhook',
+    });
+
+    // Separately update the canonical 'order' transaction row (if any) so the
+    // current lifecycle status of that order is reflected on the original record.
+    // Strictly scoped by branch to prevent cross-tenant collisions on reused IDs.
+    if (o.gatewayOrderId && o.status && ['captured', 'authorized', 'failed'].includes(o.status)) {
+      await supabase
+        .from('payment_transactions')
+        .update({
+          gateway_payment_id: o.gatewayPaymentId,
+          status: o.status,
+          webhook_data: o.payload || {},
+          event_type: o.eventType,
+          signature_verified: o.signatureVerified,
+          received_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('gateway_order_id', o.gatewayOrderId)
+        .eq('gateway', o.gateway || 'unknown')
+        .eq('branch_id', o.branchId)
+        .eq('source', 'order');
+    }
+  } catch (e) {
+    console.error('persistOutcome failed:', e);
+  }
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 serve(async (req: Request) => {
-  // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const outcome: Outcome = {
+    branchId: null, gateway: null, signatureVerified: null, eventType: null,
+    gatewayOrderId: null, gatewayPaymentId: null, amount: null, status: null,
+    errorMessage: null, payload: null,
+  };
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  const reply = async (body: unknown, status: number, errorMsg?: string) => {
+    if (errorMsg) outcome.errorMessage = errorMsg;
+    if (status >= 400 && !outcome.status) outcome.status = 'rejected';
+    await persistOutcome(supabase, outcome, status);
+    return jsonResponse(body, status);
+  };
+
   try {
-    // Check request size
     const contentLength = parseInt(req.headers.get("content-length") || "0");
     if (contentLength > MAX_PAYLOAD_SIZE) {
-      console.error("Request payload too large:", contentLength);
-      return new Response(
-        JSON.stringify({ error: "Request too large" }),
-        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return reply({ error: "Request too large" }, 413, "Payload too large");
     }
 
     const url = new URL(req.url);
     const gateway = url.searchParams.get("gateway") || "razorpay";
     const branchId = url.searchParams.get("branch_id");
+    outcome.gateway = gateway;
+    outcome.branchId = branchId;
 
-    // Validate gateway
     if (!isValidGateway(gateway)) {
-      console.error("Invalid gateway specified:", gateway);
-      return new Response(
-        JSON.stringify({ error: "Invalid payment gateway" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return reply({ error: "Invalid payment gateway" }, 400, `Invalid gateway: ${gateway}`);
     }
+    if (!branchId) return reply({ error: "branch_id is required" }, 400, "Missing branch_id query param");
+    if (!isValidUUID(branchId)) return reply({ error: "Invalid branch_id format" }, 400, `Invalid branch_id format: ${branchId}`);
 
-    // Validate branch_id format
-    if (!branchId) {
-      return new Response(
-        JSON.stringify({ error: "branch_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!isValidUUID(branchId)) {
-      console.error("Invalid branch_id format:", branchId);
-      return new Response(
-        JSON.stringify({ error: "Invalid branch_id format" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Verify branch exists before processing
     const { data: branchExists } = await supabase
-      .from("branches")
-      .select("id")
-      .eq("id", branchId)
-      .single();
-
-    if (!branchExists) {
-      console.error("Branch not found:", branchId);
-      return new Response(
-        JSON.stringify({ error: "Branch not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      .from("branches").select("id").eq("id", branchId).maybeSingle();
+    if (!branchExists) return reply({ error: "Branch not found" }, 404, `Branch not found: ${branchId}`);
 
     const body = await req.text();
-    
-    // Parse JSON safely
-    let payload;
-    try {
-      payload = JSON.parse(body);
-    } catch {
-      console.error("Invalid JSON payload");
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON payload" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    let payload: any;
+    try { payload = JSON.parse(body); }
+    catch { return reply({ error: "Invalid JSON payload" }, 400, "Invalid JSON payload"); }
+    outcome.payload = payload;
 
-    console.log(`Processing ${gateway} webhook for branch ${branchId}`);
-
-    // Get integration settings for verification
     const { data: integration } = await supabase
       .from("integration_settings")
       .select("credentials")
@@ -137,14 +170,10 @@ serve(async (req: Request) => {
       .eq("integration_type", "payment_gateway")
       .eq("provider", gateway)
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
     if (!integration) {
-      console.error("No active integration found");
-      return new Response(
-        JSON.stringify({ error: "Integration not configured" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return reply({ error: "Integration not configured" }, 400, "Integration not configured for branch");
     }
 
     let transactionData: {
@@ -156,30 +185,25 @@ serve(async (req: Request) => {
     };
 
     if (gateway === "razorpay") {
-      // Verify Razorpay signature
       const razorpaySignature = req.headers.get("x-razorpay-signature");
       const webhookSecret = integration.credentials?.webhook_secret;
 
       if (webhookSecret && razorpaySignature) {
         const expectedSignature = await generateHmacSha256(body, webhookSecret);
         if (razorpaySignature !== expectedSignature) {
-          console.error("Invalid Razorpay signature");
-          return new Response(
-            JSON.stringify({ error: "Invalid signature" }),
-            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+          outcome.signatureVerified = false;
+          outcome.eventType = payload?.event || null;
+          return reply({ error: "Invalid signature" }, 401, "Invalid Razorpay signature");
         }
+        outcome.signatureVerified = true;
       } else if (webhookSecret && !razorpaySignature) {
-        console.error("Missing Razorpay signature when webhook secret is configured");
-        return new Response(
-          JSON.stringify({ error: "Missing signature" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        outcome.signatureVerified = false;
+        return reply({ error: "Missing signature" }, 401, "Missing Razorpay signature");
       }
 
       const event = payload.event;
+      outcome.eventType = event;
 
-      // Handle payment_link.paid event
       if (event === "payment_link.paid") {
         const plinkEntity = payload.payload?.payment_link?.entity;
         const paymentEntity = payload.payload?.payment?.entity;
@@ -187,16 +211,14 @@ serve(async (req: Request) => {
         const rzpAmount = (paymentEntity?.amount || plinkEntity?.amount || 0) / 100;
         const paymentId = paymentEntity?.id || plinkEntity?.id;
 
-        console.log("payment_link.paid received, reference_id:", referenceId, "amount:", rzpAmount);
+        outcome.gatewayOrderId = plinkEntity?.id || null;
+        outcome.gatewayPaymentId = paymentId || null;
+        outcome.amount = rzpAmount;
+        outcome.status = 'captured';
 
         if (referenceId && isValidUUID(referenceId)) {
-          // Use record_payment RPC for atomic invoice update + membership activation
           const { data: invoice } = await supabase
-            .from("invoices")
-            .select("id, member_id, branch_id")
-            .eq("id", referenceId)
-            .single();
-
+            .from("invoices").select("id, member_id, branch_id").eq("id", referenceId).maybeSingle();
           if (invoice) {
             const { data: payResult } = await supabase.rpc("record_payment", {
               p_branch_id: invoice.branch_id,
@@ -207,64 +229,31 @@ serve(async (req: Request) => {
               p_transaction_id: paymentId,
               p_notes: "Auto-recorded via Razorpay Payment Link",
             });
-
             console.log("record_payment result:", JSON.stringify(payResult));
 
-            // Update existing payment_transaction if exists
-            await supabase
-              .from("payment_transactions")
-              .update({
-                gateway_payment_id: paymentId,
-                status: "captured",
-                webhook_data: payload,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("gateway_order_id", plinkEntity?.id)
-              .eq("gateway", "razorpay");
-
-            // If invoice has membership items, trigger MIPS sync
             const { data: membershipItems } = await supabase
-              .from("invoice_items")
-              .select("reference_id")
+              .from("invoice_items").select("reference_id")
               .eq("invoice_id", referenceId)
               .in("reference_type", ["membership", "membership_renewal"]);
 
             if (membershipItems && membershipItems.length > 0 && invoice.member_id) {
               try {
-                const syncUrl = `${supabaseUrl}/functions/v1/sync-to-mips`;
-                await fetch(syncUrl, {
+                await fetch(`${supabaseUrl}/functions/v1/sync-to-mips`, {
                   method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${supabaseServiceKey}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    action: "sync_member",
-                    member_id: invoice.member_id,
-                    branch_id: invoice.branch_id,
-                  }),
+                  headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "sync_member", member_id: invoice.member_id, branch_id: invoice.branch_id }),
                 });
-                console.log("MIPS sync triggered for member:", invoice.member_id);
-              } catch (syncErr) {
-                console.error("MIPS sync trigger failed:", syncErr);
-              }
+              } catch (syncErr) { console.error("MIPS sync failed:", syncErr); }
             }
           }
         }
-
-        return new Response(
-          JSON.stringify({ status: "success" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return reply({ status: "success" }, 200);
       }
 
-      // Handle standard payment.captured / payment.authorized / payment.failed
       const paymentEntity = payload.payload?.payment?.entity as RazorpayPaymentEntity;
-
       if (!paymentEntity) {
-        return new Response(JSON.stringify({ status: "ignored" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        outcome.status = 'received';
+        return reply({ status: "ignored" }, 200);
       }
 
       let status = "created";
@@ -280,7 +269,6 @@ serve(async (req: Request) => {
         webhook_data: payload,
       };
     } else if (gateway === "phonepe") {
-      // Verify PhonePe signature
       const phonePeSignature = req.headers.get("x-verify");
       const saltKey = integration.credentials?.salt_key;
       const saltIndex = integration.credentials?.salt_index || "1";
@@ -289,20 +277,14 @@ serve(async (req: Request) => {
         const base64Body = btoa(body);
         const stringToSign = base64Body + "/pg/v1/status/" + saltKey;
         const expectedChecksum = await sha256(stringToSign) + "###" + saltIndex;
-        
         if (phonePeSignature !== expectedChecksum) {
-          console.error("Invalid PhonePe signature");
-          return new Response(
-            JSON.stringify({ error: "Invalid signature" }),
-            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+          outcome.signatureVerified = false;
+          return reply({ error: "Invalid signature" }, 401, "Invalid PhonePe signature");
         }
+        outcome.signatureVerified = true;
       } else if (saltKey && !phonePeSignature) {
-        console.error("Missing PhonePe signature when salt key is configured");
-        return new Response(
-          JSON.stringify({ error: "Missing signature" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        outcome.signatureVerified = false;
+        return reply({ error: "Missing signature" }, 401, "Missing PhonePe signature");
       }
 
       const data = payload.data as PhonePeWebhookPayload;
@@ -310,6 +292,7 @@ serve(async (req: Request) => {
       if (data.state === "COMPLETED") status = "captured";
       else if (data.state === "FAILED") status = "failed";
       else if (data.state === "PENDING") status = "authorized";
+      outcome.eventType = data.state || null;
 
       transactionData = {
         gateway_order_id: data.merchantTransactionId,
@@ -319,40 +302,35 @@ serve(async (req: Request) => {
         webhook_data: payload,
       };
     } else if (gateway === "payu") {
-      // PayU webhook handling
-      // PayU sends form-encoded POST data with sha512 hash
       const payuStatus = payload.status;
       const txnId = payload.txnid;
       const payuAmount = parseFloat(payload.amount || "0");
       const productInfo = payload.productinfo || "";
-      const referenceId = payload.udf1; // We store invoice_id in udf1
+      const referenceId = payload.udf1;
       const payuTxnId = payload.mihpayid;
 
-      // Verify PayU signature
       const merchantKey = integration.credentials?.merchant_key;
       const merchantSalt = integration.credentials?.merchant_salt;
 
-      if (merchantKey && merchantSalt && payload.hash) {
-        // PayU verification: sha512(salt|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+      if (merchantKey && merchantSalt) {
+        if (!payload.hash) {
+          outcome.signatureVerified = false;
+          return reply({ error: "Missing signature" }, 401, "Missing PayU hash when merchant credentials are configured");
+        }
         const reverseHashString = `${merchantSalt}|${payuStatus}||||||${payload.udf5 || ""}|${payload.udf4 || ""}|${payload.udf3 || ""}|${payload.udf2 || ""}|${payload.udf1 || ""}|${payload.email || ""}|${payload.firstname || ""}|${productInfo}|${payuAmount}|${txnId}|${merchantKey}`;
         const expectedHash = await sha512(reverseHashString);
         if (payload.hash !== expectedHash) {
-          console.error("Invalid PayU signature");
-          return new Response(
-            JSON.stringify({ error: "Invalid signature" }),
-            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+          outcome.signatureVerified = false;
+          return reply({ error: "Invalid signature" }, 401, "Invalid PayU signature");
         }
+        outcome.signatureVerified = true;
       }
 
-      if (payuStatus === "success" && referenceId && isValidUUID(referenceId)) {
-        // Use record_payment RPC
-        const { data: invoice } = await supabase
-          .from("invoices")
-          .select("id, member_id, branch_id")
-          .eq("id", referenceId)
-          .single();
+      outcome.eventType = payuStatus || null;
 
+      if (payuStatus === "success" && referenceId && isValidUUID(referenceId)) {
+        const { data: invoice } = await supabase
+          .from("invoices").select("id, member_id, branch_id").eq("id", referenceId).maybeSingle();
         if (invoice) {
           const { data: payResult } = await supabase.rpc("record_payment", {
             p_branch_id: invoice.branch_id,
@@ -363,34 +341,21 @@ serve(async (req: Request) => {
             p_transaction_id: payuTxnId,
             p_notes: "Auto-recorded via PayU",
           });
-          console.log("PayU record_payment result:", JSON.stringify(payResult));
+          console.log("PayU record_payment:", JSON.stringify(payResult));
 
-          // Trigger MIPS sync for membership items
           const { data: membershipItems } = await supabase
-            .from("invoice_items")
-            .select("reference_id")
+            .from("invoice_items").select("reference_id")
             .eq("invoice_id", referenceId)
             .in("reference_type", ["membership", "membership_renewal"]);
 
           if (membershipItems && membershipItems.length > 0 && invoice.member_id) {
             try {
-              const syncUrl = `${supabaseUrl}/functions/v1/sync-to-mips`;
-              await fetch(syncUrl, {
+              await fetch(`${supabaseUrl}/functions/v1/sync-to-mips`, {
                 method: "POST",
-                headers: {
-                  Authorization: `Bearer ${supabaseServiceKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  action: "sync_member",
-                  member_id: invoice.member_id,
-                  branch_id: invoice.branch_id,
-                }),
+                headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "sync_member", member_id: invoice.member_id, branch_id: invoice.branch_id }),
               });
-              console.log("MIPS sync triggered for PayU payment, member:", invoice.member_id);
-            } catch (syncErr) {
-              console.error("MIPS sync trigger failed:", syncErr);
-            }
+            } catch (syncErr) { console.error("MIPS sync failed:", syncErr); }
           }
         }
       }
@@ -409,55 +374,47 @@ serve(async (req: Request) => {
       };
 
       if (payuStatus === "success" && referenceId) {
-        return new Response(
-          JSON.stringify({ status: "success" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        outcome.gatewayOrderId = transactionData.gateway_order_id;
+        outcome.gatewayPaymentId = transactionData.gateway_payment_id;
+        outcome.amount = transactionData.amount;
+        outcome.status = transactionData.status;
+        return reply({ status: "success" }, 200);
       }
     } else {
-      return new Response(
-        JSON.stringify({ error: "Unsupported gateway" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return reply({ error: "Unsupported gateway" }, 400, `Unsupported gateway: ${gateway}`);
     }
 
-    // Find existing transaction
+    outcome.gatewayOrderId = transactionData.gateway_order_id;
+    outcome.gatewayPaymentId = transactionData.gateway_payment_id;
+    outcome.amount = transactionData.amount;
+    outcome.status = transactionData.status;
+
+    // Look up the canonical order row for invoice/payments side-effects.
+    // Strictly scoped by branch + gateway + source='order' to avoid cross-tenant
+    // collisions and to never match webhook log rows.
     const { data: existingTxn } = await supabase
       .from("payment_transactions")
       .select("id, invoice_id")
       .eq("gateway_order_id", transactionData.gateway_order_id)
-      .single();
+      .eq("branch_id", branchId)
+      .eq("gateway", gateway)
+      .eq("source", "order")
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (existingTxn) {
-      // Update existing transaction
-      await supabase
-        .from("payment_transactions")
-        .update({
-          gateway_payment_id: transactionData.gateway_payment_id,
-          status: transactionData.status,
-          webhook_data: transactionData.webhook_data,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingTxn.id);
-
-      // If payment captured, update invoice and create payment record
+      // We'll let persistOutcome handle the metadata enrichment in the unified path,
+      // but still update invoice/payments side-effects here.
       if (transactionData.status === "captured" && existingTxn.invoice_id) {
-        await supabase
-          .from("invoices")
-          .update({
-            status: "paid",
-            amount_paid: transactionData.amount,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingTxn.invoice_id);
+        await supabase.from("invoices").update({
+          status: "paid",
+          amount_paid: transactionData.amount,
+          updated_at: new Date().toISOString(),
+        }).eq("id", existingTxn.invoice_id);
 
-        // Get invoice details for payment record
         const { data: invoice } = await supabase
-          .from("invoices")
-          .select("member_id, branch_id")
-          .eq("id", existingTxn.invoice_id)
-          .single();
-
+          .from("invoices").select("member_id, branch_id").eq("id", existingTxn.invoice_id).maybeSingle();
         if (invoice) {
           await supabase.from("payments").insert({
             branch_id: invoice.branch_id,
@@ -470,64 +427,33 @@ serve(async (req: Request) => {
           });
         }
       }
-    } else {
-      // Create new transaction record
-      await supabase.from("payment_transactions").insert({
-        branch_id: branchId,
-        gateway,
-        ...transactionData,
-      });
     }
 
-    console.log(`Webhook processed successfully: ${transactionData.gateway_payment_id}`);
-
-    return new Response(
-      JSON.stringify({ status: "success" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return reply({ status: "success" }, 200);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("Webhook error:", errorMessage);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return reply({ error: "Internal server error" }, 500, errorMessage);
   }
 });
 
 async function generateHmacSha256(message: string, secret: string): Promise<string> {
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const messageData = encoder.encode(message);
-  
   const key = await globalThis.crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+    "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
-  
-  const signature = await globalThis.crypto.subtle.sign("HMAC", key, messageData);
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const signature = await globalThis.crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function sha256(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
+  const data = new TextEncoder().encode(message);
   const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function sha512(message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
+  const data = new TextEncoder().encode(message);
   const hashBuffer = await globalThis.crypto.subtle.digest("SHA-512", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }

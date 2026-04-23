@@ -1,0 +1,382 @@
+import { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useBranchContext } from '@/contexts/BranchContext';
+import { CheckCircle2, XCircle, AlertCircle, ChevronDown, RefreshCw, Search, ShieldCheck, ShieldX, ShieldAlert, Webhook } from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
+import { toast } from 'sonner';
+
+const GATEWAY_LABEL: Record<string, string> = {
+  razorpay: 'Razorpay', phonepe: 'PhonePe', payu: 'PayU', ccavenue: 'CCAvenue', unknown: 'Unknown',
+};
+
+function StatusBadge({ status, httpStatus }: { status: string | null; httpStatus: number | null }) {
+  const isOk = httpStatus !== null && httpStatus >= 200 && httpStatus < 300;
+  const cls = status === 'captured' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+    : status === 'failed' || status === 'rejected' ? 'bg-destructive/10 text-destructive border-destructive/20'
+    : status === 'authorized' || status === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+    : isOk ? 'bg-sky-500/10 text-sky-600 border-sky-500/20'
+    : 'bg-muted text-muted-foreground';
+  return <Badge variant="outline" className={cls}>{status || 'received'}</Badge>;
+}
+
+function SignatureBadge({ verified }: { verified: boolean | null }) {
+  if (verified === true) return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><ShieldCheck className="h-3 w-3" />Verified</Badge>;
+  if (verified === false) return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1"><ShieldX className="h-3 w-3" />Invalid</Badge>;
+  return <Badge variant="outline" className="bg-muted text-muted-foreground gap-1"><ShieldAlert className="h-3 w-3" />Not checked</Badge>;
+}
+
+interface WebhookRow {
+  id: string;
+  branch_id: string;
+  gateway: string;
+  gateway_order_id: string | null;
+  gateway_payment_id: string | null;
+  amount: number | null;
+  status: string | null;
+  signature_verified: boolean | null;
+  http_status: number | null;
+  error_message: string | null;
+  event_type: string | null;
+  source: string | null;
+  received_at: string | null;
+  created_at: string;
+  updated_at: string;
+  invoice_id: string | null;
+  webhook_data: any;
+}
+
+export function WebhookActivityPanel() {
+  const { branchFilter } = useBranchContext();
+  const qc = useQueryClient();
+  const [gatewayFilter, setGatewayFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sigFilter, setSigFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [reconcilingId, setReconcilingId] = useState<string | null>(null);
+
+  const { data: rows = [], isLoading, refetch } = useQuery<WebhookRow[]>({
+    queryKey: ['webhook-activity', branchFilter],
+    queryFn: async () => {
+      let q = (supabase as any)
+        .from('payment_transactions')
+        .select('*')
+        .order('received_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (branchFilter) q = q.eq('branch_id', branchFilter);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data as WebhookRow[]) || [];
+    },
+  });
+
+  // Realtime subscription for live updates
+  useEffect(() => {
+    const ch = supabase
+      .channel('webhook-activity-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_transactions' }, () => {
+        qc.invalidateQueries({ queryKey: ['webhook-activity'] });
+        qc.invalidateQueries({ queryKey: ['gateway-last-received'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+
+  const filtered = useMemo(() => rows.filter(r => {
+    if (gatewayFilter !== 'all' && r.gateway !== gatewayFilter) return false;
+    if (statusFilter !== 'all' && (r.status || 'received') !== statusFilter) return false;
+    if (sigFilter !== 'all') {
+      if (sigFilter === 'verified' && r.signature_verified !== true) return false;
+      if (sigFilter === 'invalid' && r.signature_verified !== false) return false;
+      if (sigFilter === 'unchecked' && r.signature_verified !== null) return false;
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      const hay = [r.gateway_order_id, r.gateway_payment_id, r.event_type, r.error_message]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(s)) return false;
+    }
+    return true;
+  }), [rows, gatewayFilter, statusFilter, sigFilter, search]);
+
+  const stats = useMemo(() => {
+    const total = rows.length;
+    const captured = rows.filter(r => r.status === 'captured').length;
+    const failed = rows.filter(r => r.status === 'failed' || r.status === 'rejected' || (r.http_status && r.http_status >= 400)).length;
+    const sigInvalid = rows.filter(r => r.signature_verified === false).length;
+    return { total, captured, failed, sigInvalid };
+  }, [rows]);
+
+  const handleReconcile = async (row: WebhookRow) => {
+    if (!row.invoice_id) {
+      toast.error('No invoice linked — cannot reconcile');
+      return;
+    }
+    if (!row.amount || row.amount <= 0) {
+      toast.error('Invalid amount on this webhook');
+      return;
+    }
+    setReconcilingId(row.id);
+    try {
+      const { data: inv, error: invErr } = await supabase
+        .from('invoices').select('id, member_id, branch_id').eq('id', row.invoice_id).maybeSingle();
+      if (invErr || !inv) throw new Error(invErr?.message || 'Invoice not found');
+      const { data, error } = await supabase.rpc('record_payment', {
+        p_branch_id: inv.branch_id,
+        p_invoice_id: inv.id,
+        p_member_id: inv.member_id,
+        p_amount: row.amount,
+        p_payment_method: 'online',
+        p_transaction_id: row.gateway_payment_id || undefined,
+        p_notes: `Manual reconcile — ${GATEWAY_LABEL[row.gateway] || row.gateway} ${row.gateway_payment_id || row.gateway_order_id || ''}`,
+      } as any);
+      if (error) throw error;
+      const result = data as any;
+      if (result?.success === false) throw new Error(result?.error || 'Reconcile RPC returned failure');
+      toast.success('Payment reconciled — invoice updated');
+      refetch();
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Reconcile failed');
+    } finally {
+      setReconcilingId(null);
+    }
+  };
+
+  return (
+    <Card className="rounded-2xl border-border/60 shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Webhook className="h-4 w-4" />
+              </span>
+              Webhook Activity
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Every payment webhook delivery, signature verification, and HTTP outcome.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" />Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-border/60 p-3 bg-muted/40">
+            <p className="text-xs text-muted-foreground">Total (last 100)</p>
+            <p className="text-2xl font-bold">{stats.total}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-500/20 p-3 bg-emerald-500/5">
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">Captured</p>
+            <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{stats.captured}</p>
+          </div>
+          <div className="rounded-xl border border-destructive/20 p-3 bg-destructive/5">
+            <p className="text-xs text-destructive">Failed / Rejected</p>
+            <p className="text-2xl font-bold text-destructive">{stats.failed}</p>
+          </div>
+          <div className="rounded-xl border border-amber-500/20 p-3 bg-amber-500/5">
+            <p className="text-xs text-amber-700 dark:text-amber-400">Bad signatures</p>
+            <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">{stats.sigInvalid}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9 rounded-xl" placeholder="Order ID, payment ID, event, error..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Select value={gatewayFilter} onValueChange={setGatewayFilter}>
+            <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All gateways</SelectItem>
+              <SelectItem value="razorpay">Razorpay</SelectItem>
+              <SelectItem value="phonepe">PhonePe</SelectItem>
+              <SelectItem value="payu">PayU</SelectItem>
+              <SelectItem value="ccavenue">CCAvenue</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All status</SelectItem>
+              <SelectItem value="captured">Captured</SelectItem>
+              <SelectItem value="authorized">Authorized</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="created">Created</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sigFilter} onValueChange={setSigFilter}>
+            <SelectTrigger className="w-[150px] rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All signatures</SelectItem>
+              <SelectItem value="verified">Verified</SelectItem>
+              <SelectItem value="invalid">Invalid</SelectItem>
+              <SelectItem value="unchecked">Not checked</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="rounded-xl border border-border/60 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[160px]">Received</TableHead>
+                <TableHead>Gateway</TableHead>
+                <TableHead>Event</TableHead>
+                <TableHead>Signature</TableHead>
+                <TableHead>HTTP</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="w-[120px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Webhook className="h-8 w-8 opacity-30" />
+                      <p className="font-medium text-foreground/70">No webhook deliveries yet</p>
+                      <p className="text-xs">Configure a payment gateway and paste the webhook URL to start receiving events.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filtered.map(r => {
+                const ts = r.received_at || r.updated_at || r.created_at;
+                const isOk = r.http_status !== null && r.http_status >= 200 && r.http_status < 300;
+                const canReconcile = r.invoice_id && r.amount && r.amount > 0 && r.status !== 'voided';
+                return (
+                  <Collapsible key={r.id} open={expandedId === r.id} onOpenChange={(o) => setExpandedId(o ? r.id : null)} asChild>
+                    <>
+                      <TableRow className="cursor-pointer hover:bg-muted/30">
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-sm">{format(new Date(ts), 'dd MMM HH:mm:ss')}</span>
+                            <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(ts), { addSuffix: true })}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="rounded-full">{GATEWAY_LABEL[r.gateway] || r.gateway}</Badge>
+                          {r.source === 'webhook' && <Badge variant="outline" className="ml-1 text-[10px]">log</Badge>}
+                        </TableCell>
+                        <TableCell><span className="font-mono text-xs">{r.event_type || '—'}</span></TableCell>
+                        <TableCell><SignatureBadge verified={r.signature_verified} /></TableCell>
+                        <TableCell>
+                          {r.http_status === null ? <span className="text-muted-foreground text-sm">—</span> : (
+                            <span className={`font-mono text-sm ${isOk ? 'text-emerald-600' : 'text-destructive'}`}>{r.http_status}</span>
+                          )}
+                        </TableCell>
+                        <TableCell><StatusBadge status={r.status} httpStatus={r.http_status} /></TableCell>
+                        <TableCell className="text-right font-medium">{r.amount ? `₹${r.amount.toLocaleString()}` : '—'}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 px-2">
+                                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedId === r.id ? 'rotate-180' : ''}`} />
+                              </Button>
+                            </CollapsibleTrigger>
+                            {canReconcile && (
+                              <Button
+                                variant="outline" size="sm" className="h-7 text-xs gap-1"
+                                disabled={reconcilingId === r.id}
+                                onClick={(e) => { e.stopPropagation(); handleReconcile(r); }}
+                              >
+                                <RefreshCw className={`h-3 w-3 ${reconcilingId === r.id ? 'animate-spin' : ''}`} />
+                                Reconcile
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      <CollapsibleContent asChild>
+                        <TableRow className="bg-muted/20 hover:bg-muted/20">
+                          <TableCell colSpan={8} className="p-4">
+                            <div className="grid gap-3 md:grid-cols-2 text-sm">
+                              <div className="space-y-1.5">
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Order ID</span>
+                                  <span className="font-mono break-all">{r.gateway_order_id || '—'}</span>
+                                </div>
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Payment ID</span>
+                                  <span className="font-mono break-all">{r.gateway_payment_id || '—'}</span>
+                                </div>
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Invoice</span>
+                                  <span className="font-mono break-all">{r.invoice_id || '—'}</span>
+                                </div>
+                                <div className="grid grid-cols-[140px_1fr] gap-2">
+                                  <span className="text-muted-foreground">Source</span>
+                                  <span>{r.source || 'order'}</span>
+                                </div>
+                              </div>
+                              <div>
+                                {r.error_message && (
+                                  <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-2.5 mb-2 flex items-start gap-2">
+                                    <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                                    <span className="text-destructive text-xs">{r.error_message}</span>
+                                  </div>
+                                )}
+                                <details>
+                                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View raw payload</summary>
+                                  <pre className="mt-2 rounded-lg bg-muted/60 p-3 text-[11px] overflow-x-auto max-h-64">{JSON.stringify(r.webhook_data, null, 2)}</pre>
+                                </details>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      </CollapsibleContent>
+                    </>
+                  </Collapsible>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function GatewayLastReceivedBadge({ gateway, branchId }: { gateway: string; branchId?: string | null }) {
+  const { data } = useQuery({
+    queryKey: ['gateway-last-received', gateway, branchId || 'all'],
+    queryFn: async () => {
+      let q = (supabase as any)
+        .from('payment_transactions')
+        .select('received_at, http_status, signature_verified')
+        .eq('gateway', gateway)
+        .not('received_at', 'is', null)
+        .order('received_at', { ascending: false })
+        .limit(1);
+      if (branchId) q = q.eq('branch_id', branchId);
+      const { data } = await q;
+      return (data && data[0]) || null;
+    },
+    refetchInterval: 30000,
+  });
+  if (!data?.received_at) return null;
+  const ok = data.http_status >= 200 && data.http_status < 300 && data.signature_verified !== false;
+  const Icon = ok ? CheckCircle2 : XCircle;
+  return (
+    <div className={`mt-2 flex items-center gap-1.5 text-xs ${ok ? 'text-emerald-600' : 'text-destructive'}`}>
+      <Icon className="h-3.5 w-3.5" />
+      <span>Last webhook {formatDistanceToNow(new Date(data.received_at), { addSuffix: true })}</span>
+    </div>
+  );
+}

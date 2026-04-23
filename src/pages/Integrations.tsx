@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,8 +18,9 @@ import { toast } from 'sonner';
 import { getProviderSchema, getProviderDisplayName, getWebhookInfoForProvider, getDefaultConfigForProvider, type ProviderFieldDef } from '@/config/providerSchemas';
 import { 
   CreditCard, MessageSquare, Mail, Phone, Webhook, Copy,
-  Settings, CheckCircle, XCircle, Globe, Instagram, Facebook, MessageCircle
+  Settings, CheckCircle, XCircle, Globe, Instagram, Facebook, MessageCircle, Activity
 } from 'lucide-react';
+import { WebhookActivityPanel, GatewayLastReceivedBadge } from '@/components/integrations/WebhookActivityPanel';
 
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram';
 
@@ -93,6 +95,13 @@ export default function IntegrationsPage() {
     existing?: any;
   }>({ open: false, type: 'payment_gateway', provider: '' });
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'payment';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && t !== activeTab) setActiveTab(t);
+  }, [searchParams]);
 
   const { data: integrations = [] } = useQuery({
     queryKey: ['integrations', selectedBranch],
@@ -138,9 +147,10 @@ export default function IntegrationsPage() {
           <StatCard title="Google" value={activeCount('google_business')} icon={Globe} variant={activeCount('google_business') > 0 ? 'success' : 'default'} />
         </div>
 
-        <Tabs defaultValue="payment" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSearchParams(v === 'payment' ? {} : { tab: v }, { replace: true }); }} className="space-y-4">
           <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-2xl bg-muted/70 p-1.5">
             <TabsTrigger value="payment" className="rounded-xl px-4">Payment</TabsTrigger>
+            <TabsTrigger value="webhooks" className="rounded-xl px-4 gap-1.5"><Activity className="h-3.5 w-3.5" />Webhooks</TabsTrigger>
             <TabsTrigger value="sms" className="rounded-xl px-4">SMS</TabsTrigger>
             <TabsTrigger value="email" className="rounded-xl px-4">Email</TabsTrigger>
             <TabsTrigger value="whatsapp" className="rounded-xl px-4 gap-1.5"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
@@ -172,12 +182,17 @@ export default function IntegrationsPage() {
                         <Button className="mt-4 w-full rounded-xl" variant={config?.is_active ? 'outline' : 'default'} onClick={() => openConfig('payment_gateway', provider.id)}>
                           <Settings className="mr-2 h-4 w-4" />{config ? 'Configure' : 'Setup'}
                         </Button>
+                        <GatewayLastReceivedBadge gateway={provider.id} branchId={branchFilter} />
                       </CardContent>
                     </Card>
                   );
                 })}
               </div>
             </IntegrationCard>
+          </TabsContent>
+
+          <TabsContent value="webhooks" className="space-y-4">
+            <WebhookActivityPanel />
           </TabsContent>
 
           <TabsContent value="sms" className="space-y-4">

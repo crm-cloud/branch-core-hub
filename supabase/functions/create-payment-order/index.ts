@@ -142,6 +142,7 @@ serve(async (req) => {
       amount: amountDue,
       currency: "INR",
       status: "pending",
+      source: "order",
     });
 
     return new Response(JSON.stringify(orderResponse), {
