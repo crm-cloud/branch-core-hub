@@ -7506,6 +7506,55 @@ export type Database = {
         Returns: Json
       }
       member_check_out: { Args: { _member_id: string }; Returns: Json }
+      onboard_member: {
+        Args: {
+          p_activity_level?: string
+          p_allergies?: string[]
+          p_avatar_storage_path?: string
+          p_branch_id: string
+          p_created_by?: string
+          p_cuisine_preference?: string
+          p_dietary_preference?: string
+          p_email: string
+          p_equipment_availability?: string[]
+          p_fitness_goals?: string
+          p_fitness_level?: string
+          p_full_name: string
+          p_government_id_number?: string
+          p_government_id_type?: string
+          p_health_conditions?: string
+          p_injuries_limitations?: string
+          p_phone?: string
+          p_referred_by?: string
+          p_schedule_welcome?: boolean
+          p_source?: string
+          p_user_id: string
+          p_welcome_channels?: string[]
+        }
+        Returns: Json
+      }
+      purchase_member_membership: {
+        Args: {
+          p_amount_paying?: number
+          p_assign_locker_id?: string
+          p_branch_id: string
+          p_discount_amount?: number
+          p_discount_reason?: string
+          p_gst_rate?: number
+          p_idempotency_key?: string
+          p_include_gst?: boolean
+          p_member_id: string
+          p_notes?: string
+          p_payment_due_date?: string
+          p_payment_method?: string
+          p_payment_source?: string
+          p_plan_id: string
+          p_received_by?: string
+          p_send_reminders?: boolean
+          p_start_date: string
+        }
+        Returns: Json
+      }
       purchase_pt_package: {
         Args: {
           _branch_id: string
