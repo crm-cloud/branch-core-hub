@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,7 @@ const DEFAULT_TERMS = [
 ];
 
 export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: MemberRegistrationFormProps) {
+  const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
@@ -137,6 +139,18 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
 
     setSaving(true);
     try {
+      const { data: existingRegistrationForm, error: existingError } = await supabase
+        .from('member_documents')
+        .select('id')
+        .eq('member_id', data.memberId)
+        .eq('document_type', 'registration_form')
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existingRegistrationForm) {
+        throw new Error('Registration form already uploaded for this member');
+      }
+
       // Convert canvas to blob
       const canvas = canvasRef.current;
       if (!canvas) throw new Error('Canvas not found');
@@ -146,25 +160,26 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       });
 
       // Upload signature to storage
-      const fileName = `signatures/${data.memberId}-${Date.now()}.png`;
+      const fileName = `${data.memberId}/registration-form-${Date.now()}.png`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(fileName, blob, { contentType: 'image/png' });
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(fileName);
-
       // Save document record
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('member_documents').insert({
+      const { error: insertError } = await supabase.from('member_documents').insert({
         member_id: data.memberId,
         document_type: 'registration_form',
-        file_url: urlData.publicUrl,
+        file_url: '',
+        storage_path: fileName,
         file_name: `Registration-${data.memberCode}-signed.png`,
         uploaded_by: user?.id,
       });
+      if (insertError) throw insertError;
 
       toast.success('Registration form saved digitally with signature!');
+      queryClient.invalidateQueries({ queryKey: ['member-documents', data.memberId] });
       onOpenChange(false);
     } catch (error: any) {
       toast.error(error.message || 'Failed to save');

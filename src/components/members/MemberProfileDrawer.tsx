@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,8 @@ import {
   User, Users, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
-  Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download,
+  Play, UserCog, IndianRupee, Ruler, UserMinus, UserCheck,
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Download,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -31,11 +31,10 @@ import { MemberPlanProgressBlock } from '@/components/fitness/member/MemberPlanP
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
-import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
 import { DocumentVaultTab } from './DocumentVaultTab';
-import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
+import { MemberRegistrationFormDrawer } from './MemberRegistrationForm';
 import { TransferBranchDrawer } from './TransferBranchDrawer';
 import { TransferMembershipDrawer } from './TransferMembershipDrawer';
 import { RewardsWalletCard } from './RewardsWalletCard';
@@ -429,6 +428,16 @@ interface MemberProfileDrawerProps {
   onPurchasePT: () => void;
 }
 
+type RecentActivityItem = {
+  id: string;
+  timestamp: string;
+  type: 'check_in' | 'check_out' | 'membership' | 'payment' | 'pt_package';
+  title: string;
+  subtitle?: string;
+  amount?: number | null;
+  badge: string;
+};
+
 export function MemberProfileDrawer({ 
   open, 
   onOpenChange, 
@@ -625,6 +634,23 @@ export function MemberProfileDrawer({
     enabled: !!member?.id && open,
   });
 
+  const { data: registrationFormDocument } = useQuery({
+    queryKey: ['member-registration-form', member?.id],
+    queryFn: async () => {
+      if (!member?.id) return null;
+      const { data, error } = await supabase
+        .from('member_documents')
+        .select('id, file_name, created_at, storage_path, file_url')
+        .eq('member_id', member.id)
+        .eq('document_type', 'registration_form')
+        .order('created_at', { ascending: false })
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!member?.id && open,
+  });
+
   // Fetch rewards
   const { data: rewards = [] } = useQuery({
     queryKey: ['member-rewards', member?.id],
@@ -671,19 +697,86 @@ export function MemberProfileDrawer({
   };
 
   const [theme, setTheme] = useState<any>(null);
-  
-  // Load theme for gym name
-  useState(() => {
+
+  useEffect(() => {
     import('@/services/cmsService').then(({ cmsService }) => {
       setTheme(cmsService.getTheme());
     });
-  });
+  }, []);
 
   if (!member) return null;
 
   const profile = memberDetails?.profiles || member.profiles;
   const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active' || m.status === 'frozen');
   const activePTPackage = memberDetails?.member_pt_packages?.find((p: any) => p.status === 'active');
+  const hasRegistrationForm = !!registrationFormDocument;
+
+  const recentActivity = useMemo<RecentActivityItem[]>(() => {
+    const membershipItems = (memberDetails?.memberships || []).map((membership: any) => ({
+      id: `membership-${membership.id}`,
+      timestamp: membership.created_at || membership.start_date,
+      type: 'membership' as const,
+      title: membership.status === 'active' ? 'Membership purchased' : 'Membership updated',
+      subtitle: membership.membership_plans?.name
+        ? `${membership.membership_plans.name} · ${format(new Date(membership.start_date), 'dd MMM yyyy')} to ${format(new Date(membership.end_date), 'dd MMM yyyy')}`
+        : undefined,
+      amount: membership.price_paid,
+      badge: membership.status === 'active' ? 'Membership' : 'Renewal',
+    }));
+
+    const paymentItems = payments.map((payment: any) => ({
+      id: `payment-${payment.id}`,
+      timestamp: payment.payment_date,
+      type: 'payment' as const,
+      title: 'Payment received',
+      subtitle: payment.invoices?.invoice_number ? `Invoice ${payment.invoices.invoice_number}` : payment.received_by_name ? `Received by ${payment.received_by_name}` : undefined,
+      amount: payment.amount,
+      badge: 'Payment',
+    }));
+
+    const attendanceItems = attendance.flatMap((att: any) => {
+      const items: RecentActivityItem[] = [
+        {
+          id: `checkin-${att.id}`,
+          timestamp: att.check_in,
+          type: 'check_in',
+          title: 'Checked in',
+          subtitle: att.membership_id ? 'Attendance recorded' : undefined,
+          badge: 'Check-in',
+        },
+      ];
+
+      if (att.check_out) {
+        items.push({
+          id: `checkout-${att.id}`,
+          timestamp: att.check_out,
+          type: 'check_out',
+          title: 'Checked out',
+          subtitle: `Visit started ${format(new Date(att.check_in), 'dd MMM yyyy, HH:mm')}`,
+          badge: 'Check-out',
+        });
+      }
+
+      return items;
+    });
+
+    const ptPackageItems = (memberDetails?.member_pt_packages || []).map((pkg: any) => ({
+      id: `pt-${pkg.id}`,
+      timestamp: pkg.created_at,
+      type: 'pt_package' as const,
+      title: 'PT package purchased',
+      subtitle: pkg.pt_packages?.name
+        ? `${pkg.pt_packages.name} · ${pkg.sessions_remaining}/${pkg.sessions_total} sessions left`
+        : undefined,
+      amount: pkg.price_paid,
+      badge: 'PT',
+    }));
+
+    return [...attendanceItems, ...membershipItems, ...paymentItems, ...ptPackageItems]
+      .filter((item) => !!item.timestamp)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 12);
+  }, [attendance, memberDetails?.member_pt_packages, memberDetails?.memberships, payments]);
   
   const daysLeft = activeMembership 
     ? differenceInDays(new Date(activeMembership.end_date), new Date())
@@ -814,9 +907,9 @@ export function MemberProfileDrawer({
             <Card>
               <CardContent className="pt-4 text-center">
                 <div className="text-xl sm:text-2xl font-bold">
-                  {attendance.length}
+                  {recentActivity.length}
                 </div>
-                <p className="text-xs text-muted-foreground">Recent Visits</p>
+                <p className="text-xs text-muted-foreground">Recent Activity</p>
               </CardContent>
             </Card>
           </div>
@@ -911,29 +1004,15 @@ export function MemberProfileDrawer({
                 <Share2 className="h-4 w-4 mr-2 shrink-0" /> Request Plan Transfer
               </Button>
             )}
-            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
-              setRegistrationFormOpen(true);
-            }}>
-              <FileText className="h-4 w-4 mr-2 shrink-0" /> Registration Form
-            </Button>
-            <Button variant="outline" size="sm" className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => {
-              const p = profile;
-              const ms = activeMembership;
-              printRegistrationForm({
-                memberName: p?.full_name || 'N/A',
-                memberCode: member.member_code,
-                email: p?.email, phone: p?.phone,
-                gender: p?.gender, dateOfBirth: p?.date_of_birth,
-                address: p?.address,
-                emergencyContactName: p?.emergency_contact_name,
-                emergencyContactPhone: p?.emergency_contact_phone,
-                planName: ms?.membership_plans?.name,
-                startDate: ms?.start_date, endDate: ms?.end_date,
-                pricePaid: ms?.price_paid,
-                branchName: memberDetails?.branch?.name,
-              });
-            }}>
-              <Printer className="h-4 w-4 mr-2 shrink-0" /> Quick Print
+            <Button
+              variant="outline"
+              size="sm"
+              className="justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left"
+              onClick={() => setRegistrationFormOpen(true)}
+              disabled={hasRegistrationForm}
+            >
+              <FileText className="h-4 w-4 mr-2 shrink-0" />
+              {hasRegistrationForm ? 'Already Uploaded' : 'Registration Form'}
             </Button>
           </div>
 
@@ -980,10 +1059,6 @@ export function MemberProfileDrawer({
                   <TabsTrigger value="documents" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
                     <FileText className="h-3.5 w-3.5" />
                     <span className="text-xs whitespace-nowrap">Docs</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="hardware" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
-                    <IdCard className="h-3.5 w-3.5" />
-                    <span className="text-xs whitespace-nowrap">Access</span>
                   </TabsTrigger>
                   <TabsTrigger value="plans" className="flex items-center gap-1.5 shrink-0 px-3 py-2">
                     <Dumbbell className="h-3.5 w-3.5" />
@@ -1295,18 +1370,6 @@ export function MemberProfileDrawer({
 
             <BenefitsUsageTab memberId={member.id} activeMembership={activeMembership} branchId={member.branch_id} memberGender={(memberDetails?.profiles as any)?.gender} />
 
-            <HardwareBiometricsTab
-              memberId={member.id}
-              memberName={profile?.full_name || 'Member'}
-              memberStatus={member.status}
-              biometricPhotoUrl={(memberDetails as any)?.biometric_photo_url}
-              biometricEnrolled={(memberDetails as any)?.biometric_enrolled}
-              wiegandCode={(memberDetails as any)?.wiegand_code}
-              customWelcomeMessage={(memberDetails as any)?.custom_welcome_message}
-              hardwareAccessEnabled={(memberDetails as any)?.hardware_access_enabled}
-              branchId={member.branch_id}
-            />
-
             <TabsContent value="payments" className="space-y-4 mt-4">
               {/* Pending / Partial Invoices */}
               <PendingInvoicesSection memberId={member.id} branchId={member.branch_id} />
@@ -1512,30 +1575,30 @@ export function MemberProfileDrawer({
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Recent Visits
+                    Recent Activity
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {attendance.length > 0 ? (
+                  {recentActivity.length > 0 ? (
                     <div className="space-y-2">
-                      {attendance.map((att: any) => (
-                        <div key={att.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-success" />
-                            <span className="text-sm">
-                              {format(new Date(att.check_in), 'dd MMM yyyy, HH:mm')}
-                            </span>
+                      {recentActivity.map((item) => (
+                        <div key={item.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-muted/50">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">{item.badge}</Badge>
+                              <p className="text-sm font-medium">{item.title}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{format(new Date(item.timestamp), 'dd MMM yyyy, HH:mm')}</p>
+                            {item.subtitle && <p className="text-xs text-muted-foreground">{item.subtitle}</p>}
                           </div>
-                          {att.check_out && (
-                            <span className="text-xs text-muted-foreground">
-                              Out: {format(new Date(att.check_out), 'HH:mm')}
-                            </span>
+                          {typeof item.amount === 'number' && (
+                            <p className="text-sm font-medium whitespace-nowrap">₹{item.amount.toLocaleString('en-IN')}</p>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No attendance records</p>
+                    <p className="text-sm text-muted-foreground">No recent activity</p>
                   )}
                 </CardContent>
               </Card>
