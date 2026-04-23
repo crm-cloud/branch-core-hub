@@ -59,10 +59,18 @@ interface Outcome {
 }
 
 async function persistOutcome(supabase: any, o: Outcome, httpStatus: number, responseBody?: unknown) {
-  // Skip if no valid branch (FK constraint requires a real branch_id).
-  // We accept this as a known limitation — callers that hit this path also fail
-  // gateway/branch validation and console.error is emitted upstream.
-  if (!o.branchId || !isValidUUID(o.branchId)) return;
+  // POLICY: webhook deliveries with a missing/invalid branch_id are NOT persisted in
+  // payment_transactions because that table's branch_id is NOT NULL with a FK to
+  // branches(id). Such deliveries are inherently malformed (the branch_id query
+  // param is part of the webhook URL we hand to the gateway, so a missing value
+  // means someone hit the endpoint manually or the URL was misconfigured).
+  // We log them to the function's console and return a 4xx so the gateway will
+  // retry, but they don't pollute the activity feed. Future enhancement: a separate
+  // branch-agnostic webhook_errors sink — tracked as a follow-up.
+  if (!o.branchId || !isValidUUID(o.branchId)) {
+    console.warn(`[payment-webhook] Skipping persistence — invalid branch_id (status=${httpStatus}, error=${o.errorMessage})`);
+    return;
+  }
   try {
     const nowIso = new Date().toISOString();
 

@@ -56,6 +56,8 @@ interface WebhookRow {
 
 const PAGE_SIZE = 50;
 
+const HANDLED_STATUSES = new Set(['captured', 'authorized', 'failed', 'rejected']);
+
 function deriveAction(r: WebhookRow): { label: string; tone: 'good' | 'bad' | 'warn' | 'muted' } {
   const okHttp = r.http_status !== null && r.http_status >= 200 && r.http_status < 300;
   if (r.signature_verified === false) return { label: 'Rejected — bad signature', tone: 'bad' };
@@ -64,6 +66,10 @@ function deriveAction(r: WebhookRow): { label: string; tone: 'good' | 'bad' | 'w
   if (r.status === 'captured') return { label: 'Captured (no invoice link)', tone: 'warn' };
   if (r.status === 'authorized') return { label: 'Authorised — awaiting capture', tone: 'warn' };
   if (r.status === 'failed' || r.status === 'rejected') return { label: 'Logged failure', tone: 'bad' };
+  // Unhandled / unrecognized event — surface in red so operators can investigate.
+  if (okHttp && r.status && !HANDLED_STATUSES.has(r.status)) {
+    return { label: `Unhandled event — ${r.event_type || r.status}`, tone: 'bad' };
+  }
   if (okHttp) return { label: 'Logged delivery', tone: 'muted' };
   return { label: r.status || 'Received', tone: 'muted' };
 }
@@ -307,6 +313,7 @@ export function WebhookActivityPanel() {
                 <TableHead>HTTP</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Action taken</TableHead>
+                <TableHead>Linked</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
@@ -316,7 +323,7 @@ export function WebhookActivityPanel() {
                 <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Webhook className="h-8 w-8 opacity-30" />
                       <p className="font-medium text-foreground/70">No webhook deliveries yet</p>
@@ -364,6 +371,24 @@ export function WebhookActivityPanel() {
                               : 'text-muted-foreground';
                             return <span className={`text-xs ${tone}`}>{a.label}</span>;
                           })()}
+                        </TableCell>
+                        <TableCell>
+                          {r.invoice_id ? (
+                            <a
+                              href={`/invoices?invoice=${r.invoice_id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs font-mono text-primary hover:underline"
+                              title={r.invoice_id}
+                            >
+                              Invoice {r.invoice_id.slice(0, 8)}…
+                            </a>
+                          ) : r.gateway_order_id ? (
+                            <span className="text-xs font-mono text-muted-foreground" title={r.gateway_order_id}>
+                              {r.gateway_order_id.length > 14 ? `${r.gateway_order_id.slice(0, 14)}…` : r.gateway_order_id}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">{r.amount ? `₹${r.amount.toLocaleString()}` : '—'}</TableCell>
                         <TableCell>
