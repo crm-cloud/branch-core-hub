@@ -3706,6 +3706,7 @@ export type Database = {
           file_url: string
           id: string
           member_id: string
+          storage_path: string | null
           uploaded_by: string | null
         }
         Insert: {
@@ -3715,6 +3716,7 @@ export type Database = {
           file_url: string
           id?: string
           member_id: string
+          storage_path?: string | null
           uploaded_by?: string | null
         }
         Update: {
@@ -3724,6 +3726,7 @@ export type Database = {
           file_url?: string
           id?: string
           member_id?: string
+          storage_path?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
@@ -7582,6 +7585,10 @@ export type Database = {
           p_transaction_id?: string
         }
         Returns: Json
+      }
+      resolve_member_document_url: {
+        Args: { p_document_id: string; p_expires_in?: number }
+        Returns: string
       }
       search_members: {
         Args: { p_branch_id?: string; p_limit?: number; search_term: string }

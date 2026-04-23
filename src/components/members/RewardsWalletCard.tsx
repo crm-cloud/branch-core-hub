@@ -45,16 +45,17 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
   const { data: walletTxns = [] } = useQuery({
     queryKey: ['wallet-transactions', memberId],
     queryFn: async () => {
+      if (!walletData?.id) return [];
       const { data, error } = await supabase
         .from('wallet_transactions' as any)
         .select('*')
-        .eq('member_id', memberId)
+        .eq('wallet_id', walletData.id)
         .order('created_at', { ascending: false })
         .limit(20);
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: !!memberId,
+    enabled: !!memberId && !!walletData?.id,
   });
 
   return (
