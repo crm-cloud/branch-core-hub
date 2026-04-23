@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, User, Phone, Mail, AlertCircle, Camera, Target, Activity } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -152,7 +153,7 @@ export function EditProfileDrawer({ open, onOpenChange, member, profile }: EditP
       }
 
       toast.success('Profile updated successfully');
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['member-details', member.id] });
       onOpenChange(false);
     } catch (error: any) {

@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Gift, IdCard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranchContext } from '@/contexts/BranchContext';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 import { MemberAvatarUpload } from './MemberAvatarUpload';
 import {
   DIETARY_PREFERENCES,
@@ -29,6 +31,7 @@ interface AddMemberDrawerProps {
 
 export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawerProps) {
   const { user } = useAuth();
+  const { branchFilter, branches } = useBranchContext();
   const [avatarUrl, setAvatarUrl] = useState('');
   const [formData, setFormData] = useState({
     fullName: '',
@@ -144,7 +147,12 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
     },
     onSuccess: () => {
       toast.success('Member added successfully');
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
+      if (branchFilter && branchFilter !== branchId) {
+        const targetBranch = branches.find((b) => b.id === branchId);
+        const branchName = targetBranch?.name || 'another branch';
+        toast.info(`Member added to ${branchName} — switch to that branch to see them`);
+      }
       onOpenChange(false);
       resetForm();
     },

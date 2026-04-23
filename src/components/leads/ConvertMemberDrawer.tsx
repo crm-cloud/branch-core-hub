@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { leadService } from '@/services/leadService';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 import { useBranches } from '@/hooks/useBranches';
 import { toast } from 'sonner';
 import { UserPlus, Phone, Mail, ArrowRight, Building2 } from 'lucide-react';
@@ -34,7 +35,7 @@ export function ConvertMemberDrawer({ open, onOpenChange, lead }: ConvertMemberD
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['lead-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+      invalidateMembersData(queryClient);
       onOpenChange(false);
       setSelectedBranchId('');
       toast.success('Lead converted to member!');
