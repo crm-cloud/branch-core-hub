@@ -50,7 +50,22 @@ interface WebhookRow {
   created_at: string;
   updated_at: string;
   invoice_id: string | null;
-  webhook_data: any;
+  webhook_data: unknown;
+  response_body: unknown;
+}
+
+const PAGE_SIZE = 50;
+
+function deriveAction(r: WebhookRow): { label: string; tone: 'good' | 'bad' | 'warn' | 'muted' } {
+  const okHttp = r.http_status !== null && r.http_status >= 200 && r.http_status < 300;
+  if (r.signature_verified === false) return { label: 'Rejected — bad signature', tone: 'bad' };
+  if (r.http_status && r.http_status >= 400) return { label: r.error_message ? `Rejected — ${r.error_message}` : `Rejected — HTTP ${r.http_status}`, tone: 'bad' };
+  if (r.status === 'captured' && r.invoice_id) return { label: 'Marked invoice paid', tone: 'good' };
+  if (r.status === 'captured') return { label: 'Captured (no invoice link)', tone: 'warn' };
+  if (r.status === 'authorized') return { label: 'Authorised — awaiting capture', tone: 'warn' };
+  if (r.status === 'failed' || r.status === 'rejected') return { label: 'Logged failure', tone: 'bad' };
+  if (okHttp) return { label: 'Logged delivery', tone: 'muted' };
+  return { label: r.status || 'Received', tone: 'muted' };
 }
 
 export function WebhookActivityPanel() {
@@ -62,24 +77,42 @@ export function WebhookActivityPanel() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [page, setPage] = useState(0);
 
-  const { data: rows = [], isLoading, refetch } = useQuery<WebhookRow[]>({
-    queryKey: ['webhook-activity', branchFilter],
+  const { data: pageData, isLoading, refetch } = useQuery<{ rows: WebhookRow[]; count: number | null }>({
+    queryKey: ['webhook-activity', branchFilter, gatewayFilter, statusFilter, sigFilter, dateFrom, dateTo, page],
     queryFn: async () => {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
       let q = supabase
         .from('payment_transactions')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('source', 'webhook')
         .order('received_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(100);
+        .range(from, to);
       if (branchFilter) q = q.eq('branch_id', branchFilter);
-      const { data, error } = await q;
+      if (gatewayFilter !== 'all') q = q.eq('gateway', gatewayFilter);
+      if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+      if (sigFilter === 'verified') q = q.eq('signature_verified', true);
+      else if (sigFilter === 'invalid') q = q.eq('signature_verified', false);
+      else if (sigFilter === 'unchecked') q = q.is('signature_verified', null);
+      if (dateFrom) q = q.gte('received_at', new Date(dateFrom).toISOString());
+      if (dateTo) {
+        const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
+        q = q.lte('received_at', end.toISOString());
+      }
+      const { data, error, count } = await q;
       if (error) throw error;
-      return (data as unknown as WebhookRow[]) || [];
+      return { rows: (data as unknown as WebhookRow[]) || [], count: count ?? null };
     },
     refetchInterval: 30000,
   });
+  const rows = pageData?.rows || [];
+  const totalCount = pageData?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   // Pre-fetch invoice statuses for rows that have an invoice link, so the
   // Reconcile button can be gated to invoices that are still pending.
@@ -111,22 +144,20 @@ export function WebhookActivityPanel() {
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
 
-  const filtered = useMemo(() => rows.filter(r => {
-    if (gatewayFilter !== 'all' && r.gateway !== gatewayFilter) return false;
-    if (statusFilter !== 'all' && (r.status || 'received') !== statusFilter) return false;
-    if (sigFilter !== 'all') {
-      if (sigFilter === 'verified' && r.signature_verified !== true) return false;
-      if (sigFilter === 'invalid' && r.signature_verified !== false) return false;
-      if (sigFilter === 'unchecked' && r.signature_verified !== null) return false;
-    }
-    if (search) {
-      const s = search.toLowerCase();
+  // Server-side filters cover gateway/status/signature/dates; search remains client-side
+  // since it spans multiple text columns.
+  const filtered = useMemo(() => {
+    if (!search) return rows;
+    const s = search.toLowerCase();
+    return rows.filter(r => {
       const hay = [r.gateway_order_id, r.gateway_payment_id, r.event_type, r.error_message]
         .filter(Boolean).join(' ').toLowerCase();
-      if (!hay.includes(s)) return false;
-    }
-    return true;
-  }), [rows, gatewayFilter, statusFilter, sigFilter, search]);
+      return hay.includes(s);
+    });
+  }, [rows, search]);
+
+  // Reset to first page when filters change
+  useEffect(() => { setPage(0); }, [gatewayFilter, statusFilter, sigFilter, dateFrom, dateTo, branchFilter]);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -255,6 +286,14 @@ export function WebhookActivityPanel() {
               <SelectItem value="unchecked">Not checked</SelectItem>
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-1.5">
+            <Input type="date" aria-label="From date" className="w-[150px] rounded-xl" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="text-xs text-muted-foreground">to</span>
+            <Input type="date" aria-label="To date" className="w-[150px] rounded-xl" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => { setDateFrom(''); setDateTo(''); }}>Clear</Button>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl border border-border/60 overflow-hidden">
@@ -267,16 +306,17 @@ export function WebhookActivityPanel() {
                 <TableHead>Signature</TableHead>
                 <TableHead>HTTP</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Action taken</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="w-[120px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Webhook className="h-8 w-8 opacity-30" />
                       <p className="font-medium text-foreground/70">No webhook deliveries yet</p>
@@ -315,6 +355,16 @@ export function WebhookActivityPanel() {
                           )}
                         </TableCell>
                         <TableCell><StatusBadge status={r.status} httpStatus={r.http_status} /></TableCell>
+                        <TableCell>
+                          {(() => {
+                            const a = deriveAction(r);
+                            const tone = a.tone === 'good' ? 'text-emerald-600'
+                              : a.tone === 'bad' ? 'text-destructive'
+                              : a.tone === 'warn' ? 'text-amber-600'
+                              : 'text-muted-foreground';
+                            return <span className={`text-xs ${tone}`}>{a.label}</span>;
+                          })()}
+                        </TableCell>
                         <TableCell className="text-right font-medium">{r.amount ? `₹${r.amount.toLocaleString()}` : '—'}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -365,9 +415,13 @@ export function WebhookActivityPanel() {
                                     <span className="text-destructive text-xs">{r.error_message}</span>
                                   </div>
                                 )}
-                                <details>
-                                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View raw payload</summary>
+                                <details className="mb-2">
+                                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View raw payload (received)</summary>
                                   <pre className="mt-2 rounded-lg bg-muted/60 p-3 text-[11px] overflow-x-auto max-h-64">{JSON.stringify(r.webhook_data, null, 2)}</pre>
+                                </details>
+                                <details>
+                                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">View response sent to gateway</summary>
+                                  <pre className="mt-2 rounded-lg bg-muted/60 p-3 text-[11px] overflow-x-auto max-h-64">{r.response_body ? JSON.stringify(r.response_body, null, 2) : '— no response body recorded —'}</pre>
                                 </details>
                               </div>
                             </div>
@@ -380,6 +434,19 @@ export function WebhookActivityPanel() {
               })}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+          <span>
+            {totalCount === 0
+              ? 'No deliveries match the current filters'
+              : `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, totalCount)} of ${totalCount}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Previous</Button>
+            <span>Page {page + 1} of {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </div>
         </div>
       </CardContent>
     </Card>
