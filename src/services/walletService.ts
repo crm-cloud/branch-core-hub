@@ -56,7 +56,10 @@ export async function creditWallet(
   createdBy?: string
 ) {
   const wallet = await getOrCreateWallet(memberId);
-  const newBalance = wallet.balance + amount;
+  const currentBalance = Number(wallet.balance) || 0;
+  const currentCredited = Number(wallet.total_credited) || 0;
+  const numericAmount = Number(amount) || 0;
+  const newBalance = currentBalance + numericAmount;
 
   // Create transaction
   const { error: txnError } = await supabase
@@ -64,7 +67,7 @@ export async function creditWallet(
     .insert({
       wallet_id: wallet.id,
       txn_type: 'credit' as WalletTxnType,
-      amount,
+      amount: numericAmount,
       balance_after: newBalance,
       description,
       reference_type: referenceType,
@@ -79,7 +82,7 @@ export async function creditWallet(
     .from('wallets')
     .update({
       balance: newBalance,
-      total_credited: (wallet.total_credited || 0) + amount,
+      total_credited: currentCredited + numericAmount,
     })
     .eq('id', wallet.id)
     .select()
@@ -107,11 +110,15 @@ export async function debitWallet(
     throw new Error('Wallet not found');
   }
 
-  if (wallet.balance < amount) {
+  const currentBalance = Number(wallet.balance) || 0;
+  const currentDebited = Number(wallet.total_debited) || 0;
+  const numericAmount = Number(amount) || 0;
+
+  if (currentBalance < numericAmount) {
     throw new Error('Insufficient wallet balance');
   }
 
-  const newBalance = wallet.balance - amount;
+  const newBalance = currentBalance - numericAmount;
 
   // Create transaction
   const { error: txnError } = await supabase
@@ -119,7 +126,7 @@ export async function debitWallet(
     .insert({
       wallet_id: wallet.id,
       txn_type: 'debit' as WalletTxnType,
-      amount,
+      amount: numericAmount,
       balance_after: newBalance,
       description,
       reference_type: referenceType,
@@ -134,7 +141,7 @@ export async function debitWallet(
     .from('wallets')
     .update({
       balance: newBalance,
-      total_debited: (wallet.total_debited || 0) + amount,
+      total_debited: currentDebited + numericAmount,
     })
     .eq('id', wallet.id)
     .select()

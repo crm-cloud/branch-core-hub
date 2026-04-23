@@ -1164,13 +1164,13 @@ export function MemberProfileDrawer({
               </Card>
 
               {/* Wallet Balance */}
-              {(memberWallet?.balance ?? 0) > 0 && (
+              {(Number(memberWallet?.balance) || 0) > 0 && (
                 <Card className="border-success/30 bg-success/5">
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-2">
                       <IndianRupee className="h-4 w-4 text-success" />
                       <span className="font-medium text-sm">Wallet Balance:</span>
-                      <span className="text-sm font-bold text-success">₹{memberWallet?.balance?.toLocaleString('en-IN')}</span>
+                      <span className="text-sm font-bold text-success">₹{(Number(memberWallet?.balance) || 0).toLocaleString('en-IN')}</span>
                     </div>
                   </CardContent>
                 </Card>

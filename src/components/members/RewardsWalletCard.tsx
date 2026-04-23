@@ -94,11 +94,11 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
               </div>
               <div>
                 <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Wallet Balance</p>
-                <p className="text-2xl font-bold text-emerald-600">₹{(walletData?.balance || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-emerald-600">₹{(Number(walletData?.balance) || 0).toLocaleString()}</p>
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground mt-3 text-center">
-              Credited: ₹{(walletData?.total_credited || 0).toLocaleString()}
+              Credited: ₹{(Number(walletData?.total_credited) || 0).toLocaleString()}
             </p>
           </CardContent>
         </Card>

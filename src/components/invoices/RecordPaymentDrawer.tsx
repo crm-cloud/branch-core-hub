@@ -63,7 +63,8 @@ export function RecordPaymentDrawer({
     },
   });
 
-  const insufficientWallet = paymentMethod === 'wallet' && walletData && amount > walletData.balance;
+  const walletBalance = Number(walletData?.balance) || 0;
+  const insufficientWallet = paymentMethod === 'wallet' && walletData && amount > walletBalance;
 
   const recordPaymentMutation = useMutation({
     mutationFn: async () => {
@@ -212,7 +213,7 @@ export function RecordPaymentDrawer({
                     <span className="text-sm text-muted-foreground">Loading...</span>
                   ) : walletData ? (
                     <span className={`text-sm font-bold ${insufficientWallet ? 'text-destructive' : 'text-primary'}`}>
-                      ₹{walletData.balance.toLocaleString()}
+                      ₹{walletBalance.toLocaleString()}
                     </span>
                   ) : (
                     <span className="text-sm text-muted-foreground">No wallet</span>
@@ -221,7 +222,7 @@ export function RecordPaymentDrawer({
                 {insufficientWallet && (
                   <div className="flex items-center gap-1.5 mt-2 text-xs text-destructive">
                     <AlertTriangle className="h-3 w-3" />
-                    Insufficient balance. Need ₹{(amount - (walletData?.balance || 0)).toLocaleString()} more.
+                    Insufficient balance. Need ₹{(amount - walletBalance).toLocaleString()} more.
                   </div>
                 )}
                 {!effectiveMemberId && (
@@ -280,7 +281,7 @@ export function RecordPaymentDrawer({
               </div>
               {paymentMethod === 'wallet' && walletData && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Wallet balance after: ₹{(walletData.balance - amount).toLocaleString()}
+                  Wallet balance after: ₹{(walletBalance - amount).toLocaleString()}
                 </p>
               )}
               {amount < dueAmount && (
