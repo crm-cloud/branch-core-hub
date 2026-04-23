@@ -11,8 +11,8 @@ import {
   User, Users, Phone, Mail, Calendar, MapPin, Building2, 
   CreditCard, Dumbbell, Clock, Gift, AlertCircle,
   CheckCircle, XCircle, Pause, History, Snowflake, 
-  Play, UserCog, IndianRupee, Ruler, IdCard, UserMinus, UserCheck,
-  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Printer, Download,
+  Play, UserCog, IndianRupee, Ruler, UserMinus, UserCheck,
+  Award, Copy, Share2, MessageCircle, Edit, Heart, Activity, Plus, FileText, Download,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -31,11 +31,10 @@ import { MemberPlanProgressBlock } from '@/components/fitness/member/MemberPlanP
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
-import { HardwareBiometricsTab } from './HardwareBiometricsTab';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
 import { DocumentVaultTab } from './DocumentVaultTab';
-import { MemberRegistrationFormDrawer, printRegistrationForm } from './MemberRegistrationForm';
+import { MemberRegistrationFormDrawer } from './MemberRegistrationForm';
 import { TransferBranchDrawer } from './TransferBranchDrawer';
 import { TransferMembershipDrawer } from './TransferMembershipDrawer';
 import { RewardsWalletCard } from './RewardsWalletCard';
@@ -428,6 +427,16 @@ interface MemberProfileDrawerProps {
   onPurchaseMembership: () => void;
   onPurchasePT: () => void;
 }
+
+type RecentActivityItem = {
+  id: string;
+  timestamp: string;
+  type: 'check_in' | 'check_out' | 'membership' | 'payment' | 'pt_package';
+  title: string;
+  subtitle?: string;
+  amount?: number | null;
+  badge: string;
+};
 
 export function MemberProfileDrawer({ 
   open, 
