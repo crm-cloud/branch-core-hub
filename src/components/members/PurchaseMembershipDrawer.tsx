@@ -15,6 +15,7 @@ import { usePlans } from '@/hooks/usePlans';
 import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock, Wallet } from 'lucide-react';
 import { useGstRates } from '@/hooks/useGstRates';
 import { invalidateMembersData } from '@/lib/memberInvalidation';
+import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
@@ -169,101 +170,44 @@ export function PurchaseMembershipDrawer({
         ? format(addDays(new Date(activeMembership.end_date), 1), 'yyyy-MM-dd')
         : startDate;
 
-      // Recompute end date from the effective start date so the duration is honoured.
-      const computedEndDate = format(
-        addDays(new Date(effectiveStartDate), selectedPlan.duration_days - 1),
-        'yyyy-MM-dd'
-      );
-
       const totalAmount = calculateTotal();
       const actualAmountPaid = isPaymentLink ? 0 : (isPartialPayment ? amountPaying : totalAmount);
 
-      // 1. Create membership
-      const { data: membership, error: membershipError } = await supabase
-        .from('memberships')
-        .insert({
-          member_id: memberId,
-          plan_id: selectedPlanId,
-          branch_id: branchId,
-          start_date: effectiveStartDate,
-          end_date: computedEndDate,
-          original_end_date: computedEndDate,
-          price_paid: totalAmount,
-          discount_amount: discountAmount,
-          discount_reason: discountReason || null,
-          status: isPaymentLink ? 'pending' : 'active',
-        })
-        .select()
-        .single();
+      // Idempotency key — guarantees the same Submit click never produces two
+      // memberships/invoices even on network retries.
+      const idempotencyKey = `purchase:${memberId}:${selectedPlanId}:${effectiveStartDate}:${totalAmount}`;
 
-      if (membershipError) throw membershipError;
+      // ✅ Single atomic RPC: creates membership + invoice + items + (optional) initial payment.
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('purchase_member_membership', {
+        p_member_id: memberId,
+        p_plan_id: selectedPlanId,
+        p_branch_id: branchId,
+        p_start_date: effectiveStartDate,
+        p_discount_amount: discountAmount,
+        p_discount_reason: discountReason || null,
+        p_include_gst: includeGst,
+        p_gst_rate: includeGst ? gstRate : 0,
+        p_payment_method: normalizePaymentMethod(paymentMethod),
+        p_amount_paying: actualAmountPaid,
+        p_payment_due_date: isPartialPayment ? paymentDueDate : null,
+        p_send_reminders: sendReminders,
+        p_payment_source: isPaymentLink ? 'payment_link' : 'manual',
+        p_idempotency_key: idempotencyKey,
+        p_assign_locker_id: hasLockerBenefit && selectedLockerId ? selectedLockerId : null,
+        p_notes: null,
+      });
 
-      // Determine invoice status
-      const invoiceStatus = isPaymentLink ? 'pending' : (isPartialPayment ? 'partial' : 'paid');
+      if (rpcErr) throw rpcErr;
+      const result = rpcRes as any;
+      if (result?.success === false) throw new Error(result.error || 'Purchase failed');
 
-      // 2. Create invoice — let the DB trigger (generate_invoice_number) assign the number.
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert({
-          branch_id: branchId,
-          member_id: memberId,
-          subtotal: (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0),
-          discount_amount: discountAmount,
-          tax_amount: calculateGstAmount(),
-          total_amount: totalAmount,
-          status: invoiceStatus as any,
-          due_date: isPartialPayment ? paymentDueDate : effectiveStartDate,
-          // amount_paid will be set by record_payment RPC; keep 0 here for the manual-payment path
-          amount_paid: isPaymentLink ? 0 : 0,
-          payment_due_date: isPartialPayment ? paymentDueDate : null,
-          is_gst_invoice: includeGst,
-          gst_rate: includeGst ? gstRate : 0,
-        })
-        .select()
-        .single();
+      const invoiceId: string | undefined = result?.invoice_id;
+      const membershipId: string | undefined = result?.membership_id ?? result?.entity_id;
 
-      if (invoiceError) {
-        // Rollback orphan membership
-        await supabase.from('memberships').delete().eq('id', membership.id);
-        throw invoiceError;
-      }
-
-      // 3. Create invoice items
-      const items: any[] = [
-        {
-          invoice_id: invoice.id,
-          description: `${selectedPlan.name} - ${selectedPlan.duration_days} days`,
-          quantity: 1,
-          unit_price: selectedPlan.discounted_price || selectedPlan.price,
-          total_amount: selectedPlan.discounted_price || selectedPlan.price,
-          reference_type: 'membership',
-          reference_id: membership.id,
-        },
-      ];
-
-      if (selectedPlan.admission_fee > 0) {
-        items.push({
-          invoice_id: invoice.id,
-          description: 'Admission Fee',
-          quantity: 1,
-          unit_price: selectedPlan.admission_fee,
-          total_amount: selectedPlan.admission_fee,
-          reference_type: 'admission_fee',
-          reference_id: membership.id,
-        });
-      }
-
-      const { error: itemsError } = await supabase.from('invoice_items').insert(items);
-      if (itemsError) {
-        await supabase.from('invoices').delete().eq('id', invoice.id);
-        await supabase.from('memberships').delete().eq('id', membership.id);
-        throw itemsError;
-      }
-
-      // 4. Record payment or generate payment link
-      if (isPaymentLink) {
+      // Generate Razorpay payment link (the RPC left the invoice unpaid for us).
+      if (isPaymentLink && invoiceId) {
         const { data: linkData, error: linkError } = await supabase.functions.invoke('create-razorpay-link', {
-          body: { invoiceId: invoice.id, amount: totalAmount, branchId },
+          body: { invoiceId, amount: totalAmount, branchId },
         });
         if (linkError) throw new Error(linkError.message || 'Failed to generate payment link');
         if (linkData?.error) throw new Error(linkData.error);
@@ -272,65 +216,15 @@ export function PurchaseMembershipDrawer({
           await navigator.clipboard.writeText(linkData.short_url);
           toast.success(`Payment link copied: ${linkData.short_url}`);
         }
-      } else if (actualAmountPaid > 0) {
-        // ✅ Use unified record_payment RPC — handles invoice status, audit, wallet, membership activation atomically.
-        const { data: payRes, error: payErr } = await supabase.rpc('record_payment', {
-          p_branch_id: branchId,
-          p_invoice_id: invoice.id,
-          p_member_id: memberId,
-          p_amount: actualAmountPaid,
-          p_payment_method: paymentMethod as any,
-          p_transaction_id: null,
-          p_notes: null,
-          p_received_by: null,
-          p_income_category_id: null,
-        });
-        if (payErr) throw payErr;
-        const payResult = payRes as any;
-        if (payResult && payResult.success === false) {
-          throw new Error(payResult.error || 'Payment failed');
-        }
       }
 
-      // 5. Create payment reminders if partial payment and reminders enabled
-      if (isPartialPayment && sendReminders && remainingAmount > 0) {
-        const dueDate = new Date(paymentDueDate);
-        const reminderDates = [
-          { date: addDays(dueDate, -3), type: 'due_soon' },
-          { date: dueDate, type: 'on_due' },
-          { date: addDays(dueDate, 3), type: 'overdue' },
-        ].filter(r => r.date > new Date());
-
-        for (const reminder of reminderDates) {
-          await supabase.from('payment_reminders').insert({
-            branch_id: branchId,
-            invoice_id: invoice.id,
-            member_id: memberId,
-            reminder_type: reminder.type,
-            scheduled_for: reminder.date.toISOString(),
-            status: 'pending',
-          });
-        }
-      }
-
-      // 6. Update member status to active
-      await supabase
-        .from('members')
-        .update({ status: 'active' })
-        .eq('id', memberId);
-
-      // Process referral rewards if applicable
+      // Process referral rewards if applicable (still client-side; no atomic dependency).
       if (pendingReferral && referralSettings && totalAmount >= (referralSettings.min_membership_value || 0)) {
-        // Update referral status to converted
         await supabase
           .from('referrals')
-          .update({ 
-            status: 'converted' as const, 
-            converted_at: new Date().toISOString() 
-          })
+          .update({ status: 'converted' as const, converted_at: new Date().toISOString() })
           .eq('id', pendingReferral.id);
 
-        // Create reward for referrer
         if (referralSettings.referrer_reward_value > 0) {
           await supabase.from('referral_rewards').insert({
             referral_id: pendingReferral.id,
@@ -342,7 +236,6 @@ export function PurchaseMembershipDrawer({
           });
         }
 
-        // Create reward for referred member (optional)
         if (referralSettings.referred_reward_value > 0) {
           await supabase.from('referral_rewards').insert({
             referral_id: pendingReferral.id,
@@ -357,30 +250,7 @@ export function PurchaseMembershipDrawer({
         toast.success('Referral rewards created!');
       }
 
-      // Auto-assign locker if plan has locker benefit and locker was selected
-      if (hasLockerBenefit && selectedLockerId) {
-        const endDate = calculateEndDate();
-        
-        // Create locker assignment
-        await supabase.from('locker_assignments').insert({
-          locker_id: selectedLockerId,
-          member_id: memberId,
-          start_date: startDate,
-          end_date: endDate,
-          fee_amount: 0, // Free as part of plan
-          is_active: true,
-        });
-
-        // Update locker status to assigned
-        await supabase
-          .from('lockers')
-          .update({ status: 'assigned' })
-          .eq('id', selectedLockerId);
-        
-        toast.success('Complimentary locker assigned!');
-      }
-
-      return { membership, invoice };
+      return { membershipId, invoiceId };
     },
     onSuccess: () => {
       toast.success('Membership purchased successfully');
@@ -394,6 +264,7 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['active-membership'] });
       queryClient.invalidateQueries({ queryKey: ['member-pending-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['member-pt-packages'] });
+      queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       onOpenChange(false);
       resetForm();
     },

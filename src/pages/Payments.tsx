@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { recordPayment as unifiedRecordPayment, voidPayment as unifiedVoidPayment } from '@/services/billingService';
+import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 import { useState, useMemo } from 'react';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -104,7 +105,7 @@ export default function PaymentsPage() {
           member_id: form.memberId,
           branch_id: branchFilter!,
           amount: form.amount,
-          payment_method: form.method,
+          payment_method: normalizePaymentMethod(form.method),
           status: 'completed',
           payment_date: new Date().toISOString(),
         });
@@ -283,51 +284,67 @@ export default function PaymentsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Member</TableHead>
-                          <TableHead>Invoice</TableHead>
-                          <TableHead>Due Amount</TableHead>
-                          <TableHead>Due Date</TableHead>
-                          <TableHead>Status</TableHead>
+                          <TableHead>Invoices</TableHead>
+                          <TableHead>Total Due</TableHead>
+                          <TableHead>Earliest Due Date</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {overdueInvoices.map((inv: any) => {
-                          const dueAmount = (inv.total_amount || 0) - (inv.amount_paid || 0);
-                          const isOverdue = inv.due_date && new Date(inv.due_date) < new Date();
-                          return (
-                            <TableRow key={inv.id}>
-                              <TableCell>
-                                <div>
-                                  <p className="font-medium">{inv.members?.profiles?.full_name || 'Unknown'}</p>
-                                  <p className="text-xs text-muted-foreground">{inv.members?.member_code}</p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">{inv.invoice_number}</TableCell>
-                              <TableCell className="font-semibold text-destructive">₹{dueAmount.toLocaleString()}</TableCell>
-                              <TableCell>
-                                {inv.due_date ? (
-                                  <span className={isOverdue ? 'text-destructive font-medium' : ''}>
-                                    {format(new Date(inv.due_date), 'dd MMM')}
-                                  </span>
-                                ) : '-'}
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={`border ${
-                                  inv.status === 'overdue' ? 'bg-destructive/10 text-destructive border-destructive/20' :
-                                  inv.status === 'partial' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-                                  'bg-warning/10 text-warning border-warning/20'
-                                }`}>
-                                  {inv.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => handleCollectFromDues(inv)}>
-                                  <CreditCard className="h-3 w-3" />Collect
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                        {(() => {
+                          // Group invoices by member so a single member with multiple
+                          // pending invoices shows up as one row, not five.
+                          const grouped = new Map<string, { name: string; code: string; invoices: any[]; total: number; earliest: Date | null }>();
+                          for (const inv of overdueInvoices as any[]) {
+                            const key = inv.member_id || inv.id;
+                            const due = (inv.total_amount || 0) - (inv.amount_paid || 0);
+                            const existing = grouped.get(key) || {
+                              name: inv.members?.profiles?.full_name || 'Unknown',
+                              code: inv.members?.member_code || '',
+                              invoices: [],
+                              total: 0,
+                              earliest: null,
+                            };
+                            existing.invoices.push(inv);
+                            existing.total += due;
+                            const dueDate = inv.due_date ? new Date(inv.due_date) : null;
+                            if (dueDate && (!existing.earliest || dueDate < existing.earliest)) {
+                              existing.earliest = dueDate;
+                            }
+                            grouped.set(key, existing);
+                          }
+                          return Array.from(grouped.entries()).map(([key, g]) => {
+                            const isOverdue = g.earliest && g.earliest < new Date();
+                            return (
+                              <TableRow key={key}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">{g.name}</p>
+                                    <p className="text-xs text-muted-foreground">{g.code}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary" className="rounded-full">
+                                    {g.invoices.length} invoice{g.invoices.length > 1 ? 's' : ''}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-semibold text-destructive">₹{g.total.toLocaleString()}</TableCell>
+                                <TableCell>
+                                  {g.earliest ? (
+                                    <span className={isOverdue ? 'text-destructive font-medium' : ''}>
+                                      {format(g.earliest, 'dd MMM')}
+                                    </span>
+                                  ) : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => handleCollectFromDues(g.invoices[0])}>
+                                    <CreditCard className="h-3 w-3" />Collect
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          });
+                        })()}
                       </TableBody>
                     </Table>
                   </div>

@@ -4849,6 +4849,8 @@ export type Database = {
           branch_id: string
           created_at: string | null
           currency: string | null
+          error_message: string | null
+          event_type: string | null
           gateway: string
           gateway_order_id: string | null
           gateway_payment_id: string | null
@@ -4862,6 +4864,7 @@ export type Database = {
           member_id: string | null
           payment_link_url: string | null
           received_at: string | null
+          response_body: Json | null
           settled_payment_id: string | null
           signature_verified: boolean | null
           source: string | null
@@ -4874,6 +4877,8 @@ export type Database = {
           branch_id: string
           created_at?: string | null
           currency?: string | null
+          error_message?: string | null
+          event_type?: string | null
           gateway: string
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
@@ -4887,6 +4892,7 @@ export type Database = {
           member_id?: string | null
           payment_link_url?: string | null
           received_at?: string | null
+          response_body?: Json | null
           settled_payment_id?: string | null
           signature_verified?: boolean | null
           source?: string | null
@@ -4899,6 +4905,8 @@ export type Database = {
           branch_id?: string
           created_at?: string | null
           currency?: string | null
+          error_message?: string | null
+          event_type?: string | null
           gateway?: string
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
@@ -4912,6 +4920,7 @@ export type Database = {
           member_id?: string | null
           payment_link_url?: string | null
           received_at?: string | null
+          response_body?: Json | null
           settled_payment_id?: string | null
           signature_verified?: boolean | null
           source?: string | null
