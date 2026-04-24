@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { WhatsAppTemplatesHub } from '@/components/settings/WhatsAppTemplatesHub';
+
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -484,16 +484,7 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
-          {/* Unified WhatsApp Templates Hub — CRM templates, Meta catalog, event mapping, health */}
-          <WhatsAppTemplatesHub
-            metaTemplatesPanel={
-              <MetaTemplatesPanel
-                integrations={integrations}
-                selectedBranch={selectedBranch}
-              />
-            }
-          />
-
+          {/* WhatsApp Templates moved to Settings → Templates Manager (single source of truth). */}
 
           {/* WhatsApp Business API Setup Guide — Collapsible */}
           <Collapsible>
