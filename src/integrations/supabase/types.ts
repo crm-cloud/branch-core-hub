@@ -3759,6 +3759,7 @@ export type Database = {
           plan_data: Json
           plan_name: string
           plan_type: string
+          template_id: string | null
           updated_at: string | null
           valid_from: string | null
           valid_until: string | null
@@ -3775,6 +3776,7 @@ export type Database = {
           plan_data?: Json
           plan_name: string
           plan_type: string
+          template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -3791,6 +3793,7 @@ export type Database = {
           plan_data?: Json
           plan_name?: string
           plan_type?: string
+          template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -4850,6 +4853,7 @@ export type Database = {
           gateway_order_id: string | null
           gateway_payment_id: string | null
           gateway_signature: string | null
+          http_status: number | null
           id: string
           idempotency_key: string | null
           invoice_id: string | null
@@ -4857,7 +4861,10 @@ export type Database = {
           lifecycle_status: Database["public"]["Enums"]["payment_transaction_status"]
           member_id: string | null
           payment_link_url: string | null
+          received_at: string | null
           settled_payment_id: string | null
+          signature_verified: boolean | null
+          source: string | null
           status: string
           updated_at: string | null
           webhook_data: Json | null
@@ -4871,6 +4878,7 @@ export type Database = {
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
           gateway_signature?: string | null
+          http_status?: number | null
           id?: string
           idempotency_key?: string | null
           invoice_id?: string | null
@@ -4878,7 +4886,10 @@ export type Database = {
           lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           payment_link_url?: string | null
+          received_at?: string | null
           settled_payment_id?: string | null
+          signature_verified?: boolean | null
+          source?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
@@ -4892,6 +4903,7 @@ export type Database = {
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
           gateway_signature?: string | null
+          http_status?: number | null
           id?: string
           idempotency_key?: string | null
           invoice_id?: string | null
@@ -4899,7 +4911,10 @@ export type Database = {
           lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           payment_link_url?: string | null
+          received_at?: string | null
           settled_payment_id?: string | null
+          signature_verified?: boolean | null
+          source?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
