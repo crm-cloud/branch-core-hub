@@ -1,177 +1,89 @@
 
-## Focused cleanup plan — Member Profile + related production blockers
+## Plan — 9-item cleanup pass
 
-### Scope
-Implement a tight cleanup pass centered on the Member Profile drawer, while also fixing the specific runtime/data issues you listed that are blocking production use.
+Note: items 1 and 7 in your message are duplicates ("Auto-purge webhook logs older than 90 days"). Treating as one workstream → 8 distinct changes.
 
-## What will change
+---
 
-### 1) Member Profile tab cleanup
-Update `src/components/members/MemberProfileDrawer.tsx` to:
-- remove the `Access` tab trigger
-- remove the `HardwareBiometricsTab` from the tab content flow
-- keep hardware management elsewhere in the app, but not inside Member Profile
-- remove the redundant `Quick Print` button
-- keep the `Registration Form` action only
+### 1) Refresh members list after freeze / gift / redeem
+**Problem:** `QuickFreezeDrawer.onSuccess` only invalidates `['members']`. `RedeemPointsDrawer` invalidates `['rewards-ledger']` + `['member-details']` but not the members list. `CompGiftDrawer` doesn't trigger a members refresh either.
 
-### 2) Registration Form button hardening
-Add a registration-form presence check using `member_documents`:
-- query whether the member already has a `document_type = 'registration_form'`
-- disable the `Registration Form` button when one already exists
-- show a clear disabled label like `Already Uploaded`
-- prevent opening the registration form drawer from this screen once uploaded
+**Fix:**
+- `src/components/members/QuickFreezeDrawer.tsx` — call `invalidateMembersData(queryClient)` (the unified helper that also refreshes membership distribution / dashboard stats) inside `handleFreeze` after success.
+- `src/components/members/RedeemPointsDrawer.tsx` — add `invalidateMembersData(queryClient)` to the `onSuccess` so the points column refreshes immediately on the members list.
+- `src/components/members/CompGiftDrawer.tsx` — add the same helper after both the auto-approve and approval-request branches succeed.
+- `src/pages/Members.tsx` — keep the existing `onSuccess` but also let it call `invalidateMembersData` (single source of truth).
 
-This will be wired in:
-- `src/components/members/MemberProfileDrawer.tsx`
-- optionally small prop support in `src/components/members/MemberRegistrationForm.tsx` if needed for clearer status handling
+### 2) Member-side diet/workout from unified plan source
+**Problem:** `MyDiet.tsx` reads from the legacy `diet_plans` table (currently empty — 0 rows) while trainers now save into `member_fitness_plans` (`plan_type='diet'`). Members never see diet plans built in the new flow. `MyWorkout.tsx` already reads `member_fitness_plans` correctly.
 
-### 3) Replace “Recent Visits” with a real “Recent Activity” feed
-Refactor the activity tab and summary stat in `MemberProfileDrawer.tsx`:
-- rename the section to `Recent Activity`
-- merge recent items from:
-  - attendance (`member_attendance`)
-  - memberships / renewals (`memberships`)
-  - payments (`payments`)
-  - PT package purchases (`member_pt_packages`) when present
-- normalize into one sorted timeline
-- show:
-  - activity type badge
-  - date/time
-  - amount where relevant
-  - short subtitle like invoice number / plan name / checkout time
+**Fix:**
+- Rewrite the `useQuery` in `src/pages/MyDiet.tsx` to query `member_fitness_plans` filtered by `plan_type='diet'` and the active `member_id`, ordered by `created_at desc`, taking the latest active row.
+- Map the unified `plan_data` shape (`{ slots: [...], dailyCalories, macros, dietaryType, cuisine, notes }`) to the existing `MealEntry[]` UI; keep a small adapter so older `plan_data.meals[]` payloads still render.
+- Resolve trainer name from `created_by → profiles.full_name` (mirror `MyWorkout`'s pattern), drop the `trainer:trainers!trainer_id` join.
+- Keep the legacy `diet_plans` fetch as a silent fallback for one release in case any clinic still has rows there.
 
-This stays simple and operational, not a redesign.
+### 3) Highlight catalog meals vs custom AI suggestions
+**Problem:** The AI generator already receives the gym's meal catalog as preferred foods, but the rendered plan never tells the trainer or member which items came from the catalog vs free-form AI suggestions.
 
-### 4) Fix broken registration-form/document links
-Move member documents off fragile public-link usage.
+**Fix:**
+- Server side (`supabase/functions/generate-fitness-plan/index.ts`): when injecting `catalogMeals` into the AI prompt, also pass each meal's `id` and instruct the model to set `catalog_meal_id` on items it picks from the catalog. Validate after the response and force-match by exact name as a safety net.
+- Type: extend `DietPlanContent` slot item shape with optional `catalog_meal_id?: string` and `source?: 'catalog' | 'ai' | 'manual'`.
+- UI: in `MyDiet.tsx`, `PreviewPlan.tsx`, and `CreateManualDiet.tsx`, render a small "Gym Catalog" badge (success tone) next to items where `catalog_meal_id` is present, and a muted "AI" badge for the rest. Tooltip clarifies the difference.
+- `MealSwapModal` already writes `catalog_meal_id` on swap; reuse that field as the source of truth.
 
-#### Database
-Add a migration to:
-- add `storage_path text null` to `member_documents`
-- keep `file_url` temporarily for backward compatibility
-- backfill `storage_path` where possible from existing `file_url`
-- avoid breaking old rows during rollout
+### 4) Show source template on each member's plan
+**Problem:** `member_fitness_plans.template_id` is now populated on bulk-assign, but the member-side and trainer-side views never display "Created from template: X".
 
-#### Client document handling
-Update:
-- `src/components/members/DocumentVaultTab.tsx`
-- `src/components/members/MemberRegistrationForm.tsx`
+**Fix:**
+- Resolve the template name on read: in `MyDiet.tsx` and `MyWorkout.tsx`, when `plan.template_id` is non-null, fetch `fitness_plan_templates(id, name)` (single lookup, cached) and render a small "From template: NAME" chip in the plan meta strip.
+- In `src/pages/MemberPlans.tsx` (trainer-side view of a member's assigned plans), add the same chip in each plan card.
+- No DB change needed — column already exists.
 
-So that:
-- uploads store the storage path, not just a public URL
-- view/download actions generate signed URLs from storage paths
-- legacy rows with only `file_url` still work via fallback logic
-- registration-form saves use storage-path based records immediately
+### 5) Webhook log auto-purge (>90 days)
+**Problem:** `payment_transactions` is the unified webhook delivery log (currently 1 row, but will grow unbounded). The activity panel will slow down as gateways send hundreds of events per day.
 
-### 5) Shared signed-URL helper for documents
-Add a small utility similar to the measurement photo signing helper so docs use one secure pattern:
-- resolve signed URLs for `documents` bucket records
-- support both single-record open/download and list hydration
-- centralize fallback behavior for old `file_url` rows
+**Fix:**
+- Migration: create a `purge_old_payment_webhook_logs()` SECURITY DEFINER SQL function that deletes `payment_transactions` rows where `source='webhook'` AND `received_at < now() - interval '90 days'`. Critically **never deletes `source='order'` rows** (those are the canonical order/link records the webhook handler needs to match against).
+- Schedule via `pg_cron` daily at 03:30 IST using the **insert tool** (not migration tool — per project rules cron jobs use anon-key-bearing pg_net calls and shouldn't run on remix). Alternative: a pure SQL `cron.schedule(...)` call against the local SECURITY DEFINER function (no pg_net needed since it runs in-DB).
+- Add an index on `(source, received_at)` to keep both the panel queries and the purge fast.
 
-## Additional targeted fixes you listed
+### 6) Tighten payment-webhook idempotency
+**Problem:** Today the webhook re-runs `record_payment` whenever a duplicate `payment_link.paid` / PayU `success` event arrives. `record_payment` itself is idempotent on transaction_id, but we still pay the cost of the RPC call, the MIPS sync POST, and we log a duplicate `payment_transactions` insert. Worse, manual reconcile in `WebhookActivityPanel` doesn't check whether the invoice is already paid before calling the RPC.
 
-### 6) “UI and edge-function callers are not yet fully migrated”
-Make a targeted cleanup, not a full lifecycle rewrite:
-- identify the specific callers still bypassing the new authority for the touched profile/payment flows
-- route the relevant Member Profile / payment-related callers through the current authoritative backend path where already available
-- avoid widening this into a full redesign pass
+**Fix:**
+- In `supabase/functions/payment-webhook/index.ts`, before calling `record_payment` for `payment_link.paid` (Razorpay) and `success` (PayU), check whether a `payments` row with the same `transaction_id` already exists for the branch — if so, short-circuit to `{status: 'already_processed'}` 200, still persist the webhook log row for visibility, but skip the RPC and the MIPS sync.
+- Compute and write `idempotency_key` on every `payment_transactions` webhook row (e.g. `${gateway}:${gatewayPaymentId || gatewayOrderId}:${eventType}`). The unique index already exists; switch the insert to `.upsert(..., { onConflict: 'idempotency_key', ignoreDuplicates: true })` so a redelivered webhook produces zero log noise.
+- `WebhookActivityPanel` reconcile button: re-fetch invoice status before calling `record_payment`; if already `paid`, show "Already reconciled" toast instead.
 
-Primary targets:
-- `src/pages/Payments.tsx`
-- `src/components/invoices/RecordPaymentDrawer.tsx`
-- any directly related payment/profile caller touched by this cleanup
+### 7) Builder banner: "Started from template: NAME"
+**Problem:** `?template=ID` silently hydrates `CreateAI`, `CreateManualWorkout`, `CreateManualDiet` and only flashes a toast. Trainers forget they're editing a copy of a template.
 
-### 7) `wallet_transactions.member_id does not exist`
-Fix the wallet history query in:
-- `src/components/members/RewardsWalletCard.tsx`
+**Fix:**
+- New small component `src/components/fitness/create/TemplateSourceBanner.tsx` — a soft amber rounded-xl card showing "Started from template: **{name}**" with a "Start fresh" link that calls a parent-supplied `onClear` to reset state, navigates to the same route without the `?template=` param via `setSearchParams({})`, and toasts "Cleared template — starting fresh".
+- In each builder, store the loaded template's name in state (`sourceTemplateName`) when the existing `useEffect` finishes loading, then render `<TemplateSourceBanner name={sourceTemplateName} onClear={...} />` at the top of the form.
+- For the in-place edit mode (`?template=ID&edit=1`) use a different copy: "Editing template: **{name}**" — and hide the "Start fresh" link (since edits would be saved back to the template).
 
-Current bug:
-- it queries `wallet_transactions` by `member_id`
-- the table is keyed by `wallet_id`
+### 8) (Optional, ties items 4 + 7 together) Trainer "draft loaded" indicator
+The banner from item 7 already covers this — when a draft is hydrated from `?template=`, the persistent banner makes the source obvious. No separate change needed beyond item 7. If you want a distinct treatment for **drafts loaded from `localStorage` (planDraft.ts)** as opposed to **templates loaded via URL**, say so and I'll add a second banner variant.
 
-Fix:
-- load the member wallet first
-- query wallet transactions by `wallet_id`
-- keep the current UI intact
+---
 
-### 8) `Could not find the table 'public.member_workout_completions' in the schema cache`
-This is a schema/runtime mismatch in the member plan progress flow.
+### Files touched
+- `src/components/members/QuickFreezeDrawer.tsx`, `RedeemPointsDrawer.tsx`, `CompGiftDrawer.tsx`
+- `src/pages/MyDiet.tsx`, `MyWorkout.tsx`, `MemberPlans.tsx`
+- `src/pages/fitness/CreateAI.tsx`, `CreateManualWorkout.tsx`, `CreateManualDiet.tsx`, `PreviewPlan.tsx`
+- `src/components/fitness/create/TemplateSourceBanner.tsx` (new)
+- `src/components/integrations/WebhookActivityPanel.tsx`
+- `src/types/fitnessPlan.ts` (add `catalog_meal_id`, `source`)
+- `supabase/functions/generate-fitness-plan/index.ts`
+- `supabase/functions/payment-webhook/index.ts`
+- New migration: purge function + `(source, received_at)` index
+- Cron job inserted via insert tool
 
-Fix plan:
-- verify the table exists in migrations and generated types alignment
-- remove the local fake-table dependency path once possible, or guard the UI/service so it fails safely if schema cache is stale
-- ensure the progress block does not hard-crash Member Profile / member-facing screens
+### What I will NOT change
+- Won't touch `src/integrations/supabase/client.ts` or `types.ts` (auto-generated)
+- Won't deprecate the `diet_plans` table yet — only stop reading from it on the member side; legacy writes still possible until you confirm cutover
 
-Primary target:
-- `src/services/memberPlanProgressService.ts`
-
-### 9) `/fitness/preview/... Failed to send WhatsApp message`
-Improve the WhatsApp share error handling for fitness preview:
-- keep the current send flow
-- surface the backend error body more clearly instead of generic failure
-- prevent silent/opaque failures in the sheet
-
-Primary target:
-- `src/components/fitness/member/WhatsAppShareDialog.tsx`
-
-### 10) `payment_method` enum cast error
-Fix the type mismatch where text is passed into enum-backed writes/RPC calls.
-
-Targets:
-- `src/pages/Payments.tsx`
-- any related payment caller still passing raw text
-- possibly SQL/RPC parameter casting if the newer migration still expects `text`
-
-Approach:
-- normalize client values to the actual `payment_method` enum values
-- ensure RPC callers pass the expected type consistently
-- remove direct insert patterns that are most likely to trigger enum mismatch
-
-## Files likely to be updated
-
-### Frontend
-- `src/components/members/MemberProfileDrawer.tsx`
-- `src/components/members/DocumentVaultTab.tsx`
-- `src/components/members/MemberRegistrationForm.tsx`
-- `src/components/members/RewardsWalletCard.tsx`
-- `src/components/fitness/member/WhatsAppShareDialog.tsx`
-- `src/pages/Payments.tsx`
-- `src/components/invoices/RecordPaymentDrawer.tsx` if needed
-- `src/services/memberPlanProgressService.ts`
-- new helper, likely under `src/lib/documents/` or `src/lib/storage/`
-
-### Database
-- new migration to extend `member_documents` with `storage_path` and compatibility/backfill logic
-
-## Acceptance checks
-1. Member Profile no longer shows the `Access` tab.
-2. `Quick Print` is removed.
-3. If a registration form already exists, the button is disabled and labeled clearly.
-4. Activity tab shows a mixed recent timeline, not just attendance.
-5. Registration-form and other member document links open/download via signed URLs.
-6. Wallet history no longer queries `wallet_transactions.member_id`.
-7. Payment entry no longer hits the `payment_method` text-to-enum error in the cleaned flow.
-8. Fitness WhatsApp share shows a real actionable error instead of only a generic failure.
-9. Member Profile remains simple, production-friendly, and consistent with the existing drawer UI.
-
-## Technical details
-```text
-Member Profile
-  -> fetch member_documents
-  -> has registration_form?
-     yes -> disable button + "Already Uploaded"
-     no  -> allow drawer open
-
-Member documents
-  -> upload file to storage
-  -> save storage_path on member_documents
-  -> view/download via signed URL
-  -> fallback to legacy file_url if storage_path missing
-
-Recent Activity
-  -> attendance + memberships + payments + PT packages
-  -> normalize to unified activity items
-  -> sort by timestamp desc
-  -> render badge + timestamp + amount/context
-```
+### Open question
+**Cron scheduling:** Should the daily purge run as a pure in-DB `cron.schedule` (simpler, no anon key) or via `pg_net` posting to an edge function (matches the rest of your scheduled tasks)? The in-DB approach is what I'd recommend for a pure DELETE — happy to default to it unless you say otherwise.
