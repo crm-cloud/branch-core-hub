@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { InvoiceStatus, PaymentMethod } from '@/types/membership';
+import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 
 export async function fetchInvoice(invoiceId: string) {
   const { data, error } = await supabase
