@@ -57,15 +57,69 @@ const renderItem = (item: string | { food?: string; name?: string; quantity?: st
   return item.quantity ? `${label} — ${item.quantity}` : label;
 };
 
+interface UnifiedDietPlan {
+  id: string;
+  source: 'member_fitness_plans' | 'diet_plans';
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  plan_data: any;
+  calories_target: number | null;
+  trainer_name: string | null;
+  template_id: string | null;
+  template_name: string | null;
+}
+
 export default function MyDiet() {
   const { profile } = useAuth();
   const { member, isLoading: memberLoading } = useMemberData();
 
-  const { data: dietPlan, isLoading: planLoading } = useQuery({
-    queryKey: ['my-diet-plan', member?.id],
+  const { data: dietPlan, isLoading: planLoading } = useQuery<UnifiedDietPlan | null>({
+    queryKey: ['my-diet-plan-unified', member?.id],
     enabled: !!member,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Primary source: unified member_fitness_plans table.
+      const { data: unified, error: unifiedErr } = await supabase
+        .from('member_fitness_plans')
+        .select('*')
+        .eq('member_id', member!.id)
+        .eq('plan_type', 'diet')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (unifiedErr) console.warn('Unified diet fetch failed:', unifiedErr.message);
+
+      if (unified) {
+        const planData: any = unified.plan_data || {};
+        let trainerName: string | null = null;
+        if (unified.created_by) {
+          const { data: trainer } = await supabase
+            .from('profiles').select('full_name').eq('id', unified.created_by).maybeSingle();
+          trainerName = trainer?.full_name ?? null;
+        }
+        let templateName: string | null = null;
+        if ((unified as any).template_id) {
+          const { data: tpl } = await supabase
+            .from('fitness_plan_templates').select('name').eq('id', (unified as any).template_id).maybeSingle();
+          templateName = tpl?.name ?? null;
+        }
+        return {
+          id: unified.id,
+          source: 'member_fitness_plans',
+          name: unified.plan_name || planData?.name || 'Diet Plan',
+          start_date: unified.valid_from || null,
+          end_date: unified.valid_until || null,
+          plan_data: planData,
+          calories_target: planData?.dailyCalories ?? planData?.caloriesTarget ?? null,
+          trainer_name: trainerName,
+          template_id: (unified as any).template_id ?? null,
+          template_name: templateName,
+        };
+      }
+
+      // Legacy fallback: diet_plans table (read-only, kept for one release).
+      const { data: legacy } = await supabase
         .from('diet_plans')
         .select('*, trainer:trainers!trainer_id(id, user_id)')
         .eq('member_id', member!.id)
@@ -73,21 +127,25 @@ export default function MyDiet() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching diet plan:', error);
-        return null;
+      if (!legacy) return null;
+      let trainerName: string | null = null;
+      if ((legacy as any).trainer?.user_id) {
+        const { data: t } = await supabase
+          .from('profiles').select('full_name').eq('id', (legacy as any).trainer.user_id).maybeSingle();
+        trainerName = t?.full_name ?? null;
       }
-
-      if (data?.trainer?.user_id) {
-        const { data: trainerProfile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', data.trainer.user_id)
-          .single();
-        return { ...data, trainerProfile };
-      }
-      return data;
+      return {
+        id: (legacy as any).id,
+        source: 'diet_plans',
+        name: (legacy as any).name || 'Diet Plan',
+        start_date: (legacy as any).start_date || null,
+        end_date: (legacy as any).end_date || null,
+        plan_data: (legacy as any).plan_data || {},
+        calories_target: (legacy as any).calories_target ?? null,
+        trainer_name: trainerName,
+        template_id: null,
+        template_name: null,
+      };
     },
   });
 
@@ -115,15 +173,48 @@ export default function MyDiet() {
     );
   }
 
-  const planData = dietPlan?.plan_data as {
-    meals?: MealEntry[];
-    notes?: string;
-    macros?: { protein?: string; carbs?: string; fat?: string };
-    hydration?: string;
-  } | null;
+  // Adapter: take whatever shape the plan_data is in (legacy `meals[]`,
+  // unified `slots[]`, or AI day-keyed) and produce a flat MealEntry[] for
+  // this page's existing renderer.
+  const rawPlan = dietPlan?.plan_data || {};
+  let displayMeals: MealEntry[] = [];
+  if (Array.isArray(rawPlan.meals) && rawPlan.meals.length && typeof rawPlan.meals[0]?.name === 'string') {
+    displayMeals = rawPlan.meals as MealEntry[];
+  } else {
+    const normalized = normalizeDietPlan(rawPlan);
+    const day0 = normalized.days[0];
+    if (day0) {
+      displayMeals = day0.slots.map((s) => ({
+        name: s.name,
+        time: s.time,
+        items: s.items.map((it) => ({
+          food: it.food,
+          quantity: it.quantity,
+          calories: it.calories,
+          protein: it.protein,
+          carbs: it.carbs,
+          fats: it.fats,
+          // Pass through catalog tagging so badges render below.
+          ...(it.catalog_id ? { catalog_id: it.catalog_id } : {}),
+          ...(it.unmatched ? { unmatched: it.unmatched } : {}),
+        } as any)),
+        calories: s.totals.calories,
+        protein: s.totals.protein,
+        carbs: s.totals.carbs,
+        fats: s.totals.fats,
+      }));
+    }
+  }
+
+  const planData: { meals: MealEntry[]; notes?: string; macros?: any; hydration?: string } = {
+    meals: displayMeals,
+    notes: rawPlan?.notes,
+    macros: rawPlan?.macros,
+    hydration: rawPlan?.hydration,
+  };
 
   // Derive daily macro totals from meals when explicit totals aren't provided
-  const totalMacros = (planData?.meals || []).reduce(
+  const totalMacros = planData.meals.reduce(
     (acc, m) => ({
       calories: acc.calories + (m.calories || 0),
       protein: acc.protein + (m.protein || 0),
@@ -134,9 +225,8 @@ export default function MyDiet() {
   );
 
   const dailyCalories = dietPlan?.calories_target || totalMacros.calories || 0;
-  const trainerName =
-    (dietPlan as any)?.trainerProfile?.full_name ||
-    ((dietPlan as any)?.trainer ? 'Assigned Trainer' : null);
+  const trainerName = dietPlan?.trainer_name || (dietPlan ? 'Assigned Trainer' : null);
+  const templateName = dietPlan?.template_name || null;
 
   return (
     <AppLayout>
