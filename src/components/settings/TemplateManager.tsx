@@ -108,6 +108,8 @@ interface TemplatePrefill {
   trigger: string;
   content: string;
   type?: 'whatsapp' | 'sms' | 'email';
+  /** System event name (e.g. 'member_created') for whatsapp_triggers wiring. */
+  eventName?: string;
 }
 
 interface TemplateManagerProps {
