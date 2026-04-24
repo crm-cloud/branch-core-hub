@@ -108,7 +108,7 @@ export function MetaTemplatesPanel() {
       >
         <CardTitle className="flex items-center justify-between text-base">
           <div className="flex items-center gap-2">
-            <Send className="h-4 w-4 text-emerald-600" />
+            <Send className="h-4 w-4 text-success" />
             Meta Approved Templates
             {totalCount > 0 && (
               <Badge variant="secondary" className="text-xs">{totalCount}</Badge>
@@ -121,8 +121,8 @@ export function MetaTemplatesPanel() {
       {expanded && (
         <CardContent className="space-y-4">
           {!hasWhatsAppConfig && (
-            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <p className="text-xs text-warning-foreground">
                 Configure a WhatsApp integration in Settings → Integrations before syncing or submitting templates to Meta.
               </p>
             </div>
