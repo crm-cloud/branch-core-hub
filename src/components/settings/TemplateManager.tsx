@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -103,7 +103,21 @@ function metaStatusBadge(status: string | null | undefined) {
   );
 }
 
-export function TemplateManager() {
+interface TemplatePrefill {
+  name: string;
+  trigger: string;
+  content: string;
+  type?: 'whatsapp' | 'sms' | 'email';
+}
+
+interface TemplateManagerProps {
+  /** When provided, auto-opens the editor pre-filled with this template draft. */
+  prefill?: TemplatePrefill;
+  /** Fired once the editor has consumed the prefill (so parent can clear it). */
+  onPrefillConsumed?: () => void;
+}
+
+export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
   const { branchFilter } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
