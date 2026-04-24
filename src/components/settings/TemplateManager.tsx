@@ -121,9 +121,10 @@ interface TemplateManagerProps {
 
 export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
-  const { branchFilter } = useBranchContext();
+  const { branchFilter, effectiveBranchId } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [pendingEventName, setPendingEventName] = useState<string | null>(null);
   const [showMetaDialog, setShowMetaDialog] = useState(false);
   const [metaTarget, setMetaTarget] = useState<Template | null>(null);
   const [metaForm, setMetaForm] = useState({
@@ -155,30 +156,69 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     },
   });
 
+  /** After saving a template, optionally wire it to a system event in
+   *  whatsapp_triggers so Templates Health flips green for that event. */
+  const wireWhatsAppTrigger = async (templateId: string, eventName: string) => {
+    if (!effectiveBranchId) return;
+    const { data: existing } = await supabase
+      .from('whatsapp_triggers')
+      .select('id')
+      .eq('branch_id', effectiveBranchId)
+      .eq('event_name', eventName)
+      .maybeSingle();
+
+    if (existing?.id) {
+      await supabase
+        .from('whatsapp_triggers')
+        .update({ template_id: templateId, is_active: true })
+        .eq('id', existing.id);
+    } else {
+      await supabase.from('whatsapp_triggers').insert({
+        branch_id: effectiveBranchId,
+        event_name: eventName,
+        template_id: templateId,
+        is_active: true,
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ['whatsapp-triggers-health'] });
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Template, 'id' | 'created_at'>) => {
-      const { error } = await supabase.from('templates').insert(data);
+    mutationFn: async (data: any) => {
+      const { data: inserted, error } = await supabase
+        .from('templates')
+        .insert(data)
+        .select('id')
+        .single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: async (inserted) => {
+      if (pendingEventName && inserted?.id) {
+        try { await wireWhatsAppTrigger(inserted.id, pendingEventName); } catch (e) { console.error(e); }
+      }
       toast.success('Template created');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
       closeEditor();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: Partial<Template>) => {
+    mutationFn: async ({ id, ...data }: any) => {
       const { error } = await supabase.from('templates').update(data).eq('id', id);
       if (error) throw error;
+      return { id };
     },
-    onSuccess: () => {
+    onSuccess: async ({ id }) => {
+      if (pendingEventName && id) {
+        try { await wireWhatsAppTrigger(id, pendingEventName); } catch (e) { console.error(e); }
+      }
       toast.success('Template updated');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
       closeEditor();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const deleteMutation = useMutation({
@@ -189,8 +229,9 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     onSuccess: () => {
       toast.success('Template deleted');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-triggers-health'] });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const openEditor = (template?: Template) => {
