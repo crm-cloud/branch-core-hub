@@ -39,13 +39,14 @@ const trunkMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.1,
 });
 
-export function BodyModel({ snapshot, interactiveRotationY, autoRotate = true }: BodyModelProps) {
+export function BodyModel({ snapshot, interactiveRotationY, autoRotate = false }: BodyModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const autoRotation = useRef(0);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     if (autoRotate) autoRotation.current += delta * 0.18;
+    // Stable by default — only the user's drag rotates the model.
     groupRef.current.rotation.y = autoRotation.current + interactiveRotationY;
   });
 
