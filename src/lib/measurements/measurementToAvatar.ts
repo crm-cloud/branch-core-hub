@@ -179,3 +179,32 @@ export function buildMeasurementCallouts(
     .filter((item): item is DeltaCallout => Boolean(item))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 }
+
+// Body-shape fields needed to render a meaningful 3D avatar. Weight/height alone
+// do not give us silhouette signal, so we don't count them here.
+const BODY_SHAPE_FIELDS: MeasurementNumericField[] = [
+  'chest_cm',
+  'waist_cm',
+  'hips_cm',
+  'shoulder_cm',
+  'neck_cm',
+  'biceps_left_cm',
+  'biceps_right_cm',
+  'thighs_left_cm',
+  'thighs_right_cm',
+  'calves_cm',
+  'forearm_left_cm',
+  'forearm_right_cm',
+  'abdomen_cm',
+  'torso_length_cm',
+];
+
+export function hasBodyShapeMeasurements(
+  measurement?: MemberMeasurementRecord | null,
+): boolean {
+  if (!measurement) return false;
+  return BODY_SHAPE_FIELDS.some((field) => {
+    const value = measurement[field] as number | null | undefined;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  });
+}

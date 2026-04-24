@@ -3813,13 +3813,6 @@ export type Database = {
             referencedRelation: "members"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "member_fitness_plans_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "fitness_plan_templates"
-            referencedColumns: ["id"]
-          },
         ]
       }
       member_lifecycle_events: {
@@ -4860,6 +4853,7 @@ export type Database = {
           gateway_order_id: string | null
           gateway_payment_id: string | null
           gateway_signature: string | null
+          http_status: number | null
           id: string
           idempotency_key: string | null
           invoice_id: string | null
@@ -4867,17 +4861,13 @@ export type Database = {
           lifecycle_status: Database["public"]["Enums"]["payment_transaction_status"]
           member_id: string | null
           payment_link_url: string | null
+          received_at: string | null
           settled_payment_id: string | null
+          signature_verified: boolean | null
+          source: string | null
           status: string
           updated_at: string | null
           webhook_data: Json | null
-          signature_verified: boolean | null
-          http_status: number | null
-          error_message: string | null
-          event_type: string | null
-          source: string | null
-          received_at: string | null
-          response_body: Json | null
         }
         Insert: {
           amount: number
@@ -4888,6 +4878,7 @@ export type Database = {
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
           gateway_signature?: string | null
+          http_status?: number | null
           id?: string
           idempotency_key?: string | null
           invoice_id?: string | null
@@ -4895,17 +4886,13 @@ export type Database = {
           lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           payment_link_url?: string | null
+          received_at?: string | null
           settled_payment_id?: string | null
+          signature_verified?: boolean | null
+          source?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
-          signature_verified?: boolean | null
-          http_status?: number | null
-          error_message?: string | null
-          event_type?: string | null
-          source?: string | null
-          received_at?: string | null
-          response_body?: Json | null
         }
         Update: {
           amount?: number
@@ -4916,6 +4903,7 @@ export type Database = {
           gateway_order_id?: string | null
           gateway_payment_id?: string | null
           gateway_signature?: string | null
+          http_status?: number | null
           id?: string
           idempotency_key?: string | null
           invoice_id?: string | null
@@ -4923,17 +4911,13 @@ export type Database = {
           lifecycle_status?: Database["public"]["Enums"]["payment_transaction_status"]
           member_id?: string | null
           payment_link_url?: string | null
+          received_at?: string | null
           settled_payment_id?: string | null
+          signature_verified?: boolean | null
+          source?: string | null
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
-          signature_verified?: boolean | null
-          http_status?: number | null
-          error_message?: string | null
-          event_type?: string | null
-          source?: string | null
-          received_at?: string | null
-          response_body?: Json | null
         }
         Relationships: [
           {

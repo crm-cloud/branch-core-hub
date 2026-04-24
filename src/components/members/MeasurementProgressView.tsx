@@ -8,6 +8,7 @@ import type { MemberMeasurementRecord } from '@/lib/measurements/types';
 import { MeasurementMetricsTab } from './MeasurementMetricsTab';
 import { MeasurementPhotoGallery } from './MeasurementPhotoGallery';
 import { BodyComparisonView } from '@/components/progress3d/BodyComparisonView';
+import { hasBodyShapeMeasurements } from '@/lib/measurements/measurementToAvatar';
 
 interface MeasurementProgressViewProps {
   memberId: string;
@@ -82,6 +83,11 @@ export function MeasurementProgressView({ memberId, memberGender }: MeasurementP
     ? (latest.weight_kg / Math.pow(latest.height_cm / 100, 2)).toFixed(1)
     : null;
 
+  // Only enable the 3D body tab when we actually have body-shape measurements
+  // (waist/chest/hips/etc.). Weight + height alone aren't enough to produce a
+  // useful avatar, so we disable the tab and show a clear empty state instead.
+  const body3dEnabled = hasBodyShapeMeasurements(latest);
+
   return (
     <Tabs defaultValue="measurements" className="space-y-4">
       <div className="rounded-2xl bg-gradient-to-r from-primary to-primary/85 p-1 shadow-lg shadow-primary/20">
@@ -94,7 +100,12 @@ export function MeasurementProgressView({ memberId, memberGender }: MeasurementP
             <Camera className="h-4 w-4" />
             Photos
           </TabsTrigger>
-          <TabsTrigger value="body-3d" className="gap-2 rounded-xl data-[state=active]:bg-primary-foreground data-[state=active]:text-primary">
+          <TabsTrigger
+            value="body-3d"
+            disabled={!body3dEnabled}
+            className="gap-2 rounded-xl data-[state=active]:bg-primary-foreground data-[state=active]:text-primary disabled:opacity-50"
+            title={body3dEnabled ? '3D body view' : 'Add body measurements (waist, chest, hips, etc.) to enable the 3D view'}
+          >
             <Box className="h-4 w-4" />
             3D Body
           </TabsTrigger>
@@ -109,9 +120,11 @@ export function MeasurementProgressView({ memberId, memberGender }: MeasurementP
         <MeasurementPhotoGallery latest={latest} />
       </TabsContent>
 
-      <TabsContent value="body-3d" className="mt-0">
-        <BodyComparisonView latest={latest} previous={previous} memberGender={memberGender} />
-      </TabsContent>
+      {body3dEnabled && (
+        <TabsContent value="body-3d" className="mt-0">
+          <BodyComparisonView latest={latest} previous={previous} memberGender={memberGender} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }
