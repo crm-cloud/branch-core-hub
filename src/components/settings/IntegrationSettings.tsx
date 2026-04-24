@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { WhatsAppAutomations } from '@/components/settings/WhatsAppAutomations';
-import { WhatsAppTemplatesHealth } from '@/components/settings/WhatsAppTemplatesHealth';
+import { WhatsAppTemplatesHub } from '@/components/settings/WhatsAppTemplatesHub';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -485,17 +484,16 @@ export function IntegrationSettings() {
             </CardContent>
           </Card>
 
-          {/* WhatsApp Automations */}
-          <WhatsAppAutomations />
-
-          {/* Templates Health Audit */}
-          <WhatsAppTemplatesHealth />
-
-          {/* Meta Approved Templates Panel */}
-          <MetaTemplatesPanel
-            integrations={integrations}
-            selectedBranch={selectedBranch}
+          {/* Unified WhatsApp Templates Hub — CRM templates, Meta catalog, event mapping, health */}
+          <WhatsAppTemplatesHub
+            metaTemplatesPanel={
+              <MetaTemplatesPanel
+                integrations={integrations}
+                selectedBranch={selectedBranch}
+              />
+            }
           />
+
 
           {/* WhatsApp Business API Setup Guide — Collapsible */}
           <Collapsible>
