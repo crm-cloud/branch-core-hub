@@ -86,15 +86,26 @@ export default function MyWorkout() {
         .limit(1)
         .maybeSingle();
       if (error) return null;
+      let trainerProfile: { full_name: string } | null = null;
+      let templateName: string | null = null;
       if (data?.created_by) {
-        const { data: trainerProfile } = await supabase
+        const { data: tp } = await supabase
           .from('profiles')
           .select('full_name')
           .eq('id', data.created_by)
           .single();
-        return { ...data, trainer: trainerProfile };
+        trainerProfile = tp;
       }
-      return data;
+      if (data && (data as any).template_id) {
+        const { data: tpl } = await supabase
+          .from('fitness_plan_templates')
+          .select('name')
+          .eq('id', (data as any).template_id)
+          .maybeSingle();
+        templateName = tpl?.name ?? null;
+      }
+      if (!data) return null;
+      return { ...data, trainer: trainerProfile, template_name: templateName };
     },
   });
 
@@ -301,6 +312,11 @@ export default function MyWorkout() {
                           <h3 className="font-semibold leading-tight">{workoutPlan.plan_name}</h3>
                           {workoutPlan.description && (
                             <p className="text-xs text-muted-foreground mt-0.5">{workoutPlan.description}</p>
+                          )}
+                          {(workoutPlan as any).template_name && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 italic">
+                              From template: <span className="font-medium not-italic">{(workoutPlan as any).template_name}</span>
+                            </p>
                           )}
                         </div>
                       </div>

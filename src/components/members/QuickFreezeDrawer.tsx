@@ -10,7 +10,9 @@ import { toast } from 'sonner';
 import { Snowflake, Calendar, AlertTriangle, IndianRupee } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 import { revokeHardwareAccess } from '@/services/membershipService';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 
 interface QuickFreezeDrawerProps {
   open: boolean;
@@ -22,6 +24,7 @@ interface QuickFreezeDrawerProps {
 
 export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership, onSuccess }: QuickFreezeDrawerProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [days, setDays] = useState(7);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,6 +81,8 @@ export function QuickFreezeDrawer({ open, onOpenChange, member, activeMembership
       toast.success('Membership frozen successfully');
       // Revoke hardware access immediately so the gate blocks the frozen member
       revokeHardwareAccess(member.id, 'Membership frozen (quick freeze)', activeMembership.branch_id);
+      // Refresh members list, dashboard stats, distribution etc.
+      invalidateMembersData(queryClient);
       onSuccess();
       onOpenChange(false);
       setDays(7); setReason(''); setIsPaidFreeze(false); setFreezeFee(0);

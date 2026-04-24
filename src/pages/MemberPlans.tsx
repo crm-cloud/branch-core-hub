@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Loader2,
   Info,
+  Bookmark,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -60,6 +61,7 @@ interface UnifiedPlan {
   caloriesTarget?: number | null;
   isAI?: boolean;
   isCustom?: boolean;
+  templateId?: string | null;
   raw: any;
   content: WorkoutPlanContent | DietPlanContent;
 }
@@ -77,6 +79,7 @@ function normalizeWorkout(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     validUntil: p.valid_until || p.end_date,
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
+    templateId: p.template_id ?? null,
     raw: p,
     content,
   };
@@ -135,6 +138,7 @@ function normalizeDiet(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     caloriesTarget: p.calories_target ?? null,
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
+    templateId: p.template_id ?? null,
     raw: p,
     content,
   };
@@ -629,6 +633,9 @@ function PlanHeader({
               )}
               {plan.isCustom && (
                 <Badge variant="outline" className="text-[10px]">Custom</Badge>
+              )}
+              {plan.templateId && (
+                <TemplateChip templateId={plan.templateId} />
               )}
               {plan.caloriesTarget && (
                 <Badge variant="outline" className="text-[10px] gap-1">
