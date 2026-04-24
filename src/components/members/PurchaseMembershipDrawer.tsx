@@ -15,6 +15,7 @@ import { usePlans } from '@/hooks/usePlans';
 import { CreditCard, IndianRupee, Calendar, User, Gift, AlertTriangle, CheckCircle, Lock, Wallet } from 'lucide-react';
 import { useGstRates } from '@/hooks/useGstRates';
 import { invalidateMembersData } from '@/lib/memberInvalidation';
+import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 
 interface PurchaseMembershipDrawerProps {
   open: boolean;
