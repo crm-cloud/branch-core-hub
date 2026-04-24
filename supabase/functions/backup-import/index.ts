@@ -108,12 +108,12 @@ Deno.serve(async (req) => {
             if (error) stat.errors.push(error.message);
             else stat.updated += chunk.length;
           } else {
-            const { error, count } = await supabase
+            const { data, error } = await supabase
               .from(table)
               .upsert(chunk, { onConflict: "id", ignoreDuplicates: true })
-              .select("id", { count: "exact", head: true });
+              .select("id");
             if (error) stat.errors.push(error.message);
-            else stat.inserted += count || 0;
+            else stat.inserted += (data?.length ?? 0);
           }
         } catch (e: any) {
           stat.errors.push(e.message);
