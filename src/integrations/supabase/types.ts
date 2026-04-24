@@ -3759,7 +3759,6 @@ export type Database = {
           plan_data: Json
           plan_name: string
           plan_type: string
-          template_id: string | null
           updated_at: string | null
           valid_from: string | null
           valid_until: string | null
@@ -3776,7 +3775,6 @@ export type Database = {
           plan_data?: Json
           plan_name: string
           plan_type: string
-          template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -3793,7 +3791,6 @@ export type Database = {
           plan_data?: Json
           plan_name?: string
           plan_type?: string
-          template_id?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -3811,13 +3808,6 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "member_fitness_plans_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "fitness_plan_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -4871,13 +4861,6 @@ export type Database = {
           status: string
           updated_at: string | null
           webhook_data: Json | null
-          signature_verified: boolean | null
-          http_status: number | null
-          error_message: string | null
-          event_type: string | null
-          source: string | null
-          received_at: string | null
-          response_body: Json | null
         }
         Insert: {
           amount: number
@@ -4899,13 +4882,6 @@ export type Database = {
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
-          signature_verified?: boolean | null
-          http_status?: number | null
-          error_message?: string | null
-          event_type?: string | null
-          source?: string | null
-          received_at?: string | null
-          response_body?: Json | null
         }
         Update: {
           amount?: number
@@ -4927,13 +4903,6 @@ export type Database = {
           status?: string
           updated_at?: string | null
           webhook_data?: Json | null
-          signature_verified?: boolean | null
-          http_status?: number | null
-          error_message?: string | null
-          event_type?: string | null
-          source?: string | null
-          received_at?: string | null
-          response_body?: Json | null
         }
         Relationships: [
           {
