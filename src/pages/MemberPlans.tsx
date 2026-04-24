@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Loader2,
   Info,
+  Bookmark,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -632,6 +633,9 @@ function PlanHeader({
               )}
               {plan.isCustom && (
                 <Badge variant="outline" className="text-[10px]">Custom</Badge>
+              )}
+              {plan.templateId && (
+                <TemplateChip templateId={plan.templateId} />
               )}
               {plan.caloriesTarget && (
                 <Badge variant="outline" className="text-[10px] gap-1">
