@@ -105,7 +105,7 @@ export default function PaymentsPage() {
           member_id: form.memberId,
           branch_id: branchFilter!,
           amount: form.amount,
-          payment_method: form.method,
+          payment_method: normalizePaymentMethod(form.method),
           status: 'completed',
           payment_date: new Date().toISOString(),
         });
