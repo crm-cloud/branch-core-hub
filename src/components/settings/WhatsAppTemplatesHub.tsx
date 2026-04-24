@@ -13,6 +13,9 @@ export interface TemplatePrefill {
   trigger: string;
   content: string;
   type?: 'whatsapp' | 'sms' | 'email';
+  /** System event name (e.g. 'member_created') used to wire whatsapp_triggers
+   *  mapping after the template is saved. Set automatically by Health → Map. */
+  eventName?: string;
 }
 
 /** Map system event → sensible default template prefill. */
@@ -101,7 +104,7 @@ export function WhatsAppTemplatesHub() {
       content: '',
       type: 'whatsapp',
     };
-    setPrefill({ ...p, type: 'whatsapp' });
+    setPrefill({ ...p, type: 'whatsapp', eventName });
     setTab('crm');
   };
 

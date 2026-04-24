@@ -108,6 +108,8 @@ interface TemplatePrefill {
   trigger: string;
   content: string;
   type?: 'whatsapp' | 'sms' | 'email';
+  /** System event name (e.g. 'member_created') for whatsapp_triggers wiring. */
+  eventName?: string;
 }
 
 interface TemplateManagerProps {
@@ -119,9 +121,10 @@ interface TemplateManagerProps {
 
 export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
-  const { branchFilter } = useBranchContext();
+  const { branchFilter, effectiveBranchId } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [pendingEventName, setPendingEventName] = useState<string | null>(null);
   const [showMetaDialog, setShowMetaDialog] = useState(false);
   const [metaTarget, setMetaTarget] = useState<Template | null>(null);
   const [metaForm, setMetaForm] = useState({
@@ -153,30 +156,69 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     },
   });
 
+  /** After saving a template, optionally wire it to a system event in
+   *  whatsapp_triggers so Templates Health flips green for that event. */
+  const wireWhatsAppTrigger = async (templateId: string, eventName: string) => {
+    if (!effectiveBranchId) return;
+    const { data: existing } = await supabase
+      .from('whatsapp_triggers')
+      .select('id')
+      .eq('branch_id', effectiveBranchId)
+      .eq('event_name', eventName)
+      .maybeSingle();
+
+    if (existing?.id) {
+      await supabase
+        .from('whatsapp_triggers')
+        .update({ template_id: templateId, is_active: true })
+        .eq('id', existing.id);
+    } else {
+      await supabase.from('whatsapp_triggers').insert({
+        branch_id: effectiveBranchId,
+        event_name: eventName,
+        template_id: templateId,
+        is_active: true,
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ['whatsapp-triggers-health'] });
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: Omit<Template, 'id' | 'created_at'>) => {
-      const { error } = await supabase.from('templates').insert(data);
+    mutationFn: async (data: any) => {
+      const { data: inserted, error } = await supabase
+        .from('templates')
+        .insert(data)
+        .select('id')
+        .single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: async (inserted) => {
+      if (pendingEventName && inserted?.id) {
+        try { await wireWhatsAppTrigger(inserted.id, pendingEventName); } catch (e) { console.error(e); }
+      }
       toast.success('Template created');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
       closeEditor();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: Partial<Template>) => {
+    mutationFn: async ({ id, ...data }: any) => {
       const { error } = await supabase.from('templates').update(data).eq('id', id);
       if (error) throw error;
+      return { id };
     },
-    onSuccess: () => {
+    onSuccess: async ({ id }) => {
+      if (pendingEventName && id) {
+        try { await wireWhatsAppTrigger(id, pendingEventName); } catch (e) { console.error(e); }
+      }
       toast.success('Template updated');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
       closeEditor();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const deleteMutation = useMutation({
@@ -187,8 +229,9 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     onSuccess: () => {
       toast.success('Template deleted');
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-triggers-health'] });
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const openEditor = (template?: Template) => {
@@ -219,6 +262,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   const closeEditor = () => {
     setShowEditor(false);
     setSelectedTemplate(null);
+    setPendingEventName(null);
   };
 
   // Auto-open the editor pre-filled when parent passes a prefill payload
@@ -226,6 +270,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   useEffect(() => {
     if (!prefill) return;
     setSelectedTemplate(null);
+    setPendingEventName(prefill.eventName || null);
     setFormData({
       name: prefill.name,
       type: prefill.type || 'whatsapp',
@@ -246,10 +291,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       return;
     }
 
-    const templateData = {
+    // NOTE: `templates` table has no `trigger` column — event mapping lives in
+    // `whatsapp_triggers`. We persist trigger via wireWhatsAppTrigger() instead.
+    const branch = branchFilter && branchFilter !== 'all' ? branchFilter : effectiveBranchId;
+    const templateData: any = {
       name: formData.name,
       type: formData.type,
-      trigger: formData.trigger,
       subject: formData.type === 'email' ? formData.subject : null,
       content: formData.content,
       is_active: formData.is_active,
@@ -259,6 +306,11 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     if (selectedTemplate) {
       updateMutation.mutate({ id: selectedTemplate.id, ...templateData });
     } else {
+      if (!branch) {
+        toast.error('Please select a branch before creating a template');
+        return;
+      }
+      templateData.branch_id = branch;
       createMutation.mutate(templateData);
     }
   };
@@ -278,12 +330,20 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   const openMetaDialog = (template: Template) => {
     // Meta requires lowercase with underscores only (hyphens not permitted)
     const slugName = template.name.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+    // Auto-convert {{named}} placeholders → {{1}}, {{2}}, ... for Meta.
+    let i = 0;
+    const map: Record<string, number> = {};
+    const numbered = template.content.replace(/\{\{([^}]+)\}\}/g, (_m, v) => {
+      const key = v.trim();
+      if (!map[key]) map[key] = ++i;
+      return `{{${map[key]}}}`;
+    });
     setMetaTarget(template);
     setMetaForm({
       name: template.meta_template_name || slugName,
       category: 'UTILITY',
       language: 'en',
-      body_text: template.content,
+      body_text: numbered,
     });
     setShowMetaDialog(true);
   };
@@ -532,6 +592,27 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 rows={6}
                 required
               />
+              {formData.type === 'whatsapp' && formData.content && (
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    Meta-formatted preview (positional placeholders)
+                  </p>
+                  <p className="text-xs font-mono whitespace-pre-wrap text-foreground/90">
+                    {(() => {
+                      let i = 0;
+                      const map: Record<string, number> = {};
+                      return formData.content.replace(/\{\{([^}]+)\}\}/g, (_m, v) => {
+                        const key = v.trim();
+                        if (!map[key]) map[key] = ++i;
+                        return `{{${map[key]}}}`;
+                      });
+                    })()}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Meta requires numbered placeholders. We auto-convert when you "Submit to Meta".
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
