@@ -59,6 +59,7 @@ const AuditLogsPage = lazy(() => import("./pages/AuditLogs"));
 const BranchesPage = lazy(() => import("./pages/Branches"));
 const AnnouncementsPage = lazy(() => import("./pages/Announcements"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
+const IntegrationsPage = lazy(() => import("./pages/Integrations"));
 const StorePage = lazy(() => import("./pages/Store"));
 const POSPage = lazy(() => import("./pages/POS"));
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
