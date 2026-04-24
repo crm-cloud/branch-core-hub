@@ -4,8 +4,8 @@ import { Environment, OrbitControls } from '@react-three/drei';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { measurementToAvatarSnapshot } from '@/lib/measurements/measurementToAvatar';
 import type { MemberMeasurementRecord } from '@/lib/measurements/types';
-import { BodyModel } from './BodyModel';
 import { BodyFallbackCard } from './BodyFallbackCard';
+import { AvatarGltf } from './AvatarGltf';
 
 interface MemberBodyAvatarCanvasProps {
   measurement?: MemberMeasurementRecord | null;
@@ -51,7 +51,7 @@ export function MemberBodyAvatarCanvas({ measurement, previousMeasurement, label
           <directionalLight position={[4, 5, 5]} intensity={2.2} />
           <directionalLight position={[-4, 2, 1]} intensity={0.75} />
           <Suspense fallback={null}>
-            <BodyModel snapshot={snapshot} interactiveRotationY={dragRotation} />
+            <AvatarGltf snapshot={snapshot} interactiveRotationY={dragRotation} />
             <Environment preset="studio" />
           </Suspense>
           <OrbitControls

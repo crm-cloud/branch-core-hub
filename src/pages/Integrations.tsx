@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { WebhookActivityPanel, GatewayLastReceivedBadge } from '@/components/integrations/WebhookActivityPanel';
 
-type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram';
+type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
 const PAYMENT_PROVIDERS = [
   { id: 'razorpay', name: 'Razorpay', abbr: 'Rp', bgColor: 'bg-blue-600', textColor: 'text-white' },
@@ -155,6 +155,7 @@ export default function IntegrationsPage() {
             <TabsTrigger value="email" className="rounded-xl px-4">Email</TabsTrigger>
             <TabsTrigger value="whatsapp" className="rounded-xl px-4 gap-1.5"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
             <TabsTrigger value="instagram" className="rounded-xl px-4 gap-1.5"><Instagram className="h-3.5 w-3.5" />Instagram</TabsTrigger>
+            <TabsTrigger value="messenger" className="rounded-xl px-4 gap-1.5"><Facebook className="h-3.5 w-3.5" />Messenger</TabsTrigger>
             <TabsTrigger value="google" className="rounded-xl px-4 gap-1.5"><Globe className="h-3.5 w-3.5" />Google</TabsTrigger>
           </TabsList>
 
@@ -291,9 +292,36 @@ export default function IntegrationsPage() {
             </IntegrationCard>
           </TabsContent>
 
-          {/* Messenger tab intentionally hidden — backend support not yet complete.
-              Keeping meta-webhook + send-message Messenger code paths so re-enabling
-              the UI is a one-line flip when end-to-end is verified. */}
+          <TabsContent value="messenger" className="space-y-4">
+            <IntegrationCard
+              title="Facebook Messenger"
+              description="Receive and reply to Facebook Messenger conversations through the unified inbox."
+              icon={Facebook}
+              activeCount={getIntegrationsByType('messenger' as IntegrationType).filter((i: any) => i.is_active).length}
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                {MESSENGER_PROVIDERS.map((provider) => {
+                  const config = getIntegrationsByType('messenger' as IntegrationType).find((i: any) => i.provider === provider.id);
+                  return (
+                    <Card key={provider.id} className="border-border/60">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold">{provider.name}</h3>
+                            <p className="text-sm text-muted-foreground">{provider.description}</p>
+                          </div>
+                          <Badge variant={config?.is_active ? 'default' : 'secondary'} className="rounded-full">{config?.is_active ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <Button className="mt-4 w-full rounded-xl" variant="outline" onClick={() => openConfig('messenger' as IntegrationType, provider.id)}>
+                          <Settings className="mr-2 h-4 w-4" />Configure
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </IntegrationCard>
+          </TabsContent>
 
           <TabsContent value="google" className="space-y-4">
             <IntegrationCard title="Google Business" description="Sync reviews and manage Google Business profile settings." icon={Globe} activeCount={activeCount('google_business')}>

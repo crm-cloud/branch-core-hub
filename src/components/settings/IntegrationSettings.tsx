@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { WhatsAppAutomations } from '@/components/settings/WhatsAppAutomations';
+import { WhatsAppTemplatesHealth } from '@/components/settings/WhatsAppTemplatesHealth';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -486,6 +487,9 @@ export function IntegrationSettings() {
 
           {/* WhatsApp Automations */}
           <WhatsAppAutomations />
+
+          {/* Templates Health Audit */}
+          <WhatsAppTemplatesHealth />
 
           {/* Meta Approved Templates Panel */}
           <MetaTemplatesPanel
