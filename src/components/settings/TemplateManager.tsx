@@ -221,6 +221,24 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     setSelectedTemplate(null);
   };
 
+  // Auto-open the editor pre-filled when parent passes a prefill payload
+  // (used by the Templates Health → "Map" CTA to seed an event template).
+  useEffect(() => {
+    if (!prefill) return;
+    setSelectedTemplate(null);
+    setFormData({
+      name: prefill.name,
+      type: prefill.type || 'whatsapp',
+      trigger: prefill.trigger || 'custom',
+      subject: '',
+      content: prefill.content,
+      is_active: true,
+    });
+    setShowEditor(true);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.content) {
