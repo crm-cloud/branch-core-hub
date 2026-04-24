@@ -59,6 +59,7 @@ const AuditLogsPage = lazy(() => import("./pages/AuditLogs"));
 const BranchesPage = lazy(() => import("./pages/Branches"));
 const AnnouncementsPage = lazy(() => import("./pages/Announcements"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
+const IntegrationsPage = lazy(() => import("./pages/Integrations"));
 const StorePage = lazy(() => import("./pages/Store"));
 const POSPage = lazy(() => import("./pages/POS"));
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
@@ -267,7 +268,7 @@ function RoutedContent() {
           <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
           <Route path="/branches" element={<Navigate to="/settings?tab=branches" replace />} />
           <Route path="/website-cms" element={<Navigate to="/settings?tab=website" replace />} />
-          <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
+          <Route path="/integrations" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><IntegrationsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

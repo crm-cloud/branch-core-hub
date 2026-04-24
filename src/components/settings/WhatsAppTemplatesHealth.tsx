@@ -56,8 +56,9 @@ const STATE_META: Record<RowState, { label: string; icon: any; cls: string }> = 
 };
 
 interface WhatsAppTemplatesHealthProps {
-  /** Optional jump-to-mapping handler. When provided, failing rows get a "Map" CTA. */
-  onFixClick?: () => void;
+  /** Optional jump-to-mapping handler. Receives the event_name when the user
+   *  clicks "Map" so the parent can pre-fill a template editor. */
+  onFixClick?: (eventName: string) => void;
 }
 
 export function WhatsAppTemplatesHealth({ onFixClick }: WhatsAppTemplatesHealthProps = {}) {
@@ -129,7 +130,7 @@ export function WhatsAppTemplatesHealth({ onFixClick }: WhatsAppTemplatesHealthP
                     size="sm"
                     variant="ghost"
                     className="h-7 px-2 text-xs gap-1"
-                    onClick={onFixClick}
+                    onClick={() => onFixClick(event.value)}
                   >
                     Map <ArrowRight className="h-3 w-3" />
                   </Button>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -86,9 +86,9 @@ interface Template {
 function metaStatusBadge(status: string | null | undefined) {
   if (!status) return null;
   const map: Record<string, { label: string; icon: any; className: string }> = {
-    APPROVED: { label: 'Approved', icon: CheckCircle, className: 'bg-green-100 text-green-700 border-green-200' },
-    PENDING: { label: 'Pending', icon: Clock, className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-    REJECTED: { label: 'Rejected', icon: XCircle, className: 'bg-red-100 text-red-700 border-red-200' },
+    APPROVED: { label: 'Approved', icon: CheckCircle, className: 'bg-success/10 text-success border-success/20' },
+    PENDING: { label: 'Pending', icon: Clock, className: 'bg-warning/10 text-warning border-warning/20' },
+    REJECTED: { label: 'Rejected', icon: XCircle, className: 'bg-destructive/10 text-destructive border-destructive/20' },
     PAUSED: { label: 'Paused', icon: PauseCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
     DISABLED: { label: 'Disabled', icon: PauseCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
   };
@@ -103,7 +103,21 @@ function metaStatusBadge(status: string | null | undefined) {
   );
 }
 
-export function TemplateManager() {
+interface TemplatePrefill {
+  name: string;
+  trigger: string;
+  content: string;
+  type?: 'whatsapp' | 'sms' | 'email';
+}
+
+interface TemplateManagerProps {
+  /** When provided, auto-opens the editor pre-filled with this template draft. */
+  prefill?: TemplatePrefill;
+  /** Fired once the editor has consumed the prefill (so parent can clear it). */
+  onPrefillConsumed?: () => void;
+}
+
+export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
   const { branchFilter } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
@@ -206,6 +220,24 @@ export function TemplateManager() {
     setShowEditor(false);
     setSelectedTemplate(null);
   };
+
+  // Auto-open the editor pre-filled when parent passes a prefill payload
+  // (used by the Templates Health → "Map" CTA to seed an event template).
+  useEffect(() => {
+    if (!prefill) return;
+    setSelectedTemplate(null);
+    setFormData({
+      name: prefill.name,
+      type: prefill.type || 'whatsapp',
+      trigger: prefill.trigger || 'custom',
+      subject: '',
+      content: prefill.content,
+      is_active: true,
+    });
+    setShowEditor(true);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -554,7 +586,7 @@ export function TemplateManager() {
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Send className="h-4 w-4 text-green-600" />
+              <Send className="h-4 w-4 text-success" />
               Submit to Meta
             </SheetTitle>
             <SheetDescription>
@@ -563,8 +595,8 @@ export function TemplateManager() {
           </SheetHeader>
 
           <div className="space-y-4 mt-6">
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-              <p className="text-xs text-amber-700">
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <p className="text-xs text-warning-foreground">
                 <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>).
               </p>
             </div>
@@ -645,7 +677,7 @@ export function TemplateManager() {
             <Button
               onClick={handleSubmitToMeta}
               disabled={isSubmittingMeta || !metaForm.name || !metaForm.body_text}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-success hover:bg-success/90 text-success-foreground"
               data-testid="btn-confirm-submit-meta"
             >
               {isSubmittingMeta ? (
