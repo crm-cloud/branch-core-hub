@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useMemberData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeDietPlan } from '@/lib/planNormalizer';
 import {
   UtensilsCrossed,
   Calendar,
@@ -20,6 +21,7 @@ import {
   Sparkles,
   ChefHat,
   Loader2,
+  BookmarkCheck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
