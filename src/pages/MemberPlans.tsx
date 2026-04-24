@@ -544,6 +544,29 @@ export default function MemberPlansPage() {
 
 // ─── Subcomponents ──────────────────────────────────────────────────
 
+function TemplateChip({ templateId }: { templateId: string }) {
+  const { data } = useQuery({
+    queryKey: ['fitness-plan-template-name', templateId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('fitness_plan_templates')
+        .select('name')
+        .eq('id', templateId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.name as string | undefined;
+    },
+    enabled: !!templateId,
+    staleTime: 5 * 60 * 1000,
+  });
+  return (
+    <Badge variant="outline" className="text-[10px] gap-1">
+      <Bookmark className="h-3 w-3" />
+      {data ? `From: ${data}` : 'From template'}
+    </Badge>
+  );
+}
+
 function ProgressTile({
   label,
   icon,
