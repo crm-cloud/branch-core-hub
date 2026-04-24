@@ -1152,11 +1152,6 @@ function IntegrationConfigSheet({
   );
 }
 
-interface MetaApiTemplate {
-  id: string;
-  name: string;
-  status: string;
-  category: string;
 // MetaTemplatesPanel & MetaApiTemplate moved to ./MetaTemplatesPanel.tsx
 // (rendered inside Settings → Templates Manager → Meta Approved tab).
 
