@@ -584,6 +584,27 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 rows={6}
                 required
               />
+              {formData.type === 'whatsapp' && formData.content && (
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    Meta-formatted preview (positional placeholders)
+                  </p>
+                  <p className="text-xs font-mono whitespace-pre-wrap text-foreground/90">
+                    {(() => {
+                      let i = 0;
+                      const map: Record<string, number> = {};
+                      return formData.content.replace(/\{\{([^}]+)\}\}/g, (_m, v) => {
+                        const key = v.trim();
+                        if (!map[key]) map[key] = ++i;
+                        return `{{${map[key]}}}`;
+                      });
+                    })()}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Meta requires numbered placeholders. We auto-convert when you "Submit to Meta".
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
