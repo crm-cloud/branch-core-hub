@@ -11,7 +11,7 @@ import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
-import { TemplateManager } from '@/components/settings/TemplateManager';
+import { WhatsAppTemplatesHub } from '@/components/settings/WhatsAppTemplatesHub';
 import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
@@ -26,7 +26,7 @@ const SETTINGS_MENU = [
   { value: 'ai-agent', label: 'AI Agent', icon: Bot },
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
   { value: 'referrals', label: 'Referrals', icon: Gift },
-  { value: 'templates', label: 'Templates', icon: MessageSquare },
+  { value: 'templates', label: 'Templates Manager', icon: MessageSquare },
   { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
   { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
   { value: 'tax-gst', label: 'Tax & GST', icon: IndianRupee },
@@ -45,7 +45,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   'ai-agent': <AIAgentControlCenter />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
-  templates: <TemplateManager />,
+  templates: <WhatsAppTemplatesHub />,
   'plan-templates': <PlanBenefitTemplates />,
   'finance-categories': <FinanceCategoryManager />,
   'tax-gst': <TaxGstSettings />,
