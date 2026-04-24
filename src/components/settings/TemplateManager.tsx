@@ -330,12 +330,20 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   const openMetaDialog = (template: Template) => {
     // Meta requires lowercase with underscores only (hyphens not permitted)
     const slugName = template.name.toLowerCase().replace(/[\s\-]+/g, '_').replace(/[^a-z0-9_]/g, '');
+    // Auto-convert {{named}} placeholders → {{1}}, {{2}}, ... for Meta.
+    let i = 0;
+    const map: Record<string, number> = {};
+    const numbered = template.content.replace(/\{\{([^}]+)\}\}/g, (_m, v) => {
+      const key = v.trim();
+      if (!map[key]) map[key] = ++i;
+      return `{{${map[key]}}}`;
+    });
     setMetaTarget(template);
     setMetaForm({
       name: template.meta_template_name || slugName,
       category: 'UTILITY',
       language: 'en',
-      body_text: template.content,
+      body_text: numbered,
     });
     setShowMetaDialog(true);
   };
