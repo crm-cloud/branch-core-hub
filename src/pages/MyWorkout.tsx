@@ -313,6 +313,11 @@ export default function MyWorkout() {
                           {workoutPlan.description && (
                             <p className="text-xs text-muted-foreground mt-0.5">{workoutPlan.description}</p>
                           )}
+                          {(workoutPlan as any).template_name && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 italic">
+                              From template: <span className="font-medium not-italic">{(workoutPlan as any).template_name}</span>
+                            </p>
+                          )}
                         </div>
                       </div>
                       <Badge className="bg-success text-success-foreground">Active</Badge>
