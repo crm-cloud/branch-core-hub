@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { recordPayment as unifiedRecordPayment, voidPayment as unifiedVoidPayment } from '@/services/billingService';
+import { normalizePaymentMethod } from '@/lib/payments/normalizePaymentMethod';
 import { useState, useMemo } from 'react';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import { toast } from 'sonner';
