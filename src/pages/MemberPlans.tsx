@@ -60,6 +60,7 @@ interface UnifiedPlan {
   caloriesTarget?: number | null;
   isAI?: boolean;
   isCustom?: boolean;
+  templateId?: string | null;
   raw: any;
   content: WorkoutPlanContent | DietPlanContent;
 }
@@ -77,6 +78,7 @@ function normalizeWorkout(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     validUntil: p.valid_until || p.end_date,
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
+    templateId: p.template_id ?? null,
     raw: p,
     content,
   };
@@ -135,6 +137,7 @@ function normalizeDiet(p: any, src: UnifiedPlan['source']): UnifiedPlan {
     caloriesTarget: p.calories_target ?? null,
     isAI: p.is_ai_generated,
     isCustom: p.is_custom,
+    templateId: p.template_id ?? null,
     raw: p,
     content,
   };
