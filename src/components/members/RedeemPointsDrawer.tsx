@@ -9,6 +9,7 @@ import { Award, Gift, Snowflake, ShoppingBag } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 import { toast } from 'sonner';
 
 interface RedeemPointsDrawerProps {
@@ -62,6 +63,8 @@ export function RedeemPointsDrawer({ open, onOpenChange, memberId, memberName, b
       toast.success('Points redeemed successfully');
       queryClient.invalidateQueries({ queryKey: ['rewards-ledger', memberId] });
       queryClient.invalidateQueries({ queryKey: ['member-details'] });
+      // Refresh members list so the points column reflects the new balance.
+      invalidateMembersData(queryClient);
       setCustomPoints('');
       setCustomReason('');
       onOpenChange(false);

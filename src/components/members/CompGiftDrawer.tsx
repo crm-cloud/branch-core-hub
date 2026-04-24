@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Gift, Calendar, Heart, Clock, ArrowRight, Sparkles, ShieldCheck, CheckCircle } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invalidateMembersData } from '@/lib/memberInvalidation';
 import { toast } from 'sonner';
 import { addDays, parseISO, format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -176,6 +177,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
         toast.success(`Extended membership by ${days} days`);
         queryClient.invalidateQueries({ queryKey: ['member-details'] });
         queryClient.invalidateQueries({ queryKey: ['memberships'] });
+        invalidateMembersData(queryClient);
       } else {
         toast.success(`Extension request for ${days} days submitted for approval`);
         queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
@@ -247,6 +249,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
         toast.success(`Comp sessions granted successfully`);
         queryClient.invalidateQueries({ queryKey: ['member-comps'] });
         queryClient.invalidateQueries({ queryKey: ['member-details'] });
+        invalidateMembersData(queryClient);
       } else {
         toast.success(`Comp sessions request submitted for approval`);
         queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
