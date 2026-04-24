@@ -21,8 +21,8 @@ interface MetaApiTemplate {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: any; className: string }> = {
-  APPROVED: { label: 'Approved', icon: CheckCircle, className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
-  PENDING: { label: 'Pending', icon: Clock, className: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+  APPROVED: { label: 'Approved', icon: CheckCircle, className: 'bg-success/10 text-success border-success/20' },
+  PENDING: { label: 'Pending', icon: Clock, className: 'bg-warning/10 text-warning border-warning/20' },
   REJECTED: { label: 'Rejected', icon: XCircle, className: 'bg-destructive/10 text-destructive border-destructive/20' },
   PAUSED: { label: 'Paused', icon: PauseCircle, className: 'bg-muted text-muted-foreground border-border' },
   DISABLED: { label: 'Disabled', icon: PauseCircle, className: 'bg-muted text-muted-foreground border-border' },
