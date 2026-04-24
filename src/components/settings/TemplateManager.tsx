@@ -262,6 +262,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   const closeEditor = () => {
     setShowEditor(false);
     setSelectedTemplate(null);
+    setPendingEventName(null);
   };
 
   // Auto-open the editor pre-filled when parent passes a prefill payload
@@ -269,6 +270,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   useEffect(() => {
     if (!prefill) return;
     setSelectedTemplate(null);
+    setPendingEventName(prefill.eventName || null);
     setFormData({
       name: prefill.name,
       type: prefill.type || 'whatsapp',
@@ -289,10 +291,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       return;
     }
 
-    const templateData = {
+    // NOTE: `templates` table has no `trigger` column — event mapping lives in
+    // `whatsapp_triggers`. We persist trigger via wireWhatsAppTrigger() instead.
+    const branch = branchFilter && branchFilter !== 'all' ? branchFilter : effectiveBranchId;
+    const templateData: any = {
       name: formData.name,
       type: formData.type,
-      trigger: formData.trigger,
       subject: formData.type === 'email' ? formData.subject : null,
       content: formData.content,
       is_active: formData.is_active,
@@ -302,6 +306,11 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     if (selectedTemplate) {
       updateMutation.mutate({ id: selectedTemplate.id, ...templateData });
     } else {
+      if (!branch) {
+        toast.error('Please select a branch before creating a template');
+        return;
+      }
+      templateData.branch_id = branch;
       createMutation.mutate(templateData);
     }
   };
