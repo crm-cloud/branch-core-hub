@@ -284,6 +284,14 @@ export default function MyDiet() {
                   value={trainerName || 'Self-managed'}
                 />
               </CardContent>
+              {templateName && (
+                <div className="px-5 pb-4">
+                  <Badge variant="secondary" className="gap-1.5">
+                    <BookmarkCheck className="h-3 w-3" />
+                    Created from template: <span className="font-semibold">{templateName}</span>
+                  </Badge>
+                </div>
+              )}
             </Card>
 
             {/* ===== Meal Timeline ===== */}
@@ -330,12 +338,26 @@ export default function MyDiet() {
                         <CardContent className="pl-5 space-y-3">
                           {meal.items && meal.items.length > 0 && (
                             <ul className="space-y-1.5">
-                              {meal.items.map((item, i) => (
-                                <li key={i} className="flex gap-2 text-sm">
-                                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${accent.bg}`} />
-                                  <span className="text-foreground/90">{renderItem(item)}</span>
-                                </li>
-                              ))}
+                              {meal.items.map((item, i) => {
+                                const isCatalog = typeof item === 'object' && item !== null && (item as any).catalog_id;
+                                return (
+                                  <li key={i} className="flex gap-2 text-sm items-start">
+                                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${accent.bg}`} />
+                                    <span className="text-foreground/90 flex-1 min-w-0">{renderItem(item)}</span>
+                                    {isCatalog ? (
+                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-success/40 text-success bg-success/5 shrink-0">
+                                        Catalog
+                                      </Badge>
+                                    ) : (
+                                      typeof item === 'object' && item !== null && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground shrink-0">
+                                          AI
+                                        </Badge>
+                                      )
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                           {(meal.calories || meal.protein || meal.carbs || meal.fats) && (
