@@ -4,7 +4,8 @@ import { useBranchContext } from '@/contexts/BranchContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CheckCircle2, AlertCircle, ShieldX, ShieldAlert } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, AlertCircle, ShieldX, ShieldAlert, ArrowRight } from 'lucide-react';
 
 const SYSTEM_EVENTS = [
   { value: 'member_created', label: 'New Member Created' },
@@ -54,7 +55,12 @@ const STATE_META: Record<RowState, { label: string; icon: any; cls: string }> = 
   'not-mapped': { label: 'Not Mapped', icon: AlertCircle, cls: 'bg-muted text-muted-foreground' },
 };
 
-export function WhatsAppTemplatesHealth() {
+interface WhatsAppTemplatesHealthProps {
+  /** Optional jump-to-mapping handler. When provided, failing rows get a "Map" CTA. */
+  onFixClick?: () => void;
+}
+
+export function WhatsAppTemplatesHealth({ onFixClick }: WhatsAppTemplatesHealthProps = {}) {
   const { effectiveBranchId } = useBranchContext();
 
   const { data: triggers = [], isLoading } = useQuery<TriggerWithTemplate[]>({
@@ -114,9 +120,21 @@ export function WhatsAppTemplatesHealth() {
                   )}
                 </p>
               </div>
-              <Badge variant="outline" className={`${meta.cls} gap-1 shrink-0`}>
-                <Icon className="h-3 w-3" /> {meta.label}
-              </Badge>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant="outline" className={`${meta.cls} gap-1`}>
+                  <Icon className="h-3 w-3" /> {meta.label}
+                </Badge>
+                {onFixClick && state !== 'ok' && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={onFixClick}
+                  >
+                    Map <ArrowRight className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           );
         })}
