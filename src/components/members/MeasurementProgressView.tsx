@@ -8,6 +8,7 @@ import type { MemberMeasurementRecord } from '@/lib/measurements/types';
 import { MeasurementMetricsTab } from './MeasurementMetricsTab';
 import { MeasurementPhotoGallery } from './MeasurementPhotoGallery';
 import { BodyComparisonView } from '@/components/progress3d/BodyComparisonView';
+import { hasBodyShapeMeasurements } from '@/lib/measurements/measurementToAvatar';
 
 interface MeasurementProgressViewProps {
   memberId: string;
