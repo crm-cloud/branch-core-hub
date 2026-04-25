@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { ResponsiveSheet, ResponsiveSheetHeader, ResponsiveSheetTitle, ResponsiveSheetDescription, ResponsiveSheetFooter } from '@/components/ui/ResponsiveSheet';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2, Tag, X, Check } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2, Tag, X, Check, MessageCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +17,9 @@ import { getOrCreateWallet } from '@/services/walletService';
 import { useNavigate } from 'react-router-dom';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { escapeHtml } from '@/utils/htmlEscape';
+import { buildPaymentReceiptPdf } from '@/utils/pdfBlob';
+import { blobToBase64 } from '@/utils/uploadAttachment';
+import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
 
 export default function POSPage() {
   const queryClient = useQueryClient();
