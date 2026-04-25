@@ -149,7 +149,7 @@ export function StaffBiometricsTab({
               <CardContent className="space-y-3">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-20 w-20 rounded-xl border-2 border-dashed border-muted-foreground/30">
-                    <AvatarImage src={biometricPhotoUrl || undefined} className="object-cover" />
+                    <AvatarImage src={biometricSignedUrl || biometricPhotoUrl || undefined} className="object-cover" />
                     <AvatarFallback className="rounded-xl text-lg bg-muted">
                       <Fingerprint className="h-6 w-6 text-muted-foreground" />
                     </AvatarFallback>
