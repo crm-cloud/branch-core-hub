@@ -192,6 +192,28 @@ export default function MembersPage() {
     }));
   }, [members, memberships, search]);
 
+  // Bulk-fetch outstanding dues for the current page of members so we can
+  // surface a "Dues" badge inline without per-row queries.
+  const { data: duesByMember = {} } = useQuery<Record<string, number>>({
+    queryKey: ['member-dues', memberIds],
+    queryFn: async () => {
+      if (memberIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('member_id, total_amount, amount_paid, status')
+        .in('member_id', memberIds)
+        .in('status', ['pending', 'partial', 'overdue']);
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data || []).forEach((inv: any) => {
+        const due = Number(inv.total_amount || 0) - Number(inv.amount_paid || 0);
+        if (due > 0) map[inv.member_id] = (map[inv.member_id] || 0) + due;
+      });
+      return map;
+    },
+    enabled: memberIds.length > 0,
+  });
+
   // Filter by member status
   const filteredMembers = statusFilter === 'all' 
     ? membersWithMemberships 
