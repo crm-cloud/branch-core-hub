@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { WhatsAppAISettings } from '@/components/settings/WhatsAppAISettings';
 import { AIFlowBuilderSettings } from '@/components/settings/AIFlowBuilderSettings';
 import { LeadNurtureSettings } from '@/components/settings/LeadNurtureSettings';
+import { AIProvidersSettings } from '@/components/settings/AIProvidersSettings';
 
 type ToolDef = {
   name: string;
