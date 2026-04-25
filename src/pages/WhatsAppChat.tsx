@@ -312,9 +312,11 @@ export default function WhatsAppChatPage() {
     enabled: !!selectedContact,
   });
 
-  // Play sound on incoming inbound message arrival
+  // Play sound on incoming inbound message arrival.
+  // Pass selectedContact?.phone_number as resetKey so switching contacts
+  // re-baselines the counter and doesn't ping for previously-loaded messages.
   const inboundCount = messages.filter((m) => m.direction === 'inbound').length;
-  useChatSound(inboundCount);
+  useChatSound(inboundCount, selectedContact?.phone_number ?? null);
 
   // AI Tool Logs for this contact (for thought banners)
   const { data: aiToolLogs = [] } = useQuery({
