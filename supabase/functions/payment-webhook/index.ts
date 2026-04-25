@@ -432,27 +432,44 @@ serve(async (req: Request) => {
 
     if (existingTxn) {
       outcome.invoiceId = existingTxn.invoice_id;
-      // We'll let persistOutcome handle the metadata enrichment in the unified path,
-      // but still update invoice/payments side-effects here.
+      // Route the captured payment through the authoritative settle_payment RPC
+      // so that membership activation, hardware-access evaluation, referral
+      // conversion/reward logic, lifecycle events and audit trail all fire.
       if (transactionData.status === "captured" && existingTxn.invoice_id) {
-        await supabase.from("invoices").update({
-          status: "paid",
-          amount_paid: transactionData.amount,
-          updated_at: new Date().toISOString(),
-        }).eq("id", existingTxn.invoice_id);
-
         const { data: invoice } = await supabase
-          .from("invoices").select("member_id, branch_id").eq("id", existingTxn.invoice_id).maybeSingle();
+          .from("invoices")
+          .select("member_id, branch_id, total_amount, amount_paid, status")
+          .eq("id", existingTxn.invoice_id)
+          .maybeSingle();
+
         if (invoice) {
-          await supabase.from("payments").insert({
-            branch_id: invoice.branch_id,
-            member_id: invoice.member_id,
-            invoice_id: existingTxn.invoice_id,
-            amount: transactionData.amount,
-            payment_method: "online",
-            status: "completed",
-            transaction_id: transactionData.gateway_payment_id,
+          // Idempotency key so retried webhook deliveries don't double-settle.
+          const idemKey = `webhook:${gateway}:${transactionData.gateway_payment_id ?? transactionData.gateway_order_id}`;
+
+          const { data: settleResult, error: settleError } = await supabase.rpc("settle_payment", {
+            p_branch_id: invoice.branch_id,
+            p_invoice_id: existingTxn.invoice_id,
+            p_member_id: invoice.member_id,
+            p_amount: transactionData.amount,
+            p_payment_method: "online",
+            p_transaction_id: transactionData.gateway_payment_id,
+            p_notes: `Online payment via ${gateway}`,
+            p_received_by: null,
+            p_income_category_id: null,
+            p_payment_source: gateway,
+            p_idempotency_key: idemKey,
+            p_gateway_payment_id: transactionData.gateway_payment_id,
+            p_payment_transaction_id: existingTxn.id,
+            p_metadata: { gateway, source: "payment-webhook" },
           });
+
+          if (settleError) {
+            console.error("[payment-webhook] settle_payment RPC failed:", settleError);
+            outcome.errorMessage = `settle_payment failed: ${settleError.message}`;
+          } else if (settleResult && (settleResult as any).success === false) {
+            console.error("[payment-webhook] settle_payment returned error:", settleResult);
+            outcome.errorMessage = `settle_payment error: ${(settleResult as any).error}`;
+          }
         }
       }
     }
