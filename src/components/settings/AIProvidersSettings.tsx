@@ -42,8 +42,8 @@ const PROVIDER_DEFAULTS: Record<string, { base_url: string; secret_name: string;
   google: {
     base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     secret_name: 'GOOGLE_AI_API_KEY',
-    default_model: 'gemini-2.0-flash',
-    help: 'Google Gemini direct API (OpenAI-compatible). Free tier available. Get key at aistudio.google.com/apikey. Models: gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro.',
+    default_model: 'gemini-2.5-flash',
+    help: 'Google Gemini direct API (OpenAI-compatible). Free tier available. Get key at aistudio.google.com/apikey. Current models: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro, gemini-flash-latest, gemini-flash-lite-latest. (gemini-2.0-flash is deprecated.)',
   },
   groq: {
     base_url: 'https://api.groq.com/openai/v1/chat/completions',
