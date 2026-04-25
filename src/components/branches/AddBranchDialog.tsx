@@ -60,12 +60,23 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
 
   const createBranch = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Uniqueness pre-check on code
+      const codeUpper = data.code.toUpperCase();
+      const { data: existing } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('code', codeUpper)
+        .maybeSingle();
+      if (existing) {
+        throw new Error(`Branch code "${codeUpper}" is already in use. Try a different code.`);
+      }
+
       // Create branch
       const { data: branch, error: branchError } = await supabase
         .from('branches')
         .insert({
           name: data.name,
-          code: data.code.toUpperCase(),
+          code: codeUpper,
           address: data.address,
           city: data.city,
           state: data.state,
