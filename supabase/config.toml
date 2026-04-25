@@ -102,3 +102,5 @@ verify_jwt = false
 [functions.notify-lead-created]
 verify_jwt = false
 
+[functions.process-comm-retry-queue]
+verify_jwt = false
