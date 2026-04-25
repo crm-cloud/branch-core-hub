@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone, Paperclip } from 'lucide-react';
 import { format } from 'date-fns';
@@ -22,17 +23,39 @@ interface InvoiceShareDrawerProps {
   invoice: any;
 }
 
-export function InvoiceShareDrawer({ open, onOpenChange, invoice }: InvoiceShareDrawerProps) {
-  const [email, setEmail] = useState(invoice?.members?.profiles?.email || '');
-  const [phone, setPhone] = useState(invoice?.members?.profiles?.phone || '');
+export function InvoiceShareDrawer({ open, onOpenChange, invoice: invoiceProp }: InvoiceShareDrawerProps) {
+  const [email, setEmail] = useState(invoiceProp?.members?.profiles?.email || '');
+  const [phone, setPhone] = useState(invoiceProp?.members?.profiles?.phone || '');
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  if (!invoice) return null;
+  // Always fetch the full invoice (with branch + items) when the drawer opens so
+  // the generated PDF has every field, regardless of how the caller queried.
+  const { data: fullInvoice } = useQuery({
+    queryKey: ['invoice-share-detail', invoiceProp?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          members(member_code, profiles:user_id(full_name, email, phone)),
+          branch:branch_id(name, address, phone, email, gstin),
+          invoice_items(*)
+        `)
+        .eq('id', invoiceProp.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!invoiceProp?.id && open,
+  });
+
+  if (!invoiceProp) return null;
+  const invoice: any = fullInvoice || invoiceProp;
 
   const memberProfile = (invoice.members as any)?.profiles;
   const memberName = memberProfile?.full_name || 'Customer';
-  const branch = (invoice as any).branches || {};
+  const branch = (invoice as any).branch || (invoice as any).branches || {};
 
   // WhatsApp message template
   const whatsappMessage = `*Invoice from Incline Fitness*
