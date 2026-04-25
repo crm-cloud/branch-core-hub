@@ -1481,6 +1481,90 @@ export type Database = {
           },
         ]
       }
+      communication_retry_queue: {
+        Row: {
+          branch_id: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          content: string
+          created_at: string
+          id: string
+          last_error: string | null
+          max_retries: number
+          member_id: string | null
+          metadata: Json | null
+          next_retry_at: string
+          original_log_id: string | null
+          recipient: string
+          retry_count: number
+          status: string
+          subject: string | null
+          succeeded_at: string | null
+          template_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          branch_id?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_retries?: number
+          member_id?: string | null
+          metadata?: Json | null
+          next_retry_at?: string
+          original_log_id?: string | null
+          recipient: string
+          retry_count?: number
+          status?: string
+          subject?: string | null
+          succeeded_at?: string | null
+          template_id?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_retries?: number
+          member_id?: string | null
+          metadata?: Json | null
+          next_retry_at?: string
+          original_log_id?: string | null
+          recipient?: string
+          retry_count?: number
+          status?: string
+          subject?: string | null
+          succeeded_at?: string | null
+          template_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_retry_queue_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_retry_queue_original_log_id_fkey"
+            columns: ["original_log_id"]
+            isOneToOne: false
+            referencedRelation: "communication_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_signature_requests: {
         Row: {
           branch_id: string | null
@@ -7244,6 +7328,8 @@ export type Database = {
           assigned_to: string | null
           bot_active: boolean | null
           branch_id: string | null
+          captured_lead_id: string | null
+          conversation_summary: string | null
           created_at: string | null
           id: string
           is_unread: boolean | null
@@ -7254,12 +7340,16 @@ export type Database = {
           paused_by: string | null
           phone_number: string
           platform: Database["public"]["Enums"]["messaging_platform"]
+          summary_message_count: number | null
+          summary_updated_at: string | null
           updated_at: string | null
         }
         Insert: {
           assigned_to?: string | null
           bot_active?: boolean | null
           branch_id?: string | null
+          captured_lead_id?: string | null
+          conversation_summary?: string | null
           created_at?: string | null
           id?: string
           is_unread?: boolean | null
@@ -7270,12 +7360,16 @@ export type Database = {
           paused_by?: string | null
           phone_number: string
           platform?: Database["public"]["Enums"]["messaging_platform"]
+          summary_message_count?: number | null
+          summary_updated_at?: string | null
           updated_at?: string | null
         }
         Update: {
           assigned_to?: string | null
           bot_active?: boolean | null
           branch_id?: string | null
+          captured_lead_id?: string | null
+          conversation_summary?: string | null
           created_at?: string | null
           id?: string
           is_unread?: boolean | null
@@ -7286,6 +7380,8 @@ export type Database = {
           paused_by?: string | null
           phone_number?: string
           platform?: Database["public"]["Enums"]["messaging_platform"]
+          summary_message_count?: number | null
+          summary_updated_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -7294,6 +7390,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_chat_settings_captured_lead_id_fkey"
+            columns: ["captured_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
