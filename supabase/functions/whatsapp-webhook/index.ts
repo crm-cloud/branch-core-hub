@@ -1365,6 +1365,23 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
           },
           { onConflict: "branch_id,phone_number" },
         );
+
+        // Fire-and-forget: dispatch lead notifications (admin/manager/lead WhatsApp+SMS).
+        // Belt-and-suspenders: a DB trigger also fires this, but we keep the explicit
+        // call so notifications are dispatched immediately even if the trigger lags.
+        try {
+          const notifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-lead-created`;
+          fetch(notifyUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({ lead_id: newLead.id, branch_id: branchId }),
+          }).catch((e) => console.error("Lead notification dispatch failed (whatsapp-webhook):", e));
+        } catch (e) {
+          console.error("Lead notification setup error (whatsapp-webhook):", e);
+        }
       }
 
       const handoffMessage = leadCaptureConfig?.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
