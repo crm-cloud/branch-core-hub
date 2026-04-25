@@ -206,6 +206,42 @@ export type Database = {
           },
         ]
       }
+      ai_call_logs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          fallback_used: boolean
+          id: string
+          model: string | null
+          provider: string
+          scope: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          fallback_used?: boolean
+          id?: string
+          model?: string | null
+          provider: string
+          scope?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          fallback_used?: boolean
+          id?: string
+          model?: string | null
+          provider?: string
+          scope?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       ai_plan_logs: {
         Row: {
           created_at: string
@@ -246,6 +282,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ai_provider_configs: {
+        Row: {
+          api_key_secret_name: string | null
+          base_url: string | null
+          created_at: string
+          created_by: string | null
+          default_model: string
+          display_name: string
+          enable_fallback: boolean
+          extra_config: Json | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          provider: string
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_secret_name?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_model: string
+          display_name: string
+          enable_fallback?: boolean
+          extra_config?: Json | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          provider: string
+          scope?: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_secret_name?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_model?: string
+          display_name?: string
+          enable_fallback?: boolean
+          extra_config?: Json | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          provider?: string
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       ai_tool_logs: {
         Row: {
