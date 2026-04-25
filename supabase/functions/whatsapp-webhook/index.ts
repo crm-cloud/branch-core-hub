@@ -1097,7 +1097,6 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
   }
 
   // Call Lovable AI Gateway
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set — skipping AI auto-reply");
     return;
