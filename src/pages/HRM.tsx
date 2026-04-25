@@ -90,6 +90,8 @@ export default function HRMPage() {
   const [editingTrainer, setEditingTrainer] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [searchTerm, setSearchTerm] = useState('');
+  const [signedViewerOpen, setSignedViewerOpen] = useState(false);
+  const [viewingSignedContract, setViewingSignedContract] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: employees = [], isLoading } = useQuery({
