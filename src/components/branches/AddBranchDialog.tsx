@@ -21,6 +21,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
   const { hasAnyRole } = useAuth();
   const canCreateBranch = hasAnyRole(['owner', 'admin']);
 
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
