@@ -467,82 +467,30 @@ export async function purchaseBenefitCredits(
   invoiceId?: string,
   branchId?: string
 ): Promise<MemberBenefitCredits> {
-  // Get package details
-  const { data: pkg, error: pkgError } = await supabase
-    .from("benefit_packages")
-    .select("*")
-    .eq("id", packageId)
-    .single();
-  
-  if (pkgError) throw pkgError;
-  if (!pkg) throw new Error("Package not found");
-
-  const effectiveBranchId = branchId || pkg.branch_id;
-  
-  // Auto-generate invoice and payment if none provided
-  if (!invoiceId && effectiveBranchId) {
-    // Create invoice
-    const { data: invoice, error: invError } = await supabase
-      .from("invoices")
-      .insert({
-        branch_id: effectiveBranchId,
-        member_id: memberId,
-        subtotal: pkg.price,
-        total_amount: pkg.price,
-        amount_paid: pkg.price,
-        status: "paid",
-        due_date: new Date().toISOString().split("T")[0],
-        invoice_type: "benefit_addon",
-      })
-      .select("id")
-      .single();
-
-    if (invError) throw invError;
-    invoiceId = invoice.id;
-
-    // Create invoice item
-    await supabase.from("invoice_items").insert({
-      invoice_id: invoice.id,
-      description: `Add-on: ${pkg.name} (${pkg.quantity} credits)`,
-      unit_price: pkg.price,
-      quantity: 1,
-      total_amount: pkg.price,
-      reference_type: "benefit_addon",
-      reference_id: packageId,
-    });
-
-    // Create payment record
-    await supabase.from("payments").insert({
-      invoice_id: invoice.id,
-      member_id: memberId,
-      branch_id: effectiveBranchId,
-      amount: pkg.price,
-      payment_method: "cash",
-      status: "completed",
-      payment_date: new Date().toISOString(),
-    });
+  // Routed through the unified payment authority via purchase_benefit_credits RPC
+  // (creates invoice + settles payment + inserts credits atomically).
+  const { data, error } = await supabase.rpc('purchase_benefit_credits', {
+    p_member_id: memberId,
+    p_membership_id: membershipId,
+    p_package_id: packageId,
+    p_branch_id: branchId ?? null,
+    p_payment_method: 'cash',
+    p_idempotency_key: `benefit-addon-${memberId}-${packageId}-${Date.now()}`,
+  });
+  if (error) throw error;
+  const result = data as { success: boolean; error?: string; credit_id?: string };
+  if (!result?.success || !result.credit_id) {
+    throw new Error(result?.error || 'Failed to purchase benefit credits');
   }
 
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + pkg.validity_days);
-  
-  const { data, error } = await supabase
-    .from("member_benefit_credits")
-    .insert({
-      member_id: memberId,
-      membership_id: membershipId,
-      benefit_type: pkg.benefit_type,
-      package_id: packageId,
-      credits_total: pkg.quantity,
-      credits_remaining: pkg.quantity,
-      expires_at: expiresAt.toISOString(),
-      invoice_id: invoiceId,
-    })
-    .select()
+  // Hydrate the freshly created credit row for the caller.
+  const { data: credit, error: fetchError } = await supabase
+    .from('member_benefit_credits')
+    .select('*')
+    .eq('id', result.credit_id)
     .single();
-  
-  if (error) throw error;
-  return data;
+  if (fetchError) throw fetchError;
+  return credit as MemberBenefitCredits;
 }
 
 export async function deductMemberCredits(
