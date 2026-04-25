@@ -896,10 +896,10 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
   const aiConfig = orgSettings?.whatsapp_ai_config as any;
   if (!aiConfig?.auto_reply_enabled) return;
 
-  // Check bot_active status
+  // Check bot_active status + load persistent memory in one shot
   const { data: chatSettings } = await supabase
     .from("whatsapp_chat_settings")
-    .select("bot_active")
+    .select("bot_active, captured_lead_id, conversation_summary, summary_updated_at, summary_message_count")
     .eq("branch_id", branchId)
     .eq("phone_number", phoneNumber)
     .maybeSingle();
