@@ -25,18 +25,21 @@ interface InvoiceShareDrawerProps {
 export function InvoiceShareDrawer({ open, onOpenChange, invoice }: InvoiceShareDrawerProps) {
   const [email, setEmail] = useState(invoice?.members?.profiles?.email || '');
   const [phone, setPhone] = useState(invoice?.members?.profiles?.phone || '');
-  
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
   if (!invoice) return null;
 
   const memberProfile = (invoice.members as any)?.profiles;
   const memberName = memberProfile?.full_name || 'Customer';
+  const branch = (invoice as any).branches || {};
 
   // WhatsApp message template
   const whatsappMessage = `*Invoice from Incline Fitness*
 
 Dear ${memberName},
 
-Your invoice #${invoice.invoice_number} is ready.
+Your invoice #${invoice.invoice_number} is ready. PDF attached.
 
 📋 *Invoice Details*
 Amount: ₹${invoice.total_amount.toLocaleString()}
@@ -54,7 +57,7 @@ Team Incline Fitness`;
   const emailSubject = `Invoice #${invoice.invoice_number} from Incline Fitness`;
   const emailBody = `Dear ${memberName},
 
-Please find your invoice details below:
+Please find your invoice details below (PDF attached):
 
 Invoice Number: ${invoice.invoice_number}
 Date: ${format(new Date(invoice.created_at), 'dd MMMM yyyy')}
@@ -67,29 +70,96 @@ Thank you for choosing Incline Fitness!
 Best regards,
 Team Incline Fitness`;
 
+  // Map the invoice row to the PDF builder input. Pulls items, branch, and
+  // member contact details so the generated PDF matches the on-screen invoice.
+  const buildPdfInput = (): InvoicePdfInput => ({
+    invoice_number: invoice.invoice_number,
+    created_at: invoice.created_at,
+    due_date: invoice.due_date,
+    status: invoice.status,
+    subtotal: Number(invoice.subtotal || 0),
+    discount_amount: Number(invoice.discount_amount || 0),
+    tax_amount: Number(invoice.tax_amount || 0),
+    gst_rate: Number(invoice.gst_rate || 0),
+    total_amount: Number(invoice.total_amount || 0),
+    amount_paid: Number(invoice.amount_paid || 0),
+    notes: invoice.notes,
+    is_gst_invoice: invoice.is_gst_invoice,
+    customer_gstin: invoice.customer_gstin,
+    items: (invoice.invoice_items || []).map((it: any) => ({
+      description: it.description,
+      quantity: Number(it.quantity || 1),
+      unit_price: Number(it.unit_price || 0),
+      total_amount: Number(it.total_amount || 0),
+      hsn_code: it.hsn_code,
+    })),
+    member_name: memberName,
+    member_code: (invoice.members as any)?.member_code,
+    member_email: memberProfile?.email,
+    member_phone: memberProfile?.phone,
+    branch_name: branch.name || 'Incline Fitness',
+    branch_address: branch.address,
+    branch_phone: branch.phone,
+    branch_email: branch.email,
+    gst_number: branch.gstin,
+  });
+
   const handleWhatsAppShare = async () => {
-    const formattedPhone = phone.replace(/\D/g, '');
-    const phoneNumber = formattedPhone.startsWith('91') ? formattedPhone : `91${formattedPhone}`;
-    await communicationService.sendWhatsApp(phoneNumber, whatsappMessage, {
-      branchId: invoice.branch_id,
-      memberId: invoice.member_id,
-    });
-    toast.success('Opening WhatsApp...');
+    if (!invoice.branch_id) {
+      toast.error('Branch context missing — cannot send via WhatsApp');
+      return;
+    }
+    setSendingWhatsApp(true);
+    try {
+      const pdf = buildInvoicePdf(buildPdfInput());
+      const result = await sendWhatsAppDocument({
+        branchId: invoice.branch_id,
+        phone,
+        memberId: invoice.member_id,
+        caption: whatsappMessage,
+        filename: `Invoice-${invoice.invoice_number}.pdf`,
+        pdf,
+        folder: 'invoices',
+      });
+      toast.success(result.fallback ? 'WhatsApp opened with PDF link (fallback)' : 'Invoice PDF sent via WhatsApp');
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Invoice WhatsApp share failed:', err);
+      toast.error(err?.message || 'Failed to send invoice');
+    } finally {
+      setSendingWhatsApp(false);
+    }
   };
 
   const handleEmailShare = async () => {
+    setSendingEmail(true);
     try {
-      await communicationService.sendEmailViaProvider(
-        email,
-        emailSubject,
-        `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
-        invoice.branch_id
-      );
-      toast.success('Email sent successfully');
-    } catch {
-      toast.error('Failed to send email');
+      const pdf = buildInvoicePdf(buildPdfInput());
+      const base64 = await blobToBase64(pdf);
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: email,
+          subject: emailSubject,
+          html: `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+          branch_id: invoice.branch_id,
+          attachments: [{
+            filename: `Invoice-${invoice.invoice_number}.pdf`,
+            content_base64: base64,
+            content_type: 'application/pdf',
+          }],
+        },
+      });
+      if (error) throw error;
+      toast.success('Invoice email sent with PDF attached');
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Invoice email share failed:', err);
+      toast.error(err?.message || 'Failed to send email');
+    } finally {
+      setSendingEmail(false);
     }
   };
+
 
   const handleSMSShare = async () => {
     await communicationService.sendSMS(phone, smsMessage, {
