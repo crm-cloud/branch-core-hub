@@ -206,6 +206,10 @@ export function useMemberData() {
       if (error) throw error;
       return hydrateMeasurementPhotoUrls(data || []);
     },
+    // Refresh signed photo URLs well before the 1h TTL so long sessions stay valid.
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 25 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // Calculate days remaining

@@ -30,6 +30,11 @@ export function MeasurementProgressView({ memberId, memberGender }: MeasurementP
       return hydrateMeasurementPhotoUrls((data || []) as MemberMeasurementRecord[]);
     },
     enabled: !!memberId,
+    // Signed photo URLs expire after 1h; refresh proactively well before that
+    // so long-lived sessions never see broken images.
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 25 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const getWeightTrend = (current: number | null, previous: number | null, goal: 'lose' | 'gain' | 'maintain' = 'maintain') => {

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { BodyModel } from './BodyModel';
@@ -95,23 +95,27 @@ function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & Ava
   );
 }
 
+/** Catches GLB load/parse errors at runtime and falls back to BodyModel. */
+class GltfErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: unknown) { console.warn('[AvatarGltf] GLB load failed, falling back:', err); }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
 export function AvatarGltf({ snapshot, interactiveRotationY }: AvatarGltfProps) {
   const url = MODEL_URLS[snapshot.genderPresentation];
   const available = useGltfAvailability(url);
+  const fallback = <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
 
-  if (available === null) {
-    // Probing — render fallback to avoid a flash of nothing.
-    return <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
-  }
-
-  if (!available) {
-    return <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
-  }
+  if (available !== true) return fallback;
 
   return (
-    <Suspense fallback={<BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />}>
-      <GltfMesh url={url} snapshot={snapshot} interactiveRotationY={interactiveRotationY} />
-    </Suspense>
+    <GltfErrorBoundary fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <GltfMesh url={url} snapshot={snapshot} interactiveRotationY={interactiveRotationY} />
+      </Suspense>
+    </GltfErrorBoundary>
   );
 }
 
