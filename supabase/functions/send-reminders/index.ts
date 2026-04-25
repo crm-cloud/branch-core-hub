@@ -1,3 +1,10 @@
+// send-reminders v2.0
+// Honest-delivery for ALL reminder types: payment, membership_expiry, class,
+// PT, benefit. Each reminder honors the per-branch reminder_configurations
+// channel (whatsapp / sms / email / notification), attempts the real provider
+// call, and only counts the reminder as `sent` when the provider confirms.
+// In-app notifications are still created in addition to outbound delivery.
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -5,6 +12,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+type Channel = "whatsapp" | "sms" | "email" | "notification";
+type DeliveryStatus = "sent" | "failed" | "skipped";
+
+interface DeliveryResult {
+  status: DeliveryStatus;
+  error: string | null;
+  channel: Channel;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -55,10 +71,17 @@ Deno.serve(async (req) => {
       benefit_reminders: 0,
       inactive_member_alerts: 0,
     };
+    const failures = {
+      payment_reminders: 0,
+      membership_expiry: 0,
+      class_reminders: 0,
+      pt_reminders: 0,
+      benefit_reminders: 0,
+    };
     const notifications: any[] = [];
     const commLogs: any[] = [];
 
-    // Load reminder configurations per branch (fallback to defaults if none configured)
+    // Load reminder configurations per branch
     const { data: allConfigs } = await adminClient.from("reminder_configurations").select("*").eq("is_enabled", true);
     const configMap = new Map<string, Map<string, any>>();
     for (const cfg of allConfigs || []) {
@@ -66,24 +89,131 @@ Deno.serve(async (req) => {
       configMap.get(cfg.branch_id)!.set(cfg.reminder_type, cfg);
     }
 
-    // Helper: check if a reminder type is enabled for a branch
-    function isReminderEnabled(branchId: string, type: string): boolean {
-      const branchConfigs = configMap.get(branchId);
-      if (!branchConfigs) return true; // No configs = all enabled by default
-      const cfg = branchConfigs.get(type);
-      if (!cfg) return true; // Not explicitly configured = enabled
-      return cfg.is_enabled;
+    function getConfig(branchId: string, type: string): any | null {
+      return configMap.get(branchId)?.get(type) || null;
     }
-
+    function isReminderEnabled(branchId: string, type: string): boolean {
+      const cfg = getConfig(branchId, type);
+      if (!cfg) return true; // default enabled
+      return cfg.is_enabled !== false;
+    }
     function getDaysBefore(branchId: string, type: string): number[] {
-      const branchConfigs = configMap.get(branchId);
-      if (!branchConfigs) return [7, 3, 1]; // defaults
-      const cfg = branchConfigs.get(type);
+      const cfg = getConfig(branchId, type);
       if (!cfg || !cfg.days_before) return [7, 3, 1];
       return cfg.days_before;
     }
+    function getChannel(branchId: string, type: string): Channel {
+      const cfg = getConfig(branchId, type);
+      const ch = (cfg?.channel || "notification") as Channel;
+      return (["whatsapp", "sms", "email", "notification"] as Channel[]).includes(ch) ? ch : "notification";
+    }
 
-    // 1. Payment reminders
+    /**
+     * Attempt real outbound delivery via the matching provider edge function.
+     * Returns honest status — `sent` only when the provider confirmed.
+     */
+    async function deliver(
+      channel: Channel,
+      params: {
+        branchId: string;
+        memberId?: string | null;
+        phone?: string | null;
+        email?: string | null;
+        subject: string;
+        message: string;
+      },
+    ): Promise<DeliveryResult> {
+      try {
+        if (channel === "notification") {
+          // Caller is responsible for pushing into `notifications` separately.
+          return { status: "skipped", error: "channel=notification (in-app only)", channel };
+        }
+        if (channel === "whatsapp") {
+          if (!params.phone) {
+            return { status: "skipped", error: "no phone number", channel };
+          }
+          // send-whatsapp requires a whatsapp_messages row first.
+          const { data: msgRow, error: insErr } = await adminClient
+            .from("whatsapp_messages")
+            .insert({
+              branch_id: params.branchId,
+              phone_number: params.phone,
+              direction: "outbound",
+              content: params.message,
+              status: "pending",
+            })
+            .select("id")
+            .single();
+          if (insErr || !msgRow) {
+            return { status: "failed", error: insErr?.message || "msg insert failed", channel };
+          }
+          const { error } = await adminClient.functions.invoke("send-whatsapp", {
+            body: {
+              message_id: msgRow.id,
+              phone_number: params.phone,
+              content: params.message,
+              branch_id: params.branchId,
+            },
+          });
+          if (error) return { status: "failed", error: error.message, channel };
+          return { status: "sent", error: null, channel };
+        }
+        if (channel === "sms") {
+          if (!params.phone) {
+            return { status: "skipped", error: "no phone number", channel };
+          }
+          const { error } = await adminClient.functions.invoke("send-sms", {
+            body: {
+              to: params.phone,
+              message: params.message,
+              branch_id: params.branchId,
+              member_id: params.memberId || undefined,
+            },
+          });
+          if (error) return { status: "failed", error: error.message, channel };
+          return { status: "sent", error: null, channel };
+        }
+        if (channel === "email") {
+          if (!params.email) {
+            return { status: "skipped", error: "no email", channel };
+          }
+          const { error } = await adminClient.functions.invoke("send-email", {
+            body: {
+              to: params.email,
+              subject: params.subject,
+              html: `<p>${params.message}</p>`,
+              branch_id: params.branchId,
+              member_id: params.memberId || undefined,
+            },
+          });
+          if (error) return { status: "failed", error: error.message, channel };
+          return { status: "sent", error: null, channel };
+        }
+        return { status: "skipped", error: `unknown channel: ${channel}`, channel };
+      } catch (err: any) {
+        return { status: "failed", error: err?.message || String(err), channel };
+      }
+    }
+
+    function logComm(
+      result: DeliveryResult,
+      params: { branchId: string; memberId?: string | null; recipient: string; subject: string; message: string },
+    ) {
+      // Only record an outbound row when something actually went out.
+      if (result.status !== "sent") return;
+      commLogs.push({
+        branch_id: params.branchId,
+        type: result.channel,
+        recipient: params.recipient,
+        subject: params.subject,
+        content: params.message,
+        status: "sent",
+        member_id: params.memberId || null,
+        sent_at: now.toISOString(),
+      });
+    }
+
+    // ── 1. Payment reminders ────────────────────────────────────────
     const { data: pendingReminders } = await adminClient
       .from("payment_reminders")
       .select("*, members:member_id (user_id, member_code, branch_id, profiles:user_id (full_name, phone, email))")
@@ -102,73 +232,49 @@ Deno.serve(async (req) => {
           ? "due today"
           : "overdue";
 
-      // In-app notification (separate from outbound delivery state).
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
         message: `Hi ${name}, your payment is ${reminderCopy}.`,
         type: "warning", category: "payment", action_url: "/my-invoices",
       });
 
-      // Honest outbound delivery: only mark `sent` if the provider call succeeds.
-      const channel: string = reminder.channel || "notification";
+      const subject = "Payment Reminder";
       const message = `Hi ${name}, your payment is ${reminderCopy}. Open your invoices in the app to pay.`;
-      let deliveryStatus: "sent" | "failed" | "skipped" = "skipped";
-      let deliveryError: string | null = null;
+      const channel = (reminder.channel as Channel) || getChannel(reminder.branch_id, "payment_due");
 
-      try {
-        if (channel === "whatsapp" && member.profiles?.phone) {
-          const { error } = await adminClient.functions.invoke("send-whatsapp", {
-            body: { to: member.profiles.phone, message, branch_id: reminder.branch_id, member_id: reminder.member_id },
-          });
-          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
-          else deliveryStatus = "sent";
-        } else if (channel === "sms" && member.profiles?.phone) {
-          const { error } = await adminClient.functions.invoke("send-sms", {
-            body: { to: member.profiles.phone, message, branch_id: reminder.branch_id, member_id: reminder.member_id },
-          });
-          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
-          else deliveryStatus = "sent";
-        } else if (channel === "email" && member.profiles?.email) {
-          const { error } = await adminClient.functions.invoke("send-email", {
-            body: { to: member.profiles.email, subject: "Payment Reminder", html: `<p>${message}</p>`, branch_id: reminder.branch_id, member_id: reminder.member_id },
-          });
-          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
-          else deliveryStatus = "sent";
-        } else {
-          // No usable channel/recipient — record honestly as skipped.
-          deliveryStatus = "skipped";
-          deliveryError = `No recipient for channel "${channel}"`;
-        }
-      } catch (err: any) {
-        deliveryStatus = "failed";
-        deliveryError = err?.message || String(err);
-      }
+      const delivery = await deliver(channel, {
+        branchId: reminder.branch_id,
+        memberId: reminder.member_id,
+        phone: member.profiles?.phone,
+        email: member.profiles?.email,
+        subject,
+        message,
+      });
 
-      // Only log a comm-log entry when something actually went out.
-      if (deliveryStatus === "sent") {
-        commLogs.push({
-          branch_id: reminder.branch_id, type: channel,
-          recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-          subject: "Payment Reminder", content: message,
-          status: "sent", member_id: reminder.member_id, sent_at: now.toISOString(),
-        });
-      }
+      logComm(delivery, {
+        branchId: reminder.branch_id,
+        memberId: reminder.member_id,
+        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+        subject,
+        message,
+      });
 
       await adminClient
         .from("payment_reminders")
         .update({
-          status: deliveryStatus === "sent" ? "sent" : deliveryStatus === "failed" ? "failed" : "skipped",
-          delivery_status: deliveryStatus,
-          last_error: deliveryError,
+          status: delivery.status === "sent" ? "sent" : delivery.status === "failed" ? "failed" : "skipped",
+          delivery_status: delivery.status,
+          last_error: delivery.error,
           attempt_count: (reminder.attempt_count || 0) + 1,
-          sent_at: deliveryStatus === "sent" ? now.toISOString() : null,
+          sent_at: delivery.status === "sent" ? now.toISOString() : null,
         })
         .eq("id", reminder.id);
 
-      if (deliveryStatus === "sent") results.payment_reminders++;
+      if (delivery.status === "sent") results.payment_reminders++;
+      else if (delivery.status === "failed") failures.payment_reminders++;
     }
 
-    // 2. Birthday wishes
+    // ── 2. Birthday wishes (in-app only — kept lightweight) ─────────
     const { data: birthdayProfiles } = await adminClient.from("profiles").select("id, full_name, date_of_birth, email, phone");
     for (const profile of birthdayProfiles || []) {
       if (!profile.date_of_birth) continue;
@@ -181,10 +287,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Membership expiry reminders (configurable days_before per branch)
+    // ── 3. Membership expiry reminders (HONEST delivery) ────────────
     const { data: activeBranches } = await adminClient.from("branches").select("id").eq("is_active", true);
     for (const branch of activeBranches || []) {
       if (!isReminderEnabled(branch.id, "membership_expiry")) continue;
+      const channel = getChannel(branch.id, "membership_expiry");
       const daysBeforeArr = getDaysBefore(branch.id, "membership_expiry");
 
       for (const daysOut of daysBeforeArr) {
@@ -200,26 +307,39 @@ Deno.serve(async (req) => {
           const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", member.user_id).eq("category", "membership").ilike("message", `%${daysOut} day%`).gte("created_at", today + "T00:00:00");
           if ((count || 0) > 0) continue;
           const planName = (ms.membership_plans as any)?.name || "your plan";
+          const memberName = member.profiles?.full_name || "Member";
+          const message = `Hi ${memberName}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now to avoid interruption.`;
+          const subject = "Membership Expiring Soon";
+
           notifications.push({
-            user_id: member.user_id, branch_id: ms.branch_id, title: "Membership Expiring Soon",
-            message: `Hi ${member.profiles?.full_name || "Member"}, your membership (${planName}) expires in ${daysOut} day${daysOut > 1 ? "s" : ""}. Renew now.`,
-            type: "warning", category: "membership", action_url: "/my-membership",
+            user_id: member.user_id, branch_id: ms.branch_id, title: subject,
+            message, type: "warning", category: "membership", action_url: "/my-membership",
           });
-          commLogs.push({
-            branch_id: ms.branch_id, type: "notification",
+
+          const delivery = await deliver(channel, {
+            branchId: ms.branch_id,
+            memberId: ms.member_id,
+            phone: member.profiles?.phone,
+            email: member.profiles?.email,
+            subject,
+            message,
+          });
+          logComm(delivery, {
+            branchId: ms.branch_id, memberId: ms.member_id,
             recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-            subject: "Membership Expiry Reminder", content: `${planName} expires in ${daysOut} days for ${member.profiles?.full_name}`,
-            status: "sent", member_id: ms.member_id, sent_at: now.toISOString(),
+            subject, message,
           });
-          results.membership_expiry++;
+
+          if (delivery.status === "sent") results.membership_expiry++;
+          else if (delivery.status === "failed") failures.membership_expiry++;
         }
       }
     }
 
-    // 4. Class reminders (tomorrow)
+    // ── 4. Class reminders (HONEST delivery) ────────────────────────
     const { data: tomorrowClasses } = await adminClient
       .from("class_bookings")
-      .select("id, member_id, class_id, classes:class_id (name, scheduled_at, branch_id), members:member_id (user_id, profiles:user_id (full_name))")
+      .select("id, member_id, class_id, classes:class_id (name, scheduled_at, branch_id), members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email))")
       .eq("status", "booked");
     for (const booking of tomorrowClasses || []) {
       const cls = booking.classes as any;
@@ -227,28 +347,76 @@ Deno.serve(async (req) => {
       if (!isReminderEnabled(cls.branch_id, "class_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
-      notifications.push({ user_id: member.user_id, branch_id: cls.branch_id, title: "Class Tomorrow", message: `Reminder: You have "${cls.name}" scheduled for tomorrow.`, type: "info", category: "class", action_url: "/my-classes" });
-      results.class_reminders++;
+      const channel = getChannel(cls.branch_id, "class_reminder");
+      const memberName = member.profiles?.full_name || "Member";
+      const subject = "Class Tomorrow";
+      const message = `Hi ${memberName}, reminder: you have "${cls.name}" scheduled for tomorrow. See you there!`;
+
+      notifications.push({
+        user_id: member.user_id, branch_id: cls.branch_id, title: subject,
+        message, type: "info", category: "class", action_url: "/my-classes",
+      });
+
+      const delivery = await deliver(channel, {
+        branchId: cls.branch_id,
+        memberId: booking.member_id,
+        phone: member.profiles?.phone,
+        email: member.profiles?.email,
+        subject,
+        message,
+      });
+      logComm(delivery, {
+        branchId: cls.branch_id, memberId: booking.member_id,
+        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+        subject, message,
+      });
+
+      if (delivery.status === "sent") results.class_reminders++;
+      else if (delivery.status === "failed") failures.class_reminders++;
     }
 
-    // 5. PT session reminders (tomorrow)
+    // ── 5. PT session reminders (HONEST delivery) ───────────────────
     const { data: tomorrowPT } = await adminClient
       .from("pt_sessions")
-      .select("id, member_pt_package_id, trainer_id, scheduled_at, member_pt_packages:member_pt_package_id (member_id, branch_id, members:member_id (user_id, profiles:user_id (full_name)))")
+      .select("id, member_pt_package_id, trainer_id, scheduled_at, member_pt_packages:member_pt_package_id (member_id, branch_id, members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email)))")
       .eq("status", "scheduled").gte("scheduled_at", tomorrow + "T00:00:00").lt("scheduled_at", tomorrow + "T23:59:59");
     for (const session of tomorrowPT || []) {
       const pkg = session.member_pt_packages as any;
       const member = pkg?.members;
       if (!member?.user_id) continue;
       if (!isReminderEnabled(pkg.branch_id, "pt_reminder")) continue;
-      notifications.push({ user_id: member.user_id, branch_id: pkg.branch_id, title: "PT Session Tomorrow", message: `Reminder: You have a Personal Training session scheduled for tomorrow.`, type: "info", category: "pt_session", action_url: "/my-pt-sessions" });
-      results.pt_reminders++;
+      const channel = getChannel(pkg.branch_id, "pt_reminder");
+      const memberName = member.profiles?.full_name || "Member";
+      const subject = "PT Session Tomorrow";
+      const message = `Hi ${memberName}, reminder: you have a Personal Training session scheduled for tomorrow.`;
+
+      notifications.push({
+        user_id: member.user_id, branch_id: pkg.branch_id, title: subject,
+        message, type: "info", category: "pt_session", action_url: "/my-pt-sessions",
+      });
+
+      const delivery = await deliver(channel, {
+        branchId: pkg.branch_id,
+        memberId: pkg.member_id,
+        phone: member.profiles?.phone,
+        email: member.profiles?.email,
+        subject,
+        message,
+      });
+      logComm(delivery, {
+        branchId: pkg.branch_id, memberId: pkg.member_id,
+        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+        subject, message,
+      });
+
+      if (delivery.status === "sent") results.pt_reminders++;
+      else if (delivery.status === "failed") failures.pt_reminders++;
     }
 
-    // 6. Benefit booking reminders (tomorrow)
+    // ── 6. Benefit booking reminders (HONEST delivery) ──────────────
     const { data: tomorrowBenefits } = await adminClient
       .from("benefit_bookings")
-      .select("id, member_id, slot_id, benefit_slots:slot_id (slot_date, start_time, branch_id, benefit_type), members:member_id (user_id, profiles:user_id (full_name))")
+      .select("id, member_id, slot_id, benefit_slots:slot_id (slot_date, start_time, branch_id, benefit_type), members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email))")
       .eq("status", "booked");
     for (const booking of tomorrowBenefits || []) {
       const slot = booking.benefit_slots as any;
@@ -256,11 +424,35 @@ Deno.serve(async (req) => {
       if (!isReminderEnabled(slot.branch_id, "benefit_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
-      notifications.push({ user_id: member.user_id, branch_id: slot.branch_id, title: "Benefit Booking Tomorrow", message: `Reminder: You have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`, type: "info", category: "benefit", action_url: "/my-benefits" });
-      results.benefit_reminders++;
+      const channel = getChannel(slot.branch_id, "benefit_reminder");
+      const memberName = member.profiles?.full_name || "Member";
+      const subject = "Benefit Booking Tomorrow";
+      const message = `Hi ${memberName}, reminder: you have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`;
+
+      notifications.push({
+        user_id: member.user_id, branch_id: slot.branch_id, title: subject,
+        message, type: "info", category: "benefit", action_url: "/my-benefits",
+      });
+
+      const delivery = await deliver(channel, {
+        branchId: slot.branch_id,
+        memberId: booking.member_id,
+        phone: member.profiles?.phone,
+        email: member.profiles?.email,
+        subject,
+        message,
+      });
+      logComm(delivery, {
+        branchId: slot.branch_id, memberId: booking.member_id,
+        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+        subject, message,
+      });
+
+      if (delivery.status === "sent") results.benefit_reminders++;
+      else if (delivery.status === "failed") failures.benefit_reminders++;
     }
 
-    // 7. Inactive member alerts — only notify STAFF for Day 21+ members
+    // ── 7. Inactive member alerts (in-app only, staff-targeted) ─────
     try {
       for (const branch of activeBranches || []) {
         if (!isReminderEnabled(branch.id, "inactive_member")) continue;
@@ -280,14 +472,12 @@ Deno.serve(async (req) => {
             .eq("member_id", member.member_id)
             .gt("stage_level", 0);
 
-          // ✅ Scope inactive-member alerts to staff at THIS branch only.
           const { data: branchStaff } = await adminClient
             .from("staff_branches")
             .select("user_id")
             .eq("branch_id", branch.id);
           const branchStaffIds = (branchStaff || []).map((s: any) => s.user_id);
 
-          // Always include owners/admins (cross-branch oversight).
           const { data: ownersAdmins } = await adminClient
             .from("user_roles")
             .select("user_id")
@@ -323,11 +513,18 @@ Deno.serve(async (req) => {
     }
 
     const totalProcessed = Object.values(results).reduce((a, b) => a + b, 0);
+    const totalFailed = Object.values(failures).reduce((a, b) => a + b, 0);
 
-    console.log(`[send-reminders] Processed ${totalProcessed} reminders:`, JSON.stringify(results));
+    console.log(`[send-reminders v2] sent=${totalProcessed} failed=${totalFailed}`, JSON.stringify({ results, failures }));
 
     return new Response(
-      JSON.stringify({ success: true, total_processed: totalProcessed, details: results }),
+      JSON.stringify({
+        success: true,
+        total_processed: totalProcessed,
+        total_failed: totalFailed,
+        details: results,
+        failures,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
