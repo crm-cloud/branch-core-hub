@@ -18,8 +18,8 @@ const PROVIDER_DEFAULTS: Record<string, { base_url: string; secret_name: string;
   lovable: {
     base_url: 'https://ai.gateway.lovable.dev/v1/chat/completions',
     secret_name: 'LOVABLE_API_KEY',
-    default_model: 'google/gemini-3-flash-preview',
-    help: 'Built-in. No setup needed.',
+    default_model: 'google/gemini-2.5-flash',
+    help: 'Built-in Lovable AI Gateway. LOVABLE_API_KEY is auto-provisioned — no setup needed. Models: google/gemini-2.5-flash, google/gemini-2.5-pro, openai/gpt-5, openai/gpt-5-mini.',
   },
   openrouter: {
     base_url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -327,10 +327,16 @@ function ProviderDrawer({
 
           <div>
             <Label>API Key Secret Name</Label>
-            <Input value={secretName} onChange={(e) => setSecretName(e.target.value)} placeholder="e.g. OPENROUTER_API_KEY" />
+            <Input
+              value={secretName}
+              onChange={(e) => setSecretName(e.target.value)}
+              placeholder="e.g. OPENROUTER_API_KEY"
+              autoComplete="off"
+            />
             <p className="text-xs text-muted-foreground mt-1.5">
-              Add the actual key value via Cloud → Settings → Secrets using this exact name.
-              Leave blank for unauthenticated Ollama.
+              <strong>Enter the secret NAME, not the key value.</strong> Add the actual key in
+              Cloud → Settings → Secrets using this exact name. Leave blank for Lovable AI
+              (auto-provisioned) or unauthenticated Ollama.
             </p>
           </div>
 
