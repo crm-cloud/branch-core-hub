@@ -218,37 +218,10 @@ export function PurchaseMembershipDrawer({
         }
       }
 
-      // Process referral rewards if applicable (still client-side; no atomic dependency).
-      if (pendingReferral && referralSettings && totalAmount >= (referralSettings.min_membership_value || 0)) {
-        await supabase
-          .from('referrals')
-          .update({ status: 'converted' as const, converted_at: new Date().toISOString() })
-          .eq('id', pendingReferral.id);
-
-        if (referralSettings.referrer_reward_value > 0) {
-          await supabase.from('referral_rewards').insert({
-            referral_id: pendingReferral.id,
-            member_id: pendingReferral.referrer_member_id,
-            reward_type: referralSettings.referrer_reward_type,
-            reward_value: referralSettings.referrer_reward_value,
-            description: `Referral bonus for referring ${memberName}`,
-            is_claimed: false,
-          });
-        }
-
-        if (referralSettings.referred_reward_value > 0) {
-          await supabase.from('referral_rewards').insert({
-            referral_id: pendingReferral.id,
-            member_id: memberId,
-            reward_type: referralSettings.referred_reward_type,
-            reward_value: referralSettings.referred_reward_value,
-            description: `Welcome bonus for joining via referral`,
-            is_claimed: false,
-          });
-        }
-
-        toast.success('Referral rewards created!');
-      }
+      // Referral conversion + reward issuance is owned by the backend
+      // (`purchase_member_membership` RPC + `notify_referral_converted` trigger).
+      // Do NOT double-process here. Query invalidations below will refresh UI from the
+      // authoritative state.
 
       return { membershipId, invoiceId };
     },
