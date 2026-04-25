@@ -1,42 +1,110 @@
-# Audit: Why admins didn't get WhatsApp alert for the new lead
+# Plan: Communications Audit + AI Memory & Duplicate-Lead Fix
 
-## Root cause (confirmed)
+## Part 1 — Communications Audit Report (`/announcements`)
 
-The lead `RAJAT LEKHARI` (and all recent leads) has `source = 'whatsapp_ai'`, meaning it was captured by the **WhatsApp AI agent** inside `supabase/functions/whatsapp-webhook/index.ts` (lines 1340-1368). That code path inserts the row into the `leads` table — but **never invokes `notify-lead-created`**.
+### Goal
+Surface a real-time **Audit Report** card next to the Live Logs that shows trigger health, failure breakdown, and a retry queue for failed messages.
 
-Evidence:
-- `lead_notification_rules` is correctly configured for branch `MAIN`: `whatsapp_to_admins=true`, `whatsapp_to_lead=true`.
-- Admin `Rajat Lekhari` has phone `+919887601200` on file.
-- Active WhatsApp Meta Cloud integration exists globally (`is_active=true`, valid `phone_number_id` + `access_token`).
-- Edge-function log query for `notify-lead-created` returns **zero invocations** — the function has never been called.
-- `capture-lead`, `webhook-lead-capture`, and the `AddLeadDrawer` UI all fire `notify-lead-created` after insert. The AI capture path is the only one missing this dispatch.
+### Findings
+- `communication_logs` already has `delivery_status`, `attempt_count`, `error_message`, `delivery_metadata`, `provider_message_id` — but the UI only shows raw rows.
+- Currently: only `sent` status exists in DB (2 rows). No automated retry on failures.
+- `whatsapp_triggers` table maps system events → outreach but has no health view.
 
-So the rules + integrations + recipients are all healthy. The notification simply isn't being triggered for AI-captured leads.
+### Changes
 
-## Fix plan
+**A. Database (migration)**
+- Add `communication_retry_queue` table:
+  ```
+  id, original_log_id, branch_id, type, recipient, subject, content,
+  retry_count (int default 0), max_retries (int default 3),
+  next_retry_at (timestamptz), last_error, status ('pending'|'processing'|'succeeded'|'exhausted'),
+  created_at, updated_at
+  ```
+- RLS: admin/owner/manager read; service role write.
+- Trigger on `communication_logs`: when `status='failed'` inserted/updated AND no existing pending row → enqueue with exponential backoff (5m, 30m, 2h).
 
-### 1. Wire `notify-lead-created` into the WhatsApp AI lead-capture flow (primary fix)
-In `supabase/functions/whatsapp-webhook/index.ts`, immediately after the successful `leads` insert (line ~1348, inside `else if (newLead)`), add a fire-and-forget POST to `${SUPABASE_URL}/functions/v1/notify-lead-created` with `{ lead_id, branch_id }` — mirroring the exact pattern used in `capture-lead/index.ts` (lines 100-110). This guarantees admins, managers, and the lead all receive their configured SMS/WhatsApp alerts the moment the AI captures the lead.
+**B. Edge function `process-comm-retry-queue`** (new)
+- Reads `pending` rows where `next_retry_at <= now()`.
+- Re-dispatches via the existing `send-whatsapp` / `send-sms` / `send-email` functions.
+- Updates retry_count, marks `succeeded` or `exhausted` after `max_retries`.
+- Schedule: pg_cron every 5 minutes.
 
-### 2. Centralize the dispatch via a Postgres trigger (durability fix)
-To prevent this class of bug recurring whenever a new code path inserts into `leads`, add a database trigger `on_lead_inserted` that calls `notify-lead-created` via `pg_net` for every new row in `public.leads`. This makes the notification a property of the data, not of each caller. Existing edge-function callers will then become redundant safety nets (idempotent — `notify-lead-created` is safe to call multiple times because it just sends messages; we'll add a tiny guard so duplicates are deduped via a `notified_at` column on `leads`).
-- Add column `leads.notified_at timestamptz`
-- Trigger fires only when `notified_at IS NULL`, then `pg_net.http_post` to the function
-- `notify-lead-created` updates `notified_at = now()` on success
+**C. Frontend — `src/pages/Announcements.tsx`**
+Add a third tab **"Audit Report"** (alongside Announcements / Live Logs) containing:
 
-### 3. Optional cleanup
-- Remove the redundant client-side `supabase.functions.invoke('notify-lead-created', …)` call from `AddLeadDrawer.tsx` (the trigger now handles it). Same for `capture-lead` and `webhook-lead-capture` edge functions — keep them as fallbacks but log when the trigger has already fired.
+1. **Trigger Health card** — for each trigger event (lead_created, payment_received, etc.):
+   - Last 24h: total sent / failed / success rate %
+   - Last fired timestamp
+   - Green/Yellow/Red badge
+2. **Channel Health** — Email/SMS/WhatsApp success rate cards (last 7d) with sparkline.
+3. **Failure Breakdown** — top 5 error messages grouped by `error_message` with counts.
+4. **Retry Queue table** — pending/processing rows with manual "Retry now" and "Cancel" buttons.
+5. **Export CSV** of the audit window.
 
-### 4. Backfill the missed lead (so you actually get the alert that was lost)
-After deploying the fix, manually invoke `notify-lead-created` once for the most recent lead (`15ca537f-fec2-4fce-aeb4-42ef45b49d59`) so you receive the WhatsApp alert you were expecting. I'll do this as a one-shot curl after the deploy.
+New file: `src/components/communication/CommAuditReport.tsx`
+New service methods in `src/services/communicationService.ts`: `fetchAuditStats()`, `fetchRetryQueue()`, `manualRetry(id)`, `cancelRetry(id)`.
 
-## Files I'll change
-- `supabase/functions/whatsapp-webhook/index.ts` — add notify dispatch after AI lead insert
-- New migration — `leads.notified_at` column + `on_lead_inserted` trigger calling `notify-lead-created` via `pg_net`
-- `supabase/functions/notify-lead-created/index.ts` — set `notified_at` after successful dispatch; short-circuit if already set
-- (Optional polish) `src/components/leads/AddLeadDrawer.tsx` — drop now-redundant client invoke
+---
 
-## Expected result
-- New WhatsApp-AI-captured lead → admin (`+919887601200`) receives the configured "🔔 New Lead Alert" WhatsApp message within seconds.
-- Lead also gets the welcome WhatsApp message (since `whatsapp_to_lead=true`).
-- All current and future lead-creation paths are guaranteed to trigger notifications via the DB trigger — no more silent gaps.
+## Part 2 — Fix WhatsApp AI Duplicate Leads + Persistent Memory
+
+### Root Cause Analysis
+In `supabase/functions/whatsapp-webhook/index.ts` (line 1340):
+```ts
+const { data: newLead } = await supabase.from("leads").insert(leadData)...
+```
+- **No dedup check** — every time the AI re-extracts a `lead_captured` JSON for the same phone, a fresh row is inserted.
+- **No DB constraint** — `leads.phone` has only a non-unique index.
+- Memory window is **only the last 10 messages** (line 940), so after a few exchanges the AI forgets it already captured this person and re-asks/re-captures.
+- After successful capture the bot is paused (`bot_active=false`), but if the user replies later and bot is reactivated, it captures again.
+
+### Fix Strategy
+
+**A. Database migration**
+- Add **partial unique index** on `leads(phone, branch_id) WHERE source = 'whatsapp_ai'` to hard-block duplicates.
+- Add `whatsapp_chat_settings.captured_lead_id uuid references leads(id)` — single source of truth linking a chat thread to its lead.
+- Add `whatsapp_chat_settings.conversation_summary text` and `summary_updated_at timestamptz` — long-term memory store.
+
+**B. Webhook changes (`whatsapp-webhook/index.ts`)**
+1. **Pre-insert dedup guard** — before calling `.insert()`:
+   - Check `whatsapp_chat_settings.captured_lead_id` for this phone+branch. If set → **UPDATE** that lead with any new fields instead of inserting.
+   - Also fallback `SELECT id FROM leads WHERE phone=? AND branch_id=? ORDER BY created_at DESC LIMIT 1`.
+2. **Insert path** uses `.upsert()` with `onConflict: 'phone,branch_id'` (via the new partial index) and `ignoreDuplicates: false` so re-extractions enrich rather than duplicate.
+3. After successful capture, write `captured_lead_id` back to `whatsapp_chat_settings`.
+
+**C. Persistent conversation memory**
+1. Increase short-term window from **10 → 30 messages** (keeps full context for current session).
+2. Add **rolling summary**:
+   - When a chat thread crosses 20 messages, call Lovable AI (`gemini-2.5-flash-lite`) once to summarize the older portion → store in `whatsapp_chat_settings.conversation_summary`.
+   - On each subsequent reply, prepend the summary to the system prompt as: `"Prior conversation summary: …"`.
+3. Inject **known lead context** into the prompt when `captured_lead_id` exists:
+   - "You have already captured this lead's details: name=…, email=…, goal=…. Do NOT ask again. Continue helping."
+4. New helper function `buildConversationContext(phone, branchId)` centralises memory assembly (summary + recent + lead snapshot).
+
+**D. Cleanup of existing duplicates**
+- One-time SQL in migration: keep the oldest `whatsapp_ai` lead per (phone, branch_id), move activities/followups to it, mark the rest as `lost` with reason `merged_duplicate`.
+
+---
+
+## Files Touched
+
+**Migrations**
+- `communication_retry_queue` table + RLS + trigger + pg_cron.
+- `leads` partial unique index + duplicate cleanup.
+- `whatsapp_chat_settings` new columns (captured_lead_id, conversation_summary, summary_updated_at).
+
+**Edge Functions**
+- `supabase/functions/process-comm-retry-queue/index.ts` (new)
+- `supabase/functions/whatsapp-webhook/index.ts` (dedup + memory)
+
+**Frontend**
+- `src/pages/Announcements.tsx` (add Audit tab)
+- `src/components/communication/CommAuditReport.tsx` (new)
+- `src/components/communication/RetryQueueTable.tsx` (new)
+- `src/services/communicationService.ts` (audit + retry methods)
+
+## Verification
+- Send a known-failing email → confirm row enters retry queue, retries 3× with backoff, then marks exhausted.
+- Simulate WhatsApp AI conversation: send name+email twice → assert only 1 lead row, `captured_lead_id` populated, second extraction enriches.
+- After 25 messages, verify `conversation_summary` is generated and prepended on next reply.
+- Audit Report shows trigger health badges and channel success rates within 5 seconds.
