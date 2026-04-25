@@ -48,7 +48,7 @@ export interface CallAIResult {
 }
 
 interface ProviderConfig {
-  provider: "lovable" | "openrouter" | "ollama" | "deepseek" | "openai_compatible";
+  provider: "lovable" | "openrouter" | "ollama" | "deepseek" | "google" | "groq" | "together" | "mistral" | "openai_compatible";
   display_name: string;
   base_url: string | null;
   api_key_secret_name: string | null;
@@ -114,6 +114,14 @@ function buildEndpoint(cfg: ProviderConfig): string {
       return "https://openrouter.ai/api/v1/chat/completions";
     case "deepseek":
       return "https://api.deepseek.com/v1/chat/completions";
+    case "google":
+      return "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    case "groq":
+      return "https://api.groq.com/openai/v1/chat/completions";
+    case "together":
+      return "https://api.together.xyz/v1/chat/completions";
+    case "mistral":
+      return "https://api.mistral.ai/v1/chat/completions";
     case "ollama":
       throw new Error("Ollama provider requires base_url to be set (e.g. https://ollama.example.com/v1/chat/completions)");
     case "openai_compatible":

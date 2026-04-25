@@ -49,6 +49,10 @@ serve(async (req: Request) => {
         case "lovable": endpoint = LOVABLE_GATEWAY; break;
         case "openrouter": endpoint = "https://openrouter.ai/api/v1/chat/completions"; break;
         case "deepseek": endpoint = "https://api.deepseek.com/v1/chat/completions"; break;
+        case "google": endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"; break;
+        case "groq": endpoint = "https://api.groq.com/openai/v1/chat/completions"; break;
+        case "together": endpoint = "https://api.together.xyz/v1/chat/completions"; break;
+        case "mistral": endpoint = "https://api.mistral.ai/v1/chat/completions"; break;
         default: return json({ error: "base_url is required for this provider" }, 400);
       }
     }
