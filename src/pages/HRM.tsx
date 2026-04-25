@@ -967,6 +967,13 @@ export default function HRMPage() {
         onOpenChange={setEditTrainerOpen}
         trainer={editingTrainer}
       />
+
+      {/* Signed Contract Viewer */}
+      <SignedContractViewer
+        open={signedViewerOpen}
+        onOpenChange={setSignedViewerOpen}
+        contract={viewingSignedContract}
+      />
     </AppLayout>
   );
 }
