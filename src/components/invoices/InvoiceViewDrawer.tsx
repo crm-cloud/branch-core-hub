@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { FileText, Printer, Download, IndianRupee, CreditCard, Link2, Receipt, Mail } from 'lucide-react';
 import { InvoiceShareDrawer } from './InvoiceShareDrawer';
+import { PaymentLinkTimeline } from './PaymentLinkTimeline';
 import { generateInvoicePDF, generateThermalReceipt } from '@/utils/pdfGenerator';
 
 interface InvoiceViewDrawerProps {
@@ -272,6 +273,9 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
               )}
             </CardContent>
           </Card>
+
+          {/* Payment Link / Gateway Timeline */}
+          <PaymentLinkTimeline invoiceId={invoice.id} />
 
           {/* Payment History */}
           {payments.length > 0 && (
