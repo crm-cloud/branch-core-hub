@@ -99,4 +99,6 @@ verify_jwt = true
 [functions.test-ai-provider]
 verify_jwt = false
 
+[functions.notify-lead-created]
+verify_jwt = false
 

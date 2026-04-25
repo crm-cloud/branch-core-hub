@@ -35,13 +35,19 @@ Deno.serve(async (req) => {
     // 1. Fetch lead data
     const { data: lead, error: leadErr } = await supabase
       .from("leads")
-      .select("id, full_name, phone, email, source, branch_id")
+      .select("id, full_name, phone, email, source, branch_id, notified_at")
       .eq("id", lead_id)
       .single();
 
     if (leadErr || !lead) {
       console.error("Lead not found:", leadErr);
       return json({ error: "Lead not found" }, 404);
+    }
+
+    // Idempotency: short-circuit if we've already notified for this lead
+    if (lead.notified_at) {
+      console.log(`Lead ${lead_id} already notified at ${lead.notified_at}, skipping`);
+      return json({ success: true, sent: 0, skipped: true, reason: "already_notified" });
     }
 
     // 2. Fetch branch name
@@ -185,6 +191,16 @@ Deno.serve(async (req) => {
     const failed = results.filter((r) => !r.success).length;
 
     console.log(`Lead ${lead_id}: ${sent} sent, ${failed} failed out of ${results.length} notifications`);
+
+    // Mark lead as notified so trigger / fallbacks won't fire again
+    try {
+      await supabase
+        .from("leads")
+        .update({ notified_at: new Date().toISOString() })
+        .eq("id", lead_id);
+    } catch (e) {
+      console.error("Failed to set notified_at:", e);
+    }
 
     return json({ success: true, sent, failed, total: results.length });
   } catch (error) {
