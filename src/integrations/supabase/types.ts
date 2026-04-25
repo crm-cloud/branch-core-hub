@@ -7365,6 +7365,18 @@ export type Database = {
         Args: { _field: string; _max: number; _min: number; _value: number }
         Returns: number
       }
+      assign_locker_with_invoice: {
+        Args: {
+          p_billing_months?: number
+          p_chargeable?: boolean
+          p_end_date: string
+          p_fee_amount?: number
+          p_locker_id: string
+          p_member_id: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       auto_expire_memberships: { Args: never; Returns: undefined }
       book_class: {
         Args: { _class_id: string; _member_id: string }
@@ -7377,6 +7389,10 @@ export type Database = {
           p_slot_id: string
         }
         Returns: Json
+      }
+      can_access_biometric_photo: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
       }
       can_access_member_measurement_photo: {
         Args: { _path: string; _user_id: string }
@@ -7399,6 +7415,10 @@ export type Database = {
         Returns: boolean
       }
       can_manage_private_member_media: {
+        Args: { _path: string; _user_id: string }
+        Returns: boolean
+      }
+      can_write_biometric_photo: {
         Args: { _path: string; _user_id: string }
         Returns: boolean
       }
@@ -7533,6 +7553,15 @@ export type Database = {
         Returns: Json
       }
       member_check_out: { Args: { _member_id: string }; Returns: Json }
+      member_force_check_in: {
+        Args: {
+          p_actor_user_id?: string
+          p_branch_id: string
+          p_member_id: string
+          p_reason?: string
+        }
+        Returns: Json
+      }
       onboard_member: {
         Args: {
           p_activity_level?: string
@@ -7560,6 +7589,18 @@ export type Database = {
         }
         Returns: Json
       }
+      purchase_benefit_credits: {
+        Args: {
+          p_branch_id?: string
+          p_idempotency_key?: string
+          p_member_id: string
+          p_membership_id: string
+          p_package_id: string
+          p_payment_method?: string
+          p_received_by?: string
+        }
+        Returns: Json
+      }
       purchase_member_membership: {
         Args: {
           p_amount_paying?: number
@@ -7582,16 +7623,30 @@ export type Database = {
         }
         Returns: Json
       }
-      purchase_pt_package: {
-        Args: {
-          _branch_id: string
-          _member_id: string
-          _package_id: string
-          _price_paid: number
-          _trainer_id: string
-        }
-        Returns: Json
-      }
+      purchase_pt_package:
+        | {
+            Args: {
+              _branch_id: string
+              _member_id: string
+              _package_id: string
+              _price_paid: number
+              _trainer_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              _branch_id: string
+              _idempotency_key?: string
+              _member_id: string
+              _package_id: string
+              _payment_method?: string
+              _price_paid: number
+              _received_by?: string
+              _trainer_id: string
+            }
+            Returns: Json
+          }
       record_member_measurement: {
         Args: { p_member_id: string; p_payload: Json }
         Returns: string
