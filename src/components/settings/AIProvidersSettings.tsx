@@ -39,11 +39,35 @@ const PROVIDER_DEFAULTS: Record<string, { base_url: string; secret_name: string;
     default_model: 'deepseek-chat',
     help: 'Very cheap. Get key at platform.deepseek.com.',
   },
+  google: {
+    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    secret_name: 'GOOGLE_AI_API_KEY',
+    default_model: 'gemini-2.0-flash',
+    help: 'Google Gemini direct API (OpenAI-compatible). Free tier available. Get key at aistudio.google.com/apikey. Models: gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro.',
+  },
+  groq: {
+    base_url: 'https://api.groq.com/openai/v1/chat/completions',
+    secret_name: 'GROQ_API_KEY',
+    default_model: 'llama-3.3-70b-versatile',
+    help: 'Ultra-fast inference, generous free tier. Get key at console.groq.com/keys.',
+  },
+  together: {
+    base_url: 'https://api.together.xyz/v1/chat/completions',
+    secret_name: 'TOGETHER_API_KEY',
+    default_model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+    help: 'Free Llama models available. Get key at api.together.xyz/settings/api-keys.',
+  },
+  mistral: {
+    base_url: 'https://api.mistral.ai/v1/chat/completions',
+    secret_name: 'MISTRAL_API_KEY',
+    default_model: 'mistral-small-latest',
+    help: 'Mistral AI. Get key at console.mistral.ai/api-keys.',
+  },
   openai_compatible: {
     base_url: '',
     secret_name: 'CUSTOM_AI_API_KEY',
     default_model: '',
-    help: 'Any OpenAI-compatible endpoint (Together, Groq, Anthropic-proxy, etc.).',
+    help: 'Any OpenAI-compatible endpoint (Anthropic-proxy, vLLM, LM Studio, etc.).',
   },
 };
 
