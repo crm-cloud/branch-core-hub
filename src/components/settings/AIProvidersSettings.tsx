@@ -18,8 +18,8 @@ const PROVIDER_DEFAULTS: Record<string, { base_url: string; secret_name: string;
   lovable: {
     base_url: 'https://ai.gateway.lovable.dev/v1/chat/completions',
     secret_name: 'LOVABLE_API_KEY',
-    default_model: 'google/gemini-3-flash-preview',
-    help: 'Built-in. No setup needed.',
+    default_model: 'google/gemini-2.5-flash',
+    help: 'Built-in Lovable AI Gateway. LOVABLE_API_KEY is auto-provisioned — no setup needed. Models: google/gemini-2.5-flash, google/gemini-2.5-pro, openai/gpt-5, openai/gpt-5-mini.',
   },
   openrouter: {
     base_url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -327,10 +327,16 @@ function ProviderDrawer({
 
           <div>
             <Label>API Key Secret Name</Label>
-            <Input value={secretName} onChange={(e) => setSecretName(e.target.value)} placeholder="e.g. OPENROUTER_API_KEY" />
+            <Input
+              value={secretName}
+              onChange={(e) => setSecretName(e.target.value)}
+              placeholder="e.g. OPENROUTER_API_KEY"
+              autoComplete="off"
+            />
             <p className="text-xs text-muted-foreground mt-1.5">
-              Add the actual key value via Cloud → Settings → Secrets using this exact name.
-              Leave blank for unauthenticated Ollama.
+              <strong>Enter the secret NAME, not the key value.</strong> Add the actual key in
+              Cloud → Settings → Secrets using this exact name. Leave blank for Lovable AI
+              (auto-provisioned) or unauthenticated Ollama.
             </p>
           </div>
 
@@ -373,9 +379,16 @@ function ProviderDrawer({
               {testResult.success ? (
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-emerald-900">Connection OK ({testResult.latency_ms}ms)</div>
                     <div className="text-xs text-emerald-700 mt-1">Sample reply: "{testResult.sample_reply}"</div>
+                    {testResult.pasted_raw_key && (
+                      <div className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded p-2">
+                        ⚠️ You pasted the raw API key in the Secret Name field. This worked for testing,
+                        but for production you must store the key as a Cloud secret and put only the
+                        secret name (e.g. <code>GOOGLE_AI_API_KEY</code>) in this field.
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
