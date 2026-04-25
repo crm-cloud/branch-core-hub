@@ -297,9 +297,13 @@ function ProviderDrawer({
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="lovable">Lovable AI (built-in)</SelectItem>
+                <SelectItem value="google">Google Gemini (direct API, free tier)</SelectItem>
                 <SelectItem value="openrouter">OpenRouter (free tier available)</SelectItem>
-                <SelectItem value="ollama">Ollama (self-hosted on your VPS)</SelectItem>
+                <SelectItem value="groq">Groq (ultra-fast, free tier)</SelectItem>
+                <SelectItem value="together">Together AI (free Llama models)</SelectItem>
                 <SelectItem value="deepseek">DeepSeek (very cheap)</SelectItem>
+                <SelectItem value="mistral">Mistral AI</SelectItem>
+                <SelectItem value="ollama">Ollama (self-hosted on your VPS)</SelectItem>
                 <SelectItem value="openai_compatible">Custom OpenAI-compatible endpoint</SelectItem>
               </SelectContent>
             </Select>
