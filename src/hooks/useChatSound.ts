@@ -17,8 +17,11 @@ export function setChatSoundEnabled(enabled: boolean) {
 /**
  * Lightweight inline notification sound (WebAudio synthesized "ping").
  * Avoids shipping an audio file and works offline.
+ *
+ * Exported so callers can offer a "Test sound" button (browsers gate
+ * WebAudio behind a user gesture; the first invocation must be user-driven).
  */
-function playPing() {
+export function playPing() {
   try {
     const AudioCtx =
       (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -42,18 +45,40 @@ function playPing() {
 }
 
 /**
- * Plays a notification sound when `trigger` value increases (e.g. unread count).
- * Respects the user's chat-sound preference.
+ * Plays a notification sound when `trigger` increases (e.g. unread count).
+ *
+ * Bug fix: the previous implementation used `useRef(trigger)` which captures
+ * the value at first render — but the effect runs *after* mount and also fires
+ * whenever `trigger` changes from 0 → N (e.g., when a contact is opened and the
+ * messages query resolves). That produced a false ping on contact open.
+ *
+ * The new implementation:
+ *   - Skips the very first effect run (mount baseline), regardless of value
+ *   - Optionally re-baselines when `resetKey` changes (e.g., switching contacts)
  */
-export function useChatSound(trigger: number) {
-  const prev = useRef(trigger);
+export function useChatSound(trigger: number, resetKey?: string | number | null) {
+  const prev = useRef<number | null>(null);
+  const lastResetKey = useRef<string | number | null | undefined>(resetKey);
 
   useEffect(() => {
+    // Re-baseline when caller signals (e.g., switched conversation)
+    if (resetKey !== lastResetKey.current) {
+      lastResetKey.current = resetKey;
+      prev.current = trigger;
+      return;
+    }
+
+    // First-ever observation: baseline only, no ping
+    if (prev.current === null) {
+      prev.current = trigger;
+      return;
+    }
+
     if (trigger > prev.current && isChatSoundEnabled()) {
       playPing();
     }
     prev.current = trigger;
-  }, [trigger]);
+  }, [trigger, resetKey]);
 }
 
 export function useChatSoundPreference() {
@@ -65,6 +90,12 @@ export function useChatSoundPreference() {
 /**
  * Globally subscribes to inbound WhatsApp messages via Supabase Realtime
  * and plays the ping sound — independent of which page the user is on.
+ *
+ * RLS handles branch scoping server-side: the realtime stream will only
+ * deliver INSERT events for rows the authenticated user is permitted to
+ * SELECT (members see their own thread; staff see their branch's threads;
+ * owners see all). So we don't need to filter on branch_id client-side.
+ *
  * Mount once in a top-level layout (e.g. AppHeader).
  */
 export function useGlobalChatSound(enabled: boolean = true) {
@@ -73,6 +104,7 @@ export function useGlobalChatSound(enabled: boolean = true) {
 
     let cancelled = false;
     let channel: any = null;
+    let mountedAt = Date.now();
 
     import('@/integrations/supabase/client').then(({ supabase }) => {
       if (cancelled) return;
@@ -87,7 +119,20 @@ export function useGlobalChatSound(enabled: boolean = true) {
             table: 'whatsapp_messages',
             filter: 'direction=eq.inbound',
           },
-          () => {
+          (payload: any) => {
+            // Only ping for messages that arrived *after* this hook mounted —
+            // avoids playing for any backlog the realtime channel may replay
+            // on (re)connect.
+            try {
+              const created = payload?.new?.created_at
+                ? new Date(payload.new.created_at).getTime()
+                : Date.now();
+              if (created < mountedAt - 1000) return;
+            } catch {
+              // fall through
+            }
+            // Skip "internal notes" — they aren't real inbound customer messages
+            if (payload?.new?.is_internal_note) return;
             if (isChatSoundEnabled()) playPing();
           }
         )
