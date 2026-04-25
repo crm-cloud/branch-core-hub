@@ -192,6 +192,28 @@ export default function MembersPage() {
     }));
   }, [members, memberships, search]);
 
+  // Bulk-fetch outstanding dues for the current page of members so we can
+  // surface a "Dues" badge inline without per-row queries.
+  const { data: duesByMember = {} } = useQuery<Record<string, number>>({
+    queryKey: ['member-dues', memberIds],
+    queryFn: async () => {
+      if (memberIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('member_id, total_amount, amount_paid, status')
+        .in('member_id', memberIds)
+        .in('status', ['pending', 'partial', 'overdue']);
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data || []).forEach((inv: any) => {
+        const due = Number(inv.total_amount || 0) - Number(inv.amount_paid || 0);
+        if (due > 0) map[inv.member_id] = (map[inv.member_id] || 0) + due;
+      });
+      return map;
+    },
+    enabled: memberIds.length > 0,
+  });
+
   // Filter by member status
   const filteredMembers = statusFilter === 'all' 
     ? membersWithMemberships 
@@ -483,7 +505,7 @@ export default function MembersPage() {
                             </TableCell>
                             <TableCell>
                               {activeMembership ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <Badge className={getMembershipStatusColor(activeMembership.status)}>
                                     {activeMembership.membership_plans?.name || 'Plan'}
                                   </Badge>
@@ -492,11 +514,23 @@ export default function MembersPage() {
                                       <Snowflake className="h-3 w-3 mr-0.5" />Frozen
                                     </Badge>
                                   )}
+                                  {duesByMember[member.id] > 0 && (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
+                                      Due ₹{duesByMember[member.id].toLocaleString()}
+                                    </Badge>
+                                  )}
                                 </div>
                               ) : (
-                                <Badge variant="outline" className="text-muted-foreground border-dashed">
-                                  No Plan
-                                </Badge>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className="text-muted-foreground border-dashed">
+                                    No Plan
+                                  </Badge>
+                                  {duesByMember[member.id] > 0 && (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
+                                      Due ₹{duesByMember[member.id].toLocaleString()}
+                                    </Badge>
+                                  )}
+                                </div>
                               )}
                             </TableCell>
                             <TableCell>

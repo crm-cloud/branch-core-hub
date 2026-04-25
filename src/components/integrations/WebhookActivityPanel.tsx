@@ -295,15 +295,15 @@ export function WebhookActivityPanel() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[160px] rounded-xl"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All status</SelectItem>
               <SelectItem value="captured">Captured</SelectItem>
-              <SelectItem value="authorized">Authorized</SelectItem>
+              <SelectItem value="authorized">Pending capture</SelectItem>
+              <SelectItem value="created">Created (no webhook)</SelectItem>
               <SelectItem value="failed">Failed</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
               <SelectItem value="received">Received</SelectItem>
-              <SelectItem value="created">Created</SelectItem>
             </SelectContent>
           </Select>
           <Select value={sigFilter} onValueChange={setSigFilter}>
