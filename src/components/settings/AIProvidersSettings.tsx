@@ -379,9 +379,16 @@ function ProviderDrawer({
               {testResult.success ? (
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-emerald-900">Connection OK ({testResult.latency_ms}ms)</div>
                     <div className="text-xs text-emerald-700 mt-1">Sample reply: "{testResult.sample_reply}"</div>
+                    {testResult.pasted_raw_key && (
+                      <div className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded p-2">
+                        ⚠️ You pasted the raw API key in the Secret Name field. This worked for testing,
+                        but for production you must store the key as a Cloud secret and put only the
+                        secret name (e.g. <code>GOOGLE_AI_API_KEY</code>) in this field.
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
