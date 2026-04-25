@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   syncPersonToMIPS, fetchAllMIPSPersons, verifyPersonOnMIPS,
 } from "@/services/mipsService";
+import { uploadBiometricPhoto } from "@/lib/media/biometricPhotoUrls";
 import { toast } from "sonner";
 
 interface PersonnelSyncTabProps {
@@ -214,18 +215,21 @@ const PersonnelSyncTab = ({ branchId, mainBranchId }: PersonnelSyncTabProps) => 
   const handlePhotoUpload = async (file: File, person: SyncPerson) => {
     setUploadingIds((prev) => new Set(prev).add(person.id));
     try {
-      const filePath = `${person.id}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from("member-photos")
-        .upload(filePath, file, { upsert: true, contentType: "image/jpeg" });
-      if (uploadError) throw uploadError;
+      // Upload to the private `member-photos` bucket and persist the storage
+      // path on biometric_photo_path. We deliberately do NOT write a public URL
+      // here — the newer media model resolves a fresh signed URL on demand.
+      const entityType =
+        person.type === "member" ? "members" :
+        person.type === "trainer" ? "trainers" : "employees";
 
-      const { data: urlData } = supabase.storage
-        .from("member-photos")
-        .getPublicUrl(filePath);
+      const { path } = await uploadBiometricPhoto(entityType, person.id, file);
 
-      const table = person.type === "member" ? "members" : person.type === "trainer" ? "trainers" : "employees";
-      await supabase.from(table).update({ biometric_photo_url: urlData.publicUrl }).eq("id", person.id);
+      const table = entityType; // members | trainers | employees
+      const { error: updateError } = await supabase
+        .from(table)
+        .update({ biometric_photo_path: path })
+        .eq("id", person.id);
+      if (updateError) throw updateError;
 
       toast.success(`Photo uploaded for ${person.name}, triggering sync...`);
       queryClient.invalidateQueries({ queryKey: ["personnel-sync"] });

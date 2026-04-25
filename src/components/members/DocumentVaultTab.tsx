@@ -110,8 +110,26 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
+      // Look up the storage path BEFORE deleting the row so we can clean up
+      // the underlying private object. Otherwise upload/delete cycles leak
+      // files in the `documents` bucket.
+      const { data: docRow } = await supabase
+        .from('member_documents')
+        .select('storage_path')
+        .eq('id', docId)
+        .maybeSingle();
+
       const { error } = await supabase.from('member_documents').delete().eq('id', docId);
       if (error) throw error;
+
+      const path = (docRow as any)?.storage_path;
+      if (path) {
+        const { error: removeError } = await supabase.storage.from('documents').remove([path]);
+        if (removeError) {
+          // Non-fatal — the row is already gone. Log so we can find orphans.
+          console.warn('Failed to remove storage object after deleting document row:', removeError);
+        }
+      }
     },
     onSuccess: () => {
       toast.success('Document deleted');

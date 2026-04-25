@@ -188,93 +188,79 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create member record -- member_code is omitted so the DB trigger generates it
-    // Persist government ID fields if the columns exist (safe upsert pattern)
-    const memberInsert: Record<string, any> = {
-      user_id: userId,
-      branch_id: branchId,
-      status: 'active',
-      source: source || 'walk-in',
-      fitness_goals: fitnessGoals || null,
-      health_conditions: healthConditions || null,
-      referred_by: referredBy || null,
-      created_by: createdBy || callingUser.id,
-    };
-    if (governmentIdType) memberInsert.government_id_type = governmentIdType;
-    if (governmentIdNumber) memberInsert.government_id_number = governmentIdNumber;
-    if (dietaryPreference) memberInsert.dietary_preference = dietaryPreference;
-    if (cuisinePreference) memberInsert.cuisine_preference = cuisinePreference;
-    if (Array.isArray(allergies)) memberInsert.allergies = allergies;
-    if (fitnessLevel) memberInsert.fitness_level = fitnessLevel;
-    if (activityLevel) memberInsert.activity_level = activityLevel;
-    if (Array.isArray(equipmentAvailability)) memberInsert.equipment_availability = equipmentAvailability;
-    if (injuriesLimitations) memberInsert.injuries_limitations = injuriesLimitations;
+    // Route through the authoritative onboard_member RPC. It atomically:
+    //  - Creates the member row (DB trigger generates member_code)
+    //  - Updates profile with sanitized fields
+    //  - Creates/updates the referral record in the correct lifecycle state
+    //    ('joined' — NOT 'converted'). Conversion only happens on a qualifying
+    //    purchase, via purchase_member_membership / settle_payment.
+    //  - Logs the lifecycle event and evaluates access state.
+    const { data: onboardResult, error: onboardError } = await supabaseAdmin.rpc('onboard_member', {
+      p_user_id: userId,
+      p_branch_id: branchId,
+      p_full_name: fullName,
+      p_email: email,
+      p_phone: phone || null,
+      p_source: source || 'walk-in',
+      p_fitness_goals: fitnessGoals || null,
+      p_health_conditions: healthConditions || null,
+      p_referred_by: referredBy || null,
+      p_created_by: createdBy || callingUser.id,
+      p_avatar_storage_path: null,
+      p_government_id_type: governmentIdType || null,
+      p_government_id_number: governmentIdNumber || null,
+      p_dietary_preference: dietaryPreference || null,
+      p_cuisine_preference: cuisinePreference || null,
+      p_allergies: Array.isArray(allergies) ? allergies : null,
+      p_fitness_level: fitnessLevel || null,
+      p_activity_level: activityLevel || null,
+      p_equipment_availability: Array.isArray(equipmentAvailability) ? equipmentAvailability : null,
+      p_injuries_limitations: injuriesLimitations || null,
+      p_schedule_welcome: true,
+      p_welcome_channels: ['email'],
+    })
 
-    const { data: member, error: memberError } = await supabaseAdmin
-      .from('members')
-      .insert(memberInsert)
-      .select('id, member_code')
-      .single()
+    if (onboardError) {
+      console.error('onboard_member RPC error:', onboardError)
+      throw onboardError
+    }
 
-    // If government ID columns don't exist on members, retry without them (graceful)
-    if (memberError && /government_id/.test(memberError.message || '')) {
-      console.warn('government_id columns missing on members table; retrying without them');
-      delete memberInsert.government_id_type;
-      delete memberInsert.government_id_number;
-      const retry = await supabaseAdmin.from('members').insert(memberInsert).select('id, member_code').single();
-      if (retry.error) throw retry.error;
-      Object.assign({}, retry.data); // no-op type quiet
-      const r = retry.data!;
+    const result = (onboardResult ?? {}) as { success?: boolean; member_id?: string; member_code?: string; error?: string }
+    if (!result.success) {
+      console.error('onboard_member returned error:', result)
       return new Response(
-        JSON.stringify({ success: true, userId, memberId: r.id, memberCode: r.member_code, message: 'Member created successfully (without optional government ID fields).' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+        JSON.stringify({ error: result.error || 'Onboarding failed' }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    if (memberError) {
-      console.error('Member insert error:', memberError)
-      throw memberError
+    // Persist non-onboarding profile fields (address, emergency contact, avatar)
+    // that aren't part of the onboard_member contract.
+    if (
+      gender || dateOfBirth || address || emergencyContactName ||
+      emergencyContactPhone || avatarUrl
+    ) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          ...(gender ? { gender } : {}),
+          ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+          ...(address ? { address } : {}),
+          ...(emergencyContactName ? { emergency_contact_name: emergencyContactName } : {}),
+          ...(emergencyContactPhone ? { emergency_contact_phone: emergencyContactPhone } : {}),
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+        })
+        .eq('id', userId)
     }
 
-    console.log('Member created:', member.id)
-
-    // Auto-create referral record if referred_by is set
-    if (referredBy) {
-      try {
-        // referredBy is a member ID — create a referral record
-        const { data: referrer } = await supabaseAdmin
-          .from('members')
-          .select('id, member_code')
-          .eq('id', referredBy)
-          .single()
-
-        if (referrer) {
-          await supabaseAdmin
-            .from('referrals')
-            .insert({
-              referrer_member_id: referrer.id,
-              referred_name: fullName,
-              referred_email: email,
-              referred_phone: phone || null,
-              referral_code: referrer.member_code,
-              status: 'converted',
-              branch_id: branchId,
-              converted_member_id: member.id,
-              converted_at: new Date().toISOString(),
-            })
-          console.log('Referral record created for referrer:', referrer.id)
-        }
-      } catch (refErr) {
-        console.error('Referral record creation failed (non-fatal):', refErr)
-      }
-    }
+    console.log('Member onboarded:', result.member_id)
 
     return new Response(
       JSON.stringify({
         success: true,
         userId: userId,
-        memberId: member.id,
-        memberCode: member.member_code,
+        memberId: result.member_id,
+        memberCode: result.member_code,
         message: 'Member created successfully. They will set their password on first login.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
