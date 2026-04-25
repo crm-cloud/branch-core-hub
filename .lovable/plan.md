@@ -1,144 +1,84 @@
-# Audit-Driven Lifecycle Hardening — Round 3
+# Audit & Fix Plan — 6 Issues
 
-Goal: Eliminate every remaining direct-write path that bypasses authoritative RPCs, fix structural conflicts in storage RLS, and stop overstating delivery for reminders/WhatsApp.
+## 1. Integrations page — "Webhooks" tab vs page
 
----
+**Finding (verified):** There is **only one** integrations page (`src/pages/Integrations.tsx`). Webhooks is currently a *tab* alongside Payment / SMS / Email / WhatsApp / Instagram / Messenger / Google. The "double" feeling comes from the fact that the **stat cards at the top** (Payment / SMS / Email / WhatsApp / Google count tiles) **always render above the tab bar**, regardless of which tab is active — so when you click "Webhooks" you still see those provider tiles, making it look like two layers of integration UI.
 
-## P0 — Financial integrity (must route through unified payment authority)
+**Fix:**
+- Promote **Webhook Activity** to a dedicated route `/integrations/webhooks` (still reachable via the `Activity` button on the Payments page).
+- Remove the `webhooks` tab from `Integrations.tsx`. Replace the tab trigger with a small "View Webhook Activity →" link/button in the header of the Integrations page.
+- Update the deep link in `src/pages/Payments.tsx:253` (`/integrations?tab=webhooks` → `/integrations/webhooks`).
+- Result: no overlap, one focused page per concern.
 
-### 1. PT package purchases → `settle_payment`
-**File:** `purchase_pt_package` RPC (DB) + `src/services/ptService.ts`
-- Migration: refactor `purchase_pt_package(_member_id, _package_id, _trainer_id, _branch_id, _price_paid)` so it:
-  1. Creates the `member_pt_packages` row in `pending_payment` state (or equivalent).
-  2. Inserts a draft invoice with `status='pending'`.
-  3. Calls `public.settle_payment(...)` with `p_payment_source='pt_purchase'` and an idempotency key derived from `member_pt_packages.id`.
-  4. On settlement success, marks the PT package `active`.
-- Removes the direct `payments` insert and the manual `invoices.status='paid'` update currently inside the function.
-- Client (`ptService.purchasePTPackage`) signature unchanged.
+## 2. RYAN LEKHARI / MAIN-00001 / ₹4,000 dues — no webhook, no payment log
 
-### 2. Benefit add-on purchases → `settle_payment`
-**File:** `src/services/benefitBookingService.ts:483-544` (`purchaseBenefitCredits`)
-- Replace the "manufacture invoice → insert payment → insert credits" sequence with a new RPC `public.purchase_benefit_credits(p_member_id, p_membership_id, p_package_id, p_branch_id, p_payment_method, p_idempotency_key)`.
-- RPC creates invoice → calls `settle_payment` → only inserts `member_benefit_credits` after settlement returns success → returns the credit row.
-- Guarantees: no orphan paid invoice without credits; single transaction.
+**Finding (DB‑verified):** Member `5cfda8f1…` has 6 invoices. Pending one (`INV-MAIN-2604-0005`, ₹4,000, due 29-Apr) was created **manually** on 22 Apr at 14:33 UTC. Four siblings (`-0001..-0004`) are `cancelled`. There is **one** `payment_transactions` row tied to it: `gateway=razorpay, status=created`, **no signature, no http_status, no captured event** — meaning a Razorpay payment link was generated but nothing was ever paid against it. There are **zero** rows in `payments` for this invoice. So the dues card is correct; what's missing is **observability** of why the link never converted.
 
-### 3. POS checkout → `settle_payment` (wallet-safe)
-**File:** `src/services/storeService.ts:228-354` (`createPOSSale`)
-- Wrap the entire flow in a new RPC `public.create_pos_sale(p_payload jsonb)` that:
-  1. Validates wallet balance via row-locked `SELECT … FOR UPDATE` on `member_wallets`.
-  2. Validates coupon eligibility (locked).
-  3. Inserts `pos_sales` + `invoices` + `invoice_items` in `pending` state.
-  4. If wallet portion > 0: debits wallet inside the same txn, inserts `wallet_transactions`.
-  5. Calls `settle_payment` for the remaining cash/card/UPI portion (or for the full wallet portion as an internal payment record).
-  6. Updates `inventory` and `discount_codes.times_used`.
-  - Any failure rolls back atomically. No invoice is ever marked paid before wallet debit succeeds.
-- Client `createPOSSale` becomes a thin `supabase.rpc('create_pos_sale', { p_payload })` call.
+**Fix:**
+- In `WebhookActivityPanel`, surface "Created but never captured" rows (currently they're filtered into the no-data state because they have no `signature_verified`/`http_status`). Add a state filter chip "Pending capture" so staff can see open `created` rows.
+- In `InvoiceViewDrawer`, add a **Payment Link Activity** sub-panel: fetch all `payment_transactions` for the invoice and show created/captured/failed timeline (gateway + reference id + last update). This explains "I sent a link, did the customer pay?" at a glance.
+- Backfill display: when an invoice has at least one `payment_transactions.status='created'` row but no captured, show a small badge "Link sent" on the dues row in `Payments.tsx`.
+- No data correction needed for Ryan — the invoice is genuinely unpaid; the Razorpay link just hasn't been actioned.
 
----
+## 3. Member code format — fitness-center-friendly
 
-## P1 — Lifecycle authority
+**Current (DB-verified):** `generate_member_code()` produces `<branch.code>-<padded count>` → `MAIN-00001`. Counter is `COUNT(*)+1` per branch (race-prone, also non-resettable on deletes).
 
-### 4. Benefit slot booking → `book_facility_slot` / `cancel_facility_slot`
-**File:** `src/pages/BookBenefitSlot.tsx`
-- Replace direct `supabase.from('benefit_bookings').insert(...)` with `supabase.rpc('book_facility_slot', { p_slot_id, p_member_id, p_membership_id })`.
-- Replace direct status update for cancel with `supabase.rpc('cancel_facility_slot', { p_booking_id, p_reason })` (verify signature; if missing add a thin RPC that wraps the existing cancel logic + benefit-credit refund).
-- Toast surfaces RPC error message verbatim (capacity full, no entitlement, duplicate, etc.).
+**Fix:**
+- Switch format to `<branch.code>-<YY>-<seq>` e.g. **`INC-26-0100`** (year embedded → resets each Jan 1, much friendlier and still unique).
+- Replace `COUNT(*)+1` with a per-branch **Postgres sequence** (`member_code_seq_<branch_id>`) or an atomic `INSERT … RETURNING` pattern using `member_code_counters(branch_id, year, last_seq)` with row lock — eliminates the race condition.
+- Migrate via SQL migration: rewrite `generate_member_code()`, create the counter table, seed from existing max per branch.
+- Existing member codes stay unchanged (no rewrite of historical records — codes are referenced in printed receipts/QR/biometric).
 
-### 5. Locker assignment + invoice → atomic RPC
-**Files:** new RPC + `src/services/lockerService.ts` + `src/components/lockers/AssignLockerDrawer.tsx`
-- New migration: `public.assign_locker_with_invoice(p_locker_id, p_member_id, p_start_date, p_end_date, p_fee_amount, p_months, p_chargeable boolean)`:
-  - Locks the locker row, verifies `status='available'`.
-  - Inserts `locker_assignments` and flips `lockers.status='assigned'`.
-  - If `p_chargeable`: inserts pending invoice + invoice items in the same transaction (no `settle_payment` here — it remains a receivable; member pays later).
-  - Returns `{assignment_id, invoice_id}`.
-- `lockerService.assignLocker` collapses to a single RPC call. Failure rolls back both steps.
+> Will ask you to confirm the exact format you want before writing the migration (see Open Questions).
 
-### 6. Force-entry attendance → `member_force_check_in` RPC
-**Files:** new RPC + the force-entry override action (search for direct `member_attendance` insert in attendance dashboard).
-- New `public.member_force_check_in(p_member_id, p_branch_id, p_actor_user_id, p_reason text)`:
-  - Acquires advisory lock per member.
-  - If an open `member_attendance` row exists (no `check_out`), return `{success:false, reason:'already_checked_in', attendance_id}` — caller can decide to close-and-reopen or no-op.
-  - Otherwise inserts attendance with `method='force'` and writes an `audit_logs` row.
-- Replace the raw insert in the override handler with this RPC.
+## 4. Default branch code on creation
 
----
+**Current:** `AddBranchDialog.tsx` requires the user to type a `code` manually (placeholder `e.g., DT01`). That's why the seed branch is `MAIN`.
 
-## P1 — Storage, communication, delivery integrity
+**Fix:**
+- Auto-suggest a code as the user types the branch name: take first 3 alpha characters uppercased (e.g., "Incline Bandra" → `INC`). Append `-02`, `-03` if `INC` is taken.
+- Field stays editable (admin can override) but no longer empty by default.
+- Validate uniqueness on submit with a clear error.
+- **Note:** changing the existing branch code from `MAIN` to e.g. `INC` will break all current `MAIN-…` member codes and invoice numbers (`INV-MAIN-…`). Options:
+  - (a) Leave existing branch code = `MAIN` (only new branches get smart codes), or
+  - (b) One-time rename `MAIN → INC` and rewrite member_codes/invoice_numbers via migration.
 
-### 7. Biometric storage RLS compatibility
-**Problem:** New helper writes `biometric/members/{uuid}.jpg`, but the `member-photos` policy uses `extract_member_id_from_storage_path` which only reads the **first** path segment as a UUID. `biometric` is not a UUID → RLS denies upload/read.
-**Fix (migration):**
-- Add helper `public.extract_biometric_owner_from_storage_path(_path text) returns uuid` that parses `biometric/(members|trainers|employees)/{uuid}.jpg` and returns the UUID, plus the entity type.
-- Add new RLS policies on `storage.objects` scoped to `bucket_id='member-photos'` AND `name LIKE 'biometric/%'` for SELECT/INSERT/UPDATE/DELETE that authorize:
-  - members: the member themself OR staff (admin/manager/owner/staff at the member's branch).
-  - trainers/employees: themselves OR admin/manager/owner at their branch.
-- Existing measurement-photo policies untouched (different prefix).
+> Need your call on this — see Open Questions.
 
-### 8. Banner uploads → public `ad-banners` bucket
-**File:** `src/components/banners/AdBannerManager.tsx`
-- Migration:
-  ```sql
-  insert into storage.buckets (id, name, public) values ('ad-banners','ad-banners',true) on conflict do nothing;
-  ```
-  Plus RLS: public read; insert/update/delete restricted to admin/manager/owner.
-- Update upload code to `supabase.storage.from('ad-banners').upload(...)` and `getPublicUrl` (now valid because bucket is public).
-- One-time backfill is out of scope; existing broken URLs will be replaced on next edit.
+## 5. Chat sound only plays on opening a chat (not on new inbound)
 
-### 9. Honest reminder delivery for ALL types
-**File:** `supabase/functions/send-reminders/index.ts`
-- Extend the same pattern already used for payment reminders to: membership expiry, class, PT, benefit, and any other reminder types currently only writing in-app notifications.
-- For each reminder:
-  - Resolve channels per `reminder_configurations` (whatsapp/sms/email).
-  - Invoke `send-whatsapp` / `send-sms` / `send-email` per channel; capture success/error.
-  - Persist per-channel status into the existing `delivery_status` / `last_error` columns (add columns via migration if missing for the other reminder tables).
-  - Only mark `status='sent'` if at least one outbound channel succeeded; otherwise `status='failed'` or `'skipped'` with reason.
-- Stop writing `communication_logs.status='sent'` for membership expiry unless an outbound provider acknowledged.
-- In-app notifications remain a separate side-effect, not a substitute.
+**Bug found:**
+- `useChatSound(inboundCount)` in `WhatsAppChat.tsx:317` fires whenever `inboundCount` increases — including the **first time you open a contact** because `messages` query returns `[]` then jumps to N inbound messages, so the ref sees `N > 0` and pings. That's the false ping you hear on open.
+- Meanwhile `useGlobalChatSound` in `AppHeader.tsx:41` does subscribe to realtime INSERT on `whatsapp_messages` (table is in the realtime publication, verified). But it filters on `direction=eq.inbound` only — and **the actual ping fires before checking** that the new message belongs to a branch the user can see, so RLS may suppress the event entirely for non-owner users → no ping at all.
 
-### 10. WhatsApp attachment send must respect provider response
-**File:** the WhatsApp chat send-attachment handler (`src/components/whatsapp/WhatsAppChat.tsx` or equivalent)
-- After `supabase.functions.invoke('send-whatsapp', ...)` for attachments:
-  - If `error` or `data.success === false`: do NOT invalidate as if delivered, mark the just-inserted message row `status='failed'` with `last_error`, and toast the actual provider error.
-  - Only on confirmed success: invalidate chat queries and toast "Attachment sent".
-- Mirror the text-message path's handling (which already does this, per recent fixes).
+**Fix:**
+1. In `useChatSound`, treat the **first render's value as the baseline** — change from `useRef(trigger)` (which captures initial value but the effect runs after that and also on dep change) to a flag `hasMounted` so the very first effect run never plays sound. Also reset baseline when `selectedContact` changes (pass a `key` or add a reset hook).
+2. In `useGlobalChatSound`, attach the realtime subscription **without** the `branch_id` filter (RLS will scope it server-side) and play the ping only when the inserted row's `branch_id` is in the user's accessible branches OR the user is owner/admin. This guarantees the ping reaches eligible staff.
+3. Add a quick "Test sound" button in the chat header so staff can verify their device permissions (browsers throttle WebAudio until first interaction; if the very first sound attempt is blocked, show a one-time toast "Click anywhere once to enable sound notifications").
+
+## 6. Attachment audit — invoice / receipt / POS / diet / workout via Email & WhatsApp
+
+**Audit summary:**
+
+| Flow | Current behaviour | Gap |
+|---|---|---|
+| **Invoice share (`InvoiceShareDrawer`)** | WhatsApp & SMS open prefilled text via `wa.me` / `sms:`. Email goes through `send-email` provider with HTML body. **No PDF attachment** in any channel. | Needs PDF generation + attachment. |
+| **POS receipt (`pages/POS.tsx`)** | Only `printInvoice()` — opens browser print dialog. **No share-to-WhatsApp / email path at all.** | Needs share drawer + PDF/image attachment. |
+| **Payment receipt** | No dedicated "send receipt" UI. Members get an invoice link only. | Add receipt PDF + share drawer post-payment. |
+| **Diet / Workout plan (`MemberPlans.tsx` + `WhatsAppShareDialog`)** | Sends a **text-only** WhatsApp message via `send-whatsapp` edge function. No PDF of the plan attached. | Needs PDF export of plan + attachment via WhatsApp media + email. |
+| **Add-on / package invoices** | Same as invoice flow → text only. | Same fix as #1. |
+
+**Fix plan:**
+- **PDF generation utility** (`src/utils/pdfGenerator.ts`): one helper per artifact type — `generateInvoicePDF`, `generateReceiptPDF`, `generateDietPlanPDF`, `generateWorkoutPlanPDF`. Use `jspdf` + `jspdf-autotable` (already viable in browser, no extra build).
+- **Storage upload step**: upload generated PDFs to `documents` bucket under `attachments/<branch_id>/<invoice_id>.pdf`, return signed URL (1-day expiry).
+- **WhatsApp**: extend `send-whatsapp` edge function call payload to support `media_url` + `caption` (Meta Cloud API supports document attachments — we already use this for chat attachments per memory `whatsapp-crm-system-v25-0`). Update `InvoiceShareDrawer`, `WhatsAppShareDialog`, and a new `POSReceiptShareDrawer` to upload PDF → call `send-whatsapp` with `media_url`.
+- **Email**: extend `send-email` to accept an `attachments: [{ filename, url }]` array, fetch+base64 server-side, pass to provider (Resend/SES support both inline base64 and remote URLs).
+- **POS post-checkout**: after `create_pos_sale` succeeds, show success drawer with [Print] [Share via WhatsApp] [Email] using the new attachment-capable share drawer, defaulting to the customer's saved phone/email.
+- **Plan share**: in `MemberPlans` and trainer-side `AssignPlanDrawer`, generate plan PDF and attach. Keep the text caption (current message).
 
 ---
 
-## Migrations summary
-1. `purchase_pt_package` rewrite (uses `settle_payment`).
-2. `purchase_benefit_credits` new RPC.
-3. `create_pos_sale` new RPC (atomic wallet+settlement).
-4. `cancel_facility_slot` (verify exists; add if missing) with refund logic.
-5. `assign_locker_with_invoice` new RPC.
-6. `member_force_check_in` new RPC.
-7. Biometric storage helper + 4 RLS policies on `storage.objects` for `biometric/%` prefix.
-8. Create public `ad-banners` bucket + RLS.
-9. Add `delivery_status` / `last_error` columns to remaining reminder-tracking tables if not present.
+## Open Questions
 
-## Code changes summary
-- `src/services/ptService.ts` — no change (RPC signature stable).
-- `src/services/benefitBookingService.ts` — `purchaseBenefitCredits` collapses to RPC call.
-- `src/services/storeService.ts` — `createPOSSale` collapses to RPC call.
-- `src/pages/BookBenefitSlot.tsx` — book/cancel via RPC.
-- `src/services/lockerService.ts`, `src/components/lockers/AssignLockerDrawer.tsx` — atomic RPC.
-- Force-entry attendance handler — RPC.
-- `src/components/banners/AdBannerManager.tsx` — switch bucket to `ad-banners`.
-- `supabase/functions/send-reminders/index.ts` — outbound dispatch for all reminder types.
-- WhatsApp attachment send handler — error-aware.
-
-## Acceptance criteria
-1. PT, benefit add-on, and POS sales never produce a paid invoice without the matching entitlement / wallet debit.
-2. All paid transactions flow through `settle_payment` and benefit from idempotency, audit, and post-settlement triggers (membership activation, hardware sync, referral conversion).
-3. Benefit booking enforces capacity locks and entitlement via `book_facility_slot`; cancellations refund credits via RPC.
-4. Locker assignment + invoice are atomic — no orphan assignments without receivables.
-5. Force-entry cannot create duplicate active attendance rows.
-6. Biometric photo uploads under `member-photos/biometric/...` succeed for the rightful owner and authorized staff under RLS.
-7. Banner uploads render correctly after save (public bucket).
-8. No reminder is marked `sent` (and no `communication_logs.status='sent'` row is written) unless an outbound provider call actually succeeded; failed/skipped channels are recorded honestly.
-9. WhatsApp attachment failures surface to staff and do not show "Attachment sent".
-
-## Non-regressions
-- Existing successful payment flows continue to work without changes to client signatures.
-- Measurement photo RLS unaffected.
-- In-app notifications still fire alongside outbound delivery.
-- Recent member-profile, document-vault, and referral lifecycle improvements remain intact.
+I'd like your call on these before I start coding:
