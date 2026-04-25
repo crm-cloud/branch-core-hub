@@ -1,84 +1,129 @@
-# Audit & Fix Plan — 6 Issues
+## Issue Audit & Findings
 
-## 1. Integrations page — "Webhooks" tab vs page
+I verified each issue against the database and code:
 
-**Finding (verified):** There is **only one** integrations page (`src/pages/Integrations.tsx`). Webhooks is currently a *tab* alongside Payment / SMS / Email / WhatsApp / Instagram / Messenger / Google. The "double" feeling comes from the fact that the **stat cards at the top** (Payment / SMS / Email / WhatsApp / Google count tiles) **always render above the tab bar**, regardless of which tab is active — so when you click "Webhooks" you still see those provider tiles, making it look like two layers of integration UI.
+### 1. `member_workout_completions` 404 (PGRST205)
+- **Confirmed**: Table does NOT exist in DB. Only `meal_catalog` exists. Service `src/services/memberPlanProgressService.ts` has TypeScript shims for `member_workout_completions`, `member_meal_completions`, and `member_meal_swaps`, but the actual tables were never migrated.
+- **Result**: Plan adherence widget (`MemberPlanProgressBlock`), workout/meal check-off, and meal-swap features all crash with 404.
 
-**Fix:**
-- Promote **Webhook Activity** to a dedicated route `/integrations/webhooks` (still reachable via the `Activity` button on the Payments page).
-- Remove the `webhooks` tab from `Integrations.tsx`. Replace the tab trigger with a small "View Webhook Activity →" link/button in the header of the Integrations page.
-- Update the deep link in `src/pages/Payments.tsx:253` (`/integrations?tab=webhooks` → `/integrations/webhooks`).
-- Result: no overlap, one focused page per concern.
+### 2. POS RPC 400 (`create_pos_sale`)
+- **Confirmed**: RPC signature is correct, but `src/services/storeService.ts` line 134 sends `p_slip_url: sale.slipUrl` while reading `sale.slipUrl` from a type that has it correctly defined. The 400 is likely coming from RLS or a payload mismatch. Need to inspect the actual error body — likely either `idempotencyKey` collision, missing `sold_by`, or the new `wallet_applied`/`discount_amount` validation failing for guest checkouts. Will reproduce via edge logs.
 
-## 2. RYAN LEKHARI / MAIN-00001 / ₹4,000 dues — no webhook, no payment log
+### 3. Signed Contract showing only signature image
+- **Confirmed**: After signing, `signature_status` flips to `signed` but there is **no "View Signed Contract" UI** in HRM. `openContractPdf` only renders the unsigned template. The drawer that's appearing to the user is showing just the signature blob instead of the full signed agreement (terms + signer details + signature panel + audit metadata).
 
-**Finding (DB‑verified):** Member `5cfda8f1…` has 6 invoices. Pending one (`INV-MAIN-2604-0005`, ₹4,000, due 29-Apr) was created **manually** on 22 Apr at 14:33 UTC. Four siblings (`-0001..-0004`) are `cancelled`. There is **one** `payment_transactions` row tied to it: `gateway=razorpay, status=created`, **no signature, no http_status, no captured event** — meaning a Razorpay payment link was generated but nothing was ever paid against it. There are **zero** rows in `payments` for this invoice. So the dues card is correct; what's missing is **observability** of why the link never converted.
-
-**Fix:**
-- In `WebhookActivityPanel`, surface "Created but never captured" rows (currently they're filtered into the no-data state because they have no `signature_verified`/`http_status`). Add a state filter chip "Pending capture" so staff can see open `created` rows.
-- In `InvoiceViewDrawer`, add a **Payment Link Activity** sub-panel: fetch all `payment_transactions` for the invoice and show created/captured/failed timeline (gateway + reference id + last update). This explains "I sent a link, did the customer pay?" at a glance.
-- Backfill display: when an invoice has at least one `payment_transactions.status='created'` row but no captured, show a small badge "Link sent" on the dues row in `Payments.tsx`.
-- No data correction needed for Ryan — the invoice is genuinely unpaid; the Razorpay link just hasn't been actioned.
-
-## 3. Member code format — fitness-center-friendly
-
-**Current (DB-verified):** `generate_member_code()` produces `<branch.code>-<padded count>` → `MAIN-00001`. Counter is `COUNT(*)+1` per branch (race-prone, also non-resettable on deletes).
-
-**Fix:**
-- Switch format to `<branch.code>-<YY>-<seq>` e.g. **`INC-26-0100`** (year embedded → resets each Jan 1, much friendlier and still unique).
-- Replace `COUNT(*)+1` with a per-branch **Postgres sequence** (`member_code_seq_<branch_id>`) or an atomic `INSERT … RETURNING` pattern using `member_code_counters(branch_id, year, last_seq)` with row lock — eliminates the race condition.
-- Migrate via SQL migration: rewrite `generate_member_code()`, create the counter table, seed from existing max per branch.
-- Existing member codes stay unchanged (no rewrite of historical records — codes are referenced in printed receipts/QR/biometric).
-
-> Will ask you to confirm the exact format you want before writing the migration (see Open Questions).
-
-## 4. Default branch code on creation
-
-**Current:** `AddBranchDialog.tsx` requires the user to type a `code` manually (placeholder `e.g., DT01`). That's why the seed branch is `MAIN`.
-
-**Fix:**
-- Auto-suggest a code as the user types the branch name: take first 3 alpha characters uppercased (e.g., "Incline Bandra" → `INC`). Append `-02`, `-03` if `INC` is taken.
-- Field stays editable (admin can override) but no longer empty by default.
-- Validate uniqueness on submit with a clear error.
-- **Note:** changing the existing branch code from `MAIN` to e.g. `INC` will break all current `MAIN-…` member codes and invoice numbers (`INV-MAIN-…`). Options:
-  - (a) Leave existing branch code = `MAIN` (only new branches get smart codes), or
-  - (b) One-time rename `MAIN → INC` and rewrite member_codes/invoice_numbers via migration.
-
-> Need your call on this — see Open Questions.
-
-## 5. Chat sound only plays on opening a chat (not on new inbound)
-
-**Bug found:**
-- `useChatSound(inboundCount)` in `WhatsAppChat.tsx:317` fires whenever `inboundCount` increases — including the **first time you open a contact** because `messages` query returns `[]` then jumps to N inbound messages, so the ref sees `N > 0` and pings. That's the false ping you hear on open.
-- Meanwhile `useGlobalChatSound` in `AppHeader.tsx:41` does subscribe to realtime INSERT on `whatsapp_messages` (table is in the realtime publication, verified). But it filters on `direction=eq.inbound` only — and **the actual ping fires before checking** that the new message belongs to a branch the user can see, so RLS may suppress the event entirely for non-owner users → no ping at all.
-
-**Fix:**
-1. In `useChatSound`, treat the **first render's value as the baseline** — change from `useRef(trigger)` (which captures initial value but the effect runs after that and also on dep change) to a flag `hasMounted` so the very first effect run never plays sound. Also reset baseline when `selectedContact` changes (pass a `key` or add a reset hook).
-2. In `useGlobalChatSound`, attach the realtime subscription **without** the `branch_id` filter (RLS will scope it server-side) and play the ping only when the inserted row's `branch_id` is in the user's accessible branches OR the user is owner/admin. This guarantees the ping reaches eligible staff.
-3. Add a quick "Test sound" button in the chat header so staff can verify their device permissions (browsers throttle WebAudio until first interaction; if the very first sound attempt is blocked, show a one-time toast "Click anywhere once to enable sound notifications").
-
-## 6. Attachment audit — invoice / receipt / POS / diet / workout via Email & WhatsApp
-
-**Audit summary:**
-
-| Flow | Current behaviour | Gap |
-|---|---|---|
-| **Invoice share (`InvoiceShareDrawer`)** | WhatsApp & SMS open prefilled text via `wa.me` / `sms:`. Email goes through `send-email` provider with HTML body. **No PDF attachment** in any channel. | Needs PDF generation + attachment. |
-| **POS receipt (`pages/POS.tsx`)** | Only `printInvoice()` — opens browser print dialog. **No share-to-WhatsApp / email path at all.** | Needs share drawer + PDF/image attachment. |
-| **Payment receipt** | No dedicated "send receipt" UI. Members get an invoice link only. | Add receipt PDF + share drawer post-payment. |
-| **Diet / Workout plan (`MemberPlans.tsx` + `WhatsAppShareDialog`)** | Sends a **text-only** WhatsApp message via `send-whatsapp` edge function. No PDF of the plan attached. | Needs PDF export of plan + attachment via WhatsApp media + email. |
-| **Add-on / package invoices** | Same as invoice flow → text only. | Same fix as #1. |
-
-**Fix plan:**
-- **PDF generation utility** (`src/utils/pdfGenerator.ts`): one helper per artifact type — `generateInvoicePDF`, `generateReceiptPDF`, `generateDietPlanPDF`, `generateWorkoutPlanPDF`. Use `jspdf` + `jspdf-autotable` (already viable in browser, no extra build).
-- **Storage upload step**: upload generated PDFs to `documents` bucket under `attachments/<branch_id>/<invoice_id>.pdf`, return signed URL (1-day expiry).
-- **WhatsApp**: extend `send-whatsapp` edge function call payload to support `media_url` + `caption` (Meta Cloud API supports document attachments — we already use this for chat attachments per memory `whatsapp-crm-system-v25-0`). Update `InvoiceShareDrawer`, `WhatsAppShareDialog`, and a new `POSReceiptShareDrawer` to upload PDF → call `send-whatsapp` with `media_url`.
-- **Email**: extend `send-email` to accept an `attachments: [{ filename, url }]` array, fetch+base64 server-side, pass to provider (Resend/SES support both inline base64 and remote URLs).
-- **POS post-checkout**: after `create_pos_sale` succeeds, show success drawer with [Print] [Share via WhatsApp] [Email] using the new attachment-capable share drawer, defaulting to the customer's saved phone/email.
-- **Plan share**: in `MemberPlans` and trainer-side `AssignPlanDrawer`, generate plan PDF and attach. Keep the text caption (current message).
+### 4. Multi-Provider AI Gateway (Lovable + Free providers)
+- **Confirmed**: All AI calls hardcoded to `https://ai.gateway.lovable.dev/v1/chat/completions` (verified in `score-leads`, `generate-fitness-plan`, `whatsapp-transactional-ai-agent`, etc.). No provider abstraction exists. User wants to optionally route to OpenRouter, Ollama (self-hosted on their VPS), DeepSeek API, or other OpenAI-compatible endpoints — keeping Lovable AI as the default/fallback.
 
 ---
 
+## Plan
+
+### Fix 1 — Restore Fitness Tracking Tables (DB migration)
+
+Create the three missing tables that the service layer already expects:
+
+```sql
+CREATE TABLE public.member_workout_completions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  plan_source text NOT NULL CHECK (plan_source IN ('member_fitness_plans','workout_plans','ai_generated')),
+  plan_id uuid NOT NULL,
+  week_number int,
+  day_label text NOT NULL,
+  exercise_index int NOT NULL,
+  exercise_name text,
+  completed_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (member_id, plan_source, plan_id, week_number, day_label, exercise_index)
+);
+
+CREATE TABLE public.member_meal_completions ( ...analogous schema, keyed by meal_date+meal_index... );
+
+CREATE TABLE public.member_meal_swaps ( ...with original_meal jsonb, new_meal jsonb, catalog_meal_id uuid... );
+```
+
+- Enable RLS with two policies per table:
+  - Member can SELECT/INSERT/DELETE rows where `member_id = (select id from members where user_id = auth.uid())`
+  - Staff (`owner`/`admin`/`manager`/`staff`/`trainer`) can SELECT all in their branch scope
+- Add indexes on `(member_id, plan_id)` and `(member_id, completed_at DESC)`.
+
+### Fix 2 — POS Checkout 400
+
+- Add structured error logging to the `create_pos_sale` RPC (`RAISE EXCEPTION 'POS_VALIDATION: %', detail`) so the 400 body returns a human-readable cause to the client.
+- Update `src/pages/POS.tsx` toast handler to surface `error.message` and `error.details` instead of swallowing it, so we (and you) can see the real reason next time.
+- Pull the most recent failure from Postgres logs to identify and patch the actual root cause (likely guest checkout + wallet_applied combo, or a NOT NULL on `sold_by` when the cashier is logged in via a non-staff role).
+
+### Fix 3 — Signed Contract Viewer
+
+- Add a new component `src/components/hrm/SignedContractViewer.tsx` (right-side Sheet, per the no-dialog rule).
+- When a contract row in HRM has `signature_status = 'signed'`, replace the "Send for Signature" button with a "View Signed Contract" action.
+- The viewer fetches `contracts` + `contract_signatures` + `contract_signature_requests` and renders:
+  1. Full agreement terms (same `getEmploymentAgreementTemplate` rendering as `ContractSign.tsx`)
+  2. Employee details block
+  3. **Signature panel** showing typed signature, signer name, signer contact, signed-at timestamp, IP address, user agent
+  4. "Download as PDF" button using existing `buildContractPdf` (extend `src/utils/pdfBlob.ts`)
+  5. "Share via WhatsApp/Email" using the same PDF attachment pipeline as invoices
+- Also surface this in the public `ContractSign.tsx` page after a successful sign — show the full signed document in a confirmation card instead of just a toast.
+
+### Fix 4 — Multi-Provider AI Gateway (Major)
+
+Build a unified AI dispatcher that lets you switch between Lovable AI, OpenRouter, Ollama (self-hosted on your VPS), DeepSeek, and any OpenAI-compatible endpoint — per organization, per use case.
+
+**a) New table `ai_provider_configs`** (`integration_settings` style):
+- `id`, `org_id`/`branch_id`, `provider` (`lovable` | `openrouter` | `ollama` | `deepseek` | `openai_compatible`), `display_name`, `base_url`, `api_key_secret_name` (points to a Supabase secret), `default_model`, `is_active`, `is_default`, `usage_scope` (`whatsapp_ai` | `lead_scoring` | `fitness_plans` | `dashboard_insights` | `all`), `extra_config jsonb`.
+- RLS: only `owner`/`admin` can insert/update/select.
+
+**b) New shared edge module `supabase/functions/_shared/ai-dispatcher.ts`**:
+- Exports `callAI({ scope, messages, tools?, response_format?, model?, branchId })`.
+- Resolves the active provider for that scope:
+  1. Look up `ai_provider_configs` matching scope + active + default.
+  2. If `provider = lovable` → uses `LOVABLE_API_KEY` + `https://ai.gateway.lovable.dev/v1/chat/completions`.
+  3. If `provider = openrouter` → `https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer <secret>` and `HTTP-Referer` header.
+  4. If `provider = ollama` → user-supplied `base_url` (e.g. `https://ollama.yourvps.com/v1/chat/completions`), API key optional.
+  5. If `provider = deepseek` → `https://api.deepseek.com/v1/chat/completions`.
+  6. If `provider = openai_compatible` → arbitrary `base_url` + `api_key`.
+- All providers use the OpenAI-compatible chat-completions schema, so the call shape stays identical.
+- Built-in **automatic fallback to Lovable AI** if the configured provider returns 5xx / times out, with logging to a new `ai_call_logs` table (provider, scope, model, duration_ms, status, fallback_used).
+
+**c) Refactor existing AI edge functions** to use the dispatcher:
+- `score-leads`, `generate-fitness-plan`, `whatsapp-transactional-ai-agent`, `lead-nurture-followup`, `ai-dashboard-insights`, `whatsapp-webhook` (AI extraction).
+- Zero behaviour change when no custom provider is configured (Lovable AI remains the default).
+
+**d) New Settings UI `src/components/settings/AIProvidersSettings.tsx`** (added to `AIAgentControlCenter` as a new "Providers" tab):
+- List existing provider configs in a Vuexy-style table.
+- Right-side Sheet for "Add Provider" / "Edit Provider":
+  - Provider type select (Lovable / OpenRouter / Ollama / DeepSeek / Custom OpenAI-compatible)
+  - Display name, base URL (auto-filled per type), API key (stored as Supabase secret via `add_secret` flow), default model, scope, active toggle, default-for-scope toggle
+- "Test connection" button that calls a new `test-ai-provider` edge function which makes a 1-token completion and returns latency.
+- Clear copy explaining: *"Lovable AI is the default and requires no setup. Add OpenRouter for free/cheap models like Llama 3.1, or point to your own Ollama VPS for fully free self-hosted inference."*
+
+**e) Per-scope routing**:
+- A user can set OpenRouter (free Llama) for `lead_scoring` (high volume, low stakes) and keep Lovable AI / GPT-5 for `whatsapp_ai` (customer-facing).
+
+---
+
+## Files to Create / Modify
+
+**Create**
+- `supabase/migrations/[ts]_fitness_tracking_tables.sql`
+- `supabase/migrations/[ts]_ai_providers.sql`
+- `supabase/functions/_shared/ai-dispatcher.ts`
+- `supabase/functions/test-ai-provider/index.ts`
+- `src/components/hrm/SignedContractViewer.tsx`
+- `src/components/settings/AIProvidersSettings.tsx`
+
+**Modify**
+- `src/services/storeService.ts` — surface RPC error details
+- `src/pages/POS.tsx` — better error toasts
+- `src/pages/HRM.tsx` — add "View Signed" action
+- `src/pages/ContractSign.tsx` — full signed-doc confirmation
+- `src/utils/pdfBlob.ts` — add `buildSignedContractPdf`
+- `src/components/settings/AIAgentControlCenter.tsx` — add "Providers" tab
+- `supabase/functions/{score-leads,generate-fitness-plan,whatsapp-transactional-ai-agent,lead-nurture-followup,ai-dashboard-insights}/index.ts` — switch to dispatcher
+- DB migration to add detail messages in `create_pos_sale`
+
 ## Open Questions
 
-I'd like your call on these before I start coding:
+1. **AI provider scope granularity**: The plan above lets you set a default provider *per use case* (lead_scoring, whatsapp_ai, etc.). Want that, or just one global default for all AI calls?
+2. **Fallback behavior**: If your custom provider (e.g. Ollama VPS) is down, should we auto-fallback to Lovable AI silently, or fail loudly so you know?
+3. **Signed contract PDF storage**: Should we auto-upload the signed PDF to the `documents` bucket and store its URL in `contracts.signed_pdf_url`, so it's archived for compliance? (Recommended.)
