@@ -165,7 +165,7 @@ export function AIAgentControlCenter() {
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-6">
-        <TabsList className="grid grid-cols-5 w-full max-w-3xl h-auto p-1">
+        <TabsList className="grid grid-cols-6 w-full max-w-3xl h-auto p-1">
           <TabsTrigger value="dashboard" className="text-xs sm:text-sm gap-1.5 py-2">
             <Activity className="h-3.5 w-3.5 hidden sm:block" />
             Dashboard
@@ -185,6 +185,10 @@ export function AIAgentControlCenter() {
           <TabsTrigger value="lead-nurture" className="text-xs sm:text-sm gap-1.5 py-2">
             <Clock className="h-3.5 w-3.5 hidden sm:block" />
             Lead Nurture
+          </TabsTrigger>
+          <TabsTrigger value="providers" className="text-xs sm:text-sm gap-1.5 py-2">
+            <Brain className="h-3.5 w-3.5 hidden sm:block" />
+            Providers
           </TabsTrigger>
         </TabsList>
 
@@ -206,6 +210,10 @@ export function AIAgentControlCenter() {
 
         <TabsContent value="lead-nurture">
           <LeadNurtureSettings />
+        </TabsContent>
+
+        <TabsContent value="providers">
+          <AIProvidersSettings />
         </TabsContent>
       </Tabs>
     </div>
