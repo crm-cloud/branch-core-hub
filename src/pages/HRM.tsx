@@ -12,6 +12,7 @@ import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
 import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
 import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
+import { SignedContractViewer } from '@/components/hrm/SignedContractViewer';
 import {
   Plus, 
   Users, 
