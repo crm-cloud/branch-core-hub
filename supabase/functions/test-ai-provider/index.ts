@@ -57,10 +57,29 @@ serve(async (req: Request) => {
       }
     }
 
-    const apiKey = api_key_secret_name ? Deno.env.get(api_key_secret_name) : null;
+    // Resolve API key. The field is the *name* of a Cloud secret, but if the user
+    // pasted the actual key value (looks like a key, contains lowercase or special chars,
+    // or starts with known prefixes), use it directly with a soft warning.
+    let apiKey: string | null = null;
+    let pasted_raw_key = false;
+    if (api_key_secret_name) {
+      const looksLikeRawKey =
+        /^(sk-|sk_|aiza|gsk_|tgp_|key-|or-)/i.test(api_key_secret_name) ||
+        /[a-z]/.test(api_key_secret_name) && api_key_secret_name.length > 25 && !/^[A-Z0-9_]+$/.test(api_key_secret_name);
+      if (looksLikeRawKey) {
+        apiKey = api_key_secret_name;
+        pasted_raw_key = true;
+      } else {
+        apiKey = Deno.env.get(api_key_secret_name) ?? null;
+      }
+    }
+    // Lovable AI uses the auto-provisioned LOVABLE_API_KEY
+    if (!apiKey && provider === "lovable") {
+      apiKey = Deno.env.get("LOVABLE_API_KEY") ?? null;
+    }
     if (!apiKey && provider !== "ollama") {
       return json({
-        error: `Secret '${api_key_secret_name}' is not set. Add it via Cloud → Settings → Secrets.`,
+        error: `Secret '${api_key_secret_name}' is not set in Cloud → Settings → Secrets. Either add it there using this exact name, or paste the actual API key value into this field for a one-off test.`,
         secret_missing: true,
       }, 400);
     }
@@ -114,6 +133,7 @@ serve(async (req: Request) => {
       error: errorMsg || undefined,
       endpoint,
       model: default_model,
+      pasted_raw_key,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
