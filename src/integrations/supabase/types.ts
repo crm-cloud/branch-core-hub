@@ -1394,6 +1394,117 @@ export type Database = {
           },
         ]
       }
+      contract_signature_requests: {
+        Row: {
+          branch_id: string | null
+          contract_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          signer_contact: string | null
+          signer_name: string | null
+          status: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          contract_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          revoked_at?: string | null
+          signer_contact?: string | null
+          signer_name?: string | null
+          status?: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          contract_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          signer_contact?: string | null
+          signer_name?: string | null
+          status?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signature_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_signature_requests_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_signatures: {
+        Row: {
+          contract_id: string
+          id: string
+          ip_address: string | null
+          request_id: string | null
+          signature_text: string
+          signed_at: string
+          signed_name: string
+          signer_contact: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          contract_id: string
+          id?: string
+          ip_address?: string | null
+          request_id?: string | null
+          signature_text: string
+          signed_at?: string
+          signed_name: string
+          signer_contact?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          contract_id?: string
+          id?: string
+          ip_address?: string | null
+          request_id?: string | null
+          signature_text?: string
+          signed_at?: string
+          signed_name?: string
+          signer_contact?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signatures_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_signatures_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "contract_signature_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_templates: {
         Row: {
           content: string
@@ -1426,6 +1537,7 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           base_salary: number | null
+          branch_id: string | null
           commission_percentage: number | null
           contract_type: string
           created_at: string
@@ -1434,6 +1546,10 @@ export type Database = {
           end_date: string | null
           id: string
           salary: number
+          signature_requested_at: string | null
+          signature_status: string
+          signed_at: string | null
+          signed_pdf_url: string | null
           start_date: string
           status: Database["public"]["Enums"]["contract_status"]
           terms: Json | null
@@ -1444,6 +1560,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           base_salary?: number | null
+          branch_id?: string | null
           commission_percentage?: number | null
           contract_type: string
           created_at?: string
@@ -1452,6 +1569,10 @@ export type Database = {
           end_date?: string | null
           id?: string
           salary: number
+          signature_requested_at?: string | null
+          signature_status?: string
+          signed_at?: string | null
+          signed_pdf_url?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
@@ -1462,6 +1583,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           base_salary?: number | null
+          branch_id?: string | null
           commission_percentage?: number | null
           contract_type?: string
           created_at?: string
@@ -1470,6 +1592,10 @@ export type Database = {
           end_date?: string | null
           id?: string
           salary?: number
+          signature_requested_at?: string | null
+          signature_status?: string
+          signed_at?: string | null
+          signed_pdf_url?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
@@ -1477,6 +1603,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "contracts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "contracts_employee_id_fkey"
             columns: ["employee_id"]
