@@ -21,6 +21,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
   const { hasAnyRole } = useAuth();
   const canCreateBranch = hasAnyRole(['owner', 'admin']);
 
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -59,12 +60,23 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
 
   const createBranch = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Uniqueness pre-check on code
+      const codeUpper = data.code.toUpperCase();
+      const { data: existing } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('code', codeUpper)
+        .maybeSingle();
+      if (existing) {
+        throw new Error(`Branch code "${codeUpper}" is already in use. Try a different code.`);
+      }
+
       // Create branch
       const { data: branch, error: branchError } = await supabase
         .from('branches')
         .insert({
           name: data.name,
-          code: data.code.toUpperCase(),
+          code: codeUpper,
           address: data.address,
           city: data.city,
           state: data.state,
@@ -137,6 +149,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
         timezone: 'Asia/Kolkata',
         managerId: '',
       });
+      setCodeManuallyEdited(false);
     },
     onError: (error: any) => {
       const message = error?.message || error?.error_description || 'Failed to create branch';
@@ -176,8 +189,18 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Downtown Branch"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    name,
+                    // Auto-suggest code from first 3 alpha chars while user hasn't manually edited it
+                    code: codeManuallyEdited
+                      ? prev.code
+                      : name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase(),
+                  }));
+                }}
+                placeholder="e.g., Incline Bandra"
                 required
               />
             </div>
@@ -186,11 +209,15 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
               <Input
                 id="code"
                 value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                placeholder="e.g., DT01"
+                onChange={(e) => {
+                  setCodeManuallyEdited(true);
+                  setFormData({ ...formData, code: e.target.value.toUpperCase() });
+                }}
+                placeholder="Auto from name (e.g., INC)"
                 maxLength={6}
                 required
               />
+              <p className="text-xs text-muted-foreground">Used in member codes (e.g., {formData.code || 'INC'}-26-0001) and invoice numbers.</p>
             </div>
           </div>
 

@@ -2804,6 +2804,27 @@ export type Database = {
           },
         ]
       }
+      invoice_number_counters: {
+        Row: {
+          branch_id: string
+          last_seq: number
+          updated_at: string
+          year_yy: string
+        }
+        Insert: {
+          branch_id: string
+          last_seq?: number
+          updated_at?: string
+          year_yy: string
+        }
+        Update: {
+          branch_id?: string
+          last_seq?: number
+          updated_at?: string
+          year_yy?: string
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           amount_paid: number | null
@@ -3632,6 +3653,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      member_code_counters: {
+        Row: {
+          branch_id: string
+          last_seq: number
+          updated_at: string
+          year_yy: string
+        }
+        Insert: {
+          branch_id: string
+          last_seq?: number
+          updated_at?: string
+          year_yy: string
+        }
+        Update: {
+          branch_id?: string
+          last_seq?: number
+          updated_at?: string
+          year_yy?: string
+        }
+        Relationships: []
       }
       member_comps: {
         Row: {
