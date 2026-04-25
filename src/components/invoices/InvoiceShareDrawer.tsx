@@ -7,10 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone } from 'lucide-react';
+import { Mail, MessageCircle, Copy, Printer, Download, Send, Phone, Paperclip } from 'lucide-react';
 import { format } from 'date-fns';
 import { communicationService } from '@/services/communicationService';
 import { e } from '@/utils/htmlEscape';
+import { supabase } from '@/integrations/supabase/client';
+import { buildInvoicePdf } from '@/utils/pdfBlob';
+import { uploadAttachment, blobToBase64 } from '@/utils/uploadAttachment';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
