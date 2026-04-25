@@ -420,8 +420,41 @@ function ProviderDrawer({
           </div>
 
           <div>
-            <Label>Default Model</Label>
-            <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="provider/model-name" />
+            <div className="flex items-center justify-between mb-1.5">
+              <Label>Default Model</Label>
+              {presetModels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setModelMode(modelMode === 'preset' ? 'custom' : 'preset')}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  {modelMode === 'preset' ? 'Type custom model' : 'Choose from list'}
+                </button>
+              )}
+            </div>
+            {modelMode === 'preset' && presetModels.length > 0 ? (
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger><SelectValue placeholder="Select a model" /></SelectTrigger>
+                <SelectContent>
+                  {presetModels.map((m) => (
+                    <SelectItem key={m} value={m} className="font-mono text-xs">{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="provider/model-name"
+                className="font-mono text-sm"
+              />
+            )}
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {presetModels.length > 0
+                ? 'Pick the latest known model for this provider, or switch to custom to type a new model name.'
+                : 'Enter the exact model identifier this endpoint expects.'}
+            </p>
           </div>
 
           <div>
