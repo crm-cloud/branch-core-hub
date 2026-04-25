@@ -130,18 +130,8 @@ export function AddMemberDrawer({ open, onOpenChange, branchId }: AddMemberDrawe
 
       const memberId = result.memberId;
 
-      // Create referral record if referred
-      if (referrerInfo?.id && memberId) {
-        await supabase.from('referrals').insert([{
-          referrer_member_id: referrerInfo.id,
-          referred_member_id: memberId,
-          referred_name: data.fullName,
-          referred_phone: data.phone,
-          referred_email: data.email,
-          referral_code: data.referralCode.toUpperCase(),
-          status: 'new' as const,
-        }]);
-      }
+      // Referral row is created server-side inside `create-member-user`
+      // (transactional with member creation). Do not insert a duplicate here.
 
       return { id: memberId, member_code: result.memberCode };
     },

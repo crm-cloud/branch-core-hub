@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { BodyModel } from './BodyModel';
@@ -28,17 +28,44 @@ const MODEL_URLS: Record<'male' | 'female' | 'neutral', string> = {
   neutral: '/models/avatar-male.glb',
 };
 
-/** Probe (HEAD) to see if a GLB exists before triggering useGLTF (which throws). */
+/** Cached HEAD probe — only one network hit per URL per session. */
+const availabilityCache = new Map<string, Promise<boolean>>();
+function probeAvailability(url: string) {
+  if (!availabilityCache.has(url)) {
+    availabilityCache.set(
+      url,
+      fetch(url, { method: 'HEAD' }).then((r) => r.ok).catch(() => false),
+    );
+  }
+  return availabilityCache.get(url)!;
+}
+
 function useGltfAvailability(url: string) {
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch(url, { method: 'HEAD' })
-      .then((r) => { if (!cancelled) setAvailable(r.ok); })
-      .catch(() => { if (!cancelled) setAvailable(false); });
+    probeAvailability(url).then((ok) => { if (!cancelled) setAvailable(ok); });
     return () => { cancelled = true; };
   }, [url]);
   return available;
+}
+
+/** Common morph-target name aliases for Ready Player Me / Mixamo / custom rigs. */
+const MORPH_ALIASES: Record<string, string[]> = {
+  waistWidth: ['Waist', 'waist', 'viseme_Waist'],
+  chestVolume: ['Chest', 'chest', 'ChestSize'],
+  hipWidth: ['Hip', 'hips', 'Hips'],
+  armBicep: ['Arm', 'Bicep', 'biceps'],
+  thighGirth: ['Thigh', 'thighs', 'Thighs'],
+  bodyFat: ['BodyFat', 'body_fat', 'Fat'],
+};
+
+function findMorphIndex(dict: Record<string, number>, key: string): number | undefined {
+  if (typeof dict[key] === 'number') return dict[key];
+  for (const alias of MORPH_ALIASES[key] || []) {
+    if (typeof dict[alias] === 'number') return dict[alias];
+  }
+  return undefined;
 }
 
 function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & AvatarGltfProps) {
@@ -46,14 +73,12 @@ function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & Ava
 
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
-  // Apply morph target influences from the snapshot when the mesh exposes
-  // matching morph dictionaries.
   useEffect(() => {
     cloned.traverse((obj) => {
       const mesh = obj as THREE.Mesh & { morphTargetDictionary?: Record<string, number>; morphTargetInfluences?: number[] };
       if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
       Object.entries(snapshot.morphs).forEach(([key, value]) => {
-        const idx = mesh.morphTargetDictionary?.[key];
+        const idx = findMorphIndex(mesh.morphTargetDictionary!, key);
         if (typeof idx === 'number') {
           mesh.morphTargetInfluences![idx] = Math.max(0, Math.min(1, value));
         }
@@ -70,23 +95,27 @@ function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & Ava
   );
 }
 
+/** Catches GLB load/parse errors at runtime and falls back to BodyModel. */
+class GltfErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: unknown) { console.warn('[AvatarGltf] GLB load failed, falling back:', err); }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
 export function AvatarGltf({ snapshot, interactiveRotationY }: AvatarGltfProps) {
   const url = MODEL_URLS[snapshot.genderPresentation];
   const available = useGltfAvailability(url);
+  const fallback = <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
 
-  if (available === null) {
-    // Probing — render fallback to avoid a flash of nothing.
-    return <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
-  }
-
-  if (!available) {
-    return <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
-  }
+  if (available !== true) return fallback;
 
   return (
-    <Suspense fallback={<BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />}>
-      <GltfMesh url={url} snapshot={snapshot} interactiveRotationY={interactiveRotationY} />
-    </Suspense>
+    <GltfErrorBoundary fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <GltfMesh url={url} snapshot={snapshot} interactiveRotationY={interactiveRotationY} />
+      </Suspense>
+    </GltfErrorBoundary>
   );
 }
 

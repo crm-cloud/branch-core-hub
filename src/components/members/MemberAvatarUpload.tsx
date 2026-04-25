@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { queueMemberSync, syncAvatarToBiometric } from '@/services/biometricService';
 import { compressImageFile } from '@/utils/imageCompression';
+import { uploadBiometricPhoto } from '@/lib/media/biometricPhotoUrls';
 
 interface MemberAvatarUploadProps {
   memberId?: string;
@@ -60,6 +61,8 @@ export function MemberAvatarUpload({
     try {
       // Compress image for device compatibility (max 640x640, under 200KB)
       const compressedFile = await compressImageFile(file);
+
+      // Public avatar (display) → kept in `avatars` bucket
       const fileName = `${userId || Date.now()}-${Date.now()}.jpg`;
       const filePath = `avatars/${fileName}`;
 
@@ -76,22 +79,31 @@ export function MemberAvatarUpload({
       onAvatarChange(publicUrl);
       toast.success('Avatar uploaded successfully');
 
-      // Avatar = Biometric unification: sync avatar to biometric_photo_url
-      if (userId) {
+      // Biometric photo (private) → `member-photos` bucket via storage path on member.
+      // The MIPS sync helper signs a fresh URL when pushing to the device, so we
+      // never store stale public links for biometric usage.
+      if (memberId) {
+        try {
+          const { path: biometricPath, signedUrl } = await uploadBiometricPhoto(
+            'members',
+            memberId,
+            compressedFile,
+          );
+          await supabase
+            .from('members')
+            .update({ biometric_photo_path: biometricPath })
+            .eq('id', memberId);
+          await queueMemberSync(memberId, signedUrl, name);
+          toast.success('Photo queued for device sync');
+        } catch (err) {
+          console.warn('Biometric upload/queue failed:', err);
+        }
+      } else if (userId) {
+        // No memberId yet (e.g. legacy callers) — keep avatar→biometric URL fallback.
         try {
           await syncAvatarToBiometric(userId, publicUrl);
         } catch (err) {
           console.warn('Avatar-to-biometric sync failed:', err);
-        }
-      }
-
-      // Auto-queue biometric sync if memberId is available
-      if (memberId) {
-        try {
-          await queueMemberSync(memberId, publicUrl, name);
-          toast.success('Photo queued for device sync');
-        } catch (err) {
-          console.warn('Biometric sync queue failed:', err);
         }
       }
     } catch (error: any) {

@@ -101,19 +101,71 @@ Deno.serve(async (req) => {
           : reminder.reminder_type === "on_due"
           ? "due today"
           : "overdue";
+
+      // In-app notification (separate from outbound delivery state).
       notifications.push({
         user_id: member.user_id, branch_id: reminder.branch_id, title: "Payment Reminder",
         message: `Hi ${name}, your payment is ${reminderCopy}.`,
         type: "warning", category: "payment", action_url: "/my-invoices",
       });
-      commLogs.push({
-        branch_id: reminder.branch_id, type: "notification",
-        recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
-        subject: "Payment Reminder", content: `Payment ${reminderCopy} reminder for ${name}`,
-        status: "sent", member_id: reminder.member_id, sent_at: now.toISOString(),
-      });
-      await adminClient.from("payment_reminders").update({ status: "sent", sent_at: now.toISOString() }).eq("id", reminder.id);
-      results.payment_reminders++;
+
+      // Honest outbound delivery: only mark `sent` if the provider call succeeds.
+      const channel: string = reminder.channel || "notification";
+      const message = `Hi ${name}, your payment is ${reminderCopy}. Open your invoices in the app to pay.`;
+      let deliveryStatus: "sent" | "failed" | "skipped" = "skipped";
+      let deliveryError: string | null = null;
+
+      try {
+        if (channel === "whatsapp" && member.profiles?.phone) {
+          const { error } = await adminClient.functions.invoke("send-whatsapp", {
+            body: { to: member.profiles.phone, message, branch_id: reminder.branch_id, member_id: reminder.member_id },
+          });
+          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
+          else deliveryStatus = "sent";
+        } else if (channel === "sms" && member.profiles?.phone) {
+          const { error } = await adminClient.functions.invoke("send-sms", {
+            body: { to: member.profiles.phone, message, branch_id: reminder.branch_id, member_id: reminder.member_id },
+          });
+          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
+          else deliveryStatus = "sent";
+        } else if (channel === "email" && member.profiles?.email) {
+          const { error } = await adminClient.functions.invoke("send-email", {
+            body: { to: member.profiles.email, subject: "Payment Reminder", html: `<p>${message}</p>`, branch_id: reminder.branch_id, member_id: reminder.member_id },
+          });
+          if (error) { deliveryStatus = "failed"; deliveryError = error.message; }
+          else deliveryStatus = "sent";
+        } else {
+          // No usable channel/recipient — record honestly as skipped.
+          deliveryStatus = "skipped";
+          deliveryError = `No recipient for channel "${channel}"`;
+        }
+      } catch (err: any) {
+        deliveryStatus = "failed";
+        deliveryError = err?.message || String(err);
+      }
+
+      // Only log a comm-log entry when something actually went out.
+      if (deliveryStatus === "sent") {
+        commLogs.push({
+          branch_id: reminder.branch_id, type: channel,
+          recipient: member.profiles?.email || member.profiles?.phone || member.member_code,
+          subject: "Payment Reminder", content: message,
+          status: "sent", member_id: reminder.member_id, sent_at: now.toISOString(),
+        });
+      }
+
+      await adminClient
+        .from("payment_reminders")
+        .update({
+          status: deliveryStatus === "sent" ? "sent" : deliveryStatus === "failed" ? "failed" : "skipped",
+          delivery_status: deliveryStatus,
+          last_error: deliveryError,
+          attempt_count: (reminder.attempt_count || 0) + 1,
+          sent_at: deliveryStatus === "sent" ? now.toISOString() : null,
+        })
+        .eq("id", reminder.id);
+
+      if (deliveryStatus === "sent") results.payment_reminders++;
     }
 
     // 2. Birthday wishes
