@@ -269,8 +269,14 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['finance-income'] });
       queryClient.invalidateQueries({ queryKey: ['pos-sales-income'] });
     },
-    onError: (error) => {
-      toast.error('Failed to complete sale: ' + error.message);
+    onError: (error: any) => {
+      // Show the full backend reason in a toast that stays long enough to read.
+      const msg = error?.message || 'Unknown error';
+      console.error('[POS] create sale failed:', error);
+      toast.error('Failed to complete sale', {
+        description: msg,
+        duration: 8000,
+      });
     },
   });
 
