@@ -3908,6 +3908,98 @@ export type Database = {
         }
         Relationships: []
       }
+      member_meal_completions: {
+        Row: {
+          completed_at: string
+          id: string
+          meal_date: string
+          meal_index: number
+          meal_name: string | null
+          member_id: string
+          plan_id: string
+          plan_source: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          meal_date: string
+          meal_index: number
+          meal_name?: string | null
+          member_id: string
+          plan_id: string
+          plan_source: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          meal_date?: string
+          meal_index?: number
+          meal_name?: string | null
+          member_id?: string
+          plan_id?: string
+          plan_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_meal_completions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_meal_swaps: {
+        Row: {
+          catalog_meal_id: string | null
+          id: string
+          meal_index: number
+          member_id: string
+          new_meal: Json
+          original_meal: Json | null
+          plan_id: string
+          plan_source: string
+          swapped_at: string
+        }
+        Insert: {
+          catalog_meal_id?: string | null
+          id?: string
+          meal_index: number
+          member_id: string
+          new_meal: Json
+          original_meal?: Json | null
+          plan_id: string
+          plan_source: string
+          swapped_at?: string
+        }
+        Update: {
+          catalog_meal_id?: string | null
+          id?: string
+          meal_index?: number
+          member_id?: string
+          new_meal?: Json
+          original_meal?: Json | null
+          plan_id?: string
+          plan_source?: string
+          swapped_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_meal_swaps_catalog_meal_id_fkey"
+            columns: ["catalog_meal_id"]
+            isOneToOne: false
+            referencedRelation: "meal_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_meal_swaps_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_measurements: {
         Row: {
           abdomen_cm: number | null
@@ -4120,6 +4212,50 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_workout_completions: {
+        Row: {
+          completed_at: string
+          day_label: string
+          exercise_index: number
+          exercise_name: string | null
+          id: string
+          member_id: string
+          plan_id: string
+          plan_source: string
+          week_number: number
+        }
+        Insert: {
+          completed_at?: string
+          day_label: string
+          exercise_index: number
+          exercise_name?: string | null
+          id?: string
+          member_id: string
+          plan_id: string
+          plan_source: string
+          week_number?: number
+        }
+        Update: {
+          completed_at?: string
+          day_label?: string
+          exercise_index?: number
+          exercise_name?: string | null
+          id?: string
+          member_id?: string
+          plan_id?: string
+          plan_source?: string
+          week_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_workout_completions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
