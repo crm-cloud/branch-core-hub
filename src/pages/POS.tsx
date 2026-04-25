@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { ResponsiveSheet, ResponsiveSheetHeader, ResponsiveSheetTitle, ResponsiveSheetDescription, ResponsiveSheetFooter } from '@/components/ui/ResponsiveSheet';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2, Tag, X, Check } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, Package, Wallet, Search, Receipt, User, Phone, Mail, UserPlus, FileText, Link2, Copy, Loader2, Tag, X, Check, MessageCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +17,9 @@ import { getOrCreateWallet } from '@/services/walletService';
 import { useNavigate } from 'react-router-dom';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { escapeHtml } from '@/utils/htmlEscape';
+import { buildPaymentReceiptPdf } from '@/utils/pdfBlob';
+import { blobToBase64 } from '@/utils/uploadAttachment';
+import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
 
 export default function POSPage() {
   const queryClient = useQueryClient();
@@ -933,17 +936,43 @@ export default function POSPage() {
             </div>
           </div>
         </div>
-        <ResponsiveSheetFooter>
-          <Button variant="outline" onClick={() => setShowInvoice(false)}>
-            Close
-          </Button>
+        <ResponsiveSheetFooter className="flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setShowInvoice(false)}>Close</Button>
           <Button variant="outline" onClick={() => navigate('/invoices')}>
-            <FileText className="h-4 w-4 mr-2" />
-            View Invoices
+            <FileText className="h-4 w-4 mr-2" />View Invoices
+          </Button>
+          <Button variant="outline" onClick={async () => {
+            const memberPhone = lastSale?.member?.profiles?.phone || lastSale?.member?.phone || guestInfo.phone;
+            if (!memberPhone || !effectiveBranchId || !lastSale?.invoice_id) {
+              toast.error('Need a phone, branch and invoice to share');
+              return;
+            }
+            try {
+              const pdf = buildPaymentReceiptPdf({
+                receipt_number: lastSale.invoices?.invoice_number || `RCPT-${lastSale.invoice_id?.slice(0, 8)}`,
+                payment_date: new Date().toISOString(),
+                amount: lastSale.total,
+                payment_method: lastSale.paymentMethod || 'cash',
+                transaction_id: lastSale.transaction_id,
+                invoice_number: lastSale.invoices?.invoice_number,
+                member_name: lastSale.member?.profiles?.full_name || guestInfo.name || 'Customer',
+                member_code: lastSale.member?.member_code,
+                branch_name: currentBranchName || 'Incline Fitness',
+              });
+              const r = await sendWhatsAppDocument({
+                branchId: effectiveBranchId, phone: memberPhone,
+                memberId: lastSale.member?.id || null,
+                caption: `Receipt for ₹${lastSale.total} — Thank you!`,
+                filename: `Receipt-${lastSale.invoice_id?.slice(0, 8)}.pdf`,
+                pdf, folder: 'receipts',
+              });
+              toast.success(r.fallback ? 'WhatsApp opened with PDF link' : 'Receipt PDF sent on WhatsApp');
+            } catch (err: any) { toast.error(err?.message || 'Failed to send'); }
+          }}>
+            <MessageCircle className="h-4 w-4 mr-2" />Send PDF on WhatsApp
           </Button>
           <Button onClick={printInvoice}>
-            <Receipt className="h-4 w-4 mr-2" />
-            Print Receipt
+            <Receipt className="h-4 w-4 mr-2" />Print Receipt
           </Button>
         </ResponsiveSheetFooter>
       </ResponsiveSheet>
