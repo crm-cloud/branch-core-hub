@@ -149,6 +149,7 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
         timezone: 'Asia/Kolkata',
         managerId: '',
       });
+      setCodeManuallyEdited(false);
     },
     onError: (error: any) => {
       const message = error?.message || error?.error_description || 'Failed to create branch';
