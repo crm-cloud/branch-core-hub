@@ -177,8 +177,18 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Downtown Branch"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    name,
+                    // Auto-suggest code from first 3 alpha chars while user hasn't manually edited it
+                    code: codeManuallyEdited
+                      ? prev.code
+                      : name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase(),
+                  }));
+                }}
+                placeholder="e.g., Incline Bandra"
                 required
               />
             </div>
@@ -187,11 +197,15 @@ export function AddBranchDialog({ open, onOpenChange }: AddBranchDialogProps) {
               <Input
                 id="code"
                 value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                placeholder="e.g., DT01"
+                onChange={(e) => {
+                  setCodeManuallyEdited(true);
+                  setFormData({ ...formData, code: e.target.value.toUpperCase() });
+                }}
+                placeholder="Auto from name (e.g., INC)"
                 maxLength={6}
                 required
               />
+              <p className="text-xs text-muted-foreground">Used in member codes (e.g., {formData.code || 'INC'}-26-0001) and invoice numbers.</p>
             </div>
           </div>
 
