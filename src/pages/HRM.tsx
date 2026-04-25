@@ -618,14 +618,30 @@ export default function HRMPage() {
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => createContractSignLink(contract)}
-                              title="Generate signing link"
-                            >
-                              <Link className="h-3.5 w-3.5" />
-                            </Button>
+                            {contract.signature_status === 'signed' ? (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => {
+                                  setViewingSignedContract(contract);
+                                  setSignedViewerOpen(true);
+                                }}
+                                title="View signed contract"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                View Signed
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => createContractSignLink(contract)}
+                                title="Generate signing link"
+                              >
+                                <Link className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
