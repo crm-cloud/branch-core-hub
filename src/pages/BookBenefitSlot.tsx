@@ -102,52 +102,53 @@ export default function BookBenefitSlot() {
     },
   });
 
-  // Book slot mutation
+  // Book slot mutation — routed through book_facility_slot RPC
+  // (enforces capacity, entitlement, dedupe).
   const bookSlot = useMutation({
     mutationFn: async (slotId: string) => {
       if (!member || !activeMembership) throw new Error('No active membership');
-      
-      const { error } = await supabase
-        .from('benefit_bookings')
-        .insert({
-          slot_id: slotId,
-          member_id: member.id,
-          membership_id: activeMembership.id,
-          status: 'booked',
-        });
-      
+      const { data, error } = await supabase.rpc('book_facility_slot', {
+        p_slot_id: slotId,
+        p_member_id: member.id,
+        p_membership_id: activeMembership.id,
+      });
       if (error) throw error;
+      const result = data as { success: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || 'Failed to book slot');
     },
     onSuccess: () => {
       toast.success('Slot booked successfully!');
       queryClient.invalidateQueries({ queryKey: ['benefit-slots'] });
       queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings-all'] });
+      queryClient.invalidateQueries({ queryKey: ['my-benefit-credits'] });
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to book slot');
     },
   });
 
-  // Cancel booking mutation
+  // Cancel booking mutation — routed through cancel_facility_slot RPC
+  // (also refunds the consumed benefit credit).
   const cancelBooking = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase
-        .from('benefit_bookings')
-        .update({ 
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq('id', bookingId);
-      
+      const { data, error } = await supabase.rpc('cancel_facility_slot', {
+        p_booking_id: bookingId,
+        p_reason: 'Cancelled by member',
+      });
       if (error) throw error;
+      const result = data as { success: boolean; error?: string };
+      if (!result?.success) throw new Error(result?.error || 'Failed to cancel booking');
     },
     onSuccess: () => {
       toast.success('Booking cancelled');
       queryClient.invalidateQueries({ queryKey: ['benefit-slots'] });
       queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['my-benefit-bookings-all'] });
+      queryClient.invalidateQueries({ queryKey: ['my-benefit-credits'] });
     },
-    onError: () => {
-      toast.error('Failed to cancel booking');
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to cancel booking');
     },
   });
 

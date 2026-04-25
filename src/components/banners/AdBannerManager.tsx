@@ -83,10 +83,12 @@ export function AdBannerManager({ branchId }: AdBannerManagerProps) {
     setUploading(true);
     try {
       const ext = file.name.split('.').pop();
-      const path = `banners/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('documents').upload(path, file);
+      const path = `${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('ad-banners')
+        .upload(path, file, { upsert: false, cacheControl: '3600' });
       if (error) throw error;
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from('ad-banners').getPublicUrl(path);
       setImageUrl(urlData.publicUrl);
     } catch (err: any) {
       toast.error('Upload failed');

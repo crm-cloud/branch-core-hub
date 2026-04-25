@@ -86,43 +86,29 @@ export const lockerService = {
     return data;
   },
 
-  // Assign locker to member
+  // Assign locker to member (atomic via RPC: locker status flip + assignment + invoice)
   async assignLocker(assignment: {
     locker_id: string;
     member_id: string;
     start_date: string;
     end_date?: string;
     fee_amount?: number;
+    billing_months?: number;
+    chargeable?: boolean;
   }) {
-    // Start a transaction-like operation
-    const { data: locker, error: lockerError } = await supabase
-      .from('lockers')
-      .update({ status: 'assigned' as LockerStatus })
-      .eq('id', assignment.locker_id)
-      .select()
-      .single();
-
-    if (lockerError) throw lockerError;
-
-    const { data, error } = await supabase
-      .from('locker_assignments')
-      .insert({
-        ...assignment,
-        is_active: true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      // Rollback locker status
-      await supabase
-        .from('lockers')
-        .update({ status: 'available' as LockerStatus })
-        .eq('id', assignment.locker_id);
-      throw error;
-    }
-
-    return data;
+    const { data, error } = await supabase.rpc('assign_locker_with_invoice', {
+      p_locker_id: assignment.locker_id,
+      p_member_id: assignment.member_id,
+      p_start_date: assignment.start_date,
+      p_end_date: assignment.end_date ?? assignment.start_date,
+      p_fee_amount: assignment.fee_amount ?? 0,
+      p_billing_months: assignment.billing_months ?? 1,
+      p_chargeable: !!assignment.chargeable && (assignment.fee_amount ?? 0) > 0,
+    });
+    if (error) throw error;
+    const result = data as { success: boolean; error?: string; assignment_id?: string; invoice_id?: string | null };
+    if (!result?.success) throw new Error(result?.error || 'Failed to assign locker');
+    return result;
   },
 
   // Release locker
