@@ -930,14 +930,14 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
     handoff_message?: string;
   } | undefined;
 
-  // Fetch conversation history
+  // Fetch conversation history (extended to 30 messages)
   const { data: recentMsgs } = await supabase
     .from("whatsapp_messages")
-    .select("content, direction")
+    .select("content, direction, created_at")
     .eq("phone_number", inboundMsg.phone_number)
     .eq("branch_id", branchId)
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(30);
 
   const conversationHistory = (recentMsgs || [])
     .reverse()
@@ -946,12 +946,77 @@ async function triggerAiAutoReply(messageId: string, phoneNumber: string, branch
       content: m.content || "",
     }));
 
+  // Persistent memory: load summary + already-captured-lead snapshot
+  let alreadyCapturedSnapshot = "";
+  if (chatSettings?.captured_lead_id) {
+    const { data: existingLead } = await supabase
+      .from("leads")
+      .select("full_name, email, goals, budget, preferred_time, fitness_goal, fitness_experience, expected_start_date")
+      .eq("id", chatSettings.captured_lead_id)
+      .maybeSingle();
+    if (existingLead) {
+      const known = Object.entries(existingLead)
+        .filter(([_, v]) => v !== null && v !== "" && v !== undefined)
+        .map(([k, v]) => `${k}=${v}`).join(", ");
+      if (known) {
+        alreadyCapturedSnapshot = `\n\n[KNOWN LEAD — DO NOT RE-ASK]\nThis person is already a captured lead. Known: ${known}. Do NOT ask for their name, email, goals, budget, or preferred time again. Just help them.`;
+      }
+    }
+  }
+
+  const summaryBlock = chatSettings?.conversation_summary
+    ? `\n\n[PRIOR CONVERSATION SUMMARY]\n${chatSettings.conversation_summary}\n`
+    : "";
+
+  // Refresh summary in background if stale (>20 msgs and >10 new since last summary)
+  const totalMsgCount = recentMsgs?.length || 0;
+  const lastCount = chatSettings?.summary_message_count || 0;
+  if (totalMsgCount >= 20 && (totalMsgCount - lastCount >= 10 || !chatSettings?.summary_updated_at)) {
+    const summaryPromise = (async () => {
+      try {
+        const transcript = conversationHistory.slice(0, conversationHistory.length - 6)
+          .map(m => `${m.role === "user" ? "Customer" : "Bot"}: ${m.content}`).join("\n");
+        if (!transcript) return;
+        const sumResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              { role: "system", content: "You compress chat history into a tight third-person memo for an AI assistant. Capture: name, goals, fitness experience, budget, preferred time, plan interest, objections, latest open thread. 4-8 short bullet points. No headings, no preamble." },
+              { role: "user", content: transcript },
+            ],
+            max_tokens: 350, stream: false,
+          }),
+        });
+        if (sumResp.ok) {
+          const j = await sumResp.json();
+          const summary = j?.choices?.[0]?.message?.content?.trim();
+          if (summary) {
+            await supabase.from("whatsapp_chat_settings").upsert({
+              branch_id: branchId, phone_number: phoneNumber,
+              conversation_summary: summary,
+              summary_updated_at: new Date().toISOString(),
+              summary_message_count: totalMsgCount,
+            }, { onConflict: "branch_id,phone_number" });
+          }
+        }
+      } catch (e) { console.warn("Summary refresh failed:", e); }
+    })();
+    // @ts-ignore
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(summaryPromise);
+    } else { summaryPromise.catch(() => {}); }
+  }
+
   // Build system prompt
   let systemPrompt = aiConfig.system_prompt ||
     "You are a helpful gym assistant for Incline Fitness. Answer questions about membership, timings, and facilities. Keep responses short and friendly.";
 
-  // Inject context
-  systemPrompt = `${contactContext.contextPrompt}\n\n${systemPrompt}`;
+  // Inject context, summary, and known-lead snapshot
+  systemPrompt = `${contactContext.contextPrompt}${summaryBlock}${alreadyCapturedSnapshot}\n\n${systemPrompt}`;
+
 
   // Global instruction: answer first, qualify second
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
