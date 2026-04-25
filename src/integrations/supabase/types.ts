@@ -7459,6 +7459,27 @@ export type Database = {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
       }
+      create_pos_sale: {
+        Args: {
+          p_awaiting_payment?: boolean
+          p_branch_id: string
+          p_discount_amount?: number
+          p_discount_code?: string
+          p_discount_code_id?: string
+          p_guest_email?: string
+          p_guest_name?: string
+          p_guest_phone?: string
+          p_idempotency_key?: string
+          p_items: Json
+          p_member_id: string
+          p_payment_method: string
+          p_slip_url?: string
+          p_sold_by: string
+          p_transaction_id?: string
+          p_wallet_applied?: number
+        }
+        Returns: Json
+      }
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
