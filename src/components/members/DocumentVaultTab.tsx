@@ -44,9 +44,30 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
     },
   });
 
+  // Block duplicate registration-form uploads from any path on the member profile.
+  const hasRegistrationForm = (documents as any[]).some(
+    (d) => d.document_type === 'registration_form',
+  );
+
+  // Reset to a still-allowed type if the user previously selected registration_form
+  // and one already exists.
+  if (docType === 'registration_form' && hasRegistrationForm) {
+    setDocType('contract');
+  }
+
+  const docTypeOptions = Object.entries(DOC_TYPE_LABELS).filter(
+    ([k]) => !(k === 'registration_form' && hasRegistrationForm),
+  );
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (docType === 'registration_form' && hasRegistrationForm) {
+      toast.error('A registration form has already been uploaded for this member.');
+      e.target.value = '';
+      return;
+    }
 
     setUploading(true);
     try {
@@ -68,7 +89,14 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
         file_name: file.name,
         uploaded_by: user?.id,
       });
-      if (insertError) throw insertError;
+      if (insertError) {
+        // Clean up the orphan storage object so it doesn't linger.
+        await supabase.storage.from('documents').remove([filePath]);
+        if (/duplicate|unique|registration_form/i.test(insertError.message)) {
+          throw new Error('A registration form has already been uploaded for this member.');
+        }
+        throw insertError;
+      }
 
       toast.success('Document uploaded');
       queryClient.invalidateQueries({ queryKey: ['member-documents', memberId] });
@@ -110,7 +138,7 @@ export function DocumentVaultTab({ memberId }: DocumentVaultTabProps) {
               <Select value={docType} onValueChange={setDocType}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(DOC_TYPE_LABELS).map(([k, v]) => (
+                  {docTypeOptions.map(([k, v]) => (
                     <SelectItem key={k} value={k}>{v}</SelectItem>
                   ))}
                 </SelectContent>
