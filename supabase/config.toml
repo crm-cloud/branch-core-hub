@@ -96,4 +96,7 @@ verify_jwt = true
 [functions.backup-import]
 verify_jwt = true
 
+[functions.test-ai-provider]
+verify_jwt = false
+
 
