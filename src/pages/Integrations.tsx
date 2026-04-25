@@ -202,9 +202,7 @@ export default function IntegrationsPage() {
             </IntegrationCard>
           </TabsContent>
 
-          <TabsContent value="webhooks" className="space-y-4">
-            <WebhookActivityPanel />
-          </TabsContent>
+          {/* Webhooks moved to dedicated /integrations/webhooks page */}
 
           <TabsContent value="sms" className="space-y-4">
             <IntegrationCard title="SMS Providers" description="Configure DLT-ready SMS providers for transactional and promotional messaging." icon={Phone} activeCount={activeCount('sms')}>
