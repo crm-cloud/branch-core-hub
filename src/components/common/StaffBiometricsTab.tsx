@@ -14,6 +14,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { queueStaffSync, queueTrainerSync, getSyncStatus } from '@/services/biometricService';
+import { uploadBiometricPhoto, resolveBiometricPhotoUrl } from '@/lib/media/biometricPhotoUrls';
+import { compressImageFile } from '@/utils/imageCompression';
 
 interface StaffBiometricsTabProps {
   staffId: string;
@@ -60,6 +62,28 @@ export function StaffBiometricsTab({
     }
   };
 
+  // Resolve a signed URL for the existing biometric photo (private bucket).
+  const { data: biometricSignedUrl } = useQuery({
+    queryKey: ['biometric-photo-signed', staffType, staffId],
+    queryFn: async () => {
+      // Read the latest path from the right table.
+      const table = staffType === 'trainer' ? 'trainers' : 'employees';
+      const { data } = await (supabase as any)
+        .from(table)
+        .select('biometric_photo_path')
+        .eq('id', staffId)
+        .maybeSingle();
+      const path = data?.biometric_photo_path as string | null | undefined;
+      if (path) return resolveBiometricPhotoUrl(path);
+      return biometricPhotoUrl || null;
+    },
+    enabled: isOpen,
+    // 1h TTL on signed URLs — refresh proactively at 50 min.
+    staleTime: 50 * 60 * 1000,
+    refetchInterval: 50 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -71,27 +95,27 @@ export function StaffBiometricsTab({
 
     setIsUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `biometric-staff/${staffId}.${fileExt}`;
+      const compressed = await compressImageFile(file);
+      const entityType = staffType === 'trainer' ? 'trainers' : 'employees';
+      const { path, signedUrl } = await uploadBiometricPhoto(entityType, staffId, compressed);
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
+      // Persist the storage path on the right table.
+      const table = staffType === 'trainer' ? 'trainers' : 'employees';
+      await (supabase as any)
+        .from(table)
+        .update({ biometric_photo_path: path })
+        .eq('id', staffId);
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
+      // Push to the device queue with a freshly signed URL.
       if (staffType === 'trainer') {
-        await queueTrainerSync(staffId, publicUrl, staffName);
+        await queueTrainerSync(staffId, signedUrl, staffName);
       } else {
-        await queueStaffSync(staffId, publicUrl, staffName);
+        await queueStaffSync(staffId, signedUrl, staffName);
       }
-      
+
       toast.success('Biometric photo uploaded & sync queued');
       queryClient.invalidateQueries({ queryKey: ['biometric-sync-status-staff', staffId] });
+      queryClient.invalidateQueries({ queryKey: ['biometric-photo-signed', staffType, staffId] });
     } catch (err: any) {
       toast.error(err.message || 'Failed to upload photo');
     } finally {
