@@ -97,9 +97,14 @@ export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'payment';
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(initialTab === 'webhooks' ? 'payment' : initialTab);
   useEffect(() => {
     const t = searchParams.get('tab');
+    // Legacy redirect: /integrations?tab=webhooks → /integrations/webhooks
+    if (t === 'webhooks') {
+      window.location.replace('/integrations/webhooks');
+      return;
+    }
     if (t && t !== activeTab) setActiveTab(t);
   }, [searchParams]);
 
@@ -137,6 +142,12 @@ export default function IntegrationsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Integrations</h1>
             <p className="text-muted-foreground mt-1">Configure payment, SMS, email, and social messaging channels.</p>
           </div>
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link to="/integrations/webhooks">
+              <Activity className="mr-2 h-4 w-4" />
+              View Webhook Activity
+            </Link>
+          </Button>
         </div>
 
         <div className="grid gap-4 grid-cols-2 xl:grid-cols-5">
@@ -150,7 +161,6 @@ export default function IntegrationsPage() {
         <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSearchParams(v === 'payment' ? {} : { tab: v }, { replace: true }); }} className="space-y-4">
           <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-2xl bg-muted/70 p-1.5">
             <TabsTrigger value="payment" className="rounded-xl px-4">Payment</TabsTrigger>
-            <TabsTrigger value="webhooks" className="rounded-xl px-4 gap-1.5"><Activity className="h-3.5 w-3.5" />Webhooks</TabsTrigger>
             <TabsTrigger value="sms" className="rounded-xl px-4">SMS</TabsTrigger>
             <TabsTrigger value="email" className="rounded-xl px-4">Email</TabsTrigger>
             <TabsTrigger value="whatsapp" className="rounded-xl px-4 gap-1.5"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
