@@ -287,16 +287,15 @@ export default function AttendanceDashboard() {
     if (!selectedForceEntryMember || !branchFilter) return;
     setForceEntrySubmitting(true);
     try {
-      const { error } = await supabase.from('member_attendance').insert({
-        member_id: selectedForceEntryMember.id,
-        branch_id: branchFilter,
-        check_in: new Date().toISOString(),
-        check_in_method: 'force_entry',
-        force_entry: true,
-        force_entry_reason: forceEntryReason || 'Override by reception',
-        force_entry_by: user?.id || null,
-      } as any);
+      const { data, error } = await supabase.rpc('member_force_check_in', {
+        p_member_id: selectedForceEntryMember.id,
+        p_branch_id: branchFilter,
+        p_reason: forceEntryReason || 'Override by reception',
+        p_actor_user_id: user?.id || null,
+      });
       if (error) throw error;
+      const result = data as { success: boolean; reason?: string; message?: string };
+      if (!result?.success) throw new Error(result?.message || 'Force entry rejected');
       toast.success(`Force entry recorded for ${selectedForceEntryMember.full_name}`);
       queryClient.invalidateQueries({ queryKey: ['member-attendance-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
