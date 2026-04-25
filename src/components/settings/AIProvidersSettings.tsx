@@ -274,29 +274,65 @@ function ProviderDrawer({
   open: boolean; onOpenChange: (v: boolean) => void; editing: ProviderRow | null; onSaved: () => void;
 }) {
   const isEdit = !!editing;
-  const [provider, setProvider] = useState<string>(editing?.provider || 'openrouter');
-  const [displayName, setDisplayName] = useState(editing?.display_name || '');
-  const [baseUrl, setBaseUrl] = useState(editing?.base_url || '');
-  const [secretName, setSecretName] = useState(editing?.api_key_secret_name || '');
-  const [model, setModel] = useState(editing?.default_model || '');
-  const [scope, setScope] = useState(editing?.scope || 'all');
-  const [isActive, setIsActive] = useState(editing?.is_active ?? true);
-  const [isDefault, setIsDefault] = useState(editing?.is_default ?? false);
-  const [enableFallback, setEnableFallback] = useState(editing?.enable_fallback ?? true);
+  const [provider, setProvider] = useState<string>('openrouter');
+  const [displayName, setDisplayName] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [secretName, setSecretName] = useState('');
+  const [model, setModel] = useState('');
+  const [scope, setScope] = useState('all');
+  const [isActive, setIsActive] = useState(true);
+  const [isDefault, setIsDefault] = useState(false);
+  const [enableFallback, setEnableFallback] = useState(true);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [modelMode, setModelMode] = useState<'preset' | 'custom'>('preset');
 
-  // Sync defaults when provider type changes
+  // Sync form state whenever the drawer opens or `editing` changes
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setProvider(editing.provider);
+      setDisplayName(editing.display_name || '');
+      setBaseUrl(editing.base_url || '');
+      setSecretName(editing.api_key_secret_name || '');
+      setModel(editing.default_model || '');
+      setScope(editing.scope || 'all');
+      setIsActive(editing.is_active);
+      setIsDefault(editing.is_default);
+      setEnableFallback(editing.enable_fallback);
+      const presetModels = PROVIDER_DEFAULTS[editing.provider]?.models || [];
+      setModelMode(presetModels.includes(editing.default_model) ? 'preset' : 'custom');
+    } else {
+      const d = PROVIDER_DEFAULTS['openrouter'];
+      setProvider('openrouter');
+      setDisplayName('OpenRouter');
+      setBaseUrl(d.base_url);
+      setSecretName(d.secret_name);
+      setModel(d.default_model);
+      setScope('all');
+      setIsActive(true);
+      setIsDefault(false);
+      setEnableFallback(true);
+      setModelMode('preset');
+    }
+    setTestResult(null);
+  }, [open, editing]);
+
+  const presetModels = useMemo(
+    () => PROVIDER_DEFAULTS[provider]?.models || [],
+    [provider],
+  );
+
+  // When user changes provider in the form, reload its presets (only on Add)
   const applyDefaults = (p: string) => {
     setProvider(p);
     const d = PROVIDER_DEFAULTS[p];
-    if (d) {
-      if (!isEdit) {
-        setBaseUrl(d.base_url);
-        setSecretName(d.secret_name);
-        setModel(d.default_model);
-        setDisplayName(p === 'lovable' ? 'Lovable AI' : p.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
-      }
+    if (d && !isEdit) {
+      setBaseUrl(d.base_url);
+      setSecretName(d.secret_name);
+      setModel(d.default_model);
+      setDisplayName(p === 'lovable' ? 'Lovable AI' : p.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+      setModelMode('preset');
     }
   };
 
