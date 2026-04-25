@@ -3353,6 +3353,7 @@ export type Database = {
           merged_into: string | null
           next_action_at: string | null
           notes: string | null
+          notified_at: string | null
           owner_id: string | null
           phone: string
           preferred_contact_channel: string
@@ -3399,6 +3400,7 @@ export type Database = {
           merged_into?: string | null
           next_action_at?: string | null
           notes?: string | null
+          notified_at?: string | null
           owner_id?: string | null
           phone: string
           preferred_contact_channel?: string
@@ -3445,6 +3447,7 @@ export type Database = {
           merged_into?: string | null
           next_action_at?: string | null
           notes?: string | null
+          notified_at?: string | null
           owner_id?: string | null
           phone?: string
           preferred_contact_channel?: string
