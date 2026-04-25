@@ -135,7 +135,18 @@ export async function createPOSSale(sale: {
     p_idempotency_key: sale.idempotencyKey ?? null,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Surface the *real* Postgres error so the user sees actionable detail
+    // (e.g. "POS_VALIDATION: wallet_applied exceeds available balance" instead
+    // of a generic 400). PostgrestError exposes message + details + hint + code.
+    const detail = [error.message, (error as any).details, (error as any).hint]
+      .filter(Boolean)
+      .join(' — ');
+    const enriched = new Error(detail || 'POS sale failed');
+    (enriched as any).code = (error as any).code;
+    (enriched as any).original = error;
+    throw enriched;
+  }
   const result = data as {
     pos_sale_id: string;
     invoice_id: string;

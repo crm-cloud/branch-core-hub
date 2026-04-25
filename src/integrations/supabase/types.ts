@@ -206,6 +206,42 @@ export type Database = {
           },
         ]
       }
+      ai_call_logs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          fallback_used: boolean
+          id: string
+          model: string | null
+          provider: string
+          scope: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          fallback_used?: boolean
+          id?: string
+          model?: string | null
+          provider: string
+          scope?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          fallback_used?: boolean
+          id?: string
+          model?: string | null
+          provider?: string
+          scope?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       ai_plan_logs: {
         Row: {
           created_at: string
@@ -246,6 +282,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ai_provider_configs: {
+        Row: {
+          api_key_secret_name: string | null
+          base_url: string | null
+          created_at: string
+          created_by: string | null
+          default_model: string
+          display_name: string
+          enable_fallback: boolean
+          extra_config: Json | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          provider: string
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_secret_name?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_model: string
+          display_name: string
+          enable_fallback?: boolean
+          extra_config?: Json | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          provider: string
+          scope?: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_secret_name?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_model?: string
+          display_name?: string
+          enable_fallback?: boolean
+          extra_config?: Json | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          provider?: string
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       ai_tool_logs: {
         Row: {
@@ -1394,6 +1481,117 @@ export type Database = {
           },
         ]
       }
+      contract_signature_requests: {
+        Row: {
+          branch_id: string | null
+          contract_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          signer_contact: string | null
+          signer_name: string | null
+          status: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          contract_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          revoked_at?: string | null
+          signer_contact?: string | null
+          signer_name?: string | null
+          status?: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          contract_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          signer_contact?: string | null
+          signer_name?: string | null
+          status?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signature_requests_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_signature_requests_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_signatures: {
+        Row: {
+          contract_id: string
+          id: string
+          ip_address: string | null
+          request_id: string | null
+          signature_text: string
+          signed_at: string
+          signed_name: string
+          signer_contact: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          contract_id: string
+          id?: string
+          ip_address?: string | null
+          request_id?: string | null
+          signature_text: string
+          signed_at?: string
+          signed_name: string
+          signer_contact?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          contract_id?: string
+          id?: string
+          ip_address?: string | null
+          request_id?: string | null
+          signature_text?: string
+          signed_at?: string
+          signed_name?: string
+          signer_contact?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signatures_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_signatures_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "contract_signature_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_templates: {
         Row: {
           content: string
@@ -1426,6 +1624,7 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           base_salary: number | null
+          branch_id: string | null
           commission_percentage: number | null
           contract_type: string
           created_at: string
@@ -1434,6 +1633,10 @@ export type Database = {
           end_date: string | null
           id: string
           salary: number
+          signature_requested_at: string | null
+          signature_status: string
+          signed_at: string | null
+          signed_pdf_url: string | null
           start_date: string
           status: Database["public"]["Enums"]["contract_status"]
           terms: Json | null
@@ -1444,6 +1647,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           base_salary?: number | null
+          branch_id?: string | null
           commission_percentage?: number | null
           contract_type: string
           created_at?: string
@@ -1452,6 +1656,10 @@ export type Database = {
           end_date?: string | null
           id?: string
           salary: number
+          signature_requested_at?: string | null
+          signature_status?: string
+          signed_at?: string | null
+          signed_pdf_url?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
@@ -1462,6 +1670,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           base_salary?: number | null
+          branch_id?: string | null
           commission_percentage?: number | null
           contract_type?: string
           created_at?: string
@@ -1470,6 +1679,10 @@ export type Database = {
           end_date?: string | null
           id?: string
           salary?: number
+          signature_requested_at?: string | null
+          signature_status?: string
+          signed_at?: string | null
+          signed_pdf_url?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["contract_status"]
           terms?: Json | null
@@ -1477,6 +1690,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "contracts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "contracts_employee_id_fkey"
             columns: ["employee_id"]
@@ -3908,6 +4128,98 @@ export type Database = {
         }
         Relationships: []
       }
+      member_meal_completions: {
+        Row: {
+          completed_at: string
+          id: string
+          meal_date: string
+          meal_index: number
+          meal_name: string | null
+          member_id: string
+          plan_id: string
+          plan_source: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          meal_date: string
+          meal_index: number
+          meal_name?: string | null
+          member_id: string
+          plan_id: string
+          plan_source: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          meal_date?: string
+          meal_index?: number
+          meal_name?: string | null
+          member_id?: string
+          plan_id?: string
+          plan_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_meal_completions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_meal_swaps: {
+        Row: {
+          catalog_meal_id: string | null
+          id: string
+          meal_index: number
+          member_id: string
+          new_meal: Json
+          original_meal: Json | null
+          plan_id: string
+          plan_source: string
+          swapped_at: string
+        }
+        Insert: {
+          catalog_meal_id?: string | null
+          id?: string
+          meal_index: number
+          member_id: string
+          new_meal: Json
+          original_meal?: Json | null
+          plan_id: string
+          plan_source: string
+          swapped_at?: string
+        }
+        Update: {
+          catalog_meal_id?: string | null
+          id?: string
+          meal_index?: number
+          member_id?: string
+          new_meal?: Json
+          original_meal?: Json | null
+          plan_id?: string
+          plan_source?: string
+          swapped_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_meal_swaps_catalog_meal_id_fkey"
+            columns: ["catalog_meal_id"]
+            isOneToOne: false
+            referencedRelation: "meal_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_meal_swaps_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_measurements: {
         Row: {
           abdomen_cm: number | null
@@ -4120,6 +4432,50 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_workout_completions: {
+        Row: {
+          completed_at: string
+          day_label: string
+          exercise_index: number
+          exercise_name: string | null
+          id: string
+          member_id: string
+          plan_id: string
+          plan_source: string
+          week_number: number
+        }
+        Insert: {
+          completed_at?: string
+          day_label: string
+          exercise_index: number
+          exercise_name?: string | null
+          id?: string
+          member_id: string
+          plan_id: string
+          plan_source: string
+          week_number?: number
+        }
+        Update: {
+          completed_at?: string
+          day_label?: string
+          exercise_index?: number
+          exercise_name?: string | null
+          id?: string
+          member_id?: string
+          plan_id?: string
+          plan_source?: string
+          week_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_workout_completions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]

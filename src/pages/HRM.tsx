@@ -12,6 +12,7 @@ import { CreateContractDrawer } from '@/components/hrm/CreateContractDrawer';
 import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
 import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
 import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
+import { SignedContractViewer } from '@/components/hrm/SignedContractViewer';
 import {
   Plus, 
   Users, 
@@ -89,6 +90,8 @@ export default function HRMPage() {
   const [editingTrainer, setEditingTrainer] = useState<any>(null);
   const [payrollMonth, setPayrollMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [searchTerm, setSearchTerm] = useState('');
+  const [signedViewerOpen, setSignedViewerOpen] = useState(false);
+  const [viewingSignedContract, setViewingSignedContract] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: employees = [], isLoading } = useQuery({
@@ -615,14 +618,30 @@ export default function HRMPage() {
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => createContractSignLink(contract)}
-                              title="Generate signing link"
-                            >
-                              <Link className="h-3.5 w-3.5" />
-                            </Button>
+                            {contract.signature_status === 'signed' ? (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => {
+                                  setViewingSignedContract(contract);
+                                  setSignedViewerOpen(true);
+                                }}
+                                title="View signed contract"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                View Signed
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => createContractSignLink(contract)}
+                                title="Generate signing link"
+                              >
+                                <Link className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -947,6 +966,13 @@ export default function HRMPage() {
         open={editTrainerOpen}
         onOpenChange={setEditTrainerOpen}
         trainer={editingTrainer}
+      />
+
+      {/* Signed Contract Viewer */}
+      <SignedContractViewer
+        open={signedViewerOpen}
+        onOpenChange={setSignedViewerOpen}
+        contract={viewingSignedContract}
       />
     </AppLayout>
   );
