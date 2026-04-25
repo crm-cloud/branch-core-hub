@@ -166,23 +166,17 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
       }
       const feeAmount = perMonthFee * billingMonths;
 
-      await lockerService.assignLocker({
+      const result = await lockerService.assignLocker({
         locker_id: locker.id,
         member_id: selectedMember.id,
         start_date: startDate,
         end_date: endDate,
         fee_amount: feeAmount,
+        billing_months: billingMonths,
+        chargeable: feeAmount > 0,
       });
 
-      if (feeAmount > 0) {
-        await lockerService.createLockerInvoice(
-          selectedMember.id,
-          branchId,
-          locker.id,
-          locker.locker_number,
-          feeAmount,
-          billingMonths
-        );
+      if (feeAmount > 0 && result.invoice_id) {
         toast.success(`Locker assigned and invoice of ₹${feeAmount} created`);
       } else if (memberHasFreeLocker) {
         toast.success('Locker assigned (included in membership plan)');
