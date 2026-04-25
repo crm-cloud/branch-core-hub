@@ -505,7 +505,7 @@ export default function MembersPage() {
                             </TableCell>
                             <TableCell>
                               {activeMembership ? (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <Badge className={getMembershipStatusColor(activeMembership.status)}>
                                     {activeMembership.membership_plans?.name || 'Plan'}
                                   </Badge>
@@ -514,11 +514,23 @@ export default function MembersPage() {
                                       <Snowflake className="h-3 w-3 mr-0.5" />Frozen
                                     </Badge>
                                   )}
+                                  {duesByMember[member.id] > 0 && (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
+                                      Due ₹{duesByMember[member.id].toLocaleString()}
+                                    </Badge>
+                                  )}
                                 </div>
                               ) : (
-                                <Badge variant="outline" className="text-muted-foreground border-dashed">
-                                  No Plan
-                                </Badge>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className="text-muted-foreground border-dashed">
+                                    No Plan
+                                  </Badge>
+                                  {duesByMember[member.id] > 0 && (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
+                                      Due ₹{duesByMember[member.id].toLocaleString()}
+                                    </Badge>
+                                  )}
+                                </div>
                               )}
                             </TableCell>
                             <TableCell>
