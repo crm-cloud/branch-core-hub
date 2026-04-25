@@ -331,20 +331,20 @@ Team Incline Fitness`;
             <Button 
               className="w-full justify-start gap-3 bg-green-600 hover:bg-green-700"
               onClick={handleWhatsAppShare}
-              disabled={!phone}
+              disabled={!phone || sendingWhatsApp}
             >
               <MessageCircle className="h-5 w-5" />
-              Send via WhatsApp
+              {sendingWhatsApp ? 'Generating PDF & sending…' : 'Send PDF via WhatsApp'}
             </Button>
 
             <Button 
               variant="outline"
               className="w-full justify-start gap-3"
               onClick={handleEmailShare}
-              disabled={!email}
+              disabled={!email || sendingEmail}
             >
               <Mail className="h-5 w-5" />
-              Send via Email
+              {sendingEmail ? 'Generating PDF & sending…' : 'Send PDF via Email'}
             </Button>
 
             <Button 
