@@ -439,17 +439,42 @@ export default function AllBookingsPage() {
                   <CardContent>
                     {loadingBenefits ? <div className="text-center py-8 text-muted-foreground">Loading...</div> : filteredBenefitBookings.length === 0 ? <div className="text-center py-8 text-muted-foreground">No benefit bookings for this date</div> : (
                       <Table>
-                        <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Benefit</TableHead><TableHead>Time Slot</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-8"></TableHead><TableHead>Member</TableHead><TableHead>Benefit</TableHead><TableHead>Time Slot</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
                         <TableBody>
-                          {filteredBenefitBookings.map((b) => (
-                            <TableRow key={b.id}>
-                              <TableCell><div className="font-medium">{b.member_name}</div><div className="text-sm text-muted-foreground">{b.member_code}</div></TableCell>
-                              <TableCell><Badge variant="outline">{b.benefit_name}</Badge></TableCell>
-                              <TableCell>{b.slot_time}</TableCell>
-                              <TableCell>{getStatusBadge(b.status)}</TableCell>
-                              <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
-                            </TableRow>
-                          ))}
+                          {filteredBenefitBookings.map((b: any) => {
+                            const isOpen = expandedBooking === b.id;
+                            return (
+                              <>
+                                <TableRow key={b.id} className="cursor-pointer" onClick={() => setExpandedBooking(isOpen ? null : b.id)}>
+                                  <TableCell><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? '' : '-rotate-90'}`} /></TableCell>
+                                  <TableCell>
+                                    <div className="font-medium flex items-center gap-1.5">
+                                      {b.member_name}
+                                      {b.force_added && <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">{b.member_code}</div>
+                                  </TableCell>
+                                  <TableCell><Badge variant="outline">{b.benefit_name}</Badge></TableCell>
+                                  <TableCell>{b.slot_time}</TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col gap-0.5">
+                                      {renderSourceBadge(b.source)}
+                                      {b.booked_by_name && <span className="text-[10px] text-muted-foreground">by {b.booked_by_name}</span>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>{getStatusBadge(b.status)}</TableCell>
+                                  <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
+                                </TableRow>
+                                {isOpen && (
+                                  <TableRow key={b.id + '-audit'}>
+                                    <TableCell colSpan={7} className="bg-muted/30">
+                                      <BookingStatusTimeline bookingId={b.id} />
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     )}
