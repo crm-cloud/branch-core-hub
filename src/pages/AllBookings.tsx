@@ -348,14 +348,29 @@ export default function AllBookingsPage() {
           </Card>
         )}
 
+        {/* Timeline View */}
+        {viewMode === 'timeline' && (
+          <div className="space-y-4">
+            <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-[180px] rounded-xl" />
+                  <p className="text-sm text-muted-foreground">Click any slot chip to view attendees and full audit history.</p>
+                </div>
+              </CardContent>
+            </Card>
+            <SlotAvailabilityTimeline branchId={branchId} date={dateFilter} onSlotClick={setActiveSlotId} />
+          </div>
+        )}
+
         {/* List View */}
         {viewMode === 'list' && (
           <>
             {/* Filters */}
             <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
               <CardContent className="pt-5">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
+                <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search by member name or code..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 rounded-xl" />
                   </div>
@@ -480,6 +495,7 @@ export default function AllBookingsPage() {
           queryClient.invalidateQueries({ queryKey: ['all-pt-sessions'] });
         }}
       />
+      <SlotDetailDrawer slotId={activeSlotId} onClose={() => setActiveSlotId(null)} />
     </AppLayout>
   );
 }
