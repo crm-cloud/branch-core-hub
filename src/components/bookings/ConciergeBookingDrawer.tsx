@@ -180,10 +180,25 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
     },
   });
 
+  const validateForce = (): boolean => {
+    if (forceAdd && !forceReason.trim()) {
+      toast.error('Please provide a reason for the force-add override.');
+      return false;
+    }
+    return true;
+  };
+
   const handleBookClass = async (classId: string) => {
     if (!selectedMember) return;
+    if (!validateForce()) return;
     setBooking(true);
     try {
+      // Class bookings still flow through the existing book_class RPC.
+      // Force-add is not yet supported for classes — surface that clearly.
+      if (forceAdd) {
+        toast.error('Force-add for classes is not yet supported. Please cancel an existing booking instead.');
+        return;
+      }
       const { data, error } = await supabase.rpc('book_class', {
         _class_id: classId,
         _member_id: selectedMember.id,
@@ -196,22 +211,7 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
         onOpenChange(false);
         resetState();
       } else {
-        if (forceAdd) {
-          const { error: insertError } = await supabase
-            .from('class_bookings')
-            .insert({
-              class_id: classId,
-              member_id: selectedMember.id,
-              status: 'booked',
-            });
-          if (insertError) throw insertError;
-          toast.success(`Class force-booked for ${selectedMember.full_name}`);
-          onSuccess?.();
-          onOpenChange(false);
-          resetState();
-        } else {
-          toast.error(result?.error || 'Booking failed');
-        }
+        toast.error(result?.error || 'Booking failed');
       }
     } catch (err: any) {
       toast.error(err.message || 'Booking failed');
@@ -222,9 +222,10 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
 
   const handleBookSlot = async (slotId: string) => {
     if (!selectedMember) return;
+    if (!validateForce()) return;
 
     // Gender validation guard
-    if (memberGender && selectedFacility) {
+    if (!forceAdd && memberGender && selectedFacility) {
       const facility = allFacilities.find((f: any) => f.id === selectedFacility);
       if (facility) {
         const access = ((facility as any).gender_access || 'unisex').toLowerCase();
@@ -245,38 +246,34 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
         .gte('end_date', new Date().toISOString().split('T')[0])
         .order('end_date', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!membership && !forceAdd) {
-        toast.error('Member has no active membership');
+        toast.error('Member has no active membership. Toggle Force-add to override.');
         return;
       }
 
-      if (forceAdd) {
-        const { error } = await supabase
-          .from('benefit_bookings')
-          .insert({
-            slot_id: slotId,
-            member_id: selectedMember.id,
-            membership_id: membership?.id || selectedMember.id,
-            status: 'booked',
-          });
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.rpc('book_facility_slot', {
-          p_slot_id: slotId,
-          p_member_id: selectedMember.id,
-          p_membership_id: membership!.id,
-        });
-        if (error) throw error;
-        const result = data as { success: boolean; error?: string };
-        if (!result.success) {
-          toast.error(result.error || 'Booking failed');
-          return;
-        }
+      const { data, error } = await supabase.rpc('book_facility_slot', {
+        p_slot_id: slotId,
+        p_member_id: selectedMember.id,
+        p_membership_id: membership?.id ?? selectedMember.id,
+        p_staff_id: user?.id ?? null,
+        p_source: 'concierge',
+        p_force: forceAdd,
+        p_force_reason: forceAdd ? forceReason.trim() : null,
+      });
+      if (error) throw error;
+      const result = data as { success: boolean; error?: string; force_added?: boolean };
+      if (!result.success) {
+        toast.error(result.error || 'Booking failed');
+        return;
       }
 
-      toast.success(`Slot booked for ${selectedMember.full_name}`);
+      toast.success(
+        forceAdd
+          ? `Slot force-booked for ${selectedMember.full_name}`
+          : `Slot booked for ${selectedMember.full_name}`,
+      );
       onSuccess?.();
       onOpenChange(false);
       resetState();
@@ -292,6 +289,7 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
     setMemberGender(null);
     setSearchTerm('');
     setForceAdd(false);
+    setForceReason('');
     setSelectedFacility('');
   };
 
