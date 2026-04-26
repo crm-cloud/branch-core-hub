@@ -1,126 +1,142 @@
+# Booking System Audit & Enhancement Plan
 
-## 🔍 End-to-End Audit: Benefit Slot Booking Workflow
+## 🔍 Audit Findings
 
-I traced the entire workflow — settings → facility → slot generation → member booking → staff booking → cancellation → reminders → notifications. Below is what is **working**, what is **silently broken**, and what is **completely missing**.
+### 1. **`benefit_bookings` table — missing critical columns**
+Current columns: `id, slot_id, member_id, membership_id, status, booked_at, cancelled_at, cancellation_reason, check_in_at, no_show_marked_at, notes, created_at, updated_at`
 
----
+**Gaps:**
+- ❌ No `booked_by_staff_id` / `cancelled_by_staff_id` → cannot tell who made/cancelled a booking (member self-service vs concierge vs admin override).
+- ❌ No `source` field (member_portal / concierge / whatsapp_ai / admin).
+- ❌ No `force_added` flag despite the UI exposing a "Force Add (override capacity)" checkbox — it's currently **ignored**.
+- ❌ No status-transition audit trail; we only know the *current* status, not the journey (booked → cancelled → rebooked → no-show).
 
-### ✅ What's Working
+### 2. **`book_facility_slot` / `cancel_facility_slot` RPCs**
+- Don't accept `p_staff_id` or `p_force` params → concierge bookings are anonymous and "force add" is a no-op.
+- No write to an audit log on success.
 
-| Layer | Status | Notes |
-|---|---|---|
-| `benefit_types` + `benefit_settings` (Configure drawer) | ✅ | Persists slot duration, capacity, hours, buffer, no-show policy. |
-| `facilities` table (Edit drawer with gender + weekly schedule + maintenance) | ✅ | Schema correct; `available_days`, `gender_access`, `under_maintenance`, `is_active` all stored. |
-| `ensure_facility_slots` RPC | ✅ | Correctly skips facilities under maintenance / inactive / when `is_slot_booking_enabled=false`; respects `available_days`; idempotent. |
-| `book_facility_slot` RPC | ✅ | Locks row, checks capacity, dedup guard, plan-benefit limit (per_membership/monthly/weekly/daily), writes `benefit_usage`. |
-| `cancel_facility_slot` RPC | ✅ | Refunds the matching `benefit_usage` row. |
-| `update_slot_booked_count` trigger | ✅ | Increments on insert, decrements on cancel/no_show. |
-| Gender filtering on member portal | ✅ | `BookBenefitSlot.tsx` filters slots by member gender. |
-| `daily-send-reminders` pg_cron job (08:00 daily) | ✅ | Job exists and dispatches benefit reminders for tomorrow's bookings. |
+### 3. **ConciergeBookingDrawer (src/components/bookings/ConciergeBookingDrawer.tsx)**
+- Has `forceAdd` state + checkbox UI but never sends it to the RPC.
+- Falls back to a raw `INSERT` into `benefit_bookings` when "force add" is on — this **bypasses credit deduction, daily caps, gender checks, and notification triggers**. A serious data-integrity hole.
+- No staff attribution recorded.
 
----
+### 4. **AllBookings page (admin/staff dashboard)**
+- Shows bookings as flat list/table — no slot capacity context (e.g. "Pilates 7am — 8/10 booked" view).
+- No timeline/heatmap of slot availability across the day.
+- Status changes are not visible (can't see "this booking was cancelled by staff X at 9:42am with reason Y").
+- No filter by booking source (concierge vs self-serve).
 
-### 🔴 Critical Gaps Found (with proof)
-
-**1. Slots are never auto-generated for the member booking page**
-- DB query: `slots = 0`, `slots_future = 0` even though 1 facility (`Ice bath Male`) is active and slot booking is enabled.
-- Reason: `src/pages/BookBenefitSlot.tsx` (the page in your screenshot) **never calls `ensureSlotsForDateRange`**. Only `MemberClassBooking.tsx` and `ConciergeBookingDrawer.tsx` do.
-- Effect: Members open "Book Benefit Slots" → see "No Slots Available" forever. Staff member-portal route is also dead unless they go through Concierge.
-
-**2. No booking confirmation notification (sms / WhatsApp / email / in-app)**
-- `book_facility_slot` RPC ends after writing `benefit_usage`. No invocation of `notify-*` edge function.
-- `whatsapp_triggers` table has events for `class_booked`, `class_cancelled`, `facility_slot_reminder` — but **no `facility_slot_booked` or `facility_slot_cancelled`** events exist.
-- Effect: Members and staff get zero confirmation when a benefit slot is booked or cancelled.
-
-**3. Cancellation deadline is configured but not enforced**
-- `benefit_settings.cancellation_deadline_minutes = 180` is saved, but `cancel_facility_slot` ignores it. Members can cancel 1 minute before the slot — bypassing the no-show policy you configured.
-
-**4. `max_bookings_per_day` cap is configured but not enforced**
-- Setting saved, but `book_facility_slot` does not count today's bookings against it. Members can hammer-book the same facility all day.
-
-**5. `booking_opens_hours_before` is configured but not enforced**
-- Setting saved, but slots show up the moment they exist. The "Book 48 hrs in advance" rule from your screenshot is dead.
-
-**6. No-show enforcement exists in schema but no automation runs it**
-- `no_show_policy` ('mark_used' / 'penalty') is set, `no_show_marked_at` column exists, but **no cron job or trigger** marks unattended slots as `no_show`.
-
-**7. Reminder query bug — fetches all `booked` then filters**
-- `send-reminders/index.ts` line 417-423 selects ALL `status='booked'` benefit bookings and filters by date in JS. Will eventually exceed Supabase's 1000-row limit and silently miss reminders.
-
-**8. Staff manual booking path = duplicated logic**
-- `ConciergeBookingDrawer` calls `book_facility_slot` correctly, but for cancelling, several places call `.update({status:'cancelled'})` directly instead of the RPC, bypassing the credit refund.
+### 5. **Templates / notification system**
+- `templates` table has no `preview_data` or last-validated fields.
+- `TemplateManager` lets staff write `{{variables}}` but provides **no preview** — they discover broken templates only after a real WhatsApp/SMS goes out.
+- No validation that variables used in body actually exist in the trigger event payload (e.g. `{{member_name}}` for `facility_slot_booked` event).
+- `notify-booking-event` edge function injects variables but the mapping is undocumented and untested.
 
 ---
 
-### 🛠 Proposed Fix Plan
+## 🛠 Proposed Implementation
 
-**Phase 1 — Make slot booking actually work end-to-end (DB + frontend)**
+### Phase 1 — Database: Audit Log + Booking Attribution
+**New migration:**
 
-1. **Frontend: auto-generate slots on member page**  
-   Add `ensureSlotsForDateRange(member.branch_id, today, today+7)` to `BookBenefitSlot.tsx` so slots appear when a member opens the page. Already pattern-matches `MemberClassBooking.tsx`.
+1. **Extend `benefit_bookings`:**
+   ```sql
+   ALTER TABLE benefit_bookings
+     ADD COLUMN booked_by_staff_id uuid REFERENCES auth.users(id),
+     ADD COLUMN cancelled_by_staff_id uuid REFERENCES auth.users(id),
+     ADD COLUMN source text NOT NULL DEFAULT 'member_portal'
+       CHECK (source IN ('member_portal','concierge','whatsapp_ai','admin','system')),
+     ADD COLUMN force_added boolean NOT NULL DEFAULT false;
+   ```
 
-2. **DB migration: harden `book_facility_slot` RPC** — add three checks before insert:
-   - `max_bookings_per_day` (count today's active bookings for this member + benefit)
-   - `booking_opens_hours_before` (reject if `slot_date + start_time` is further out than the window)
-   - Soft-validate facility `under_maintenance=false` and `gender_access` matches profile gender (defense in depth — UI already filters)
+2. **New `booking_audit_log` table:**
+   ```sql
+   CREATE TABLE booking_audit_log (
+     id uuid PK,
+     booking_id uuid REFERENCES benefit_bookings(id) ON DELETE CASCADE,
+     event_type text,        -- 'created','cancelled','no_show','checked_in','force_added','rebooked'
+     from_status text,
+     to_status text,
+     actor_id uuid,          -- auth.users.id (staff or member)
+     actor_role text,        -- 'member','staff','admin','system'
+     reason text,
+     metadata jsonb,         -- { force_added, override_reason, ip, etc. }
+     created_at timestamptz DEFAULT now()
+   );
+   ```
+   - RLS: members read their own; staff/admin read branch-scoped.
+   - Indexes on `booking_id`, `created_at DESC`, `actor_id`.
 
-3. **DB migration: harden `cancel_facility_slot` RPC** — enforce `cancellation_deadline_minutes` from `benefit_settings`. Return clean error like *"Cancellation window closed — please contact staff."*
+3. **Trigger `trg_booking_status_audit` on `benefit_bookings`** — auto-logs INSERT and UPDATE of `status`, capturing `booked_by_staff_id` / `cancelled_by_staff_id` as actor.
 
-**Phase 2 — Notifications (booking confirmation + cancellation)**
+### Phase 2 — Harden RPCs
+- Update `book_facility_slot(p_slot_id, p_member_id, p_membership_id, p_staff_id default null, p_source default 'member_portal', p_force default false, p_force_reason default null)`:
+  - When `p_force = true`, require `p_staff_id IS NOT NULL` (RBAC: caller must have admin/manager role) and bypass capacity + daily-cap + window checks but still write `force_added=true` and a `metadata.override_reason` audit row.
+- Update `cancel_facility_slot(p_booking_id, p_reason default null, p_staff_id default null, p_override_deadline boolean default false)` — staff_id stored in `cancelled_by_staff_id`.
+- Both RPCs continue to fire `_notify_booking_event` via pg_net.
 
-4. **DB migration: add 2 new `whatsapp_triggers` events** — `facility_slot_booked`, `facility_slot_cancelled` (so admin can configure templates per branch via existing UI).
+### Phase 3 — Concierge Drawer & AllBookings UI
 
-5. **DB: extend `book_facility_slot` and `cancel_facility_slot`** to call `pg_net` → `notify-booking-event` edge function (fire-and-forget, mirrors lead-notification pattern we built last week).
+**`ConciergeBookingDrawer.tsx`:**
+- Pass `p_staff_id = user.id`, `p_source = 'concierge'`, `p_force = forceAdd`, `p_force_reason` (collect short text input when force is checked).
+- **Remove the dangerous raw INSERT fallback** — always go through the RPC.
 
-6. **New edge function `notify-booking-event`** — looks up the configured trigger, resolves member phone/email, dispatches via existing `send-whatsapp` / `send-sms` / `send-email` universal dispatchers, and writes to `notifications` table for in-app + `communication_logs` for the audit report.
+**`AllBookings.tsx` enhancements (Vuexy cards/tables):**
+- **New "Slot Availability Timeline" tab**: horizontal day timeline per facility/class showing each slot as a chip — colored by fill (green <60%, amber 60–90%, red ≥90%, grey full). Click chip → side drawer with attendees + quick actions.
+- **Booking row enhancements**:
+  - "Source" badge (Self / Concierge / WhatsApp AI / Admin).
+  - "Booked by" cell (member self vs staff name).
+  - Expand row → inline **status timeline** rendered from `booking_audit_log` (icons: ➕ created, ✖ cancelled, ✅ checked-in, ⚠ no-show, 🔓 force-added).
+- **New filter**: Source dropdown.
 
-**Phase 3 — Reminders + No-Show automation**
+### Phase 4 — Template Preview & Validation
 
-7. **Fix reminder query in `send-reminders/index.ts`** — filter `slot_date = tomorrow` at the DB level via inner-joined view or by switching to a SECURITY DEFINER helper RPC. Avoids the 1000-row trap.
+**Schema:** Add `templates.last_validated_at`, `templates.validation_errors jsonb`.
 
-8. **Add T-2 hour reminder** (currently only T-24h exists) — second cron job at `*/30 * * * *` that finds bookings starting in ~2 hours and dispatches a "your session is in 2 hours" nudge.
+**Define an event→variables registry** (`supabase/functions/_shared/event-schema.ts`) with the canonical variable list per system event — single source of truth shared by `notify-booking-event`, `send-whatsapp`, and the UI.
 
-9. **No-show automation cron** — every 15 min, find `booked` bookings whose slot ended >30min ago with no `check_in_at`, mark `status='no_show'`, apply policy (`mark_used` → keep usage record, `penalty` → keep + log fee).
+**`TemplateManager.tsx` upgrades:**
+- **Preview pane** in the editor sheet: live render of the template with sample data drawn from the registry for the selected trigger. Updates as the user types.
+- **Variable validator**: highlights `{{vars}}` used in the body that are NOT in the registry for the chosen trigger (red underline + helper message). Highlights unused-but-available vars as suggestions.
+- **"Send test"** button → fires the template to the staff's own WhatsApp/SMS via the existing dispatcher with sample payload.
+- **Inline badge** in template list: ✅ Valid / ⚠ Has unknown vars / ❓ Never validated.
 
-**Phase 4 — Cleanup**
-
-10. Replace direct `.update({status:'cancelled'})` calls across UI with the `cancel_facility_slot` RPC (so refunds always run).
-
-11. Add `staff_id` (nullable) param to `book_facility_slot`/`cancel_facility_slot` so audit log distinguishes member self-service from staff-on-behalf actions.
+### Phase 5 — Booking Audit Tab on AllBookings
+New "Audit" sub-tab (admins only via RBAC): paginated `booking_audit_log` view with filters (date range, action type, actor, member). CSV export.
 
 ---
 
-### 📋 Files / Migrations to Touch
+## 📂 Files to be Created / Modified
 
-**New migrations**
-- `add_booking_business_rule_enforcement.sql` — harden book/cancel RPCs
-- `add_facility_slot_trigger_events.sql` — seed 2 new `whatsapp_triggers` events
-- `add_booking_notification_dispatch.sql` — pg_net hooks in book/cancel RPCs
-- `schedule_no_show_and_t2_reminder_jobs.sql` — 2 new pg_cron jobs
+**Migrations (new):**
+- `add_booking_audit_log_and_attribution.sql` — schema + trigger + RLS.
+- `harden_booking_rpcs_v2.sql` — replace `book_facility_slot` & `cancel_facility_slot`.
+- `add_template_validation_columns.sql`.
 
-**New edge function**
-- `supabase/functions/notify-booking-event/index.ts`
+**New files:**
+- `src/components/bookings/SlotAvailabilityTimeline.tsx`
+- `src/components/bookings/BookingStatusTimeline.tsx` (audit-log renderer)
+- `src/components/bookings/BookingAuditTab.tsx`
+- `src/components/settings/TemplatePreviewPane.tsx`
+- `supabase/functions/_shared/event-schema.ts` (variable registry)
+- `supabase/functions/send-template-test/index.ts`
 
-**Modified files**
-- `src/pages/BookBenefitSlot.tsx` — auto-generate slots
-- `src/pages/MyBenefits.tsx` — same
-- `src/components/members/MemberProfileDrawer.tsx` — switch direct cancel → RPC
-- `src/pages/AllBookings.tsx` — same
-- `supabase/functions/send-reminders/index.ts` — fix tomorrow query + add T-2h pass
+**Modified:**
+- `src/components/bookings/ConciergeBookingDrawer.tsx` — staff_id, source, force flow + remove unsafe INSERT.
+- `src/pages/AllBookings.tsx` — new tabs, source badges, expandable rows, filters.
+- `src/components/settings/TemplateManager.tsx` — preview + validator + test send.
+- `src/services/benefitBookingService.ts` + `src/hooks/useBenefitBookings.ts` — typed wrappers for new RPC params.
+- `src/integrations/supabase/types.ts` — auto-regenerated.
+
+**Out of scope (not changed):**
+- Member-facing `MyBenefits.tsx` and `BookBenefitSlot.tsx` (already audited last cycle and OK; member self-bookings will automatically default to `source='member_portal'`).
 
 ---
 
-### 🧪 End-to-End Test Plan (after implementation)
-
-1. As **member**: open Book Benefit Slots → see 7 days of slots auto-generated → book one → receive WhatsApp + in-app notification → see in My Bookings.
-2. As **staff**: open Concierge → book on member's behalf → member gets notification.
-3. Try to book past `max_bookings_per_day` → blocked with clear error.
-4. Try to book outside `booking_opens_hours_before` window → blocked.
-5. Cancel inside deadline → succeeds + credit refunded.
-6. Cancel outside deadline → blocked.
-7. Mark facility `under_maintenance=true` → next-day `ensure_facility_slots` skips it; existing future slots flagged unbookable.
-8. Wait until 24h before slot → reminder fires (manually trigger cron via curl).
-9. Don't show up → 30min after slot end, status flips to `no_show`, usage record retained per policy.
-10. Verify `communication_logs` shows every booking/cancellation/reminder send for the **Communications Audit Report** built last week.
-
-After approval, I'll execute Phase 1–4 in order and run the end-to-end test against your live data.
+## ✅ End-to-End QA After Implementation
+1. Member self-books → `source=member_portal`, audit row created.
+2. Staff concierge-books with force-add + reason → `source=concierge`, `force_added=true`, override reason in audit metadata.
+3. Cancel by staff past deadline with override → `cancelled_by_staff_id` populated, audit row written.
+4. No-show cron → audit row with `actor_role='system'`.
+5. Template editor: type `{{unknown_var}}` → red highlight; click "Send Test" → real WhatsApp arrives at staff number.
+6. AllBookings → Timeline tab shows today's slots with correct fill colors; expand any booking row to see its full status journey.

@@ -12,8 +12,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus, ChevronLeft, ChevronRight, List, CalendarDays } from 'lucide-react';
+import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus, ChevronLeft, ChevronRight, List, CalendarDays, ShieldAlert, ChevronDown, Activity } from 'lucide-react';
 import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
+import { SlotAvailabilityTimeline } from '@/components/bookings/SlotAvailabilityTimeline';
+import { SlotDetailDrawer } from '@/components/bookings/SlotDetailDrawer';
+import { BookingStatusTimeline } from '@/components/bookings/BookingStatusTimeline';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export default function AllBookingsPage() {
   const queryClient = useQueryClient();
@@ -21,9 +25,12 @@ export default function AllBookingsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [conciergeOpen, setConciergeOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'timeline'>('list');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
 
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({
@@ -92,10 +99,12 @@ export default function AllBookingsPage() {
 
       if (error) throw error;
 
-      const userIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
+      const memberUserIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
+      const staffUserIds = (bookings || []).map((b: any) => b.booked_by_staff_id).filter((id): id is string => !!id);
+      const allIds = [...new Set([...memberUserIds, ...staffUserIds])];
       let profilesMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+      if (allIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', allIds);
         profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || ''; return acc; }, {} as Record<string, string>);
       }
 
@@ -118,6 +127,7 @@ export default function AllBookingsPage() {
         slot_date: slotMap[b.slot_id]?.slot_date,
         member_name: b.member?.user_id ? profilesMap[b.member.user_id] : b.member?.member_code,
         member_code: b.member?.member_code,
+        booked_by_name: b.booked_by_staff_id ? profilesMap[b.booked_by_staff_id] : null,
       }));
     },
   });
@@ -216,8 +226,21 @@ export default function AllBookingsPage() {
     return bookings.filter(b => {
       const matchesSearch = !searchQuery || b.member_name?.toLowerCase().includes(searchQuery.toLowerCase()) || b.member_code?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesSource = sourceFilter === 'all' || (b.source || 'member_portal') === sourceFilter;
+      return matchesSearch && matchesStatus && matchesSource;
     });
+  };
+
+  const SOURCE_BADGE: Record<string, string> = {
+    member_portal: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    concierge: 'bg-violet-50 text-violet-700 border-violet-200',
+    whatsapp_ai: 'bg-sky-50 text-sky-700 border-sky-200',
+    admin: 'bg-amber-50 text-amber-700 border-amber-200',
+    system: 'bg-slate-100 text-slate-700 border-slate-200',
+  };
+  const renderSourceBadge = (source?: string) => {
+    const s = source || 'member_portal';
+    return <Badge variant="outline" className={`text-[10px] capitalize ${SOURCE_BADGE[s] || ''}`}>{s.replace('_', ' ')}</Badge>;
   };
 
   const filteredClassBookings = filterBookings(classBookings);
@@ -259,6 +282,9 @@ export default function AllBookingsPage() {
             <div className="flex bg-muted rounded-xl p-1">
               <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('list')} className="rounded-lg gap-1.5">
                 <List className="h-4 w-4" /> List
+              </Button>
+              <Button variant={viewMode === 'timeline' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('timeline')} className="rounded-lg gap-1.5">
+                <Activity className="h-4 w-4" /> Timeline
               </Button>
               <Button variant={viewMode === 'calendar' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('calendar')} className="rounded-lg gap-1.5">
                 <CalendarDays className="h-4 w-4" /> Calendar
@@ -322,14 +348,29 @@ export default function AllBookingsPage() {
           </Card>
         )}
 
+        {/* Timeline View */}
+        {viewMode === 'timeline' && (
+          <div className="space-y-4">
+            <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-[180px] rounded-xl" />
+                  <p className="text-sm text-muted-foreground">Click any slot chip to view attendees and full audit history.</p>
+                </div>
+              </CardContent>
+            </Card>
+            <SlotAvailabilityTimeline branchId={branchId} date={dateFilter} onSlotClick={setActiveSlotId} />
+          </div>
+        )}
+
         {/* List View */}
         {viewMode === 'list' && (
           <>
             {/* Filters */}
             <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
               <CardContent className="pt-5">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
+                <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search by member name or code..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 rounded-xl" />
                   </div>
@@ -343,6 +384,17 @@ export default function AllBookingsPage() {
                       <SelectItem value="attended">Attended</SelectItem>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
                       <SelectItem value="no_show">No Show</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                    <SelectTrigger className="w-[160px] rounded-xl"><SelectValue placeholder="Source" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      <SelectItem value="member_portal">Member Portal</SelectItem>
+                      <SelectItem value="concierge">Concierge</SelectItem>
+                      <SelectItem value="whatsapp_ai">WhatsApp AI</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="system">System</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -387,17 +439,42 @@ export default function AllBookingsPage() {
                   <CardContent>
                     {loadingBenefits ? <div className="text-center py-8 text-muted-foreground">Loading...</div> : filteredBenefitBookings.length === 0 ? <div className="text-center py-8 text-muted-foreground">No benefit bookings for this date</div> : (
                       <Table>
-                        <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Benefit</TableHead><TableHead>Time Slot</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-8"></TableHead><TableHead>Member</TableHead><TableHead>Benefit</TableHead><TableHead>Time Slot</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Booked At</TableHead></TableRow></TableHeader>
                         <TableBody>
-                          {filteredBenefitBookings.map((b) => (
-                            <TableRow key={b.id}>
-                              <TableCell><div className="font-medium">{b.member_name}</div><div className="text-sm text-muted-foreground">{b.member_code}</div></TableCell>
-                              <TableCell><Badge variant="outline">{b.benefit_name}</Badge></TableCell>
-                              <TableCell>{b.slot_time}</TableCell>
-                              <TableCell>{getStatusBadge(b.status)}</TableCell>
-                              <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
-                            </TableRow>
-                          ))}
+                          {filteredBenefitBookings.map((b: any) => {
+                            const isOpen = expandedBooking === b.id;
+                            return (
+                              <>
+                                <TableRow key={b.id} className="cursor-pointer" onClick={() => setExpandedBooking(isOpen ? null : b.id)}>
+                                  <TableCell><ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? '' : '-rotate-90'}`} /></TableCell>
+                                  <TableCell>
+                                    <div className="font-medium flex items-center gap-1.5">
+                                      {b.member_name}
+                                      {b.force_added && <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">{b.member_code}</div>
+                                  </TableCell>
+                                  <TableCell><Badge variant="outline">{b.benefit_name}</Badge></TableCell>
+                                  <TableCell>{b.slot_time}</TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col gap-0.5">
+                                      {renderSourceBadge(b.source)}
+                                      {b.booked_by_name && <span className="text-[10px] text-muted-foreground">by {b.booked_by_name}</span>}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>{getStatusBadge(b.status)}</TableCell>
+                                  <TableCell className="text-muted-foreground">{format(new Date(b.booked_at), 'dd MMM HH:mm')}</TableCell>
+                                </TableRow>
+                                {isOpen && (
+                                  <TableRow key={b.id + '-audit'}>
+                                    <TableCell colSpan={7} className="bg-muted/30">
+                                      <BookingStatusTimeline bookingId={b.id} />
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     )}
@@ -443,6 +520,7 @@ export default function AllBookingsPage() {
           queryClient.invalidateQueries({ queryKey: ['all-pt-sessions'] });
         }}
       />
+      <SlotDetailDrawer slotId={activeSlotId} onClose={() => setActiveSlotId(null)} />
     </AppLayout>
   );
 }
