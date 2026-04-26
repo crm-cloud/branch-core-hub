@@ -25,9 +25,12 @@ export default function AllBookingsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [conciergeOpen, setConciergeOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'timeline'>('list');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
 
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({
