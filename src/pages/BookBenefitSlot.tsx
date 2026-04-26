@@ -39,8 +39,13 @@ export default function BookBenefitSlot() {
     enabled: !!member,
     queryFn: async () => {
       const dateStr = selectedDate.toISOString().split('T')[0];
-      
-      const { data, error } = await supabase
+
+      // Auto-generate slots for the next 7 days so members never see an empty page
+      const endDateStr = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      await ensureSlotsForDateRange(member!.branch_id, todayStr, endDateStr);
+
+
         .from('benefit_slots')
         .select(`
           *,
