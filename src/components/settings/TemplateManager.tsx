@@ -614,6 +614,55 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                   </p>
                 </div>
               )}
+              {/* Live preview & validation */}
+              {(() => {
+                const validation = validateTemplate(formData.content || '', formData.trigger);
+                const preview = renderPreview(formData.content || '', formData.trigger);
+                const evt = getEvent(formData.trigger);
+                return (
+                  <div className="rounded-lg border bg-card p-3 space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold flex items-center gap-1.5">
+                        <Eye className="h-3 w-3" /> Live Preview
+                      </p>
+                      {validation.ok ? (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                          <CheckCircle className="h-3 w-3 mr-1" /> Valid
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">
+                          <AlertCircle className="h-3 w-3 mr-1" /> {validation.unknown.length} unknown var{validation.unknown.length > 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap text-foreground/90 bg-muted/40 rounded-md p-2 min-h-[40px]">
+                      {preview || <span className="text-muted-foreground italic">Type a message to see preview…</span>}
+                    </p>
+                    {validation.unknown.length > 0 && (
+                      <p className="text-[11px] text-rose-600">
+                        Unknown variable{validation.unknown.length > 1 ? 's' : ''}: {validation.unknown.map((v) => `{{${v}}}`).join(', ')}
+                      </p>
+                    )}
+                    {evt && validation.unused.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1 border-t border-border">
+                        <span className="text-[10px] text-muted-foreground self-center mr-1">Available for "{evt.label}":</span>
+                        {evt.variables.map((v) => (
+                          <Button
+                            key={v.key}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-[10px] h-6 px-1.5"
+                            onClick={() => insertVariable(`{{${v.key}}}`)}
+                          >
+                            {`{{${v.key}}}`}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="space-y-2">
