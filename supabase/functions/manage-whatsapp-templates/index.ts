@@ -170,12 +170,26 @@ serve(async (req) => {
       }
 
       if (!metaRes.ok) {
-        const errMsg = metaData?.error?.message || "Failed to list templates from Meta";
+        const me = metaData?.error || {};
+        const errMsg = me.error_user_msg || me.message || "Failed to list templates from Meta";
         console.error("Meta list templates error:", JSON.stringify(metaData));
         await logError(supabase, branch_id, "manage-whatsapp-templates", `Meta API ${metaRes.status}`, errMsg);
         return new Response(
-          JSON.stringify({ error: errMsg }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            success: false,
+            error: errMsg,
+            meta_error: {
+              message: me.message || null,
+              user_title: me.error_user_title || null,
+              user_msg: me.error_user_msg || null,
+              code: me.code ?? null,
+              subcode: me.error_subcode ?? null,
+              fbtrace_id: me.fbtrace_id || null,
+              type: me.type || null,
+            },
+            upstream_status: metaRes.status,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
