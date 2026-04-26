@@ -354,6 +354,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       language: 'en',
       body_text: numbered,
     });
+    setMetaError(null);
     setShowMetaDialog(true);
   };
 
