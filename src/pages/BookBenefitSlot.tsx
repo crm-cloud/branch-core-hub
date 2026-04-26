@@ -45,7 +45,7 @@ export default function BookBenefitSlot() {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       await ensureSlotsForDateRange(member!.branch_id, todayStr, endDateStr);
 
-
+      const { data, error } = await supabase
         .from('benefit_slots')
         .select(`
           *,
