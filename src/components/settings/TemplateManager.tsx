@@ -12,8 +12,9 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle, Info } from 'lucide-react';
+import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle, Info, AlertCircle, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { TEMPLATE_EVENTS, getEvent, validateTemplate, renderPreview } from '@/lib/templates/eventRegistry';
 
 const TEMPLATE_TYPES = [
   { value: 'sms', label: 'SMS', icon: Phone },
