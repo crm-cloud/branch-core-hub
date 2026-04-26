@@ -875,6 +875,10 @@ function IntegrationConfigSheet({
   const [isActive, setIsActive] = useState(existing?.is_active || false);
   const [config, setConfig] = useState<Record<string, string>>(existing?.config || {});
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
+  // Track which password/secret fields the user actually edited in this sheet session.
+  // Untouched secrets are merged from `existing.credentials` on save so empty inputs
+  // (autofill clears, browser password-manager, etc.) cannot wipe stored tokens.
+  const [touchedCredentials, setTouchedCredentials] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
   const isRoundSms = type === 'sms' && provider === 'roundsms';
 
@@ -913,6 +917,7 @@ function IntegrationConfigSheet({
       ...(existing?.config || {}),
     });
     setCredentials(existing?.credentials || {});
+    setTouchedCredentials({});
   }, [existing, open, type, provider]);
 
   // Only google_business is branch-specific; all others are global
@@ -924,13 +929,22 @@ function IntegrationConfigSheet({
         throw new Error('Please select a specific branch for Google Business settings');
       }
 
+      // Merge: any credential field NOT touched in this session keeps its stored value,
+      // so blank/autofill-cleared password inputs never wipe saved Meta/API tokens.
+      const existingCreds: Record<string, string> = (existing?.credentials as any) || {};
+      const mergedCredentials: Record<string, string> = { ...existingCreds };
+      for (const [k, v] of Object.entries(credentials)) {
+        if (touchedCredentials[k]) mergedCredentials[k] = v;
+        else if (!(k in existingCreds) && v) mergedCredentials[k] = v;
+      }
+
       const payload = {
         branch_id: isBranchSpecific ? branchId! : null,
         integration_type: type,
         provider,
         is_active: isActive,
         config,
-        credentials,
+        credentials: mergedCredentials,
       };
 
       if (existing?.id) {
@@ -999,6 +1013,50 @@ function IntegrationConfigSheet({
               <Copy className="h-3.5 w-3.5 mr-1" /> Generate & Copy
             </Button>
           </div>
+        </div>
+      );
+    }
+
+    // Password / secret field — show masked placeholder if a value is already saved.
+    // The actual secret is NEVER prefilled into the input. The user must type a new
+    // value to replace it; otherwise saveConfig merges the original from `existing`.
+    if (field.type === 'password' && field.section === 'credentials') {
+      const hasStored = !!(existing?.credentials || {})[field.key];
+      const isTouched = !!touchedCredentials[field.key];
+      return (
+        <div key={field.key} className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>{field.label}</Label>
+            {hasStored && !isTouched && (
+              <Badge variant="outline" className="text-[10px] gap-1 rounded-full">
+                <CheckCircle className="h-3 w-3 text-green-600" /> Saved
+              </Badge>
+            )}
+            {hasStored && isTouched && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px]"
+                onClick={() => {
+                  setter({ ...values, [field.key]: '' });
+                  setTouchedCredentials((p) => ({ ...p, [field.key]: false }));
+                }}
+              >
+                Keep saved value
+              </Button>
+            )}
+          </div>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={isTouched ? (values[field.key] || '') : ''}
+            onChange={(e) => {
+              setter({ ...values, [field.key]: e.target.value });
+              setTouchedCredentials((p) => ({ ...p, [field.key]: true }));
+            }}
+            placeholder={hasStored ? '•••••••• (saved — leave blank to keep)' : field.placeholder}
+          />
         </div>
       );
     }

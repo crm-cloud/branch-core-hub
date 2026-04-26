@@ -135,6 +135,14 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     body_text: '',
   });
   const [isSubmittingMeta, setIsSubmittingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<{
+    message: string;
+    user_title?: string | null;
+    user_msg?: string | null;
+    code?: number | null;
+    subcode?: number | null;
+    fbtrace_id?: string | null;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -346,6 +354,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       language: 'en',
       body_text: numbered,
     });
+    setMetaError(null);
     setShowMetaDialog(true);
   };
 
@@ -363,7 +372,28 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     }
 
     setIsSubmittingMeta(true);
+    setMetaError(null);
     try {
+      // Pre-submit local duplicate check (cheap, prevents avoidable Meta rejection).
+      const { data: existing } = await supabase
+        .from('whatsapp_templates')
+        .select('id, name, language, category, status')
+        .eq('name', metaForm.name)
+        .eq('language', metaForm.language)
+        .maybeSingle();
+      if (existing) {
+        if (existing.category && existing.category !== metaForm.category) {
+          throw new Error(
+            `Template "${metaForm.name}" (${metaForm.language}) already exists in Meta with category ${existing.category}. ` +
+            `Meta does not allow changing the category. Pick a new template name.`
+          );
+        }
+        throw new Error(
+          `Template "${metaForm.name}" (${metaForm.language}) already exists in your Meta catalog. ` +
+          `Pick a new template name or sync from Meta to refresh status.`
+        );
+      }
+
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
         body: {
           action: 'create',
@@ -378,8 +408,36 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         },
       });
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // supabase-js wraps non-2xx responses; try to extract real body.
+      if (error) {
+        let parsed: any = null;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx?.body && typeof ctx.body.text === 'function') {
+            const txt = await ctx.body.text();
+            parsed = txt ? JSON.parse(txt) : null;
+          } else if (typeof ctx?.text === 'function') {
+            parsed = JSON.parse(await ctx.text());
+          }
+        } catch (_) { /* ignore parse failure */ }
+        const msg = parsed?.error || (error as any).message || 'Failed to submit template to Meta';
+        if (parsed?.meta_error) setMetaError({ message: msg, ...parsed.meta_error });
+        throw new Error(msg);
+      }
+
+      // Backend now returns 200 with success:false for Meta business rejections.
+      if (data?.success === false || data?.error) {
+        const me = data.meta_error || {};
+        setMetaError({
+          message: data.error || 'Meta rejected this template',
+          user_title: me.user_title,
+          user_msg: me.user_msg,
+          code: me.code,
+          subcode: me.subcode,
+          fbtrace_id: me.fbtrace_id,
+        });
+        throw new Error(data.error || 'Meta rejected this template');
+      }
 
       toast.success(`Template submitted to Meta — status: ${data.status || 'PENDING'}`);
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
@@ -731,6 +789,40 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 <strong>Note:</strong> Template names must be lowercase with underscores only (e.g., <span className="font-mono">welcome_message</span>).
               </p>
             </div>
+
+            {metaError && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 space-y-1.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {metaError.user_title && (
+                      <p className="text-sm font-semibold text-destructive">{metaError.user_title}</p>
+                    )}
+                    <p className="text-xs text-destructive/90 break-words">
+                      {metaError.user_msg || metaError.message}
+                    </p>
+                    {(metaError.code || metaError.subcode || metaError.fbtrace_id) && (
+                      <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                        {metaError.code != null && <>code: {metaError.code} </>}
+                        {metaError.subcode != null && <>· subcode: {metaError.subcode} </>}
+                        {metaError.fbtrace_id && <>· trace: {metaError.fbtrace_id}</>}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(metaError, null, 2));
+                      toast.success('Error copied');
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
               <p className="text-xs font-semibold flex items-center gap-1"><Info className="h-3 w-3" /> India Pricing per Conversation</p>

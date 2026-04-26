@@ -46,9 +46,11 @@ const EMAIL_PROVIDERS = [
 ];
 
 const WHATSAPP_PROVIDERS = [
+  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API (recommended)' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
   { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
   { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
+  { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
@@ -377,6 +379,7 @@ function IntegrationConfigSheet({ open, onOpenChange, type, provider, existing, 
   const [isActive, setIsActive] = useState(existing?.is_active || false);
   const [config, setConfig] = useState<Record<string, string>>(existing?.config || {});
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
+  const [touchedCredentials, setTouchedCredentials] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -386,18 +389,28 @@ function IntegrationConfigSheet({ open, onOpenChange, type, provider, existing, 
       ...(existing?.config || {}),
     });
     setCredentials(existing?.credentials || {});
+    setTouchedCredentials({});
   }, [existing, open, type, provider]);
 
   const saveConfig = useMutation({
     mutationFn: async () => {
       if (!branchId) throw new Error('Please select a specific branch');
+
+      // Merge: keep stored secrets when user did not edit them this session.
+      const existingCreds: Record<string, string> = (existing?.credentials as any) || {};
+      const mergedCredentials: Record<string, string> = { ...existingCreds };
+      for (const [k, v] of Object.entries(credentials)) {
+        if (touchedCredentials[k]) mergedCredentials[k] = v;
+        else if (!(k in existingCreds) && v) mergedCredentials[k] = v;
+      }
+
       const payload = {
         branch_id: branchId,
         integration_type: type,
         provider,
         is_active: isActive,
         config,
-        credentials,
+        credentials: mergedCredentials,
       };
       if (existing?.id) {
         const { error } = await supabase.from('integration_settings').update(payload).eq('id', existing.id);
@@ -432,6 +445,32 @@ function IntegrationConfigSheet({ open, onOpenChange, type, provider, existing, 
               {field.options.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+      );
+    }
+    if (field.type === 'password' && field.section === 'credentials') {
+      const hasStored = !!(existing?.credentials || {})[field.key];
+      const isTouched = !!touchedCredentials[field.key];
+      return (
+        <div key={field.key} className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>{field.label}</Label>
+            {hasStored && !isTouched && (
+              <Badge variant="outline" className="text-[10px] gap-1 rounded-full">
+                <CheckCircle className="h-3 w-3 text-green-600" /> Saved
+              </Badge>
+            )}
+          </div>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={isTouched ? (values[field.key] || '') : ''}
+            onChange={(e) => {
+              setter({ ...values, [field.key]: e.target.value });
+              setTouchedCredentials((p) => ({ ...p, [field.key]: true }));
+            }}
+            placeholder={hasStored ? '•••••••• (saved — leave blank to keep)' : field.placeholder}
+          />
         </div>
       );
     }
