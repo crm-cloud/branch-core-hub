@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Calendar, Clock, AlertCircle, Loader2, Droplets, Sparkles, Gift, Check, X } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { toast } from 'sonner';
+import { ensureSlotsForDateRange } from '@/services/benefitBookingService';
 
 export default function BookBenefitSlot() {
   const queryClient = useQueryClient();
