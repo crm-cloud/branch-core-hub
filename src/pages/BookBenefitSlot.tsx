@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Calendar, Clock, AlertCircle, Loader2, Droplets, Sparkles, Gift, Check, X } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { toast } from 'sonner';
+import { ensureSlotsForDateRange } from '@/services/benefitBookingService';
 
 export default function BookBenefitSlot() {
   const queryClient = useQueryClient();
@@ -38,7 +39,12 @@ export default function BookBenefitSlot() {
     enabled: !!member,
     queryFn: async () => {
       const dateStr = selectedDate.toISOString().split('T')[0];
-      
+
+      // Auto-generate slots for the next 7 days so members never see an empty page
+      const endDateStr = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      await ensureSlotsForDateRange(member!.branch_id, todayStr, endDateStr);
+
       const { data, error } = await supabase
         .from('benefit_slots')
         .select(`

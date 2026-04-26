@@ -7848,6 +7848,10 @@ export type Database = {
       }
     }
     Functions: {
+      _notify_booking_event: {
+        Args: { p_booking_id: string; p_event: string }
+        Returns: undefined
+      }
       add_to_waitlist: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
@@ -8073,6 +8077,7 @@ export type Database = {
         Args: { _attended: boolean; _booking_id: string }
         Returns: Json
       }
+      mark_no_show_bookings: { Args: never; Returns: number }
       member_check_in: {
         Args: { _branch_id: string; _member_id: string; _method?: string }
         Returns: Json

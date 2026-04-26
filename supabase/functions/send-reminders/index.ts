@@ -414,20 +414,50 @@ Deno.serve(async (req) => {
     }
 
     // ── 6. Benefit booking reminders (HONEST delivery) ──────────────
-    const { data: tomorrowBenefits } = await adminClient
+    // Read mode from request body: T-24h (default, daily) or T-2h (every 30 min)
+    let reminderMode: "t24h" | "t2h" = "t24h";
+    try {
+      const body = await req.clone().json().catch(() => ({}));
+      if (body?.mode === "benefit_t2h") reminderMode = "t2h";
+    } catch (_) { /* default */ }
+
+    let benefitQuery = adminClient
       .from("benefit_bookings")
       .select("id, member_id, slot_id, benefit_slots:slot_id (slot_date, start_time, branch_id, benefit_type), members:member_id (user_id, member_code, profiles:user_id (full_name, phone, email))")
-      .eq("status", "booked");
+      .eq("status", "booked")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (reminderMode === "t24h") {
+      benefitQuery = benefitQuery.eq("benefit_slots.slot_date", tomorrow);
+    } else {
+      benefitQuery = benefitQuery.eq("benefit_slots.slot_date", today);
+    }
+
+    const { data: tomorrowBenefits } = await benefitQuery;
+    const nowMs = now.getTime();
     for (const booking of tomorrowBenefits || []) {
       const slot = booking.benefit_slots as any;
-      if (!slot || slot.slot_date !== tomorrow) continue;
+      if (!slot) continue;
+
+      // For T-2h mode: only fire if slot starts in 90-150 minutes
+      if (reminderMode === "t2h") {
+        const slotMs = new Date(`${slot.slot_date}T${slot.start_time}`).getTime();
+        const minutesAway = (slotMs - nowMs) / 60000;
+        if (minutesAway < 90 || minutesAway > 150) continue;
+      } else {
+        if (slot.slot_date !== tomorrow) continue;
+      }
+
       if (!isReminderEnabled(slot.branch_id, "benefit_reminder")) continue;
       const member = booking.members as any;
       if (!member?.user_id) continue;
       const channel = getChannel(slot.branch_id, "benefit_reminder");
       const memberName = member.profiles?.full_name || "Member";
-      const subject = "Benefit Booking Tomorrow";
-      const message = `Hi ${memberName}, reminder: you have a ${slot.benefit_type} booking tomorrow at ${slot.start_time}.`;
+      const subject = reminderMode === "t2h" ? "Session in 2 hours" : "Benefit Booking Tomorrow";
+      const message = reminderMode === "t2h"
+        ? `Hi ${memberName}, your ${slot.benefit_type} session starts in about 2 hours at ${(slot.start_time || '').slice(0,5)}. See you soon!`
+        : `Hi ${memberName}, reminder: you have a ${slot.benefit_type} booking tomorrow at ${(slot.start_time || '').slice(0,5)}.`;
 
       notifications.push({
         user_id: member.user_id, branch_id: slot.branch_id, title: subject,
