@@ -929,13 +929,22 @@ function IntegrationConfigSheet({
         throw new Error('Please select a specific branch for Google Business settings');
       }
 
+      // Merge: any credential field NOT touched in this session keeps its stored value,
+      // so blank/autofill-cleared password inputs never wipe saved Meta/API tokens.
+      const existingCreds: Record<string, string> = (existing?.credentials as any) || {};
+      const mergedCredentials: Record<string, string> = { ...existingCreds };
+      for (const [k, v] of Object.entries(credentials)) {
+        if (touchedCredentials[k]) mergedCredentials[k] = v;
+        else if (!(k in existingCreds) && v) mergedCredentials[k] = v;
+      }
+
       const payload = {
         branch_id: isBranchSpecific ? branchId! : null,
         integration_type: type,
         provider,
         is_active: isActive,
         config,
-        credentials,
+        credentials: mergedCredentials,
       };
 
       if (existing?.id) {
