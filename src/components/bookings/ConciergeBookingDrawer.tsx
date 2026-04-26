@@ -455,16 +455,37 @@ export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess
               </div>
 
               {/* Force Add */}
-              <div className="flex items-center space-x-2 p-3 rounded-lg border border-dashed border-destructive/30">
-                <Checkbox
-                  id="force-add"
-                  checked={forceAdd}
-                  onCheckedChange={(v) => setForceAdd(!!v)}
-                />
-                <label htmlFor="force-add" className="text-sm flex items-center gap-1 cursor-pointer">
-                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                  Override capacity (Force Add)
-                </label>
+              <div className="space-y-2 p-3 rounded-lg border border-dashed border-destructive/30 bg-destructive/5">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="force-add"
+                    checked={forceAdd}
+                    onCheckedChange={(v) => { setForceAdd(!!v); if (!v) setForceReason(''); }}
+                  />
+                  <label htmlFor="force-add" className="text-sm flex items-center gap-1 cursor-pointer font-medium">
+                    <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                    Force-add (override capacity, gender & window)
+                  </label>
+                </div>
+                {forceAdd && (
+                  <div className="space-y-1 pl-6">
+                    <Label htmlFor="force-reason" className="text-xs text-muted-foreground">
+                      Reason for override (audited) *
+                    </Label>
+                    <Textarea
+                      id="force-reason"
+                      value={forceReason}
+                      onChange={(e) => setForceReason(e.target.value)}
+                      placeholder="e.g. VIP guest, manager approval, system error compensation"
+                      rows={2}
+                      className="text-xs"
+                      required
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Requires admin/owner/manager role. This action is permanently logged.
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           )}
