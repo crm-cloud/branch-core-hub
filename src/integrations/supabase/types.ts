@@ -544,46 +544,61 @@ export type Database = {
       benefit_bookings: {
         Row: {
           booked_at: string
+          booked_by_staff_id: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
+          cancelled_by_staff_id: string | null
           check_in_at: string | null
           created_at: string
+          force_added: boolean
+          force_reason: string | null
           id: string
           member_id: string
           membership_id: string
           no_show_marked_at: string | null
           notes: string | null
           slot_id: string
+          source: string
           status: Database["public"]["Enums"]["benefit_booking_status"]
           updated_at: string
         }
         Insert: {
           booked_at?: string
+          booked_by_staff_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by_staff_id?: string | null
           check_in_at?: string | null
           created_at?: string
+          force_added?: boolean
+          force_reason?: string | null
           id?: string
           member_id: string
           membership_id: string
           no_show_marked_at?: string | null
           notes?: string | null
           slot_id: string
+          source?: string
           status?: Database["public"]["Enums"]["benefit_booking_status"]
           updated_at?: string
         }
         Update: {
           booked_at?: string
+          booked_by_staff_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by_staff_id?: string | null
           check_in_at?: string | null
           created_at?: string
+          force_added?: boolean
+          force_reason?: string | null
           id?: string
           member_id?: string
           membership_id?: string
           no_show_marked_at?: string | null
           notes?: string | null
           slot_id?: string
+          source?: string
           status?: Database["public"]["Enums"]["benefit_booking_status"]
           updated_at?: string
         }
@@ -999,6 +1014,53 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      booking_audit_log: {
+        Row: {
+          actor_id: string | null
+          actor_role: string | null
+          booking_id: string
+          created_at: string
+          event_type: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          reason: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_role?: string | null
+          booking_id: string
+          created_at?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          actor_role?: string | null
+          booking_id?: string
+          created_at?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_audit_log_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_bookings"
             referencedColumns: ["id"]
           },
         ]
@@ -6855,13 +6917,16 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean | null
+          last_validated_at: string | null
           meta_rejection_reason: string | null
           meta_template_name: string | null
           meta_template_status: string | null
           name: string
           subject: string | null
+          trigger_event: string | null
           type: string
           updated_at: string
+          validation_errors: Json | null
           variables: Json | null
         }
         Insert: {
@@ -6870,13 +6935,16 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          last_validated_at?: string | null
           meta_rejection_reason?: string | null
           meta_template_name?: string | null
           meta_template_status?: string | null
           name: string
           subject?: string | null
+          trigger_event?: string | null
           type: string
           updated_at?: string
+          validation_errors?: Json | null
           variables?: Json | null
         }
         Update: {
@@ -6885,13 +6953,16 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean | null
+          last_validated_at?: string | null
           meta_rejection_reason?: string | null
           meta_template_name?: string | null
           meta_template_status?: string | null
           name?: string
           subject?: string | null
+          trigger_event?: string | null
           type?: string
           updated_at?: string
+          validation_errors?: Json | null
           variables?: Json | null
         }
         Relationships: [
@@ -7892,9 +7963,13 @@ export type Database = {
       }
       book_facility_slot: {
         Args: {
+          p_force?: boolean
+          p_force_reason?: string
           p_member_id: string
           p_membership_id: string
           p_slot_id: string
+          p_source?: string
+          p_staff_id?: string
         }
         Returns: Json
       }
@@ -7943,7 +8018,12 @@ export type Database = {
         Returns: Json
       }
       cancel_facility_slot: {
-        Args: { p_booking_id: string; p_reason?: string }
+        Args: {
+          p_booking_id: string
+          p_override_deadline?: boolean
+          p_reason?: string
+          p_staff_id?: string
+        }
         Returns: Json
       }
       check_trainer_slot_available: {
