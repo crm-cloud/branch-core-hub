@@ -99,10 +99,12 @@ export default function AllBookingsPage() {
 
       if (error) throw error;
 
-      const userIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
+      const memberUserIds = (bookings || []).map((b: any) => b.member?.user_id).filter((id): id is string => !!id);
+      const staffUserIds = (bookings || []).map((b: any) => b.booked_by_staff_id).filter((id): id is string => !!id);
+      const allIds = [...new Set([...memberUserIds, ...staffUserIds])];
       let profilesMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+      if (allIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', allIds);
         profilesMap = (profiles || []).reduce((acc, p) => { acc[p.id] = p.full_name || ''; return acc; }, {} as Record<string, string>);
       }
 
@@ -125,6 +127,7 @@ export default function AllBookingsPage() {
         slot_date: slotMap[b.slot_id]?.slot_date,
         member_name: b.member?.user_id ? profilesMap[b.member.user_id] : b.member?.member_code,
         member_code: b.member?.member_code,
+        booked_by_name: b.booked_by_staff_id ? profilesMap[b.booked_by_staff_id] : null,
       }));
     },
   });
