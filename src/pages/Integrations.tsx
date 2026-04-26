@@ -46,9 +46,11 @@ const EMAIL_PROVIDERS = [
 ];
 
 const WHATSAPP_PROVIDERS = [
+  { id: 'meta_cloud', name: 'Meta Cloud API', description: 'Direct WhatsApp Cloud API (recommended)' },
   { id: 'wati', name: 'WATI', description: 'Official WhatsApp API' },
   { id: 'interakt', name: 'Interakt', description: 'WhatsApp Business API' },
   { id: 'gupshup', name: 'Gupshup', description: 'WhatsApp messaging' },
+  { id: 'aisensy', name: 'AiSensy', description: 'WhatsApp marketing platform' },
   { id: 'custom', name: 'Custom API', description: 'Your own WhatsApp API' },
 ];
 
