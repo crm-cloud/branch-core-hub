@@ -371,6 +371,17 @@ export default function AllBookingsPage() {
                       <SelectItem value="no_show">No Show</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                    <SelectTrigger className="w-[160px] rounded-xl"><SelectValue placeholder="Source" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      <SelectItem value="member_portal">Member Portal</SelectItem>
+                      <SelectItem value="concierge">Concierge</SelectItem>
+                      <SelectItem value="whatsapp_ai">WhatsApp AI</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="system">System</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
