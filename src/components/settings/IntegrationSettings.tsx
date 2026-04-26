@@ -1017,6 +1017,50 @@ function IntegrationConfigSheet({
       );
     }
 
+    // Password / secret field — show masked placeholder if a value is already saved.
+    // The actual secret is NEVER prefilled into the input. The user must type a new
+    // value to replace it; otherwise saveConfig merges the original from `existing`.
+    if (field.type === 'password' && field.section === 'credentials') {
+      const hasStored = !!(existing?.credentials || {})[field.key];
+      const isTouched = !!touchedCredentials[field.key];
+      return (
+        <div key={field.key} className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>{field.label}</Label>
+            {hasStored && !isTouched && (
+              <Badge variant="outline" className="text-[10px] gap-1 rounded-full">
+                <CheckCircle className="h-3 w-3 text-green-600" /> Saved
+              </Badge>
+            )}
+            {hasStored && isTouched && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px]"
+                onClick={() => {
+                  setter({ ...values, [field.key]: '' });
+                  setTouchedCredentials((p) => ({ ...p, [field.key]: false }));
+                }}
+              >
+                Keep saved value
+              </Button>
+            )}
+          </div>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={isTouched ? (values[field.key] || '') : ''}
+            onChange={(e) => {
+              setter({ ...values, [field.key]: e.target.value });
+              setTouchedCredentials((p) => ({ ...p, [field.key]: true }));
+            }}
+            placeholder={hasStored ? '•••••••• (saved — leave blank to keep)' : field.placeholder}
+          />
+        </div>
+      );
+    }
+
     return (
       <div key={field.key} className="space-y-2">
         <Label>{field.label}</Label>
