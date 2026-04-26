@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Search, Calendar, Heart, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Textarea } from '@/components/ui/textarea';
 
 interface ConciergeBookingDrawerProps {
   open: boolean;
@@ -32,12 +34,14 @@ interface MemberResult {
 }
 
 export function ConciergeBookingDrawer({ open, onOpenChange, branchId, onSuccess }: ConciergeBookingDrawerProps) {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<MemberResult | null>(null);
   const [memberGender, setMemberGender] = useState<string | null>(null);
   const [serviceType, setServiceType] = useState<'class' | 'recovery'>('class');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [forceAdd, setForceAdd] = useState(false);
+  const [forceReason, setForceReason] = useState('');
   const [booking, setBooking] = useState(false);
 
   // Fetch member gender after selection
