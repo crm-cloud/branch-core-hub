@@ -790,6 +790,40 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
               </p>
             </div>
 
+            {metaError && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 space-y-1.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {metaError.user_title && (
+                      <p className="text-sm font-semibold text-destructive">{metaError.user_title}</p>
+                    )}
+                    <p className="text-xs text-destructive/90 break-words">
+                      {metaError.user_msg || metaError.message}
+                    </p>
+                    {(metaError.code || metaError.subcode || metaError.fbtrace_id) && (
+                      <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                        {metaError.code != null && <>code: {metaError.code} </>}
+                        {metaError.subcode != null && <>· subcode: {metaError.subcode} </>}
+                        {metaError.fbtrace_id && <>· trace: {metaError.fbtrace_id}</>}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(metaError, null, 2));
+                      toast.success('Error copied');
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="p-3 rounded-lg bg-muted/50 border space-y-1">
               <p className="text-xs font-semibold flex items-center gap-1"><Info className="h-3 w-3" /> India Pricing per Conversation</p>
               <p className="text-xs text-muted-foreground">• <strong>Utility</strong> (confirmations, updates): ~₹0.15</p>
