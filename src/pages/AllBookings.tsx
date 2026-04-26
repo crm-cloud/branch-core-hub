@@ -12,8 +12,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
-import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus, ChevronLeft, ChevronRight, List, CalendarDays } from 'lucide-react';
+import { Calendar, Users, Heart, Dumbbell, Clock, Search, Check, X, Filter, Plus, ChevronLeft, ChevronRight, List, CalendarDays, ShieldAlert, ChevronDown, Activity } from 'lucide-react';
 import { ConciergeBookingDrawer } from '@/components/bookings/ConciergeBookingDrawer';
+import { SlotAvailabilityTimeline } from '@/components/bookings/SlotAvailabilityTimeline';
+import { SlotDetailDrawer } from '@/components/bookings/SlotDetailDrawer';
+import { BookingStatusTimeline } from '@/components/bookings/BookingStatusTimeline';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export default function AllBookingsPage() {
   const queryClient = useQueryClient();
