@@ -334,12 +334,30 @@ serve(async (req) => {
       }
 
       if (!metaRes.ok) {
-        const errMsg = metaData?.error?.message || "Failed to create template in Meta";
+        const me = metaData?.error || {};
+        const userMsg = me.error_user_msg || me.message || "Failed to create template in Meta";
+        const userTitle = me.error_user_title || null;
+        const errMsg = userTitle ? `${userTitle}: ${userMsg}` : userMsg;
         console.error("Meta create template error:", JSON.stringify(metaData));
         await logError(supabase, branch_id, "manage-whatsapp-templates", `Meta API create ${metaRes.status}`, errMsg);
+        // Return 200 so supabase-js does NOT wrap as FunctionsHttpError and swallow body.
+        // Client must inspect `success:false` + `meta_error`.
         return new Response(
-          JSON.stringify({ error: errMsg }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            success: false,
+            error: errMsg,
+            meta_error: {
+              message: me.message || null,
+              user_title: userTitle,
+              user_msg: userMsg,
+              code: me.code ?? null,
+              subcode: me.error_subcode ?? null,
+              fbtrace_id: me.fbtrace_id || null,
+              type: me.type || null,
+            },
+            upstream_status: metaRes.status,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
