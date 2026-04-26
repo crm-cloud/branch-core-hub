@@ -875,6 +875,10 @@ function IntegrationConfigSheet({
   const [isActive, setIsActive] = useState(existing?.is_active || false);
   const [config, setConfig] = useState<Record<string, string>>(existing?.config || {});
   const [credentials, setCredentials] = useState<Record<string, string>>(existing?.credentials || {});
+  // Track which password/secret fields the user actually edited in this sheet session.
+  // Untouched secrets are merged from `existing.credentials` on save so empty inputs
+  // (autofill clears, browser password-manager, etc.) cannot wipe stored tokens.
+  const [touchedCredentials, setTouchedCredentials] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
   const isRoundSms = type === 'sms' && provider === 'roundsms';
 
@@ -913,6 +917,7 @@ function IntegrationConfigSheet({
       ...(existing?.config || {}),
     });
     setCredentials(existing?.credentials || {});
+    setTouchedCredentials({});
   }, [existing, open, type, provider]);
 
   // Only google_business is branch-specific; all others are global
