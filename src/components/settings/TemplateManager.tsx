@@ -135,6 +135,14 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     body_text: '',
   });
   const [isSubmittingMeta, setIsSubmittingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<{
+    message: string;
+    user_title?: string | null;
+    user_msg?: string | null;
+    code?: number | null;
+    subcode?: number | null;
+    fbtrace_id?: string | null;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -363,7 +371,28 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     }
 
     setIsSubmittingMeta(true);
+    setMetaError(null);
     try {
+      // Pre-submit local duplicate check (cheap, prevents avoidable Meta rejection).
+      const { data: existing } = await supabase
+        .from('whatsapp_templates')
+        .select('id, name, language, category, status')
+        .eq('name', metaForm.name)
+        .eq('language', metaForm.language)
+        .maybeSingle();
+      if (existing) {
+        if (existing.category && existing.category !== metaForm.category) {
+          throw new Error(
+            `Template "${metaForm.name}" (${metaForm.language}) already exists in Meta with category ${existing.category}. ` +
+            `Meta does not allow changing the category. Pick a new template name.`
+          );
+        }
+        throw new Error(
+          `Template "${metaForm.name}" (${metaForm.language}) already exists in your Meta catalog. ` +
+          `Pick a new template name or sync from Meta to refresh status.`
+        );
+      }
+
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
         body: {
           action: 'create',
@@ -378,8 +407,36 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         },
       });
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // supabase-js wraps non-2xx responses; try to extract real body.
+      if (error) {
+        let parsed: any = null;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx?.body && typeof ctx.body.text === 'function') {
+            const txt = await ctx.body.text();
+            parsed = txt ? JSON.parse(txt) : null;
+          } else if (typeof ctx?.text === 'function') {
+            parsed = JSON.parse(await ctx.text());
+          }
+        } catch (_) { /* ignore parse failure */ }
+        const msg = parsed?.error || (error as any).message || 'Failed to submit template to Meta';
+        if (parsed?.meta_error) setMetaError({ message: msg, ...parsed.meta_error });
+        throw new Error(msg);
+      }
+
+      // Backend now returns 200 with success:false for Meta business rejections.
+      if (data?.success === false || data?.error) {
+        const me = data.meta_error || {};
+        setMetaError({
+          message: data.error || 'Meta rejected this template',
+          user_title: me.user_title,
+          user_msg: me.user_msg,
+          code: me.code,
+          subcode: me.subcode,
+          fbtrace_id: me.fbtrace_id,
+        });
+        throw new Error(data.error || 'Meta rejected this template');
+      }
 
       toast.success(`Template submitted to Meta — status: ${data.status || 'PENDING'}`);
       queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
