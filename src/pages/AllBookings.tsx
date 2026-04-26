@@ -226,8 +226,21 @@ export default function AllBookingsPage() {
     return bookings.filter(b => {
       const matchesSearch = !searchQuery || b.member_name?.toLowerCase().includes(searchQuery.toLowerCase()) || b.member_code?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesSource = sourceFilter === 'all' || (b.source || 'member_portal') === sourceFilter;
+      return matchesSearch && matchesStatus && matchesSource;
     });
+  };
+
+  const SOURCE_BADGE: Record<string, string> = {
+    member_portal: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    concierge: 'bg-violet-50 text-violet-700 border-violet-200',
+    whatsapp_ai: 'bg-sky-50 text-sky-700 border-sky-200',
+    admin: 'bg-amber-50 text-amber-700 border-amber-200',
+    system: 'bg-slate-100 text-slate-700 border-slate-200',
+  };
+  const renderSourceBadge = (source?: string) => {
+    const s = source || 'member_portal';
+    return <Badge variant="outline" className={`text-[10px] capitalize ${SOURCE_BADGE[s] || ''}`}>{s.replace('_', ' ')}</Badge>;
   };
 
   const filteredClassBookings = filterBookings(classBookings);
@@ -269,6 +282,9 @@ export default function AllBookingsPage() {
             <div className="flex bg-muted rounded-xl p-1">
               <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('list')} className="rounded-lg gap-1.5">
                 <List className="h-4 w-4" /> List
+              </Button>
+              <Button variant={viewMode === 'timeline' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('timeline')} className="rounded-lg gap-1.5">
+                <Activity className="h-4 w-4" /> Timeline
               </Button>
               <Button variant={viewMode === 'calendar' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('calendar')} className="rounded-lg gap-1.5">
                 <CalendarDays className="h-4 w-4" /> Calendar
