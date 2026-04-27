@@ -220,23 +220,22 @@ export const leadService = {
     return true;
   },
 
-  async convertToMember(leadId: string, branchId: string) {
+  async convertToMember(leadId: string, branchId: string, idempotencyKey?: string) {
     const user = await checkAuth();
     if (!user) throw new Error('Not authenticated');
-    const lead = await this.fetchLeadById(leadId);
-    if (!lead) throw new Error('Lead not found');
-    const email = lead.email || `member-${leadId.slice(0, 8)}@placeholder.local`;
-    const { data, error } = await supabase.functions.invoke('create-member-user', {
-      body: { email, fullName: lead.full_name || 'Unknown', phone: lead.phone || null, branchId, source: lead.source || 'lead_conversion' },
+    // Single backend authority path — RPC handles member creation, lead update,
+    // activity log, audit log, and idempotency (retry-safe).
+    const idem = idempotencyKey || `lead-convert:${leadId}:${branchId}`;
+    const { data, error } = await supabase.rpc('convert_lead_to_member', {
+      p_lead_id: leadId,
+      p_branch_id: branchId,
+      p_idempotency_key: idem,
+      p_payload: {},
     });
-    if (error) throw new Error(`Lead conversion failed: ${error.message || JSON.stringify(error)}`);
-    if (data?.error) throw new Error(`Lead conversion failed: ${data.error}${data.details ? ' — ' + data.details : ''}`);
-    await supabase.from('leads').update({ status: 'converted', converted_at: new Date().toISOString(), converted_member_id: data.memberId, won_at: new Date().toISOString() }).eq('id', leadId);
-    await supabase.from('lead_activities').insert({
-      lead_id: leadId, branch_id: branchId, actor_id: user.id,
-      activity_type: 'conversion', title: 'Converted to member', metadata: { member_id: data.memberId },
-    });
-    return data;
+    if (error) throw new Error(`Lead conversion failed: ${error.message}`);
+    const result = data as { success: boolean; member_id?: string; error?: string; idempotent_hit?: boolean };
+    if (!result?.success) throw new Error(result?.error || 'Lead conversion failed');
+    return { memberId: result.member_id, idempotent: !!result.idempotent_hit };
   },
 
   async getLeadStats(branchId?: string) {
