@@ -11,22 +11,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddTaskDrawer } from '@/components/tasks/AddTaskDrawer';
+import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function TasksPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { effectiveBranchId } = useBranchContext();
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => fetchTasks(),
+    queryKey: ['tasks', effectiveBranchId || 'all'],
+    queryFn: () => fetchTasks(effectiveBranchId),
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['task-stats'],
-    queryFn: () => getTaskStats(),
+    queryKey: ['task-stats', effectiveBranchId || 'all'],
+    queryFn: () => getTaskStats(effectiveBranchId),
   });
 
   // Fetch staff users for assignment dropdown
