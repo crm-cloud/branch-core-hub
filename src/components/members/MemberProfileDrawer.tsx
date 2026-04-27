@@ -792,7 +792,9 @@ export function MemberProfileDrawer({
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 12);
   }, [attendance, memberDetails?.member_pt_packages, memberDetails?.memberships, payments]);
-  
+
+  if (!member) return null;
+
   const daysLeft = activeMembership 
     ? differenceInDays(new Date(activeMembership.end_date), new Date())
     : 0;
