@@ -1,62 +1,98 @@
-# Production Hardening — Status & Audit
+## Final Hardening Sprint — Implementation Plan
 
-## ✅ Phase 1 Complete (money & trust-critical)
-
-| Workflow | Authority | Notes |
-|---|---|---|
-| Approvals | `process_approval_request` RPC + `approval_audit_log` | Honest `pending → processing → approved/failed`, server-side execution per `request_type` |
-| WhatsApp/AI booking | `book_facility_slot` / `cancel_facility_slot` via `_shared/ai-tool-executor.ts` | Slot lock, entitlement, dup-guard enforced channel-agnostic |
-| Benefit top-ups | `purchase_benefit_topup` RPC | Atomic invoice + GST + `record_payment` settlement + grant |
-| PT package purchase | `purchase_pt_package` (8-arg) | Single transaction; commission row created |
-| Referral conversion | `convert_referral` RPC | Idempotent rewards, transition guarded |
-
-## ✅ Phase 2 Complete (operational integrity)
-
-| Workflow | Authority | Notes |
-|---|---|---|
-| Staff attendance | `staff_check_in` / `staff_check_out` + partial unique index | No double active sessions |
-| Store coupons | Row-locked validate + `coupon_redemptions` audit row inside `create_pos_sale` | `consume_coupon` / `release_coupon` available for non-POS callers |
-| Tasks: schema | `linked_entity_*` cols, `task_status_history`, `task_comments`, `task_reminders` | Triggered status logging + assignee notification |
-| Tasks: UI | `TaskDetailDrawer` (Vuexy right-side sheet) — comments, history, reminders, linked entity link | Branch-aware list via `useBranchContext` |
-| Tasks: cron | `send-reminders` v3 — sections 8a/8b/8c | Explicit reminder rows + due-soon scan + overdue escalation to assigner & branch managers |
+This sprint closes the remaining production-grade gaps without regressing recent approval, billing, booking, or reminder fixes. Work ships in 3 phases. Each phase is migration-safe and auditable.
 
 ---
 
-## Cross-cutting guarantees
+### Phase 1 — Trust & Money Hardening
 
-- All new/updated RPCs are `SECURITY DEFINER` with `SET search_path = public` and explicit role checks.
-- Idempotency keys carried end-to-end (POS coupon row now keyed by `${posSaleId}:coupon`).
-- No more "approved but unfinished" status transitions.
-- Communications routed through universal dispatcher (no hard-coded providers).
+**1.1 Trainer commission reversal**
+- New RPC `void_trainer_commission(p_payment_id, p_reason)` — reverses all `trainer_commissions` rows tied to the voided/refunded PT payment by inserting a negative offset row (idempotent on `(source_payment_id, kind='reversal')` unique index).
+- Hook it into existing `void_payment` RPC so reversal is atomic with the payment void.
+- Supports partial reversals proportional to `voided_amount / original_amount`.
+
+**1.2 Lead → Member conversion authority**
+- New RPC `convert_lead_to_member(p_lead_id, p_payload jsonb, p_idempotency_key)` that, in one transaction:
+  - Creates the member, links profile/auth user (if exists), branch, optional referral.
+  - Updates lead status → `converted` with `converted_member_id`.
+  - Enqueues welcome WhatsApp/email via `communication_queue`.
+  - Writes `audit_logs` row.
+- Returns `{member_id, idempotent_hit: bool}`. Stores `idempotency_key` on the lead so retries are no-ops.
+- Refactor `ConvertMemberDrawer.tsx` and `leadService.convertLead` to call only this RPC.
+
+**1.3 Stable idempotency keys for billing**
+- Standardize key format: `${memberId}:${intentType}:${draftId}` generated once per draft using `useRef` / `crypto.randomUUID()` cached in component state.
+- Audit and fix: `TopUpBenefitDrawer`, `MemberCheckout`, `PaymentDrawer`, PT purchase, store sale flow. Replace any `Date.now()` / per-render UUIDs.
+- Add a small `useStableIdempotencyKey(memberId, intent, draftId)` hook in `src/hooks/`.
+
+**1.4 Storage RLS cleanup**
+- Audit `storage.buckets` for any `public=true` that holds member-uploaded artifacts (measurements, biometric photos, member docs, signed contracts).
+- Make all member-scoped buckets private; switch UI to use signed URL helpers (`memberDocumentUrls`, `biometricPhotoUrls`) — already exists for some; extend to remaining.
+- Tighten `storage.objects` policies: list/select restricted to owner (`(storage.foldername(name))[1] = auth.uid()::text`) or staff via `has_role`.
 
 ---
 
-## 🔎 Next-pass audit — known remaining gaps
+### Phase 2 — Operational Resilience
 
-These are not regressions; they are still-thin spots worth a follow-up sprint:
+**2.1 Facility slot waitlist**
+- New table `benefit_slot_waitlist (id, slot_id, member_id, branch_id, joined_at, notified_at, promoted_at, status)` with unique `(slot_id, member_id)` partial index where `status='waiting'`.
+- New RPCs:
+  - `join_facility_waitlist(p_slot_id, p_member_id)` — entitlement + duplicate checks.
+  - `leave_facility_waitlist(...)`.
+- Update `cancel_facility_slot` RPC: on cancellation, `FOR UPDATE` lock waitlist, promote earliest waiter into `benefit_bookings`, mark `promoted_at`, insert notification.
+- UI: Add "Join Waitlist" button in `BookBenefitSlot.tsx` when slot is full.
 
-1. **Class booking** still uses direct inserts in some places — should mirror `book_facility_slot` pattern with a `book_class_slot` RPC enforcing capacity + waitlist.
-2. **Trainer commissions** are inserted at PT purchase but adjustments on refund/void aren't reversed automatically — need `void_trainer_commission` hook in `void_payment`.
-3. **Lead → Member conversion** still client-orchestrated; should become `convert_lead_to_member` RPC (mirroring `convert_referral`).
-4. **Facility slot waitlist**: today users see "slot full" — add `benefit_slot_waitlist` table + auto-promote on cancellation inside `cancel_facility_slot`.
-5. **Wallet expiry** is enforced read-side only; add nightly job in `send-reminders` to expire stale balances and create ledger reversal entries.
-6. **Audit log retention**: `approval_audit_log` has no retention/archival policy — should add 365-day partition rotation.
-7. **Idempotency hygiene**: `record_payment` and `settle_payment` both accept idempotency keys but the UI sometimes regenerates them on retry — wrap user-facing mutations with stable keys keyed off `(member_id, intent_type, draft_id)`.
-8. **Realtime tasks**: `tasks` table is not yet on `supabase_realtime` publication — add it so the Task drawer/comments feel live.
-9. **Notifications cleanup**: `notifications` table grows unbounded; add a 90-day retention policy and a "mark all read" action on the bell.
-10. **Storage RLS audit**: a few public buckets allow listing (linter WARN 4–9) — tighten or move user uploads to scoped paths.
+**2.2 Wallet expiry job**
+- New RPC `expire_wallet_balances()` — for each wallet entry past `expires_at` with positive balance, write a negative `wallet_ledger` row of type `expiry_reversal` and zero the balance. Idempotent via `(source_id, kind='expiry')` unique index.
+- Wire into `send-reminders` edge function (already runs on cron) under a daily branch.
+
+**2.3 Approval audit retention**
+- Add `approval_audit_archive` table mirroring `approval_audit_log`.
+- New scheduled job `archive_approval_audit_log()` — moves rows older than 365 days into archive, deletes from primary. Wired into `send-reminders` weekly branch.
 
 ---
 
-## Acceptance map (current)
+### Phase 3 — Realtime & Hygiene
 
-| Criterion | Status |
-|---|---|
-| Approvals only marked approved after execution | ✅ Phase 1 §1 |
-| WhatsApp booking via authoritative RPC | ✅ Phase 1 §2 |
-| Benefit top-ups atomic + GST-aware | ✅ Phase 1 §3 |
-| PT purchase via unified settlement | ✅ Phase 1 §4 |
-| Referral conversion atomic + retry-safe | ✅ Phase 1 §5 |
-| No duplicate active staff sessions | ✅ Phase 2 §6 |
-| Coupons can't over-redeem & audited | ✅ Phase 2 §7 (POS row-lock + redemption row) |
-| Tasks: notifications + history + reminders + branch-aware | ✅ Phase 2 §8 |
+**3.1 Realtime tasks**
+- `ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks, public.task_status_history, public.task_comments;`
+- Add `REPLICA IDENTITY FULL` on those tables.
+- In `Tasks.tsx` and `TaskDetailDrawer.tsx`, subscribe to postgres_changes filtered by `branch_id` and invalidate React Query keys.
+
+**3.2 Notifications retention + mark-all-read**
+- New RPC `cleanup_old_notifications()` — deletes notifications where `created_at < now() - 90 days` AND `is_read=true`; archives unread older than 180 days.
+- Wire into `send-reminders` daily.
+- Verify `markAllAsRead` button is wired in `NotificationBell.tsx`; fix if missing/broken.
+
+**3.3 Class booking authority cleanup**
+- Audit and remove direct `class_bookings` writes from:
+  - `src/services/classService.ts` (route through `book_class` / `cancel_class_booking` / `add_to_waitlist` RPCs).
+  - `src/components/bookings/ConciergeBookingDrawer.tsx` (concierge path → RPC).
+  - `src/pages/AllBookings.tsx` cancel actions → RPC.
+  - `src/pages/MemberClassBooking.tsx` member self-book → RPC.
+  - `useMemberData.ts` if it does mutations.
+- Keep `export-data` / `backup-*` reads as-is (read-only is fine).
+- Verify capacity, waitlist promotion, and duplicate protection remain intact.
+
+---
+
+### Technical Notes
+
+- All new RPCs: `SECURITY DEFINER`, `SET search_path = public`, explicit role checks via `has_role(auth.uid(), ...)`.
+- All idempotency: enforced by partial unique indexes, not just code checks.
+- All scheduled jobs piggyback on existing `send-reminders` cron to avoid new pg_cron entries.
+- No edits to `supabase/integrations/...types.ts`, `client.ts`, or `.env`.
+- Migrations are additive; no destructive drops on production tables.
+
+### Files Touched (preview)
+
+- New migration consolidating Phase 1+2+3 SQL (RPCs, tables, indexes, publications, retention archives).
+- `src/services/{leadService,classService,ptService,walletService,taskService}.ts`
+- `src/components/{bookings/ConciergeBookingDrawer,leads/ConvertMemberDrawer,benefits/TopUpBenefitDrawer,tasks/TaskDetailDrawer,notifications/NotificationBell}.tsx`
+- `src/pages/{AllBookings,MemberClassBooking,BookBenefitSlot,Tasks,MemberCheckout}.tsx`
+- `src/hooks/useStableIdempotencyKey.ts` (new)
+- `supabase/functions/send-reminders/index.ts` (extend with wallet expiry, approval archive, notification cleanup branches)
+
+### Acceptance Verification
+
+After each phase: type-check clean, RPC smoke-tested via `supabase--read_query` / `curl_edge_functions`, partial unique indexes verified to block duplicates, storage policies tested with anon vs owner vs staff role.

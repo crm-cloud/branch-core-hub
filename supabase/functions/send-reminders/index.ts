@@ -637,10 +637,28 @@ Deno.serve(async (req) => {
       if (logErr) console.error("Comm log insert error:", logErr);
     }
 
+    // ─── Retention / cleanup sweeps (idempotent; safe to run every cron tick) ───
+    let cleanup: any = {};
+    try {
+      const { data: cnRes } = await adminClient.rpc('cleanup_old_notifications');
+      cleanup.notifications = cnRes;
+    } catch (e: any) { console.error('cleanup_old_notifications failed', e?.message); }
+    try {
+      const { data: weRes } = await adminClient.rpc('expire_wallet_balances');
+      cleanup.benefit_credit_expiry = weRes;
+    } catch (e: any) { console.error('expire_wallet_balances failed', e?.message); }
+    // Archive runs at most once a week (Sundays) to bound work.
+    if (now.getUTCDay() === 0) {
+      try {
+        const { data: arRes } = await adminClient.rpc('archive_approval_audit_log');
+        cleanup.approval_audit_archive = arRes;
+      } catch (e: any) { console.error('archive_approval_audit_log failed', e?.message); }
+    }
+
     const totalProcessed = Object.values(results).reduce((a, b) => a + b, 0);
     const totalFailed = Object.values(failures).reduce((a, b) => a + b, 0);
 
-    console.log(`[send-reminders v2] sent=${totalProcessed} failed=${totalFailed}`, JSON.stringify({ results, failures }));
+    console.log(`[send-reminders v2] sent=${totalProcessed} failed=${totalFailed} cleanup=${JSON.stringify(cleanup)}`, JSON.stringify({ results, failures }));
 
     return new Response(
       JSON.stringify({
@@ -649,6 +667,7 @@ Deno.serve(async (req) => {
         total_failed: totalFailed,
         details: results,
         failures,
+        cleanup,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

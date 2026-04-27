@@ -8,7 +8,7 @@ import { Plus, CheckSquare, AlertCircle, User } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchTasks, updateTaskStatus, getTaskStats, assignTask, type TaskStatus } from '@/services/taskService';
 import { supabase } from '@/integrations/supabase/client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AddTaskDrawer } from '@/components/tasks/AddTaskDrawer';
 import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer';
@@ -27,6 +27,26 @@ export default function TasksPage() {
     queryKey: ['tasks', effectiveBranchId || 'all'],
     queryFn: () => fetchTasks(effectiveBranchId),
   });
+
+  // Realtime: tasks, status history, and comments stream live so the list
+  // and any open detail drawer reflect new assignments / status changes
+  // / comments without a refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`tasks-live-${effectiveBranchId || 'all'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['task-stats'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_status_history' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['task-history'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_comments' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['task-comments'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [effectiveBranchId, queryClient]);
 
   const { data: stats } = useQuery({
     queryKey: ['task-stats', effectiveBranchId || 'all'],

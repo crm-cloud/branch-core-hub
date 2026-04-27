@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, IndianRupee } from 'lucide-react';
+import { useStableIdempotencyKey } from '@/hooks/useStableIdempotencyKey';
 
 interface TopUpBenefitDrawerProps {
   open: boolean;
@@ -33,8 +34,9 @@ export function TopUpBenefitDrawer({
   const [quantity, setQuantity] = useState(5);
   const [price, setPrice] = useState(500);
   const [submitting, setSubmitting] = useState(false);
-
   const [gstRate, setGstRate] = useState(18);
+  // Stable idempotency key — reuses across retries within the same drawer session.
+  const idempotencyKey = useStableIdempotencyKey(memberId, 'topup', `${benefitTypeId}`);
   const handleSubmit = async () => {
     if (quantity <= 0 || price < 0) {
       toast.error('Please enter valid quantity and price');
@@ -43,7 +45,7 @@ export function TopUpBenefitDrawer({
     setSubmitting(true);
     try {
       // Authoritative atomic top-up: invoice + GST + payment + credit grant
-      const idem = `topup-${memberId}-${benefitTypeId}-${Date.now()}`;
+      const idem = idempotencyKey;
       const { data, error } = await supabase.rpc('purchase_benefit_topup', {
         p_member_id: memberId,
         p_membership_id: membershipId,

@@ -437,6 +437,39 @@ export type Database = {
           },
         ]
       }
+      approval_audit_archive: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          payload: Json
+          request_id: string
+          success: boolean
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          request_id: string
+          success: boolean
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          request_id?: string
+          success?: boolean
+        }
+        Relationships: []
+      }
       approval_audit_log: {
         Row: {
           action: string
@@ -801,6 +834,60 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benefit_slot_waitlist: {
+        Row: {
+          branch_id: string | null
+          id: string
+          joined_at: string
+          member_id: string
+          notified_at: string | null
+          position: number
+          promoted_at: string | null
+          promoted_booking_id: string | null
+          slot_id: string
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          id?: string
+          joined_at?: string
+          member_id: string
+          notified_at?: string | null
+          position?: number
+          promoted_at?: string | null
+          promoted_booking_id?: string | null
+          slot_id: string
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          id?: string
+          joined_at?: string
+          member_id?: string
+          notified_at?: string | null
+          position?: number
+          promoted_at?: string | null
+          promoted_booking_id?: string | null
+          slot_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benefit_slot_waitlist_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "benefit_slot_waitlist_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_slots"
             referencedColumns: ["id"]
           },
         ]
@@ -3590,6 +3677,7 @@ export type Database = {
           branch_id: string
           budget: string | null
           campaign_name: string | null
+          conversion_idempotency_key: string | null
           converted_at: string | null
           converted_member_id: string | null
           created_at: string
@@ -3637,6 +3725,7 @@ export type Database = {
           branch_id: string
           budget?: string | null
           campaign_name?: string | null
+          conversion_idempotency_key?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
@@ -3684,6 +3773,7 @@ export type Database = {
           branch_id?: string
           budget?: string | null
           campaign_name?: string | null
+          conversion_idempotency_key?: string | null
           converted_at?: string | null
           converted_member_id?: string | null
           created_at?: string
@@ -7329,12 +7419,15 @@ export type Database = {
           commission_type: string
           created_at: string
           id: string
+          kind: string
           notes: string | null
           paid_at: string | null
           percentage: number | null
           pt_package_id: string | null
           release_date: string | null
+          reverses_commission_id: string | null
           session_id: string | null
+          source_payment_id: string | null
           status: string
           trainer_id: string
         }
@@ -7345,12 +7438,15 @@ export type Database = {
           commission_type: string
           created_at?: string
           id?: string
+          kind?: string
           notes?: string | null
           paid_at?: string | null
           percentage?: number | null
           pt_package_id?: string | null
           release_date?: string | null
+          reverses_commission_id?: string | null
           session_id?: string | null
+          source_payment_id?: string | null
           status?: string
           trainer_id: string
         }
@@ -7361,12 +7457,15 @@ export type Database = {
           commission_type?: string
           created_at?: string
           id?: string
+          kind?: string
           notes?: string | null
           paid_at?: string | null
           percentage?: number | null
           pt_package_id?: string | null
           release_date?: string | null
+          reverses_commission_id?: string | null
           session_id?: string | null
+          source_payment_id?: string | null
           status?: string
           trainer_id?: string
         }
@@ -7376,6 +7475,13 @@ export type Database = {
             columns: ["pt_package_id"]
             isOneToOne: false
             referencedRelation: "member_pt_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_commissions_reverses_commission_id_fkey"
+            columns: ["reverses_commission_id"]
+            isOneToOne: false
+            referencedRelation: "trainer_commissions"
             referencedColumns: ["id"]
           },
           {
@@ -8163,6 +8269,7 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_approval_audit_log: { Args: never; Returns: Json }
       assert_measurement_range: {
         Args: { _field: string; _max: number; _min: number; _value: number }
         Returns: number
@@ -8266,6 +8373,7 @@ export type Database = {
         }
         Returns: Json
       }
+      cleanup_old_notifications: { Args: never; Returns: Json }
       complete_pt_session: {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
@@ -8277,6 +8385,15 @@ export type Database = {
           p_idempotency_key?: string
           p_member_id: string
           p_order_total: number
+        }
+        Returns: Json
+      }
+      convert_lead_to_member: {
+        Args: {
+          p_branch_id: string
+          p_idempotency_key?: string
+          p_lead_id: string
+          p_payload?: Json
         }
         Returns: Json
       }
@@ -8326,6 +8443,7 @@ export type Database = {
         }
         Returns: Json
       }
+      expire_wallet_balances: { Args: never; Returns: Json }
       extract_member_id_from_storage_path: {
         Args: { _path: string }
         Returns: string
@@ -8375,6 +8493,14 @@ export type Database = {
           p_referral_id: string
           p_source?: string
         }
+        Returns: Json
+      }
+      join_facility_waitlist: {
+        Args: { p_member_id: string; p_slot_id: string }
+        Returns: Json
+      }
+      leave_facility_waitlist: {
+        Args: { p_waitlist_id: string }
         Returns: Json
       }
       log_member_lifecycle_event: {
@@ -8602,6 +8728,10 @@ export type Database = {
       }
       void_payment: {
         Args: { p_payment_id: string; p_reason?: string }
+        Returns: Json
+      }
+      void_trainer_commission: {
+        Args: { p_payment_id: string; p_reason?: string; p_void_ratio?: number }
         Returns: Json
       }
     }

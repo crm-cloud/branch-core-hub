@@ -135,7 +135,7 @@ export default function BookBenefitSlot() {
   });
 
   // Cancel booking mutation — routed through cancel_facility_slot RPC
-  // (also refunds the consumed benefit credit).
+  // (also refunds the consumed benefit credit and auto-promotes waitlist).
   const cancelBooking = useMutation({
     mutationFn: async (bookingId: string) => {
       const { data, error } = await supabase.rpc('cancel_facility_slot', {
@@ -156,6 +156,26 @@ export default function BookBenefitSlot() {
     onError: (error: any) => {
       toast.error(error.message || 'Failed to cancel booking');
     },
+  });
+
+  // Join waitlist when a slot is full — auto-promoted via cancel_facility_slot.
+  const joinWaitlist = useMutation({
+    mutationFn: async (slotId: string) => {
+      if (!member) throw new Error('No member');
+      const { data, error } = await supabase.rpc('join_facility_waitlist', {
+        p_slot_id: slotId,
+        p_member_id: member.id,
+      });
+      if (error) throw error;
+      const result = data as { success: boolean; error?: string; position?: number };
+      if (!result?.success) throw new Error(result?.error || 'Failed to join waitlist');
+      return result;
+    },
+    onSuccess: (r) => {
+      toast.success(`You're #${r.position} on the waitlist — you'll be notified if a spot opens.`);
+      queryClient.invalidateQueries({ queryKey: ['benefit-slots'] });
+    },
+    onError: (e: any) => toast.error(e.message || 'Failed to join waitlist'),
   });
 
   if (memberLoading) {
