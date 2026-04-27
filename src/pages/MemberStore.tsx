@@ -614,7 +614,7 @@ export default function MemberStore() {
                     <p className="text-xs text-center text-muted-foreground">
                       {finalAmount <= 0
                         ? 'Order will be marked as paid automatically.'
-                        : 'An invoice will be generated. Pay at the front desk.'}
+                        : 'You will be redirected to a secure online payment page after placing your order.'}
                     </p>
                   </div>
                 )}
