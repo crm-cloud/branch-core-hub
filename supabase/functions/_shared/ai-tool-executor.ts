@@ -87,6 +87,7 @@ export async function executeSharedToolCall(
 
       // ─── Bookings ─────────────────────────────────────────
       // Find available facility slots (read-only helper for the AI).
+      case "get_available_slots":
       case "find_facility_slots": {
         const date = args.date || new Date().toISOString().split("T")[0];
         let q = supabase
