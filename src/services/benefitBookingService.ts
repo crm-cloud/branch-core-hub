@@ -465,17 +465,22 @@ export async function purchaseBenefitCredits(
   membershipId: string | null,
   packageId: string,
   invoiceId?: string,
-  branchId?: string
+  branchId?: string,
+  options?: { paymentMethod?: string; idempotencyKey?: string }
 ): Promise<MemberBenefitCredits> {
   // Routed through the unified payment authority via purchase_benefit_credits RPC
   // (creates invoice + settles payment + inserts credits atomically).
+  // Idempotency key MUST be stable across retries — callers should pass one
+  // derived from a durable purchase intent (member + package + draftId).
+  const idempotencyKey =
+    options?.idempotencyKey ?? `benefit-addon:${memberId}:${packageId}`;
   const { data, error } = await supabase.rpc('purchase_benefit_credits', {
     p_member_id: memberId,
     p_membership_id: membershipId,
     p_package_id: packageId,
     p_branch_id: branchId ?? null,
-    p_payment_method: 'cash',
-    p_idempotency_key: `benefit-addon-${memberId}-${packageId}-${Date.now()}`,
+    p_payment_method: options?.paymentMethod ?? 'cash',
+    p_idempotency_key: idempotencyKey,
   });
   if (error) throw error;
   const result = data as { success: boolean; error?: string; credit_id?: string };
