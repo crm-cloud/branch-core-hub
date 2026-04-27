@@ -295,7 +295,7 @@ export function buildPlanPdf(input: PlanPdfInput): Blob {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   setColor(doc, BRAND.muted);
-  if (input.member_name) doc.text(`Prepared for: ${input.member_name}`, 14, y), y += 5;
+  if (input.member_name) { doc.text(`Prepared for: ${input.member_name}`, 14, y); y += 5; }
   if (input.description) {
     const lines = doc.splitTextToSize(input.description, 180);
     doc.text(lines, 14, y);
