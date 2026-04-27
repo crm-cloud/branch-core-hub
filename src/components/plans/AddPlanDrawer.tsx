@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { toast } from 'sonner';
-import { Loader2, ExternalLink, Plus, X, Infinity } from 'lucide-react';
+import { Loader2, ExternalLink, Plus, X, Infinity as InfinityIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
