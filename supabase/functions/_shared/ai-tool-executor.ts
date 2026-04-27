@@ -86,6 +86,77 @@ export async function executeSharedToolCall(
       }
 
       // ─── Bookings ─────────────────────────────────────────
+      // Find available facility slots (read-only helper for the AI).
+      case "find_facility_slots": {
+        const date = args.date || new Date().toISOString().split("T")[0];
+        let q = supabase
+          .from("benefit_slots")
+          .select("id, slot_date, start_time, end_time, capacity, booked_count, facilities(name)")
+          .eq("branch_id", branchId)
+          .eq("slot_date", date)
+          .eq("is_active", true)
+          .order("start_time", { ascending: true })
+          .limit(20);
+        if (args.facility_id) q = q.eq("facility_id", args.facility_id);
+        const { data } = await q;
+        const open = (data || []).filter((s: any) => (s.booked_count || 0) < (s.capacity || 0));
+        return {
+          date,
+          slots: open.map((s: any) => ({
+            slot_id: s.id,
+            facility: s.facilities?.name || "Facility",
+            start: s.start_time,
+            end: s.end_time,
+            available: (s.capacity || 0) - (s.booked_count || 0),
+          })),
+        };
+      }
+
+      // Authoritative facility booking via RPC — enforces slot lock,
+      // entitlement check, duplicate prevention, and refund on cancel.
+      case "book_facility": {
+        if (!ctx.memberId) return { error: "Not a registered member." };
+        if (!args.slot_id) return { error: "slot_id required." };
+        const { data, error } = await supabase.rpc("book_facility_slot", {
+          p_slot_id: args.slot_id,
+          p_member_id: ctx.memberId,
+          p_membership_id: ctx.membershipId ?? null,
+          p_staff_id: null,
+          p_source: platform,
+          p_force: false,
+          p_force_reason: null,
+        });
+        if (error) return { error: error.message || "Booking failed." };
+        const result = data as any;
+        if (!result?.success) {
+          return {
+            error: result?.error_message || result?.error || "Slot unavailable.",
+            error_code: result?.error_code,
+          };
+        }
+        return {
+          success: true,
+          booking_id: result.booking_id,
+          message: `Booked. ✅`,
+        };
+      }
+
+      case "cancel_booking": {
+        if (!args.booking_id) return { error: "booking_id required." };
+        const { data, error } = await supabase.rpc("cancel_facility_slot", {
+          p_booking_id: args.booking_id,
+          p_reason: args.reason || `Cancelled via ${platform}`,
+          p_staff_id: null,
+          p_override_deadline: false,
+        });
+        if (error) return { error: error.message || "Cancel failed." };
+        const result = data as any;
+        if (!result?.success) {
+          return { error: result?.error_message || result?.error || "Could not cancel.", error_code: result?.error_code };
+        }
+        return { success: true, message: "Booking cancelled. ❎" };
+      }
+
       case "list_my_bookings": {
         if (!ctx.memberId) return { error: "Not a registered member." };
         const { data } = await supabase
