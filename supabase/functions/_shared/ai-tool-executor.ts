@@ -115,7 +115,8 @@ export async function executeSharedToolCall(
 
       // Authoritative facility booking via RPC — enforces slot lock,
       // entitlement check, duplicate prevention, and refund on cancel.
-      case "book_facility": {
+      case "book_facility":
+      case "book_facility_slot": {
         if (!ctx.memberId) return { error: "Not a registered member." };
         if (!args.slot_id) return { error: "slot_id required." };
         const { data, error } = await supabase.rpc("book_facility_slot", {
