@@ -132,12 +132,18 @@ export default function MyBenefits() {
               Track and manage your membership benefits
             </p>
           </div>
-          <Button asChild>
-            <Link to="/book-benefit">
-              <Calendar className="h-4 w-4 mr-2" />
-              Book a Slot
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAddOnOpen(true)} disabled={!activeMembership}>
+              <Plus className="h-4 w-4 mr-2" />
+              Buy Add-On Credits
+            </Button>
+            <Button asChild>
+              <Link to="/book-benefit">
+                <Calendar className="h-4 w-4 mr-2" />
+                Book a Slot
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Active Membership Info */}
