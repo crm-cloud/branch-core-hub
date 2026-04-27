@@ -585,6 +585,16 @@ export default function MemberStore() {
           </div>
         </div>
       </div>
+
+      <PurchaseAddOnDrawer
+        open={addOnOpen}
+        onOpenChange={setAddOnOpen}
+        memberId={member.id}
+        memberName={(member as any).profiles?.full_name}
+        membershipId={activeMembership?.id ?? null}
+        branchId={member.branch_id}
+        mode="member"
+      />
     </AppLayout>
   );
 }
