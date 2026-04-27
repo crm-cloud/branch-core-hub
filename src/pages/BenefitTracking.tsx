@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useBenefitBalances, useBenefitUsageHistory } from '@/hooks/useBenefits';
 import { BenefitBalancesGrid } from '@/components/benefits/BenefitBalanceCard';
 import { RecordBenefitUsageDrawer } from '@/components/benefits/RecordBenefitUsageDrawer';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 import { benefitTypeLabels, frequencyLabels } from '@/services/benefitService';
 import { format } from 'date-fns';
 import type { Database } from '@/integrations/supabase/types';
