@@ -221,63 +221,28 @@ export default function ReferralsPage() {
 
       const settings = convertSettings;
       const membershipValue = convertMemberMembership?.price_paid ?? 0;
-      const referredName = convertingReferral.referred_name || 'a new member';
-      const referrerId = convertingReferral.referrer_member_id;
 
-      // Step 1: Insert reward rows (if settings exist and values > 0).
-      // Done BEFORE updating the referral so that a failed insert leaves the
-      // referral in its original state and allows a clean retry.
-      if (settings) {
-        const referrerValue = computeRewardValue(
-          settings.reward_mode,
-          settings.referrer_reward_value,
-          membershipValue
-        );
-        const referredValue = computeRewardValue(
-          settings.reward_mode,
-          settings.referred_reward_value,
-          membershipValue
-        );
+      const referrerValue = settings
+        ? computeRewardValue(settings.reward_mode, settings.referrer_reward_value, membershipValue)
+        : 0;
+      const referredValue = settings
+        ? computeRewardValue(settings.reward_mode, settings.referred_reward_value, membershipValue)
+        : 0;
 
-        if (referrerId && referrerValue > 0) {
-          const { error: referrerRewardErr } = await supabase
-            .from('referral_rewards')
-            .insert({
-              referral_id: convertingReferral.id,
-              member_id: referrerId,
-              reward_type: settings.referrer_reward_type || 'wallet_credit',
-              reward_value: referrerValue,
-              description: `Referral bonus for referring ${referredName}`,
-              is_claimed: false,
-            });
-          if (referrerRewardErr) throw referrerRewardErr;
-        }
-
-        if (referredValue > 0) {
-          const { error: referredRewardErr } = await supabase
-            .from('referral_rewards')
-            .insert({
-              referral_id: convertingReferral.id,
-              member_id: convertMemberId,
-              reward_type: settings.referred_reward_type || 'wallet_credit',
-              reward_value: referredValue,
-              description: `Welcome bonus for joining via referral`,
-              is_claimed: false,
-            });
-          if (referredRewardErr) throw referredRewardErr;
-        }
-      }
-
-      // Step 2: Mark referral as converted.
-      const { error: updateError } = await supabase
-        .from('referrals')
-        .update({
-          status: 'converted' as const,
-          referred_member_id: convertMemberId,
-          converted_at: new Date().toISOString(),
-        })
-        .eq('id', convertingReferral.id);
-      if (updateError) throw updateError;
+      // Authoritative, atomic, idempotent backend conversion.
+      const idem = `convert-${convertingReferral.id}-${convertMemberId}`;
+      const { data, error } = await supabase.rpc('convert_referral', {
+        p_referral_id: convertingReferral.id,
+        p_referred_member_id: convertMemberId,
+        p_referrer_reward_type: settings?.referrer_reward_type ?? 'wallet_credit',
+        p_referrer_reward_value: referrerValue,
+        p_referred_reward_type: settings?.referred_reward_type ?? 'wallet_credit',
+        p_referred_reward_value: referredValue,
+        p_idempotency_key: idem,
+      });
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to convert referral');
     },
     onSuccess: () => {
       toast.success('Referral converted and rewards issued!');

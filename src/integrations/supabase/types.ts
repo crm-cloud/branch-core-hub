@@ -437,6 +437,47 @@ export type Database = {
           },
         ]
       }
+      approval_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          payload: Json
+          request_id: string
+          success: boolean
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          request_id: string
+          success: boolean
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          payload?: Json
+          request_id?: string
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_audit_log_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approval_requests: {
         Row: {
           approval_type: Database["public"]["Enums"]["approval_type"]
@@ -1862,6 +1903,77 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coupon_redemptions: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          discount_applied: number
+          discount_code_id: string
+          id: string
+          idempotency_key: string | null
+          invoice_id: string | null
+          member_id: string | null
+          order_total: number
+          release_reason: string | null
+          released_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          discount_applied: number
+          discount_code_id: string
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          member_id?: string | null
+          order_total: number
+          release_reason?: string | null
+          released_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          discount_applied?: number
+          discount_code_id?: string
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          member_id?: string | null
+          order_total?: number
+          release_reason?: string | null
+          released_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coupon_redemptions_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_discount_code_id_fkey"
+            columns: ["discount_code_id"]
+            isOneToOne: false
+            referencedRelation: "discount_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_redemptions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
         ]
@@ -6857,6 +6969,111 @@ export type Database = {
           },
         ]
       }
+      task_comments: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          task_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          task_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_reminders: {
+        Row: {
+          channel: string
+          created_at: string
+          id: string
+          remind_at: string
+          sent_at: string | null
+          task_id: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          id?: string
+          remind_at: string
+          sent_at?: string | null
+          task_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          id?: string
+          remind_at?: string
+          sent_at?: string | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_reminders_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          from_status: Database["public"]["Enums"]["task_status"] | null
+          id: string
+          note: string | null
+          task_id: string
+          to_status: Database["public"]["Enums"]["task_status"]
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["task_status"] | null
+          id?: string
+          note?: string | null
+          task_id: string
+          to_status: Database["public"]["Enums"]["task_status"]
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["task_status"] | null
+          id?: string
+          note?: string | null
+          task_id?: string
+          to_status?: Database["public"]["Enums"]["task_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_status_history_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_by: string | null
@@ -6867,6 +7084,8 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          linked_entity_id: string | null
+          linked_entity_type: string | null
           priority: Database["public"]["Enums"]["task_priority"]
           status: Database["public"]["Enums"]["task_status"]
           title: string
@@ -6881,6 +7100,8 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          linked_entity_id?: string | null
+          linked_entity_type?: string | null
           priority?: Database["public"]["Enums"]["task_priority"]
           status?: Database["public"]["Enums"]["task_status"]
           title: string
@@ -6895,6 +7116,8 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          linked_entity_id?: string | null
+          linked_entity_type?: string | null
           priority?: Database["public"]["Enums"]["task_priority"]
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
@@ -8047,6 +8270,28 @@ export type Database = {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
       }
+      consume_coupon: {
+        Args: {
+          p_branch_id?: string
+          p_code: string
+          p_idempotency_key?: string
+          p_member_id: string
+          p_order_total: number
+        }
+        Returns: Json
+      }
+      convert_referral: {
+        Args: {
+          p_idempotency_key?: string
+          p_referral_id: string
+          p_referred_member_id: string
+          p_referred_reward_type?: string
+          p_referred_reward_value?: number
+          p_referrer_reward_type?: string
+          p_referrer_reward_value?: number
+        }
+        Returns: Json
+      }
       create_pos_sale: {
         Args: {
           p_awaiting_payment?: boolean
@@ -8199,6 +8444,14 @@ export type Database = {
         }
         Returns: Json
       }
+      process_approval_request: {
+        Args: {
+          p_decision: string
+          p_request_id: string
+          p_review_notes?: string
+        }
+        Returns: Json
+      }
       purchase_benefit_credits: {
         Args: {
           p_branch_id?: string
@@ -8208,6 +8461,21 @@ export type Database = {
           p_package_id: string
           p_payment_method?: string
           p_received_by?: string
+        }
+        Returns: Json
+      }
+      purchase_benefit_topup: {
+        Args: {
+          p_benefit_type_id: string
+          p_branch_id?: string
+          p_credits: number
+          p_gst_rate?: number
+          p_idempotency_key?: string
+          p_member_id: string
+          p_membership_id: string
+          p_payment_method?: string
+          p_received_by?: string
+          p_unit_price: number
         }
         Returns: Json
       }
@@ -8275,6 +8543,10 @@ export type Database = {
         }
         Returns: Json
       }
+      release_coupon: {
+        Args: { p_reason?: string; p_redemption_id: string }
+        Returns: Json
+      }
       resolve_member_document_url: {
         Args: { p_document_id: string; p_expires_in?: number }
         Returns: string
@@ -8311,6 +8583,11 @@ export type Database = {
         }
         Returns: Json
       }
+      staff_check_in: {
+        Args: { p_branch_id: string; p_notes?: string; p_user_id: string }
+        Returns: Json
+      }
+      staff_check_out: { Args: { p_user_id: string }; Returns: Json }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json

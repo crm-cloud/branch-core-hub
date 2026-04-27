@@ -17,63 +17,28 @@ export interface StaffAttendanceWithDetails extends StaffAttendance {
 }
 
 export const staffAttendanceService = {
-  // Check in staff by user_id
-  async checkIn(userId: string, branchId: string, method: string = 'manual') {
-    // First check if already checked in
-    const { data: existing } = await supabase
-      .from('staff_attendance')
-      .select('id')
-      .eq('user_id', userId)
-      .is('check_out', null)
-      .maybeSingle();
-
-    if (existing) {
-      return { success: false, message: 'Already checked in', attendance_id: existing.id };
-    }
-
-    const { data, error } = await supabase
-      .from('staff_attendance')
-      .insert({
-        user_id: userId,
-        branch_id: branchId,
-      })
-      .select()
-      .single();
-
+  // Race-safe check-in via backend RPC (partial unique index enforces one active session per user).
+  async checkIn(userId: string, branchId: string, _method: string = 'manual') {
+    const { data, error } = await supabase.rpc('staff_check_in', {
+      p_user_id: userId,
+      p_branch_id: branchId,
+      p_notes: null,
+    });
     if (error) throw error;
-    return { success: true, attendance_id: data.id, message: 'Check-in successful' };
+    return data as { success: boolean; attendance_id?: string; message?: string };
   },
 
-  // Check out staff by user_id
+  // Race-safe check-out via backend RPC (locks the active row).
   async checkOut(userId: string) {
-    const { data: attendance, error: findError } = await supabase
-      .from('staff_attendance')
-      .select('*')
-      .eq('user_id', userId)
-      .is('check_out', null)
-      .order('check_in', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (findError || !attendance) {
-      return { success: false, message: 'No active check-in found' };
-    }
-
-    const { error: updateError } = await supabase
-      .from('staff_attendance')
-      .update({ check_out: new Date().toISOString() })
-      .eq('id', attendance.id);
-
-    if (updateError) throw updateError;
-
-    const duration = (new Date().getTime() - new Date(attendance.check_in).getTime()) / 60000;
-    return {
-      success: true,
-      attendance_id: attendance.id,
-      check_in: attendance.check_in,
-      check_out: new Date().toISOString(),
-      duration_minutes: Math.round(duration),
-      message: 'Check-out successful',
+    const { data, error } = await supabase.rpc('staff_check_out', { p_user_id: userId });
+    if (error) throw error;
+    return data as {
+      success: boolean;
+      attendance_id?: string;
+      check_in?: string;
+      check_out?: string;
+      duration_minutes?: number;
+      message?: string;
     };
   },
 
