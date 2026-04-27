@@ -34,65 +34,37 @@ export function TopUpBenefitDrawer({
   const [price, setPrice] = useState(500);
   const [submitting, setSubmitting] = useState(false);
 
+  const [gstRate, setGstRate] = useState(18);
   const handleSubmit = async () => {
     if (quantity <= 0 || price < 0) {
       toast.error('Please enter valid quantity and price');
       return;
     }
-
     setSubmitting(true);
     try {
-      // 1. Add benefit_usage credits (negative usage_count to represent credits)
-      // We add to plan_benefits limit_count by inserting a top-up record
-      // For simplicity, we record negative usage to offset existing usage
-      for (let i = 0; i < quantity; i++) {
-        await supabase.from('benefit_usage').insert({
-          membership_id: membershipId,
-          benefit_type: benefitType as any,
-          benefit_type_id: benefitTypeId,
-          usage_date: new Date().toISOString().split('T')[0],
-          usage_count: -1, // negative = credit/top-up
-          notes: `Top-up: +1 ${benefitName} session`,
-        });
-      }
-
-      // 2. Generate an invoice for the top-up
-      if (price > 0) {
-        const { data: invoice, error: invError } = await supabase
-          .from('invoices')
-          .insert([{
-            branch_id: branchId,
-            member_id: memberId,
-            subtotal: price,
-            total_amount: price,
-            tax_amount: 0,
-            discount_amount: 0,
-            amount_paid: 0,
-            status: 'pending' as const,
-            due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            notes: `Top-up: ${quantity}x ${benefitName} sessions`,
-          }])
-          .select('id')
-          .single();
-
-        if (invError) throw invError;
-
-        // Add invoice item
-        if (invoice) {
-          await supabase.from('invoice_items').insert({
-            invoice_id: invoice.id,
-            description: `${benefitName} Top-Up (${quantity} sessions)`,
-            quantity: quantity,
-            unit_price: price / quantity,
-            total_amount: price,
-          });
-        }
-      }
+      // Authoritative atomic top-up: invoice + GST + payment + credit grant
+      const idem = `topup-${memberId}-${benefitTypeId}-${Date.now()}`;
+      const { data, error } = await supabase.rpc('purchase_benefit_topup', {
+        p_member_id: memberId,
+        p_membership_id: membershipId,
+        p_benefit_type_id: benefitTypeId,
+        p_credits: quantity,
+        p_unit_price: price / quantity,
+        p_gst_rate: gstRate,
+        p_payment_method: 'cash',
+        p_branch_id: branchId,
+        p_idempotency_key: idem,
+      });
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to top up');
 
       toast.success(`Added ${quantity} ${benefitName} sessions`);
       queryClient.invalidateQueries({ queryKey: ['member-benefit-usage-summary'] });
       queryClient.invalidateQueries({ queryKey: ['member-plan-benefits'] });
+      queryClient.invalidateQueries({ queryKey: ['member-benefit-credits'] });
       queryClient.invalidateQueries({ queryKey: ['member-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       onOpenChange(false);
       setQuantity(5);
       setPrice(500);
