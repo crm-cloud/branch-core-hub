@@ -1,79 +1,183 @@
-Audit result
+# Production Hardening — Backend Authority Refactor
 
-I found two high-confidence causes behind the symptoms:
+Goal: every critical workflow runs through ONE backend RPC per domain, with atomic execution, honest statuses (`pending` → `processing` → `completed`/`failed`), and no client-orchestrated multi-step business logic.
 
-1. Meta WhatsApp API details appear blank after reopening the sheet because credential fields are rendered as normal password inputs bound directly to stored values. If the browser/password-manager autofills or clears those password fields, saving the form can overwrite the saved `credentials` JSON with blank strings. There is currently no “leave existing secret unchanged” behavior.
+---
 
-2. There are two integration UIs with different provider lists:
-   - Settings → Integrations uses `meta_cloud` for Meta Cloud API.
-   - `/integrations` currently lists WATI/Interakt/Gupshup/Custom but not `meta_cloud`.
-   This can make users configure the wrong provider or see a different/blank-looking configuration from another screen.
+## Phase 1 — Money & Trust-Critical Workflows
 
-3. Template Manager error handling is too generic. The backend function currently returns 502 for Meta business-rule rejections, and the frontend throws the platform function error object first. This is why the UI can show a generic “Edge Function error” / “200 edge issue” instead of Meta’s actual message like:
-   - “Content in this language already exists”
-   - “Template category doesn't match”
-   - “An unknown error occurred”
+### 1. Approval Workflow Integrity
 
-4. The latest backend logs confirm Meta rejected recent template submissions with real, actionable errors, but the UI does not surface them well.
+**Problem:** `ApprovalQueue` flips request → `approved` first, then runs the side-effect. If side-effect fails, you get a misleading approved record.
 
-Plan
+**Fix:** New SECURITY DEFINER RPC `process_approval_request(p_request_id, p_decision, p_reviewer_notes)` that:
+1. Locks the request row (`FOR UPDATE`), guards against double-processing.
+2. Transitions request to `processing`.
+3. Dispatches by `request_type` to existing internal logic:
+   - `freeze_membership` / `unfreeze_membership`
+   - `change_trainer`
+   - `transfer_membership` / `transfer_branch`
+   - `comp_gift` (creates benefit grant + audit row)
+4. On success → `approved` + `executed_at` + writes `approval_audit_log`.
+5. On failure → `failed` + `failure_reason`, raises so client toasts the real error. Request remains actionable (retry or reject).
+6. Rejection path also routed here for a single audit trail.
 
-1. Protect saved Meta/API credentials from being wiped
-   - Update integration credential inputs so stored password/token fields show as masked placeholders, not the actual secret value.
-   - Track whether each credential field was edited in the current sheet session.
-   - On save, merge unchanged credential fields from the existing row, so blank untouched password fields cannot overwrite stored tokens.
-   - Add an explicit “Replace” / “Clear” behavior for secrets only when the user intentionally changes them.
-   - Apply this to both integration configuration components currently in the app so behavior is consistent.
+**Frontend:** `ApprovalQueue.tsx` calls `supabase.rpc('process_approval_request', …)` only — no more multi-step client logic.
 
-2. Unify WhatsApp provider configuration
-   - Add `meta_cloud` to the `/integrations` WhatsApp provider list and align it with Settings → Integrations.
-   - Prefer Meta Cloud API as the primary WhatsApp provider in UI copy because existing template/webhook functions use that provider shape.
-   - Add a small credential health badge per provider: “Configured”, “Missing token”, “Missing WABA ID”, “Inactive”.
+**New table:** `approval_audit_log (id, request_id, action, actor_id, success, error_message, payload jsonb, created_at)`.
 
-3. Add integration credential audit visibility without exposing secrets
-   - Add a safe audit/health panel in the integration sheet showing only presence checks, for example:
-     - Phone Number ID: present/missing
-     - WABA ID: present/missing
-     - Access Token: saved/missing
-     - App Secret: saved/missing
-   - Do not print or reveal secret values.
-   - Optionally log integration configuration updates to the existing audit/error infrastructure with masked metadata only.
+---
 
-4. Fix Template Manager error reporting
-   - Change `handleSubmitToMeta` to inspect both `data` and `error.context/body` returned by the function, so the actual Meta message is shown even when the function returns a non-2xx response.
-   - Display Meta’s `error_user_title`, `error_user_msg`, `code`, `subcode`, and `fbtrace_id` in the Submit to Meta drawer when available.
-   - Replace generic toast-only failure with an inline error card that users can copy.
+### 2. WhatsApp Benefit / Facility Booking
 
-5. Improve the backend template function response contract
-   - Update `manage-whatsapp-templates` to return structured JSON for Meta API errors:
-     - `success: false`
-     - `error`
-     - `meta_error: { message, user_title, user_msg, code, subcode, fbtrace_id, raw }`
-   - Use more accurate statuses:
-     - 400 for Meta validation/business-rule rejections
-     - 401/403 for auth/role issues
-     - 502 only for true network/upstream reachability failures
-   - Keep CORS headers on every response.
-   - Continue logging errors, but include structured details so System Health becomes useful.
+**Problem:** WhatsApp self-service tools insert `benefit_bookings` + `benefit_usage` directly, bypassing slot lock, entitlement check, duplicate prevention.
 
-6. Add pre-submit template validation to prevent avoidable Meta rejections
-   - Before submitting, check if the same template name/language/category already exists in the local synced `whatsapp_templates` table.
-   - If same name + language exists with a different category, block submission and explain: “Meta does not allow changing category for existing template name.”
-   - If same name + language already exists, block duplicate creation and suggest using a new template name.
-   - Show a “Sync from Meta first” warning when the local catalog is stale or empty.
+**Fix:**
+- Refactor `supabase/functions/_shared/ai-tool-executor.ts` `book_facility` and `cancel_booking` tools to call existing `book_facility_slot(...)` / `cancel_facility_slot(...)` RPCs (same as web UI uses via `benefitBookingService`).
+- Standardize tool result shape `{ success, booking_id?, error_code?, error_message }` so `whatsapp-webhook` returns the right Meta-friendly text.
+- Same path also used by `BookBenefitSlot.tsx` already — confirm and remove any residual direct inserts.
 
-7. Test and verify
-   - Test saving integration settings with existing secret fields untouched; confirm they remain present.
-   - Test intentionally replacing a token; confirm the new token is saved.
-   - Test Meta template submit with a duplicate name/language and category mismatch; confirm the UI shows the exact actionable message instead of a generic edge error.
-   - Test Meta template sync/list after changes.
+**Adds:** entitlement check, slot row lock, duplicate booking guard, refund on cancel — all enforced by the RPC, not the channel.
 
-Files expected to change
+---
 
-- `src/components/settings/IntegrationSettings.tsx`
-- `src/pages/Integrations.tsx`
-- `src/components/settings/TemplateManager.tsx`
-- `src/components/settings/MetaTemplatesPanel.tsx` if needed for health messaging
-- `supabase/functions/manage-whatsapp-templates/index.ts`
+### 3. Benefit Top-Up / Add-On Sales (GST-aware, atomic)
 
-No secrets will be exposed in the UI or logs.
+**Problem:** `TopUpBenefitDrawer` inserts negative `benefit_usage` rows to fake granted credits, then maybe creates an invoice. Not atomic; tax hardcoded to 0; finance/GST reports broken.
+
+**Fix:**
+- New table `benefit_credit_grants (id, member_id, benefit_id, branch_id, credits_total, credits_remaining, source, source_invoice_id, expires_at, created_at)` — clean entitlement model, replaces negative-usage hack going forward.
+- New RPC `purchase_benefit_topup(p_member_id, p_benefit_id, p_credits, p_unit_price, p_gst_rate, p_payment_method, p_branch_id, p_idempotency_key)`:
+  1. Computes subtotal, GST (using existing `useGstRates` source / `gst_rates` table), total.
+  2. Creates invoice + invoice_items (benefit add-on line) with proper HSN/SAC.
+  3. Records payment via existing `record_payment` RPC (already the unified payment authority — see `mem://architecture/unified-payment-engine-rpc`).
+  4. Inserts `benefit_credit_grants` row only after invoice + payment succeed.
+  5. Returns `{ invoice_id, payment_id, grant_id }`. Idempotent on `p_idempotency_key`.
+- `useBenefitBalance` updated to sum `credits_remaining` across active grants minus positive `benefit_usage`. Backwards compatible: legacy negative `benefit_usage` rows still counted during transition.
+- `TopUpBenefitDrawer.tsx` becomes a thin form → single RPC call → toast + invalidate.
+
+---
+
+### 4. PT Package Purchase Settlement
+
+**Problem:** `purchase_pt_package` creates invoice/payment directly, sidestepping unified settlement.
+
+**Fix:** Rewrite RPC to:
+1. Create invoice + items (PT package line, HSN, GST).
+2. Call `record_payment` (unified authority) — preserves audit and dashboard alignment.
+3. Activate `pt_packages_purchased` row.
+4. Create `trainer_commissions` row with the configured rate.
+5. Idempotent via `p_idempotency_key`.
+6. All in one transaction; on any failure → ROLLBACK, raise to client.
+
+Frontend `ptService.purchasePackage` simplified to one RPC call.
+
+---
+
+### 5. Referral Conversion Authority
+
+**Problem:** Admin conversion inserts `referral_rewards` from the client; status update later. Retries can dup rewards.
+
+**Fix:** New RPC `convert_referral(p_referral_id, p_referred_member_id, p_idempotency_key)`:
+1. Locks referral row, guards against re-conversion.
+2. Links `referred_member_id`.
+3. Inserts `referral_rewards` for referrer (and referred, per existing reward rules).
+4. Transitions referral to `converted` with `converted_at`.
+5. Idempotent (returns existing reward IDs on retry).
+6. Triggers existing `notify_referral_converted` flow.
+
+`referralService` + admin `Referrals.tsx` page rewired to call this RPC; remove direct `referral_rewards` inserts.
+
+---
+
+## Phase 2 — Operational Integrity
+
+### 6. Staff Attendance Race Fix
+
+**Problem:** `checkIn` is check-then-insert → duplicate active sessions under concurrency.
+
+**Fix:**
+- Migration: partial unique index `CREATE UNIQUE INDEX staff_attendance_one_active_per_user ON staff_attendance(user_id) WHERE check_out IS NULL;`
+- New RPC `staff_check_in(p_user_id, p_branch_id, p_method)` wrapping insert; on unique violation returns `{ success: false, message: 'Already checked in', attendance_id }`.
+- `staffAttendanceService.checkIn` calls the RPC. `checkOut` already single-row-update — add `FOR UPDATE` via RPC `staff_check_out(p_user_id)` to be safe under double-tap.
+
+---
+
+### 7. Store Discount Redemption Safety
+
+**Problem:** POS updates coupon usage_count after the fact; concurrent checkouts can over-redeem.
+
+**Fix:** New RPC `consume_coupon(p_coupon_code, p_member_id, p_order_total, p_idempotency_key)`:
+1. `SELECT … FOR UPDATE` on coupon row.
+2. Validates active, within window, under `max_uses`, member-eligible.
+3. Computes discount.
+4. Increments `current_uses` atomically.
+5. Inserts `coupon_redemptions` row keyed by idempotency.
+6. Returns discount payload OR raises with structured error.
+
+Store/POS checkout (`storeService` checkout path) calls this BEFORE finalizing the sale; if it fails, sale aborts. On post-checkout cancel, mirror RPC `release_coupon(p_redemption_id)` decrements safely.
+
+---
+
+### 8. Task Management → Operations Tool
+
+**Problem:** Current `tasks` is CRUD-only.
+
+**Schema additions (migration-safe):**
+- `tasks`: add `linked_entity_type` (enum: `approval | member | invoice | complaint | booking | lead | none`), `linked_entity_id uuid`, `branch_id` already exists.
+- New `task_status_history (id, task_id, from_status, to_status, changed_by, note, created_at)` — fed by AFTER UPDATE trigger when status changes.
+- New `task_comments (id, task_id, author_id, body, created_at)` with RLS scoped to assignee/assigner/branch staff.
+- New `task_reminders (id, task_id, remind_at, channel, sent_at)` driven by existing `send-reminders` cron.
+
+**Behavior:**
+- Branch-aware queries: `fetchTasks` defaults to `branchId` from `BranchContext` for non-owners.
+- Trigger on assignment change → inserts a `notifications` row for assignee (existing notification system, see `mem://architecture/realtime-notification-system`).
+- Cron extension in `send-reminders`: scans `tasks` where `due_date < now() + interval '24h'` and `status in ('pending','in_progress')`, emits a one-time reminder notification per task per due window. Overdue (>24h past due) escalates to assigner + branch manager.
+- `Tasks.tsx`: keep current UI; add a right-side drawer (per Vuexy rule) showing status timeline + comments + linked entity link. No center modals.
+
+---
+
+## Cross-Cutting Rules Preserved
+
+- All new RPCs `SECURITY DEFINER`, `SET search_path = public`, with role checks via existing `has_any_role` / `has_role`.
+- All idempotent RPCs key on a client-supplied `p_idempotency_key` and return the original result on replay.
+- Honest statuses everywhere: `pending → processing → completed | failed`; never flip to success before the side-effect.
+- No regressions to recently fixed flows (member onboarding, payment settlement, reward claim, signed URLs, reminder honesty, measurement privacy).
+- UI stays Vuexy: existing drawers stay drawers, no new center modals for forms.
+
+---
+
+## Files Touched (high level)
+
+**New migrations:**
+- `approval_audit_log`, `benefit_credit_grants`, `task_status_history`, `task_comments`, `task_reminders`, `coupon_redemptions`, partial unique index on `staff_attendance`, all new RPCs above.
+
+**Edge functions:**
+- `_shared/ai-tool-executor.ts` (booking via RPC)
+- `send-reminders` (task reminders + escalation)
+
+**Frontend (rewired, not redesigned):**
+- `pages/ApprovalQueue.tsx`, `pages/Referrals.tsx`, `pages/Tasks.tsx`
+- `components/benefits/TopUpBenefitDrawer.tsx`
+- `services/ptService.ts`, `services/referralService.ts`, `services/staffAttendanceService.ts`, `services/storeService.ts`, `services/taskService.ts`, `services/benefitBookingService.ts` (minor)
+
+---
+
+## Acceptance Mapping
+
+| Criterion | Resolved by |
+|---|---|
+| Approvals only marked approved after execution | §1 RPC + audit log |
+| WhatsApp booking uses authoritative RPC | §2 ai-tool-executor refactor |
+| Benefit top-ups atomic + GST-aware | §3 `purchase_benefit_topup` |
+| PT purchase via unified settlement | §4 rewrite using `record_payment` |
+| Referral conversion atomic + retry-safe | §5 `convert_referral` idempotent |
+| No duplicate active staff sessions | §6 partial unique index + RPC |
+| Coupons can't over-redeem | §7 `consume_coupon` with row lock |
+| Tasks have notifications/history/reminders, branch-aware | §8 schema + triggers + cron |
+
+---
+
+## Execution Order
+
+Phase 1 ships first as one approved batch (migrations → RPCs → service rewires → UI wiring → ai-tool-executor). Phase 2 follows in a second pass to keep diffs reviewable. Confirm to proceed and I'll execute Phase 1 end-to-end.
