@@ -34,7 +34,22 @@ export default function BenefitTracking() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState<MemberSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [addOnOpen, setAddOnOpen] = useState(false);
   const [preselectedBenefit, setPreselectedBenefit] = useState<BenefitType | undefined>();
+
+  const { data: selectedMemberMeta } = useQuery({
+    queryKey: ['benefit-tracking-member-meta', selectedMember?.id],
+    enabled: !!selectedMember?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, branch_id')
+        .eq('id', selectedMember!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   // Search members using the search_members function
   const { data: searchResults, isLoading: isSearching } = useQuery({
