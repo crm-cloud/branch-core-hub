@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,19 +11,12 @@ import { useMemberData } from '@/hooks/useMemberData';
 import { InvoiceDetailDrawer } from '@/components/members/InvoiceDetailDrawer';
 import { FileText, AlertCircle, Loader2, CheckCircle, Eye, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { initializePayment, openRazorpayCheckout } from '@/services/paymentService';
-import { useAuth } from '@/contexts/AuthContext';
 
 export default function MyInvoices() {
-  const { profile } = useAuth();
+  const navigate = useNavigate();
   const { member, isLoading: memberLoading } = useMemberData();
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [paySheetOpen, setPaySheetOpen] = useState(false);
-  const [invoiceToPay, setInvoiceToPay] = useState<any>(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Fetch all invoices for member
   const { data: invoices = [], isLoading: invoicesLoading, refetch } = useQuery({
@@ -49,53 +43,10 @@ export default function MyInvoices() {
   };
 
   const handlePayNow = (invoice: any) => {
-    setInvoiceToPay(invoice);
-    setPaySheetOpen(true);
     setDetailOpen(false);
-  };
-
-  const handleOnlinePayment = async () => {
-    if (!invoiceToPay || !member) return;
-
-    setIsProcessingPayment(true);
-    try {
-      // Initialize payment order
-      const order = await initializePayment(
-        invoiceToPay.id,
-        'razorpay',
-        invoiceToPay.branch_id
-      );
-
-      if (!order.orderId) {
-        throw new Error('Failed to create payment order');
-      }
-
-      // Open Razorpay checkout
-      await openRazorpayCheckout(
-        order,
-        {
-          name: profile?.full_name || '',
-          email: profile?.email || '',
-          phone: profile?.phone || '',
-        },
-        async (response: any) => {
-          // Payment successful
-          toast.success('Payment successful!');
-          setPaySheetOpen(false);
-          setInvoiceToPay(null);
-          refetch();
-        },
-        (error: any) => {
-          toast.error(error.message || 'Payment failed');
-          setIsProcessingPayment(false);
-        }
-      );
-    } catch (error: any) {
-      console.error('Payment error:', error);
-      toast.error(error.message || 'Payment failed. Please try again.');
-    } finally {
-      setIsProcessingPayment(false);
-    }
+    // Route to the unified embedded checkout page (Razorpay Standard Checkout
+    // modal in-page, no full-page redirect).
+    navigate(`/member/pay?invoice=${invoice.id}`);
   };
 
   if (memberLoading || invoicesLoading) {
