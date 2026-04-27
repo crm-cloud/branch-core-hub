@@ -423,6 +423,15 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
               benefitType={topUpBenefit.benefit_type}
             />
           )}
+
+          <PurchaseAddOnDrawer
+            open={addOnOpen}
+            onOpenChange={setAddOnOpen}
+            memberId={memberId}
+            membershipId={activeMembership.id}
+            branchId={branchId}
+            mode="staff"
+          />
         </>
       )}
     </TabsContent>
