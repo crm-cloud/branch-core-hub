@@ -384,7 +384,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                             <SelectContent>
                               <SelectItem value="unlimited">
                                 <div className="flex items-center gap-1">
-                                  <Infinity className="h-3.5 w-3.5" /> Unlimited
+                                  <InfinityIcon className="h-3.5 w-3.5" /> Unlimited
                                 </div>
                               </SelectItem>
                               <SelectItem value="limited">Limited</SelectItem>
