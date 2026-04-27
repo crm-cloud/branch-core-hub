@@ -12,7 +12,7 @@ import { useUpdatePlan } from '@/hooks/usePlans';
 import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Loader2, X, Infinity, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, X, Infinity as InfinityIcon, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
 import { getBenefitIcon } from '@/lib/benefitIcons';
@@ -432,7 +432,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
                             <SelectContent>
                               <SelectItem value="unlimited">
                                 <div className="flex items-center gap-1">
-                                  <Infinity className="h-3.5 w-3.5" /> Unlimited
+                                  <InfinityIcon className="h-3.5 w-3.5" /> Unlimited
                                 </div>
                               </SelectItem>
                               <SelectItem value="limited">Limited</SelectItem>

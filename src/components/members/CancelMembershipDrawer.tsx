@@ -37,17 +37,16 @@ export function CancelMembershipDrawer({
   const [customRefundAmount, setCustomRefundAmount] = useState(0);
   const [refundMethod, setRefundMethod] = useState('cash');
 
-  if (!membership) return null;
-
-  const totalDays = differenceInDays(
+  const totalDays = membership ? differenceInDays(
     new Date(membership.end_date),
     new Date(membership.start_date)
-  );
-  const daysUsed = differenceInDays(new Date(), new Date(membership.start_date));
+  ) : 0;
+  const daysUsed = membership ? differenceInDays(new Date(), new Date(membership.start_date)) : 0;
   const daysRemaining = Math.max(0, totalDays - daysUsed);
-  const dailyRate = membership.price_paid / totalDays;
+  const dailyRate = membership && totalDays > 0 ? membership.price_paid / totalDays : 0;
 
   const calculateRefund = () => {
+    if (!membership) return 0;
     switch (refundType) {
       case 'full':
         return membership.price_paid;
@@ -176,6 +175,8 @@ export function CancelMembershipDrawer({
       toast.error(error.message || 'Failed to cancel membership');
     },
   });
+
+  if (!membership) return null;
 
   const resetForm = () => {
     setCancellationReason('');

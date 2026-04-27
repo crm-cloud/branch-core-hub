@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { toast } from 'sonner';
-import { Loader2, ExternalLink, Plus, X, Infinity } from 'lucide-react';
+import { Loader2, ExternalLink, Plus, X, Infinity as InfinityIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
@@ -384,7 +384,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
                             <SelectContent>
                               <SelectItem value="unlimited">
                                 <div className="flex items-center gap-1">
-                                  <Infinity className="h-3.5 w-3.5" /> Unlimited
+                                  <InfinityIcon className="h-3.5 w-3.5" /> Unlimited
                                 </div>
                               </SelectItem>
                               <SelectItem value="limited">Limited</SelectItem>
