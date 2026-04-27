@@ -1,98 +1,90 @@
-## Final Hardening Sprint — Implementation Plan
+## Goal
 
-This sprint closes the remaining production-grade gaps without regressing recent approval, billing, booking, or reminder fixes. Work ships in 3 phases. Each phase is migration-safe and auditable.
-
----
-
-### Phase 1 — Trust & Money Hardening
-
-**1.1 Trainer commission reversal**
-- New RPC `void_trainer_commission(p_payment_id, p_reason)` — reverses all `trainer_commissions` rows tied to the voided/refunded PT payment by inserting a negative offset row (idempotent on `(source_payment_id, kind='reversal')` unique index).
-- Hook it into existing `void_payment` RPC so reversal is atomic with the payment void.
-- Supports partial reversals proportional to `voided_amount / original_amount`.
-
-**1.2 Lead → Member conversion authority**
-- New RPC `convert_lead_to_member(p_lead_id, p_payload jsonb, p_idempotency_key)` that, in one transaction:
-  - Creates the member, links profile/auth user (if exists), branch, optional referral.
-  - Updates lead status → `converted` with `converted_member_id`.
-  - Enqueues welcome WhatsApp/email via `communication_queue`.
-  - Writes `audit_logs` row.
-- Returns `{member_id, idempotent_hit: bool}`. Stores `idempotency_key` on the lead so retries are no-ops.
-- Refactor `ConvertMemberDrawer.tsx` and `leadService.convertLead` to call only this RPC.
-
-**1.3 Stable idempotency keys for billing**
-- Standardize key format: `${memberId}:${intentType}:${draftId}` generated once per draft using `useRef` / `crypto.randomUUID()` cached in component state.
-- Audit and fix: `TopUpBenefitDrawer`, `MemberCheckout`, `PaymentDrawer`, PT purchase, store sale flow. Replace any `Date.now()` / per-render UUIDs.
-- Add a small `useStableIdempotencyKey(memberId, intent, draftId)` hook in `src/hooks/`.
-
-**1.4 Storage RLS cleanup**
-- Audit `storage.buckets` for any `public=true` that holds member-uploaded artifacts (measurements, biometric photos, member docs, signed contracts).
-- Make all member-scoped buckets private; switch UI to use signed URL helpers (`memberDocumentUrls`, `biometricPhotoUrls`) — already exists for some; extend to remaining.
-- Tighten `storage.objects` policies: list/select restricted to owner (`(storage.foldername(name))[1] = auth.uid()::text`) or staff via `has_role`.
+Replace fragmented add-on selling and client-side store billing with one backend-authoritative path per workflow, and surface real add-on purchase journeys for both staff and members.
 
 ---
 
-### Phase 2 — Operational Resilience
+## Phase 1 — Backend authority + idempotency (correctness)
 
-**2.1 Facility slot waitlist**
-- New table `benefit_slot_waitlist (id, slot_id, member_id, branch_id, joined_at, notified_at, promoted_at, status)` with unique `(slot_id, member_id)` partial index where `status='waiting'`.
-- New RPCs:
-  - `join_facility_waitlist(p_slot_id, p_member_id)` — entitlement + duplicate checks.
-  - `leave_facility_waitlist(...)`.
-- Update `cancel_facility_slot` RPC: on cancellation, `FOR UPDATE` lock waitlist, promote earliest waiter into `benefit_bookings`, mark `promoted_at`, insert notification.
-- UI: Add "Join Waitlist" button in `BookBenefitSlot.tsx` when slot is full.
+### 1.1 Member Store checkout → `create_pos_sale`
+Replace the multi-step client orchestration in `src/pages/MemberStore.tsx` (`checkout` mutation) with a single RPC call:
 
-**2.2 Wallet expiry job**
-- New RPC `expire_wallet_balances()` — for each wallet entry past `expires_at` with positive balance, write a negative `wallet_ledger` row of type `expiry_reversal` and zero the balance. Idempotent via `(source_id, kind='expiry')` unique index.
-- Wire into `send-reminders` edge function (already runs on cron) under a daily branch.
+- Use existing `create_pos_sale(p_branch_id, p_member_id, p_items, p_payment_method, p_sold_by, p_discount_amount, p_discount_code_id, p_discount_code, p_wallet_applied, p_idempotency_key, ...)`.
+- Stop client-side: direct `wallets`/`wallet_transactions` debit, `discount_codes.times_used` increment, manual `invoices` + `invoice_items` insert.
+- Build `p_items` from cart `[{product_id, quantity, unit_price}]`.
+- Resolve `discount_code_id` when applying promo so the RPC can row-lock and atomically increment usage (avoids the current race / partial-success window).
+- Pass `p_wallet_applied = walletDeduction`; RPC owns the wallet debit + ledger row.
+- Use a stable idempotency key: `useStableIdempotencyKey(member.id, 'member_store_checkout', cartHash)` where `cartHash` is a deterministic hash of sorted cart item ids+qty+promo+wallet flag, so retries reuse the key.
 
-**2.3 Approval audit retention**
-- Add `approval_audit_archive` table mirroring `approval_audit_log`.
-- New scheduled job `archive_approval_audit_log()` — moves rows older than 365 days into archive, deletes from primary. Wired into `send-reminders` weekly branch.
+### 1.2 Reward redemption → `claim_referral_reward`
+In `MemberStore.tsx`, replace the `claimReward` mutation (which currently flips `is_claimed` + credits wallet from the client) with:
+```ts
+supabase.rpc('claim_referral_reward', {
+  p_reward_id: rewardId,
+  p_member_id: member.id,
+  p_idempotency_key: stableKey,
+})
+```
+Atomic, retry-safe, already wired into the lifecycle audit.
 
----
-
-### Phase 3 — Realtime & Hygiene
-
-**3.1 Realtime tasks**
-- `ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks, public.task_status_history, public.task_comments;`
-- Add `REPLICA IDENTITY FULL` on those tables.
-- In `Tasks.tsx` and `TaskDetailDrawer.tsx`, subscribe to postgres_changes filtered by `branch_id` and invalidate React Query keys.
-
-**3.2 Notifications retention + mark-all-read**
-- New RPC `cleanup_old_notifications()` — deletes notifications where `created_at < now() - 90 days` AND `is_read=true`; archives unread older than 180 days.
-- Wire into `send-reminders` daily.
-- Verify `markAllAsRead` button is wired in `NotificationBell.tsx`; fix if missing/broken.
-
-**3.3 Class booking authority cleanup**
-- Audit and remove direct `class_bookings` writes from:
-  - `src/services/classService.ts` (route through `book_class` / `cancel_class_booking` / `add_to_waitlist` RPCs).
-  - `src/components/bookings/ConciergeBookingDrawer.tsx` (concierge path → RPC).
-  - `src/pages/AllBookings.tsx` cancel actions → RPC.
-  - `src/pages/MemberClassBooking.tsx` member self-book → RPC.
-  - `useMemberData.ts` if it does mutations.
-- Keep `export-data` / `backup-*` reads as-is (read-only is fine).
-- Verify capacity, waitlist promotion, and duplicate protection remain intact.
+### 1.3 Add-on idempotency stabilization
+Audit any remaining call sites that still build keys with `Date.now()` for `purchase_benefit_credits` / `purchase_benefit_topup` / `purchase_pt_package`. Replace with `useStableIdempotencyKey(memberId, intent, draftId)` so a refresh/retry of the same drawer reuses the same key. (`TopUpBenefitDrawer` already does this — extend pattern to the new add-on drawer below.)
 
 ---
 
-### Technical Notes
+## Phase 2 — Real add-on sales UX
 
-- All new RPCs: `SECURITY DEFINER`, `SET search_path = public`, explicit role checks via `has_role(auth.uid(), ...)`.
-- All idempotency: enforced by partial unique indexes, not just code checks.
-- All scheduled jobs piggyback on existing `send-reminders` cron to avoid new pg_cron entries.
-- No edits to `supabase/integrations/...types.ts`, `client.ts`, or `.env`.
-- Migrations are additive; no destructive drops on production tables.
+### 2.1 New unified add-on purchase drawer
+Create `src/components/benefits/PurchaseAddOnDrawer.tsx` (right-side Sheet, per project standard):
 
-### Files Touched (preview)
+- Tabs: **Benefit Credits**, **PT Packages** (and a placeholder for future service add-ons).
+- Lists active packages from `benefit_packages` (grouped by `benefit_type` → Sauna / Steam / Spa / Recovery / Other) and `pt_packages` (grouped by `package_type`/`session_type`).
+- Each card shows: name, sessions/credits, validity (days), price, GST note, "already owned: X credits remaining" badge if member has live credits of that type.
+- Calls the right RPC on confirm:
+  - Benefit credits → `purchase_benefit_credits(p_member_id, p_membership_id, p_package_id, p_branch_id, p_payment_method, p_idempotency_key)`
+  - PT → `purchase_pt_package(_member_id, _package_id, _trainer_id, _branch_id, _price_paid, _payment_method, _idempotency_key)` (trainer picker required).
+- Stable idempotency key: `(memberId, 'addon_purchase', `${packageId}:${draftId}`)`.
 
-- New migration consolidating Phase 1+2+3 SQL (RPCs, tables, indexes, publications, retention archives).
-- `src/services/{leadService,classService,ptService,walletService,taskService}.ts`
-- `src/components/{bookings/ConciergeBookingDrawer,leads/ConvertMemberDrawer,benefits/TopUpBenefitDrawer,tasks/TaskDetailDrawer,notifications/NotificationBell}.tsx`
-- `src/pages/{AllBookings,MemberClassBooking,BookBenefitSlot,Tasks,MemberCheckout}.tsx`
-- `src/hooks/useStableIdempotencyKey.ts` (new)
-- `supabase/functions/send-reminders/index.ts` (extend with wallet expiry, approval archive, notification cleanup branches)
+### 2.2 Discoverability wiring
+- **`MyBenefits.tsx` (member self-service)**: Replace the empty-state CTA pointing to `/member-store` with a primary "Buy Add-On Credits" button that opens `PurchaseAddOnDrawer` (member mode, payment_method = `pending` or `online` flow). Show the same CTA above the credits grid, not only when empty. Remove the misleading product-store link for benefit add-ons.
+- **`MemberProfileDrawer` benefits tab (staff)**: Add a "Sell Add-On" button next to each benefit row (and a top-level "Sell Add-On" button on the tab) that opens `PurchaseAddOnDrawer` in staff mode. Currently top-up only appears after exhaustion; this exposes proactive upsell for any benefit/PT.
+- **`BenefitTracking.tsx`** (staff page): Add the same "Sell Add-On" CTA in the page header so staff can upsell from the operational view.
 
-### Acceptance Verification
+### 2.3 Storefront separation
+Keep `/member-store` product-only. Add a clearly separated section header "Products" and a sibling banner card "Looking for extra sessions or PT? → Buy Add-Ons" that opens `PurchaseAddOnDrawer`. Do not mix benefit add-ons into the products grid (different fulfillment, different RPC).
 
-After each phase: type-check clean, RPC smoke-tested via `supabase--read_query` / `curl_edge_functions`, partial unique indexes verified to block duplicates, storage policies tested with anon vs owner vs staff role.
+---
+
+## Phase 3 — Acceptance polish
+
+- All add-on purchases land in `invoices` via the existing RPCs (already do; verify `source` tagging).
+- Toasts/QueryClient invalidations: `member-benefit-credits`, `member-pt-packages`, `wallet`, `member-invoices`, `unclaimed-rewards`.
+- RBAC: staff variant of drawer allows cash/card/UPI; member variant restricts to wallet/online.
+- Loading/skeleton + error boundaries per project conventions.
+
+---
+
+## Files touched
+
+**New**
+- `src/components/benefits/PurchaseAddOnDrawer.tsx`
+- (small) `src/lib/cartHash.ts` — deterministic cart hash helper
+
+**Edited**
+- `src/pages/MemberStore.tsx` — RPC-based checkout + reward claim + Add-Ons banner
+- `src/pages/MyBenefits.tsx` — Add-On CTA, remove product-store dead-end
+- `src/pages/BenefitTracking.tsx` — header Sell Add-On CTA
+- `src/components/members/MemberProfileDrawer.tsx` (benefits tab) — Sell Add-On entry points
+
+**No DB migration required** — all needed RPCs (`create_pos_sale`, `claim_referral_reward`, `purchase_benefit_credits`, `purchase_pt_package`, `purchase_benefit_topup`) already exist with idempotency support.
+
+---
+
+## Acceptance check
+
+1. Member-store checkout makes exactly one server call (`create_pos_sale`); no direct client writes to `wallets`, `discount_codes`, `invoices`, `invoice_items`.
+2. Refreshing during checkout and retrying does not double-charge wallet, double-use promo, or create duplicate invoices.
+3. Reward redeem in store calls `claim_referral_reward` and is idempotent.
+4. Members see a clear "Buy Add-On Credits" path from `MyBenefits` that does **not** dump them into the product store.
+5. Staff can proactively sell benefit credits / PT packages from the member profile and benefit tracking pages, before exhaustion.
+6. Add-on purchases appear in invoices and finance with correct GST and source tags.
