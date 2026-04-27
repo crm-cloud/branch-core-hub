@@ -133,248 +133,20 @@ export default function ApprovalQueuePage() {
     };
   }, [queryClient]);
 
-  // Process approval mutation
+  // Process approval mutation — single authoritative RPC call.
+  // The backend locks the request, runs the side-effect, and only then
+  // marks it approved. On failure the request stays pending and the real
+  // error is surfaced to the operator.
   const approveMutation = useMutation({
     mutationFn: async ({ requestId, approved }: { requestId: string; approved: boolean }) => {
-      const request = requests.find(r => r.id === requestId);
-      if (!request) throw new Error('Request not found');
-
-      // Update approval request
-      const { error: approvalError } = await supabase
-        .from('approval_requests')
-        .update({
-          status: approved ? 'approved' : 'rejected',
-          reviewed_by: user?.id,
-          reviewed_at: new Date().toISOString(),
-          review_notes: reviewNotes[requestId] || null,
-        })
-        .eq('id', requestId);
-
-      if (approvalError) throw approvalError;
-
-      const requestData = request.request_data as any;
-      // Handle both camelCase (new) and snake_case (old) key formats
-      const membershipId = requestData.membershipId || requestData.membership_id;
-
-      // Handle specific approval types
-      if (approved) {
-        if (request.approval_type === 'membership_freeze' && request.reference_type !== 'membership_unfreeze') {
-          // Update freeze history status
-          await supabase
-            .from('membership_freeze_history')
-            .update({
-              status: 'approved',
-              approved_by: user?.id,
-              approved_at: new Date().toISOString(),
-            })
-            .eq('id', request.reference_id);
-
-          // Apply freeze - update membership status to frozen
-          if (membershipId) {
-            await supabase
-              .from('memberships')
-              .update({ status: 'frozen' })
-              .eq('id', membershipId);
-          }
-        } else if (request.reference_type === 'membership_unfreeze') {
-          // Handle unfreeze - resume membership
-          if (membershipId) {
-            // Get the membership to calculate new end date
-            const { data: membership } = await supabase
-              .from('memberships')
-              .select('*')
-              .eq('id', membershipId)
-              .single();
-
-            if (membership) {
-              // Get freeze history to calculate total frozen days
-              const { data: freezeHistory } = await supabase
-                .from('membership_freeze_history')
-                .select('*')
-                .eq('membership_id', membershipId)
-                .eq('status', 'approved');
-
-              // Calculate total frozen days
-              const totalFrozenDays = (freezeHistory || []).reduce((sum: number, f: any) => {
-                const start = new Date(f.start_date);
-                const end = f.end_date ? new Date(f.end_date) : new Date();
-                return sum + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-              }, 0);
-
-              // Extend end date by frozen days
-              const originalEnd = new Date(membership.end_date);
-              originalEnd.setDate(originalEnd.getDate() + totalFrozenDays);
-
-              await supabase
-                .from('memberships')
-                .update({
-                  status: 'active',
-                  end_date: originalEnd.toISOString().split('T')[0],
-                })
-                .eq('id', membershipId);
-            }
-          }
-        } else if (request.reference_type === 'trainer_change') {
-          // Handle trainer change - update member's assigned trainer
-          if (requestData.memberId && requestData.newTrainerId) {
-            await supabase
-              .from('members')
-              .update({ assigned_trainer_id: requestData.newTrainerId })
-              .eq('id', requestData.memberId);
-          }
-        } else if (request.approval_type === 'membership_transfer') {
-          // Handle membership transfer approval — atomic: deactivate old + create new
-          const toMemberId = requestData.to_member_id;
-          const msId = requestData.membershipId || request.reference_id;
-          if (toMemberId && msId) {
-            // Fetch the original membership to calculate remaining days
-            const { data: originalMs } = await supabase
-              .from('memberships')
-              .select('*, membership_plans(name, price, duration_days)')
-              .eq('id', msId)
-              .single();
-
-            if (originalMs) {
-              const todayStr = new Date().toISOString().split('T')[0];
-              const endDate = new Date(originalMs.end_date);
-              const todayDate = new Date(todayStr);
-              const remainingDays = Math.max(0, Math.ceil((endDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-              // 1. Deactivate original membership
-              await supabase
-                .from('memberships')
-                .update({ status: 'transferred' as any, end_date: todayStr })
-                .eq('id', msId);
-
-              // 2. Create new membership for recipient
-              const newEndDate = new Date(todayDate);
-              newEndDate.setDate(newEndDate.getDate() + remainingDays);
-              await supabase
-                .from('memberships')
-                .insert({
-                  member_id: toMemberId,
-                  plan_id: requestData.plan_id || originalMs.plan_id,
-                  branch_id: requestData.branch_id || request.branch_id,
-                  start_date: todayStr,
-                  end_date: newEndDate.toISOString().split('T')[0],
-                  original_end_date: newEndDate.toISOString().split('T')[0],
-                  price_paid: 0,
-                  status: 'active',
-                } as any);
-            }
-
-            // Create transfer fee invoice if chargeable
-            if (requestData.is_chargeable && requestData.transfer_fee > 0) {
-              const fee = requestData.transfer_fee;
-              const { data: invoice } = await supabase
-                .from('invoices')
-                .insert({
-                  branch_id: request.branch_id,
-                  member_id: toMemberId,
-                  subtotal: fee,
-                  total_amount: fee,
-                  amount_paid: 0,
-                  status: 'pending',
-                  due_date: new Date().toISOString().split('T')[0],
-                  invoice_type: 'membership_transfer',
-                })
-                .select('id')
-                .single();
-
-              if (invoice) {
-                await supabase.from('invoice_items').insert({
-                  invoice_id: invoice.id,
-                  description: `Membership Transfer Fee from ${requestData.from_member_name}`,
-                  unit_price: fee,
-                  quantity: 1,
-                  total_amount: fee,
-                  reference_type: 'membership_transfer',
-                  reference_id: msId,
-                });
-              }
-            }
-
-            await supabase.from('audit_logs').insert({
-              action: 'MEMBERSHIP_TRANSFER',
-              table_name: 'memberships',
-              record_id: msId,
-              user_id: user?.id,
-              branch_id: request.branch_id,
-              old_data: { member_id: requestData.from_member_id, member_name: requestData.from_member_name },
-              new_data: { member_id: toMemberId, member_name: requestData.to_member_name },
-              action_description: `Approved membership transfer from ${requestData.from_member_name} to ${requestData.to_member_name}. Original membership deactivated, new membership created with remaining days. ${requestData.is_chargeable ? `Fee: ₹${requestData.transfer_fee}` : 'Free transfer'}. Reason: ${requestData.reason}`,
-            });
-          }
-        } else if (request.approval_type === 'branch_transfer') {
-          // Handle branch transfer approval
-          const mId = requestData.member_id || request.reference_id;
-          const toBranchId = requestData.to_branch_id;
-          if (mId && toBranchId) {
-            await supabase
-              .from('members')
-              .update({ branch_id: toBranchId })
-              .eq('id', mId);
-
-            await supabase
-              .from('memberships')
-              .update({ branch_id: toBranchId })
-              .eq('member_id', mId)
-              .in('status', ['active', 'frozen']);
-
-            await supabase.from('audit_logs').insert({
-              action: 'BRANCH_TRANSFER',
-              table_name: 'members',
-              record_id: mId,
-              user_id: user?.id,
-              branch_id: toBranchId,
-              old_data: { branch_id: requestData.from_branch_id, branch_name: requestData.from_branch_name },
-              new_data: { branch_id: toBranchId, branch_name: requestData.to_branch_name },
-              action_description: `Approved branch transfer for ${requestData.memberName} from ${requestData.from_branch_name} to ${requestData.to_branch_name}. Reason: ${requestData.reason}`,
-            });
-          }
-        } else if (request.approval_type === 'comp_gift') {
-          // Handle comp/gift approval
-          if (request.reference_type === 'extend_days') {
-            // Extend membership end date
-            const msId = requestData.membershipId;
-            if (msId && requestData.days) {
-              const { data: ms } = await supabase
-                .from('memberships')
-                .select('end_date')
-                .eq('id', msId)
-                .single();
-              if (ms) {
-                const currentEnd = new Date(ms.end_date);
-                currentEnd.setDate(currentEnd.getDate() + requestData.days);
-                await supabase
-                  .from('memberships')
-                  .update({ end_date: currentEnd.toISOString().split('T')[0] })
-                  .eq('id', msId);
-              }
-            }
-          } else if (request.reference_type === 'comp_sessions') {
-            // Insert comp sessions
-            await supabase.from('member_comps').insert({
-              member_id: requestData.memberId,
-              membership_id: requestData.membershipId || null,
-              benefit_type_id: requestData.benefitTypeId,
-              comp_sessions: requestData.sessions,
-              used_sessions: 0,
-              reason: requestData.reason || 'Approved comp',
-              granted_by: user?.id,
-            });
-          }
-        }
-      } else {
-        // Handle rejection
-        if (request.approval_type === 'membership_freeze') {
-          await supabase
-            .from('membership_freeze_history')
-            .update({ status: 'rejected' })
-            .eq('id', request.reference_id);
-        }
-      }
-
+      const { data, error } = await supabase.rpc('process_approval_request', {
+        p_request_id: requestId,
+        p_decision: approved ? 'approve' : 'reject',
+        p_review_notes: reviewNotes[requestId] || null,
+      });
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string; status?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to process approval');
       return { approved };
     },
     onSuccess: (data) => {
@@ -382,6 +154,7 @@ export default function ApprovalQueuePage() {
       queryClient.invalidateQueries({ queryKey: ['approval-queue'] });
       queryClient.invalidateQueries({ queryKey: ['approval-stats'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['memberships'] });
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to process request');
