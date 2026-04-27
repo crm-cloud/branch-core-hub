@@ -324,6 +324,18 @@ export default function BenefitTracking() {
                 preselectedBenefit={preselectedBenefit}
               />
             )}
+
+            {selectedMemberMeta?.branch_id && membership && (
+              <PurchaseAddOnDrawer
+                open={addOnOpen}
+                onOpenChange={setAddOnOpen}
+                memberId={selectedMember.id}
+                memberName={selectedMember.profiles?.full_name || selectedMember.member_code}
+                membershipId={membership.id}
+                branchId={selectedMemberMeta.branch_id}
+                mode="staff"
+              />
+            )}
           </>
         )}
       </div>
