@@ -33,7 +33,7 @@ interface AppliedDiscount {
 export default function MemberStore() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { member, isLoading: memberLoading } = useMemberData();
+  const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [promoCode, setPromoCode] = useState('');
