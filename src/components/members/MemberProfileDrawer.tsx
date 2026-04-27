@@ -129,6 +129,7 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
   const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   const { data: planBenefits = [] } = useQuery({
     queryKey: ['member-plan-benefits', activeMembership?.plan_id],
