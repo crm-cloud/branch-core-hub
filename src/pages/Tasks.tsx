@@ -193,7 +193,7 @@ export default function TasksPage() {
                   {filteredTasks.map((task: any) => {
                     const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed';
                     return (
-                      <TableRow key={task.id}>
+                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelectedTask(task)}>
                         <TableCell>
                           <div className="flex items-start gap-3">
                             <CheckSquare className={`h-5 w-5 mt-0.5 ${task.status === 'completed' ? 'text-green-500' : 'text-muted-foreground'}`} />
