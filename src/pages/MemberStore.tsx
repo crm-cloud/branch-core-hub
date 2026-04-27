@@ -215,23 +215,34 @@ export default function MemberStore() {
   const checkoutIdemKey = useStableIdempotencyKey(member?.id, 'member_store_checkout', cartSignature);
 
   // Atomic checkout via create_pos_sale RPC (handles wallet, promo usage, invoice, items, GST in one transaction).
+  // For amounts due online, we then hand off to the configured payment gateway via the
+  // create-razorpay-link edge function so members never have to "pay at the front desk".
   const checkout = useMutation({
     mutationFn: async () => {
       if (!member || cart.length === 0) throw new Error('Cart is empty');
 
-      const items = cart.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        unit_price: Number(item.product.price),
-      }));
+      // create_pos_sale computes subtotal from each item's `total`, and writes
+      // `name` into invoice_items.description — both fields are required.
+      const items = cart.map((item) => {
+        const unitPrice = Number(item.product.price);
+        return {
+          product_id: item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          unit_price: unitPrice,
+          total: unitPrice * item.quantity,
+        };
+      });
+
+      const isAwaiting = finalAmount > 0;
 
       const { data, error } = await supabase.rpc('create_pos_sale', {
         p_branch_id: member.branch_id,
         p_member_id: member.id,
         p_items: items,
-        p_payment_method: walletDeduction >= afterDiscount ? 'wallet' : 'pending',
+        p_payment_method: isAwaiting ? 'upi' : 'wallet',
         p_sold_by: member.user_id ?? null,
-        p_awaiting_payment: finalAmount > 0,
+        p_awaiting_payment: isAwaiting,
         p_discount_amount: discountAmount,
         p_discount_code_id: appliedDiscount?.id ?? null,
         p_discount_code: appliedDiscount?.code ?? null,
@@ -239,16 +250,33 @@ export default function MemberStore() {
         p_idempotency_key: checkoutIdemKey,
       });
 
-      if (error) throw error;
-      const result = data as { success?: boolean; error?: string; invoice_id?: string; invoice_number?: string } | null;
-      if (!result?.success) throw new Error(result?.error || 'Checkout failed');
-      return result;
+      if (error) throw new Error(error.message || 'Checkout failed');
+      const result = (data as any) || {};
+      const invoiceId: string | undefined = result.invoice_id;
+
+      // Wallet covered everything — done.
+      if (!isAwaiting) {
+        return { invoiceId, paymentUrl: null as string | null };
+      }
+
+      // Online payment due → ask for a Razorpay payment link.
+      if (!invoiceId) throw new Error('Invoice was not created');
+      const { data: linkData, error: linkErr } = await supabase.functions.invoke('create-razorpay-link', {
+        body: { invoiceId, amount: finalAmount, branchId: member.branch_id },
+      });
+      if (linkErr || linkData?.error) {
+        // Surface a clear "no gateway configured" message instead of silently falling back.
+        const code = linkData?.code || '';
+        if (code === 'NO_GATEWAY' || /not configured/i.test(linkData?.error || linkErr?.message || '')) {
+          throw new Error(
+            'Online payments are not configured for this branch yet. Your order has been saved as a pending invoice — you can pay it from My Invoices once a gateway is enabled.',
+          );
+        }
+        throw new Error(linkData?.error || linkErr?.message || 'Failed to create payment link');
+      }
+      return { invoiceId, paymentUrl: (linkData?.short_url as string | undefined) ?? null };
     },
-    onSuccess: (result) => {
-      const msg = finalAmount <= 0
-        ? 'Order placed & paid via wallet!'
-        : `Order placed! Invoice: ${result.invoice_number ?? ''}`;
-      toast.success(msg);
+    onSuccess: ({ paymentUrl }) => {
       setCart([]);
       setAppliedDiscount(null);
       setPromoCode('');
@@ -257,7 +285,17 @@ export default function MemberStore() {
       queryClient.invalidateQueries({ queryKey: ['my-pending-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       queryClient.invalidateQueries({ queryKey: ['store-products'] });
-      navigate('/my-invoices');
+
+      if (paymentUrl) {
+        toast.success('Redirecting you to secure payment…');
+        // Hand off to the gateway. If the popup is blocked, fall back to a same-tab redirect.
+        const popup = window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+        if (!popup) window.location.href = paymentUrl;
+        else navigate('/my-invoices');
+      } else {
+        toast.success('Order placed & paid via wallet!');
+        navigate('/my-invoices');
+      }
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to place order');
@@ -576,7 +614,7 @@ export default function MemberStore() {
                     <p className="text-xs text-center text-muted-foreground">
                       {finalAmount <= 0
                         ? 'Order will be marked as paid automatically.'
-                        : 'An invoice will be generated. Pay at the front desk.'}
+                        : 'You will be redirected to a secure online payment page after placing your order.'}
                     </p>
                   </div>
                 )}
