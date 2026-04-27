@@ -12,7 +12,7 @@ import { useUpdatePlan } from '@/hooks/usePlans';
 import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Loader2, X, Infinity, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, X, Infinity as InfinityIcon, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
 import { getBenefitIcon } from '@/lib/benefitIcons';
