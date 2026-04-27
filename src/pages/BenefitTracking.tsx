@@ -188,9 +188,14 @@ export default function BenefitTracking() {
                       </p>
                     </div>
                   </div>
-                  <Button onClick={() => handleRecordUsage()}>
-                    Record Usage
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setAddOnOpen(true)} disabled={!selectedMemberMeta?.branch_id || !membership}>
+                      Sell Add-On
+                    </Button>
+                    <Button onClick={() => handleRecordUsage()}>
+                      Record Usage
+                    </Button>
+                  </div>
                 </div>
 
                 {membership && (
