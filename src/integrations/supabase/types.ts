@@ -8588,6 +8588,10 @@ export type Database = {
         Returns: Json
       }
       staff_check_out: { Args: { p_user_id: string }; Returns: Json }
+      user_visible_branch_ids: {
+        Args: { p_user_id: string }
+        Returns: string[]
+      }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json

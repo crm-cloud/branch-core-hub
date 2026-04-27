@@ -1,0 +1,210 @@
+
+-- 1) Patch create_pos_sale: also write coupon_redemptions row inside the same txn
+CREATE OR REPLACE FUNCTION public.create_pos_sale(
+  p_branch_id uuid,
+  p_member_id uuid,
+  p_items jsonb,
+  p_payment_method text,
+  p_sold_by uuid,
+  p_guest_name text DEFAULT NULL::text,
+  p_guest_phone text DEFAULT NULL::text,
+  p_guest_email text DEFAULT NULL::text,
+  p_awaiting_payment boolean DEFAULT false,
+  p_discount_amount numeric DEFAULT 0,
+  p_discount_code_id uuid DEFAULT NULL::uuid,
+  p_discount_code text DEFAULT NULL::text,
+  p_wallet_applied numeric DEFAULT 0,
+  p_transaction_id text DEFAULT NULL::text,
+  p_slip_url text DEFAULT NULL::text,
+  p_idempotency_key text DEFAULT NULL::text
+) RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_subtotal numeric := 0;
+  v_total numeric;
+  v_discount numeric := COALESCE(p_discount_amount, 0);
+  v_wallet_applied numeric := COALESCE(p_wallet_applied, 0);
+  v_remainder numeric;
+  v_is_awaiting boolean := COALESCE(p_awaiting_payment, false);
+  v_customer_name text := NULLIF(TRIM(COALESCE(p_guest_name, '')), '');
+  v_customer_phone text := NULLIF(TRIM(COALESCE(p_guest_phone, '')), '');
+  v_customer_email text := NULLIF(TRIM(COALESCE(p_guest_email, '')), '');
+  v_pos_sale_id uuid;
+  v_invoice_id uuid;
+  v_wallet_row record;
+  v_code_row record;
+  v_today date := CURRENT_DATE;
+  v_item jsonb;
+  v_inv_qty integer;
+  v_inv_id uuid;
+  v_member_profile record;
+  v_note_parts text[] := ARRAY[]::text[];
+  v_notes text;
+  v_settle_resp jsonb;
+BEGIN
+  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+    RAISE EXCEPTION 'Cart is empty';
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+    v_subtotal := v_subtotal + COALESCE((v_item->>'total')::numeric, 0);
+  END LOOP;
+
+  v_discount := GREATEST(0, LEAST(v_discount, v_subtotal));
+  v_total := GREATEST(0, v_subtotal - v_discount);
+
+  IF v_is_awaiting THEN
+    v_wallet_applied := 0;
+    v_remainder := v_total;
+  ELSE
+    v_wallet_applied := GREATEST(0, LEAST(v_wallet_applied, v_total));
+    v_remainder := GREATEST(0, v_total - v_wallet_applied);
+  END IF;
+
+  IF v_wallet_applied > 0 THEN
+    IF p_member_id IS NULL THEN RAISE EXCEPTION 'Wallet redemption requires a member'; END IF;
+    SELECT id, balance INTO v_wallet_row FROM wallets WHERE member_id = p_member_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Member wallet not found'; END IF;
+    IF (COALESCE(v_wallet_row.balance, 0))::numeric < v_wallet_applied THEN
+      RAISE EXCEPTION 'Insufficient wallet balance';
+    END IF;
+  END IF;
+
+  IF NOT v_is_awaiting AND p_discount_code_id IS NOT NULL AND v_discount > 0 THEN
+    SELECT id, is_active, valid_from, valid_until, max_uses, times_used, branch_id, min_purchase
+    INTO v_code_row
+    FROM discount_codes WHERE id = p_discount_code_id FOR UPDATE;
+    IF NOT FOUND OR NOT v_code_row.is_active THEN RAISE EXCEPTION 'Coupon is no longer valid'; END IF;
+    IF v_code_row.valid_from IS NOT NULL AND v_code_row.valid_from > v_today THEN RAISE EXCEPTION 'Coupon is not yet valid'; END IF;
+    IF v_code_row.valid_until IS NOT NULL AND v_code_row.valid_until < v_today THEN RAISE EXCEPTION 'Coupon has expired'; END IF;
+    IF v_code_row.max_uses IS NOT NULL AND COALESCE(v_code_row.times_used, 0) >= v_code_row.max_uses THEN RAISE EXCEPTION 'Coupon usage limit reached'; END IF;
+    IF v_code_row.branch_id IS NOT NULL AND v_code_row.branch_id <> p_branch_id THEN RAISE EXCEPTION 'Coupon is not valid at this branch'; END IF;
+    IF v_code_row.min_purchase IS NOT NULL AND v_subtotal < v_code_row.min_purchase THEN RAISE EXCEPTION 'Coupon minimum purchase not met'; END IF;
+  END IF;
+
+  IF p_member_id IS NOT NULL AND v_customer_name IS NULL THEN
+    SELECT p.full_name, p.phone, p.email INTO v_member_profile
+    FROM members m LEFT JOIN profiles p ON p.id = m.user_id WHERE m.id = p_member_id;
+    IF FOUND THEN
+      v_customer_name := COALESCE(v_customer_name, v_member_profile.full_name);
+      v_customer_phone := COALESCE(v_customer_phone, v_member_profile.phone);
+      v_customer_email := COALESCE(v_customer_email, v_member_profile.email);
+    END IF;
+  END IF;
+
+  v_note_parts := array_append(v_note_parts,
+    CASE WHEN v_is_awaiting THEN 'POS Sale — Awaiting Payment Link' ELSE 'POS Sale' END);
+  IF p_discount_code IS NOT NULL AND v_discount > 0 THEN
+    v_note_parts := array_append(v_note_parts, 'Coupon ' || p_discount_code || ': -₹' || to_char(v_discount, 'FM999999990.00'));
+  END IF;
+  IF v_wallet_applied > 0 THEN
+    v_note_parts := array_append(v_note_parts, 'Wallet applied: ₹' || to_char(v_wallet_applied, 'FM999999990.00'));
+  END IF;
+  v_notes := array_to_string(v_note_parts, ' | ');
+
+  INSERT INTO pos_sales (branch_id, member_id, items, total_amount, payment_method, sold_by, customer_name, customer_phone, customer_email, payment_status)
+  VALUES (p_branch_id, p_member_id, p_items, v_total, p_payment_method::payment_method, p_sold_by, v_customer_name, v_customer_phone, v_customer_email,
+          CASE WHEN v_is_awaiting THEN 'awaiting_payment' ELSE 'paid' END)
+  RETURNING id INTO v_pos_sale_id;
+
+  INSERT INTO invoices (branch_id, member_id, invoice_number, subtotal, discount_amount, total_amount, amount_paid, status, due_date, pos_sale_id, source, notes)
+  VALUES (p_branch_id, p_member_id, NULL, v_subtotal, NULLIF(v_discount, 0), v_total,
+          CASE WHEN v_is_awaiting THEN 0 ELSE v_total END,
+          CASE WHEN v_is_awaiting THEN 'pending'::invoice_status ELSE 'paid'::invoice_status END,
+          v_today, v_pos_sale_id, 'pos'::invoice_source, v_notes)
+  RETURNING id INTO v_invoice_id;
+
+  UPDATE pos_sales SET invoice_id = v_invoice_id WHERE id = v_pos_sale_id;
+
+  INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total_amount, reference_type, reference_id)
+  SELECT v_invoice_id, it->>'name', COALESCE((it->>'quantity')::integer, 1),
+         COALESCE((it->>'unit_price')::numeric, 0), COALESCE((it->>'total')::numeric, 0),
+         'product', NULLIF(it->>'product_id','')::uuid
+  FROM jsonb_array_elements(p_items) AS it;
+
+  IF NOT v_is_awaiting THEN
+    IF v_wallet_applied > 0 THEN
+      v_settle_resp := settle_payment(
+        p_branch_id := p_branch_id, p_invoice_id := v_invoice_id, p_member_id := p_member_id,
+        p_amount := v_wallet_applied, p_payment_method := 'wallet', p_transaction_id := NULL,
+        p_notes := 'Wallet redemption (POS)', p_received_by := p_sold_by, p_income_category_id := NULL,
+        p_payment_source := 'pos_sale',
+        p_idempotency_key := COALESCE(p_idempotency_key, v_pos_sale_id::text) || ':wallet',
+        p_gateway_payment_id := NULL, p_payment_transaction_id := NULL,
+        p_metadata := jsonb_build_object('pos_sale_id', v_pos_sale_id));
+    END IF;
+    IF v_remainder > 0 THEN
+      v_settle_resp := settle_payment(
+        p_branch_id := p_branch_id, p_invoice_id := v_invoice_id, p_member_id := p_member_id,
+        p_amount := v_remainder, p_payment_method := p_payment_method, p_transaction_id := p_transaction_id,
+        p_notes := v_notes, p_received_by := p_sold_by, p_income_category_id := NULL,
+        p_payment_source := 'pos_sale',
+        p_idempotency_key := COALESCE(p_idempotency_key, v_pos_sale_id::text) || ':remainder',
+        p_gateway_payment_id := NULL, p_payment_transaction_id := NULL,
+        p_metadata := jsonb_build_object('pos_sale_id', v_pos_sale_id, 'slip_url', p_slip_url));
+    END IF;
+  END IF;
+
+  IF NOT v_is_awaiting AND p_discount_code_id IS NOT NULL AND v_discount > 0 AND v_code_row.id IS NOT NULL THEN
+    UPDATE discount_codes SET times_used = COALESCE(times_used, 0) + 1 WHERE id = p_discount_code_id;
+
+    -- NEW: unified redemption audit row (idempotent on idempotency_key when supplied)
+    INSERT INTO coupon_redemptions (
+      discount_code_id, member_id, invoice_id, branch_id,
+      order_total, discount_applied, idempotency_key
+    ) VALUES (
+      p_discount_code_id, p_member_id, v_invoice_id, p_branch_id,
+      v_subtotal, v_discount,
+      COALESCE(p_idempotency_key, v_pos_sale_id::text) || ':coupon'
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING;
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+    SELECT id, quantity INTO v_inv_id, v_inv_qty
+      FROM inventory
+     WHERE product_id = NULLIF(v_item->>'product_id','')::uuid AND branch_id = p_branch_id
+     FOR UPDATE;
+    IF FOUND THEN
+      UPDATE inventory SET quantity = GREATEST(0, COALESCE(v_inv_qty,0) - COALESCE((v_item->>'quantity')::integer, 0))
+       WHERE id = v_inv_id;
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'pos_sale_id', v_pos_sale_id, 'invoice_id', v_invoice_id,
+    'subtotal', v_subtotal, 'discount', v_discount,
+    'wallet_applied', v_wallet_applied, 'remainder', v_remainder,
+    'total', v_total, 'awaiting', v_is_awaiting
+  );
+END;
+$function$;
+
+-- 2) Ensure idempotency_key is unique on coupon_redemptions (for ON CONFLICT)
+CREATE UNIQUE INDEX IF NOT EXISTS coupon_redemptions_idemp_key
+  ON public.coupon_redemptions(idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+-- 3) Helper view: branch_ids the current authenticated user can access
+CREATE OR REPLACE FUNCTION public.user_visible_branch_ids(p_user_id uuid)
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Owners/admins see all branches
+  SELECT b.id FROM branches b
+   WHERE EXISTS (
+     SELECT 1 FROM user_roles ur
+      WHERE ur.user_id = p_user_id AND ur.role IN ('owner','admin')
+   )
+  UNION
+  -- Managers/staff/trainers see their assigned branches
+  SELECT sb.branch_id FROM staff_branches sb WHERE sb.user_id = p_user_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.user_visible_branch_ids(uuid) TO authenticated;
