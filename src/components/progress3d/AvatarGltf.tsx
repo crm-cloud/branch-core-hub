@@ -35,8 +35,10 @@ const ENV_URLS: Record<'male' | 'female' | 'neutral', string | undefined> = {
     (import.meta.env.VITE_AVATAR_MALE_URL as string | undefined),
 };
 
-function getModelUrl(gender: 'male' | 'female' | 'neutral'): string | null {
-  const url = ENV_URLS[gender];
+function getModelUrl(gender: string): string | null {
+  const key: 'male' | 'female' | 'neutral' =
+    gender === 'male' ? 'male' : gender === 'female' ? 'female' : 'neutral';
+  const url = ENV_URLS[key];
   if (!url || typeof url !== 'string') return null;
   const trimmed = url.trim();
   return trimmed.length > 0 ? trimmed : null;
