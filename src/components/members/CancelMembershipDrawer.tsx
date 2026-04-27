@@ -173,6 +173,7 @@ export function CancelMembershipDrawer({
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to cancel membership');
+    },
   });
 
   if (!membership) return null;
