@@ -9,10 +9,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { useWallet } from '@/hooks/useWallet';
-import { debitWallet } from '@/services/walletService';
-import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check, Tag, Wallet, Gift, X } from 'lucide-react';
+import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check, Tag, Wallet, Gift, X, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useStableIdempotencyKey } from '@/hooks/useStableIdempotencyKey';
+import { hashCart } from '@/lib/cartHash';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
+import { useActiveMembership } from '@/hooks/useActiveMembership';
 
 interface CartItem {
   product: any;
@@ -20,6 +23,7 @@ interface CartItem {
 }
 
 interface AppliedDiscount {
+  id: string;
   code: string;
   type: string;
   value: number;
@@ -36,6 +40,7 @@ export default function MemberStore() {
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [applyingPromo, setApplyingPromo] = useState(false);
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   // Wallet data
   const { data: wallet } = useWallet(member?.id || '');
