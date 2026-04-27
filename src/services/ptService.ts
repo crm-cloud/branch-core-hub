@@ -68,24 +68,28 @@ export async function updatePTPackage(
   return data;
 }
 
-// Purchase PT package for member
+// Purchase PT package — uses unified settlement (8-arg variant routes through record_payment)
 export async function purchasePTPackage(
   memberId: string,
   packageId: string,
   trainerId: string,
   branchId: string,
-  pricePaid: number
-): Promise<{ success: boolean; member_package_id?: string; error?: string }> {
+  pricePaid: number,
+  paymentMethod: string = 'cash',
+  idempotencyKey?: string,
+): Promise<{ success: boolean; member_package_id?: string; invoice_id?: string; error?: string }> {
+  const idem = idempotencyKey ?? `pt-${memberId}-${packageId}-${Date.now()}`;
   const { data, error } = await supabase.rpc("purchase_pt_package", {
     _member_id: memberId,
     _package_id: packageId,
     _trainer_id: trainerId,
     _branch_id: branchId,
     _price_paid: pricePaid,
+    _payment_method: paymentMethod,
+    _idempotency_key: idem,
   });
-
   if (error) throw error;
-  return data as { success: boolean; member_package_id?: string; error?: string };
+  return data as { success: boolean; member_package_id?: string; invoice_id?: string; error?: string };
 }
 
 // Fetch member's PT packages
