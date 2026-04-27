@@ -327,6 +327,7 @@ export default function MemberPlansPage() {
         open={purchaseOpen}
         onOpenChange={setPurchaseOpen}
         memberId={member.id}
+        memberName={(member as any).profiles?.full_name || member.member_code || 'Member'}
         branchId={member.branch_id}
       />
 
