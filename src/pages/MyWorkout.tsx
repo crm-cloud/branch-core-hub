@@ -93,8 +93,8 @@ export default function MyWorkout() {
           .from('profiles')
           .select('full_name')
           .eq('id', data.created_by)
-          .single();
-        trainerProfile = tp;
+          .maybeSingle();
+        trainerProfile = tp ?? null;
       }
       if (data && (data as any).template_id) {
         const { data: tpl } = await supabase

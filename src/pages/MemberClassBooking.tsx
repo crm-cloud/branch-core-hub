@@ -83,9 +83,8 @@ export default function MemberClassBooking() {
     queryKey: ['my-profile-gender', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('gender').eq('id', user!.id).single();
-      if (error) throw error;
-      return data;
+      const { data } = await supabase.from('profiles').select('gender').eq('id', user!.id).maybeSingle();
+      return data ?? null;
     },
   });
 
