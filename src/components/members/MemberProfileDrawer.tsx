@@ -284,15 +284,21 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
         <>
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Heart className="h-4 w-4" />
                   Plan Entitlements
                 </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => setUsageDrawerOpen(true)}>
-                  <Activity className="h-3 w-3 mr-1" />
-                  Log Usage
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="default" onClick={() => setAddOnOpen(true)}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Sell Add-On
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setUsageDrawerOpen(true)}>
+                    <Activity className="h-3 w-3 mr-1" />
+                    Log Usage
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
