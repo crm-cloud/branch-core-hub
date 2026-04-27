@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStableIdempotencyKey } from '@/hooks/useStableIdempotencyKey';
 import { hashCart } from '@/lib/cartHash';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
-import { useActiveMembership } from '@/hooks/useActiveMembership';
+
 
 interface CartItem {
   product: any;
