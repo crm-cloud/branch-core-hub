@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,14 +8,16 @@ import { Progress } from '@/components/ui/progress';
 import { useMemberData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Heart, AlertCircle, Calendar, Clock, Droplets, Sparkles, Gift } from 'lucide-react';
+import { Heart, AlertCircle, Calendar, Clock, Droplets, Sparkles, Gift, Plus } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 
 export default function MyBenefits() {
   const { profile } = useAuth();
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   // Fetch benefit credits
   const { data: benefitCredits = [], isLoading: creditsLoading } = useQuery({
@@ -129,12 +132,18 @@ export default function MyBenefits() {
               Track and manage your membership benefits
             </p>
           </div>
-          <Button asChild>
-            <Link to="/book-benefit">
-              <Calendar className="h-4 w-4 mr-2" />
-              Book a Slot
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAddOnOpen(true)} disabled={!activeMembership}>
+              <Plus className="h-4 w-4 mr-2" />
+              Buy Add-On Credits
+            </Button>
+            <Button asChild>
+              <Link to="/book-benefit">
+                <Calendar className="h-4 w-4 mr-2" />
+                Book a Slot
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Active Membership Info */}
@@ -279,15 +288,30 @@ export default function MyBenefits() {
               <Heart className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-xl font-semibold mb-2">No Benefits Yet</h3>
               <p className="text-muted-foreground mb-6">
-                Your membership plan may include various benefits. Check with staff for details!
+                {activeMembership
+                  ? 'Your plan may include extras. Buy benefit add-ons or check with staff.'
+                  : 'You need an active membership to access benefits.'}
               </p>
-              <Button asChild variant="outline">
-                <Link to="/member-store">Browse Add-on Packages</Link>
+              <Button onClick={() => setAddOnOpen(true)} disabled={!activeMembership}>
+                <Plus className="h-4 w-4 mr-2" />
+                Buy Add-On Credits
               </Button>
             </CardContent>
           </Card>
         )}
       </div>
+
+      {member && (
+        <PurchaseAddOnDrawer
+          open={addOnOpen}
+          onOpenChange={setAddOnOpen}
+          memberId={member.id}
+          memberName={profile?.full_name || undefined}
+          membershipId={activeMembership?.id ?? null}
+          branchId={member.branch_id}
+          mode="member"
+        />
+      )}
     </AppLayout>
   );
 }

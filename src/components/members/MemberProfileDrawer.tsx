@@ -30,6 +30,7 @@ import { EditProfileDrawer } from './EditProfileDrawer';
 import { MemberPlanProgressBlock } from '@/components/fitness/member/MemberPlanProgressBlock';
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
+import { PurchaseAddOnDrawer } from '../benefits/PurchaseAddOnDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
@@ -128,6 +129,7 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
   const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   const { data: planBenefits = [] } = useQuery({
     queryKey: ['member-plan-benefits', activeMembership?.plan_id],
@@ -282,15 +284,21 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
         <>
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Heart className="h-4 w-4" />
                   Plan Entitlements
                 </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => setUsageDrawerOpen(true)}>
-                  <Activity className="h-3 w-3 mr-1" />
-                  Log Usage
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="default" onClick={() => setAddOnOpen(true)}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Sell Add-On
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setUsageDrawerOpen(true)}>
+                    <Activity className="h-3 w-3 mr-1" />
+                    Log Usage
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -415,6 +423,15 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
               benefitType={topUpBenefit.benefit_type}
             />
           )}
+
+          <PurchaseAddOnDrawer
+            open={addOnOpen}
+            onOpenChange={setAddOnOpen}
+            memberId={memberId}
+            membershipId={activeMembership.id}
+            branchId={branchId}
+            mode="staff"
+          />
         </>
       )}
     </TabsContent>

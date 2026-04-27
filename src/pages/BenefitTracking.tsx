@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useBenefitBalances, useBenefitUsageHistory } from '@/hooks/useBenefits';
 import { BenefitBalancesGrid } from '@/components/benefits/BenefitBalanceCard';
 import { RecordBenefitUsageDrawer } from '@/components/benefits/RecordBenefitUsageDrawer';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 import { benefitTypeLabels, frequencyLabels } from '@/services/benefitService';
 import { format } from 'date-fns';
 import type { Database } from '@/integrations/supabase/types';
@@ -33,7 +34,22 @@ export default function BenefitTracking() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState<MemberSearchResult | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [addOnOpen, setAddOnOpen] = useState(false);
   const [preselectedBenefit, setPreselectedBenefit] = useState<BenefitType | undefined>();
+
+  const { data: selectedMemberMeta } = useQuery({
+    queryKey: ['benefit-tracking-member-meta', selectedMember?.id],
+    enabled: !!selectedMember?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, branch_id')
+        .eq('id', selectedMember!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   // Search members using the search_members function
   const { data: searchResults, isLoading: isSearching } = useQuery({
@@ -172,9 +188,14 @@ export default function BenefitTracking() {
                       </p>
                     </div>
                   </div>
-                  <Button onClick={() => handleRecordUsage()}>
-                    Record Usage
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setAddOnOpen(true)} disabled={!selectedMemberMeta?.branch_id || !membership}>
+                      Sell Add-On
+                    </Button>
+                    <Button onClick={() => handleRecordUsage()}>
+                      Record Usage
+                    </Button>
+                  </div>
                 </div>
 
                 {membership && (
@@ -301,6 +322,18 @@ export default function BenefitTracking() {
                 memberName={selectedMember.profiles?.full_name || selectedMember.member_code}
                 availableBenefits={balances}
                 preselectedBenefit={preselectedBenefit}
+              />
+            )}
+
+            {selectedMemberMeta?.branch_id && membership && (
+              <PurchaseAddOnDrawer
+                open={addOnOpen}
+                onOpenChange={setAddOnOpen}
+                memberId={selectedMember.id}
+                memberName={selectedMember.profiles?.full_name || selectedMember.member_code}
+                membershipId={membership.id}
+                branchId={selectedMemberMeta.branch_id}
+                mode="staff"
               />
             )}
           </>

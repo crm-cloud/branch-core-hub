@@ -9,10 +9,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { useWallet } from '@/hooks/useWallet';
-import { debitWallet } from '@/services/walletService';
-import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check, Tag, Wallet, Gift, X } from 'lucide-react';
+import { ShoppingBag, Search, Package, AlertCircle, Loader2, Plus, Minus, ShoppingCart, Check, Tag, Wallet, Gift, X, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useStableIdempotencyKey } from '@/hooks/useStableIdempotencyKey';
+import { hashCart } from '@/lib/cartHash';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
+
 
 interface CartItem {
   product: any;
@@ -20,6 +23,7 @@ interface CartItem {
 }
 
 interface AppliedDiscount {
+  id: string;
   code: string;
   type: string;
   value: number;
@@ -29,13 +33,14 @@ interface AppliedDiscount {
 export default function MemberStore() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { member, isLoading: memberLoading } = useMemberData();
+  const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [promoCode, setPromoCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const [applyingPromo, setApplyingPromo] = useState(false);
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   // Wallet data
   const { data: wallet } = useWallet(member?.id || '');
@@ -160,6 +165,7 @@ export default function MemberStore() {
         : Number(data.discount_value);
 
       setAppliedDiscount({
+        id: data.id,
         code: data.code,
         type: data.discount_type,
         value: Number(data.discount_value),
@@ -178,105 +184,70 @@ export default function MemberStore() {
     setPromoCode('');
   };
 
-  // Claim referral reward to wallet
+  // Claim referral reward via authoritative atomic RPC.
   const claimReward = useMutation({
     mutationFn: async (rewardId: string) => {
-      const reward = unclaimedRewards.find(r => r.id === rewardId);
-      if (!reward) throw new Error('Reward not found');
-
-      // Mark as claimed
-      await supabase
-        .from('referral_rewards')
-        .update({ is_claimed: true, claimed_at: new Date().toISOString() })
-        .eq('id', rewardId);
-
-      // Credit wallet using the service
-      const { creditWallet } = await import('@/services/walletService');
-      await creditWallet(member!.id, reward.reward_value, 'Referral reward redeemed', 'referral_reward', rewardId);
+      const idem = `reward_claim:${member!.id}:${rewardId}`;
+      const { data, error } = await supabase.rpc('claim_referral_reward', {
+        p_reward_id: rewardId,
+        p_member_id: member!.id,
+        p_idempotency_key: idem,
+      });
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to redeem reward');
+      return result;
     },
     onSuccess: () => {
       toast.success('Reward credited to your wallet!');
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       queryClient.invalidateQueries({ queryKey: ['unclaimed-rewards'] });
     },
-    onError: () => toast.error('Failed to redeem reward'),
+    onError: (err: any) => toast.error(err.message || 'Failed to redeem reward'),
   });
 
-  // Checkout mutation
+  // Stable idempotency key for store checkout — refreshes only when cart/promo/wallet flag changes.
+  const cartSignature = hashCart({
+    items: cart.map((c) => ({ id: c.product.id, quantity: c.quantity, unitPrice: Number(c.product.price) })),
+    promoCode: appliedDiscount?.code,
+    walletApplied: useWalletBalance ? walletDeduction : 0,
+  });
+  const checkoutIdemKey = useStableIdempotencyKey(member?.id, 'member_store_checkout', cartSignature);
+
+  // Atomic checkout via create_pos_sale RPC (handles wallet, promo usage, invoice, items, GST in one transaction).
   const checkout = useMutation({
     mutationFn: async () => {
       if (!member || cart.length === 0) throw new Error('Cart is empty');
-      
-      // Debit wallet first if applicable
-      if (walletDeduction > 0) {
-        await debitWallet(member.id, walletDeduction, 'Store purchase - wallet payment');
-      }
 
-      // Increment promo code usage
-      if (appliedDiscount) {
-        const { data: codeData } = await supabase
-          .from('discount_codes')
-          .select('times_used')
-          .eq('code', appliedDiscount.code)
-          .single();
-        if (codeData) {
-          await supabase
-            .from('discount_codes')
-            .update({ times_used: (codeData.times_used || 0) + 1 })
-            .eq('code', appliedDiscount.code);
-        }
-      }
-
-      // Create invoice for the final amount (after wallet + discount)
-      const invoiceAmount = finalAmount;
-      const invoiceStatus = invoiceAmount <= 0 ? 'paid' : 'pending';
-
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert({
-          invoice_number: '',
-          member_id: member.id,
-          branch_id: member.branch_id,
-          subtotal: cartTotal,
-          discount_amount: discountAmount,
-          amount_paid: walletDeduction,
-          total_amount: finalAmount,
-          status: invoiceStatus as any,
-          source: 'member_store' as any,
-          notes: [
-            'Store purchase by member',
-            appliedDiscount ? `Promo: ${appliedDiscount.code} (-₹${discountAmount})` : '',
-            walletDeduction > 0 ? `Wallet: -₹${walletDeduction}` : '',
-          ].filter(Boolean).join(' | '),
-        } as any)
-        .select()
-        .single();
-      
-      if (invoiceError) throw invoiceError;
-      
-      // Create invoice items
-      const items = cart.map(item => ({
-        invoice_id: invoice.id,
-        description: item.product.name,
+      const items = cart.map((item) => ({
+        product_id: item.product.id,
         quantity: item.quantity,
-        unit_price: item.product.price,
-        total_amount: item.product.price * item.quantity,
-        reference_type: 'product',
-        reference_id: item.product.id,
+        unit_price: Number(item.product.price),
       }));
-      
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(items);
-      
-      if (itemsError) throw itemsError;
-      
-      return invoice;
+
+      const { data, error } = await supabase.rpc('create_pos_sale', {
+        p_branch_id: member.branch_id,
+        p_member_id: member.id,
+        p_items: items,
+        p_payment_method: walletDeduction >= afterDiscount ? 'wallet' : 'pending',
+        p_sold_by: member.user_id ?? null,
+        p_awaiting_payment: finalAmount > 0,
+        p_discount_amount: discountAmount,
+        p_discount_code_id: appliedDiscount?.id ?? null,
+        p_discount_code: appliedDiscount?.code ?? null,
+        p_wallet_applied: walletDeduction,
+        p_idempotency_key: checkoutIdemKey,
+      });
+
+      if (error) throw error;
+      const result = data as { success?: boolean; error?: string; invoice_id?: string; invoice_number?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Checkout failed');
+      return result;
     },
-    onSuccess: (invoice) => {
+    onSuccess: (result) => {
       const msg = finalAmount <= 0
         ? 'Order placed & paid via wallet!'
-        : `Order placed! Invoice: ${invoice.invoice_number}`;
+        : `Order placed! Invoice: ${result.invoice_number ?? ''}`;
       toast.success(msg);
       setCart([]);
       setAppliedDiscount(null);
@@ -285,6 +256,7 @@ export default function MemberStore() {
       queryClient.invalidateQueries({ queryKey: ['member-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['my-pending-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['store-products'] });
       navigate('/my-invoices');
     },
     onError: (error: any) => {
@@ -370,6 +342,26 @@ export default function MemberStore() {
             </CardContent>
           </Card>
         )}
+
+        {/* Add-Ons banner — service add-ons live in their own flow, separate from products */}
+        <Card className="border-primary/30 bg-gradient-to-r from-violet-50 to-indigo-50">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-indigo-100 text-indigo-600">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Need extra sessions or PT?</p>
+                <p className="text-xs text-slate-600">Buy benefit credits or a PT package — separate from products.</p>
+              </div>
+            </div>
+            <Button onClick={() => setAddOnOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Buy Add-Ons
+            </Button>
+          </CardContent>
+        </Card>
+
+        <h2 className="text-xl font-semibold pt-2">Products</h2>
 
         {/* Search */}
         <div className="relative">
@@ -593,6 +585,16 @@ export default function MemberStore() {
           </div>
         </div>
       </div>
+
+      <PurchaseAddOnDrawer
+        open={addOnOpen}
+        onOpenChange={setAddOnOpen}
+        memberId={member.id}
+        memberName={(member as any).profiles?.full_name}
+        membershipId={activeMembership?.id ?? null}
+        branchId={member.branch_id}
+        mode="member"
+      />
     </AppLayout>
   );
 }
