@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
       pt_reminders: 0,
       benefit_reminders: 0,
       inactive_member_alerts: 0,
+      task_reminders: 0,
+      task_overdue_escalations: 0,
     };
     const failures = {
       payment_reminders: 0,
