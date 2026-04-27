@@ -11,22 +11,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddTaskDrawer } from '@/components/tasks/AddTaskDrawer';
+import { TaskDetailDrawer } from '@/components/tasks/TaskDetailDrawer';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBranchContext } from '@/contexts/BranchContext';
 
 export default function TasksPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { effectiveBranchId } = useBranchContext();
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => fetchTasks(),
+    queryKey: ['tasks', effectiveBranchId || 'all'],
+    queryFn: () => fetchTasks(effectiveBranchId),
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['task-stats'],
-    queryFn: () => getTaskStats(),
+    queryKey: ['task-stats', effectiveBranchId || 'all'],
+    queryFn: () => getTaskStats(effectiveBranchId),
   });
 
   // Fetch staff users for assignment dropdown
@@ -107,6 +111,7 @@ export default function TasksPage() {
         </div>
 
         <AddTaskDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+        <TaskDetailDrawer task={selectedTask} open={!!selectedTask} onOpenChange={(o) => !o && setSelectedTask(null)} />
 
         <div className="grid gap-4 md:grid-cols-5">
           <Card>
@@ -189,7 +194,7 @@ export default function TasksPage() {
                   {filteredTasks.map((task: any) => {
                     const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'completed';
                     return (
-                      <TableRow key={task.id}>
+                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelectedTask(task)}>
                         <TableCell>
                           <div className="flex items-start gap-3">
                             <CheckSquare className={`h-5 w-5 mt-0.5 ${task.status === 'completed' ? 'text-green-500' : 'text-muted-foreground'}`} />
@@ -204,7 +209,7 @@ export default function TasksPage() {
                         <TableCell>
                           <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
                             value={task.assigned_to || 'unassigned'}
                             onValueChange={(value) => assignTaskMutation.mutate({ taskId: task.id, userId: value })}
@@ -233,7 +238,7 @@ export default function TasksPage() {
                         <TableCell>
                           <Badge className={getStatusColor(task.status)}>{task.status.replace('_', ' ')}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
                             value={task.status}
                             onValueChange={(value) => updateStatusMutation.mutate({ id: task.id, status: value as TaskStatus })}

@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
       pt_reminders: 0,
       benefit_reminders: 0,
       inactive_member_alerts: 0,
+      task_reminders: 0,
+      task_overdue_escalations: 0,
     };
     const failures = {
       payment_reminders: 0,
@@ -529,6 +531,99 @@ Deno.serve(async (req) => {
       }
     } catch (err) {
       console.error("Inactive member alerts error:", err);
+    }
+
+    // ── 8. Task reminders & overdue escalation ──────────────────────
+    try {
+      // 8a. Explicit task_reminders rows due now (one-shot, in_app)
+      const { data: dueReminders } = await adminClient
+        .from("task_reminders")
+        .select("id, task_id, channel, tasks:task_id (id, title, branch_id, assigned_to, status, due_date)")
+        .is("sent_at", null)
+        .lte("remind_at", now.toISOString())
+        .limit(500);
+      for (const r of dueReminders || []) {
+        const t: any = r.tasks;
+        if (!t || t.status === "completed" || t.status === "cancelled") {
+          await adminClient.from("task_reminders").update({ sent_at: now.toISOString() }).eq("id", r.id);
+          continue;
+        }
+        if (t.assigned_to) {
+          notifications.push({
+            user_id: t.assigned_to, branch_id: t.branch_id,
+            title: "Task reminder",
+            message: `Reminder: "${t.title}"${t.due_date ? ` — due ${new Date(t.due_date).toLocaleDateString()}` : ""}`,
+            type: "info", category: "task", action_url: "/tasks",
+          });
+        }
+        await adminClient.from("task_reminders").update({ sent_at: now.toISOString() }).eq("id", r.id);
+        results.task_reminders++;
+      }
+
+      // 8b. Auto reminder for tasks due within next 24h (one per day per task)
+      const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      const { data: dueSoon } = await adminClient
+        .from("tasks")
+        .select("id, title, branch_id, assigned_to, due_date, assigned_by, status")
+        .in("status", ["pending", "in_progress"])
+        .not("assigned_to", "is", null)
+        .not("due_date", "is", null)
+        .gte("due_date", now.toISOString())
+        .lte("due_date", in24h)
+        .limit(500);
+      for (const t of dueSoon || []) {
+        const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true })
+          .eq("user_id", t.assigned_to!).eq("category", "task").ilike("message", `%${t.title}%`)
+          .gte("created_at", today + "T00:00:00");
+        if ((count || 0) > 0) continue;
+        notifications.push({
+          user_id: t.assigned_to, branch_id: t.branch_id,
+          title: "Task due soon",
+          message: `Task "${t.title}" is due ${new Date(t.due_date!).toLocaleString()}.`,
+          type: "warning", category: "task", action_url: "/tasks",
+        });
+        results.task_reminders++;
+      }
+
+      // 8c. Overdue escalation (>24h past due) → assigner + branch managers
+      const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: overdue } = await adminClient
+        .from("tasks")
+        .select("id, title, branch_id, assigned_to, due_date, assigned_by, status")
+        .in("status", ["pending", "in_progress"])
+        .not("due_date", "is", null)
+        .lt("due_date", past24h)
+        .limit(500);
+      for (const t of overdue || []) {
+        const escalateTo = new Set<string>();
+        if (t.assigned_by) escalateTo.add(t.assigned_by);
+
+        // branch managers for this branch
+        const { data: mgrLinks } = await adminClient
+          .from("staff_branches").select("user_id").eq("branch_id", t.branch_id);
+        const userIds = (mgrLinks || []).map((s: any) => s.user_id);
+        if (userIds.length) {
+          const { data: mgrRoles } = await adminClient
+            .from("user_roles").select("user_id").in("user_id", userIds).in("role", ["manager", "owner", "admin"]);
+          for (const m of mgrRoles || []) escalateTo.add(m.user_id);
+        }
+
+        for (const uid of escalateTo) {
+          const { count } = await adminClient.from("notifications").select("id", { count: "exact", head: true })
+            .eq("user_id", uid).eq("category", "task_overdue").ilike("message", `%${t.title}%`)
+            .gte("created_at", today + "T00:00:00");
+          if ((count || 0) > 0) continue;
+          notifications.push({
+            user_id: uid, branch_id: t.branch_id,
+            title: "⚠️ Overdue task",
+            message: `Task "${t.title}" is overdue (due ${new Date(t.due_date!).toLocaleDateString()}). Please follow up with the assignee.`,
+            type: "warning", category: "task_overdue", action_url: "/tasks",
+          });
+          results.task_overdue_escalations++;
+        }
+      }
+    } catch (err) {
+      console.error("Task reminders error:", err);
     }
 
     // Bulk insert notifications
