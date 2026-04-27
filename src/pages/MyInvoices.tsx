@@ -211,61 +211,6 @@ export default function MyInvoices() {
         onOpenChange={setDetailOpen}
         onPayNow={handlePayNow}
       />
-
-      {/* Pay Dialog */}
-      <Sheet open={paySheetOpen} onOpenChange={setPaySheetOpen}>
-        <SheetContent side="right">
-          <SheetHeader>
-            <SheetTitle>Pay Invoice</SheetTitle>
-            <SheetDescription>
-              Invoice: {invoiceToPay?.invoice_number}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="py-4">
-            <div className="text-center space-y-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Amount Due</p>
-                <p className="text-3xl font-bold text-accent">
-                  ₹{(invoiceToPay?.total_amount - (invoiceToPay?.amount_paid || 0))?.toLocaleString()}
-                </p>
-              </div>
-              
-              <Button 
-                onClick={handleOnlinePayment} 
-                disabled={isProcessingPayment}
-                className="w-full"
-                size="lg"
-              >
-                {isProcessingPayment ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Pay Online (Razorpay)
-                  </>
-                )}
-              </Button>
-
-              <div className="text-sm text-muted-foreground">
-                <p>Or visit the front desk to pay via:</p>
-                <ul className="list-disc list-inside mt-2">
-                  <li>Cash</li>
-                  <li>Card (Credit/Debit)</li>
-                  <li>UPI</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          <SheetFooter>
-            <Button variant="outline" onClick={() => setPaySheetOpen(false)}>
-              Close
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </AppLayout>
   );
 }
