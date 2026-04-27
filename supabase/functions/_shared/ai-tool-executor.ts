@@ -143,7 +143,8 @@ export async function executeSharedToolCall(
         };
       }
 
-      case "cancel_booking": {
+      case "cancel_booking":
+      case "cancel_facility_booking": {
         if (!args.booking_id) return { error: "booking_id required." };
         const { data, error } = await supabase.rpc("cancel_facility_slot", {
           p_booking_id: args.booking_id,
