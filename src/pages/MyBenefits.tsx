@@ -17,6 +17,7 @@ import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 export default function MyBenefits() {
   const { profile } = useAuth();
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
+  const [addOnOpen, setAddOnOpen] = useState(false);
 
   // Fetch benefit credits
   const { data: benefitCredits = [], isLoading: creditsLoading } = useQuery({
