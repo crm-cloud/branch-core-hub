@@ -721,9 +721,7 @@ export function MemberProfileDrawer({
     });
   }, []);
 
-  if (!member) return null;
-
-  const profile = memberDetails?.profiles || member.profiles;
+  const profile = memberDetails?.profiles || member?.profiles;
   const activeMembership = memberDetails?.memberships?.find((m: any) => m.status === 'active' || m.status === 'frozen');
   const activePTPackage = memberDetails?.member_pt_packages?.find((p: any) => p.status === 'active');
   const hasRegistrationForm = !!registrationFormDocument;
