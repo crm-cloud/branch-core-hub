@@ -1,19 +1,23 @@
-import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, type ReactNode } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { BodyModel } from './BodyModel';
 import type { AvatarSnapshot } from '@/lib/measurements/measurementToAvatar';
 
 /**
- * AvatarGltf — loads a real GLB avatar (with morph targets) when available,
- * otherwise falls back to the procedural BodyModel.
+ * AvatarGltf — loads a real GLB avatar (with morph targets) when a URL is configured,
+ * otherwise renders the procedural BodyModel.
  *
- * Drop your GLB files at:
- *   public/models/avatar-male.glb
- *   public/models/avatar-female.glb
+ * Configure GLB sources (optional) via Vite env at build time:
+ *   VITE_AVATAR_MALE_URL=https://your-cdn/avatar-male.glb
+ *   VITE_AVATAR_FEMALE_URL=https://your-cdn/avatar-female.glb
+ *   VITE_AVATAR_NEUTRAL_URL=https://your-cdn/avatar-neutral.glb
  *
- * Recommended: use Ready Player Me / Mixamo exports with these morph target names
- * matching `AvatarSnapshot.morphs` keys (waistWidth, chestVolume, hipWidth, etc.).
+ * If no env vars are set, we render the procedural BodyModel directly with no
+ * network requests (no more 404 noise on /models/avatar-*.glb).
+ *
+ * Recommended GLB rigs: Ready Player Me / Mixamo with morph target names that
+ * match `AvatarSnapshot.morphs` keys (waistWidth, chestVolume, hipWidth, etc.).
  * Any morph keys not present on the mesh are silently ignored.
  */
 
@@ -22,32 +26,20 @@ interface AvatarGltfProps {
   interactiveRotationY: number;
 }
 
-const MODEL_URLS: Record<'male' | 'female' | 'neutral', string> = {
-  male: '/models/avatar-male.glb',
-  female: '/models/avatar-female.glb',
-  neutral: '/models/avatar-male.glb',
+// Pull URLs from Vite env. Empty / missing values disable GLB loading entirely.
+const ENV_URLS: Record<'male' | 'female' | 'neutral', string | undefined> = {
+  male: import.meta.env.VITE_AVATAR_MALE_URL as string | undefined,
+  female: import.meta.env.VITE_AVATAR_FEMALE_URL as string | undefined,
+  neutral:
+    (import.meta.env.VITE_AVATAR_NEUTRAL_URL as string | undefined) ||
+    (import.meta.env.VITE_AVATAR_MALE_URL as string | undefined),
 };
 
-/** Cached HEAD probe — only one network hit per URL per session. */
-const availabilityCache = new Map<string, Promise<boolean>>();
-function probeAvailability(url: string) {
-  if (!availabilityCache.has(url)) {
-    availabilityCache.set(
-      url,
-      fetch(url, { method: 'HEAD' }).then((r) => r.ok).catch(() => false),
-    );
-  }
-  return availabilityCache.get(url)!;
-}
-
-function useGltfAvailability(url: string) {
-  const [available, setAvailable] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    probeAvailability(url).then((ok) => { if (!cancelled) setAvailable(ok); });
-    return () => { cancelled = true; };
-  }, [url]);
-  return available;
+function getModelUrl(gender: 'male' | 'female' | 'neutral'): string | null {
+  const url = ENV_URLS[gender];
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /** Common morph-target name aliases for Ready Player Me / Mixamo / custom rigs. */
@@ -70,12 +62,14 @@ function findMorphIndex(dict: Record<string, number>, key: string): number | und
 
 function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & AvatarGltfProps) {
   const { scene } = useGLTF(url);
-
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
     cloned.traverse((obj) => {
-      const mesh = obj as THREE.Mesh & { morphTargetDictionary?: Record<string, number>; morphTargetInfluences?: number[] };
+      const mesh = obj as THREE.Mesh & {
+        morphTargetDictionary?: Record<string, number>;
+        morphTargetInfluences?: number[];
+      };
       if (!mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
       Object.entries(snapshot.morphs).forEach(([key, value]) => {
         const idx = findMorphIndex(mesh.morphTargetDictionary!, key);
@@ -96,19 +90,29 @@ function GltfMesh({ url, snapshot, interactiveRotationY }: { url: string } & Ava
 }
 
 /** Catches GLB load/parse errors at runtime and falls back to BodyModel. */
-class GltfErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+class GltfErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
   state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch(err: unknown) { console.warn('[AvatarGltf] GLB load failed, falling back:', err); }
-  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err: unknown) {
+    // eslint-disable-next-line no-console
+    console.warn('[AvatarGltf] GLB load failed, falling back to procedural model:', err);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
 }
 
 export function AvatarGltf({ snapshot, interactiveRotationY }: AvatarGltfProps) {
-  const url = MODEL_URLS[snapshot.genderPresentation];
-  const available = useGltfAvailability(url);
+  const url = getModelUrl(snapshot.genderPresentation);
   const fallback = <BodyModel snapshot={snapshot} interactiveRotationY={interactiveRotationY} />;
 
-  if (available !== true) return fallback;
+  // No GLB URL configured → render procedural model immediately, zero network probes.
+  if (!url) return fallback;
 
   return (
     <GltfErrorBoundary fallback={fallback}>
@@ -118,8 +122,3 @@ export function AvatarGltf({ snapshot, interactiveRotationY }: AvatarGltfProps) 
     </GltfErrorBoundary>
   );
 }
-
-// Pre-warm cache hints — only hit if files exist (useGLTF.preload is best-effort).
-// Commented out by default to avoid 404 noise; uncomment after you ship GLB assets:
-// useGLTF.preload('/models/avatar-male.glb');
-// useGLTF.preload('/models/avatar-female.glb');
