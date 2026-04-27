@@ -343,6 +343,26 @@ export default function MemberStore() {
           </Card>
         )}
 
+        {/* Add-Ons banner — service add-ons live in their own flow, separate from products */}
+        <Card className="border-primary/30 bg-gradient-to-r from-violet-50 to-indigo-50">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-indigo-100 text-indigo-600">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Need extra sessions or PT?</p>
+                <p className="text-xs text-slate-600">Buy benefit credits or a PT package — separate from products.</p>
+              </div>
+            </div>
+            <Button onClick={() => setAddOnOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Buy Add-Ons
+            </Button>
+          </CardContent>
+        </Card>
+
+        <h2 className="text-xl font-semibold pt-2">Products</h2>
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
