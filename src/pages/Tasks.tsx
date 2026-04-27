@@ -111,6 +111,7 @@ export default function TasksPage() {
         </div>
 
         <AddTaskDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+        <TaskDetailDrawer task={selectedTask} open={!!selectedTask} onOpenChange={(o) => !o && setSelectedTask(null)} />
 
         <div className="grid gap-4 md:grid-cols-5">
           <Card>
