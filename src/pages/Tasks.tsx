@@ -208,7 +208,7 @@ export default function TasksPage() {
                         <TableCell>
                           <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
                             value={task.assigned_to || 'unassigned'}
                             onValueChange={(value) => assignTaskMutation.mutate({ taskId: task.id, userId: value })}
@@ -237,7 +237,7 @@ export default function TasksPage() {
                         <TableCell>
                           <Badge className={getStatusColor(task.status)}>{task.status.replace('_', ' ')}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
                             value={task.status}
                             onValueChange={(value) => updateStatusMutation.mutate({ id: task.id, status: value as TaskStatus })}
