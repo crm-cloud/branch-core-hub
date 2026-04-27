@@ -30,6 +30,7 @@ import { EditProfileDrawer } from './EditProfileDrawer';
 import { MemberPlanProgressBlock } from '@/components/fitness/member/MemberPlanProgressBlock';
 import { RecordBenefitUsageDrawer } from '../benefits/RecordBenefitUsageDrawer';
 import { TopUpBenefitDrawer } from '../benefits/TopUpBenefitDrawer';
+import { PurchaseAddOnDrawer } from '../benefits/PurchaseAddOnDrawer';
 import { fetchMemberRewards, claimReward, fetchMemberReferrals } from '@/services/referralService';
 import { RecordPaymentDrawer } from '@/components/invoices/RecordPaymentDrawer';
 import { CompGiftDrawer } from './CompGiftDrawer';
