@@ -1,3 +1,8 @@
+// v2.0.0 — Hardened payment order creation with branch-then-global gateway lookup.
+// Returns enough data for embedded checkout (Razorpay Standard Checkout modal /
+// PhonePe IFRAME PayPage). Records the canonical payment_transactions row with
+// source='order' so payment-webhook can match and settle it idempotently.
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
@@ -5,6 +10,13 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -16,55 +28,77 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { invoiceId, gateway, branchId } = await req.json();
+    const body = await req.json().catch(() => ({} as any));
+    const invoiceId: string | undefined = body.invoiceId;
+    let gateway: string | undefined = body.gateway;
+    const branchId: string | undefined = body.branchId;
 
-    if (!invoiceId || !gateway || !branchId) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (!invoiceId || !branchId) {
+      return jsonResponse(
+        { error: "invoiceId and branchId are required", code: "MISSING_PARAMS" },
+        400,
       );
     }
 
-    // Get invoice details
+    // Invoice lookup
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
-      .select("*, member:members(user_id)")
+      .select("id, invoice_number, total_amount, amount_paid, branch_id, member_id, status")
       .eq("id", invoiceId)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
-      return new Response(
-        JSON.stringify({ error: "Invoice not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Invoice not found", code: "INVOICE_NOT_FOUND" }, 404);
     }
 
-    const amountDue = invoice.total_amount - (invoice.amount_paid || 0);
+    const amountDue = Number(invoice.total_amount) - Number(invoice.amount_paid || 0);
     if (amountDue <= 0) {
-      return new Response(
-        JSON.stringify({ error: "Invoice already paid" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return jsonResponse({ error: "Invoice already paid", code: "INVOICE_PAID" }, 400);
+    }
+
+    // Resolve active gateway: branch-specific first, then global (branch_id IS NULL).
+    // If caller didn't specify a gateway, pick whichever active one we find.
+    const baseSelect = "provider, credentials, config, is_active, branch_id";
+    let gatewayRow: any = null;
+
+    if (gateway) {
+      const { data } = await supabase
+        .from("integration_settings")
+        .select(baseSelect)
+        .eq("integration_type", "payment_gateway")
+        .eq("provider", gateway)
+        .eq("is_active", true)
+        .or(`branch_id.eq.${branchId},branch_id.is.null`)
+        .order("branch_id", { ascending: true, nullsFirst: false })
+        .limit(1);
+      gatewayRow = (data || [])[0] || null;
+    } else {
+      const { data } = await supabase
+        .from("integration_settings")
+        .select(baseSelect)
+        .eq("integration_type", "payment_gateway")
+        .eq("is_active", true)
+        .or(`branch_id.eq.${branchId},branch_id.is.null`)
+        .order("branch_id", { ascending: true, nullsFirst: false })
+        .limit(1);
+      gatewayRow = (data || [])[0] || null;
+      gateway = gatewayRow?.provider;
+    }
+
+    if (!gatewayRow || !gateway) {
+      return jsonResponse(
+        {
+          error:
+            "Online payments are not configured for this branch yet. Please contact the front desk to pay.",
+          code: "NO_GATEWAY",
+        },
+        400,
       );
     }
 
-    // Get payment gateway settings
-    const { data: gatewaySettings, error: settingsError } = await supabase
-      .from("integration_settings")
-      .select("*")
-      .eq("branch_id", branchId)
-      .eq("integration_type", "payment_gateway")
-      .eq("provider", gateway)
-      .eq("is_active", true)
-      .single();
+    const credentials = (gatewayRow.credentials || {}) as Record<string, string>;
 
-    if (settingsError || !gatewaySettings) {
-      return new Response(
-        JSON.stringify({ error: "Payment gateway not configured" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    let orderResponse: any = {
+    const orderResponse: any = {
       orderId: `ORD-${Date.now()}`,
       amount: amountDue,
       currency: "INR",
@@ -72,88 +106,82 @@ serve(async (req) => {
       gateway,
     };
 
-    // Create order based on gateway
     if (gateway === "razorpay") {
-      const credentials = gatewaySettings.credentials as { key_id?: string; key_secret?: string } || {};
-      const razorpayKeyId = credentials.key_id || Deno.env.get("RAZORPAY_KEY_ID");
-      const razorpayKeySecret = credentials.key_secret || Deno.env.get("RAZORPAY_KEY_SECRET");
-
-      if (!razorpayKeyId || !razorpayKeySecret) {
-        return new Response(
-          JSON.stringify({ error: "Razorpay credentials not configured" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      const keyId = credentials.key_id || Deno.env.get("RAZORPAY_KEY_ID");
+      const keySecret = credentials.key_secret || Deno.env.get("RAZORPAY_KEY_SECRET");
+      if (!keyId || !keySecret) {
+        return jsonResponse(
+          { error: "Razorpay credentials missing", code: "GATEWAY_CREDENTIALS_MISSING" },
+          400,
         );
       }
 
-      // Create Razorpay order
-      const razorpayOrder = await fetch("https://api.razorpay.com/v1/orders", {
+      const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Basic ${btoa(`${razorpayKeyId}:${razorpayKeySecret}`)}`,
+          Authorization: `Basic ${btoa(`${keyId}:${keySecret}`)}`,
         },
         body: JSON.stringify({
-          amount: Math.round(amountDue * 100), // Amount in paise
+          amount: Math.round(amountDue * 100),
           currency: "INR",
-          receipt: invoice.invoice_number,
-          notes: {
-            invoice_id: invoiceId,
-            branch_id: branchId,
-          },
+          receipt: invoice.invoice_number || invoiceId.slice(0, 30),
+          notes: { invoice_id: invoiceId, branch_id: branchId },
         }),
       });
 
-      if (!razorpayOrder.ok) {
-        const errorText = await razorpayOrder.text();
-        console.error("Razorpay error:", errorText);
-        return new Response(
-          JSON.stringify({ error: "Failed to create Razorpay order" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      if (!rzpRes.ok) {
+        const txt = await rzpRes.text();
+        console.error("Razorpay order error:", txt);
+        return jsonResponse(
+          { error: "Failed to create Razorpay order", code: "GATEWAY_ERROR", detail: txt.slice(0, 500) },
+          502,
         );
       }
 
-      const razorpayData = await razorpayOrder.json();
-      orderResponse.gatewayOrderId = razorpayData.id;
-      orderResponse.razorpayKey = razorpayKeyId;
+      const rzpData = await rzpRes.json();
+      orderResponse.gatewayOrderId = rzpData.id;
+      orderResponse.razorpayKey = keyId;
+      orderResponse.embedded = true; // Razorpay Standard Checkout opens as same-page modal
     } else if (gateway === "phonepe") {
-      // PhonePe integration
-      const credentials = gatewaySettings.credentials as { merchant_id?: string; salt_key?: string; salt_index?: string } || {};
-      const merchantId = credentials.merchant_id || Deno.env.get("PHONEPE_MERCHANT_ID");
-      const saltKey = credentials.salt_key || Deno.env.get("PHONEPE_SALT_KEY");
-      const saltIndex = credentials.salt_index || Deno.env.get("PHONEPE_SALT_INDEX") || "1";
-
-      if (!merchantId || !saltKey) {
-        return new Response(
-          JSON.stringify({ error: "PhonePe credentials not configured" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // For PhonePe, return checkout URL
-      orderResponse.checkoutUrl = `https://checkout.phonepe.com/pay/${merchantId}`;
+      // PhonePe Standard Checkout (v2 API). The frontend uses
+      // PhonePeCheckout.transact({ tokenUrl, type: 'IFRAME' }) with redirectUrl.
+      orderResponse.checkoutHint =
+        "Use PhonePe IFRAME PayPage. Server-side token URL generation requires PhonePe v2 OAuth flow which is not configured in this environment.";
+      orderResponse.embedded = false;
+      orderResponse.notImplemented = true;
+      return jsonResponse(
+        {
+          error:
+            "PhonePe embedded checkout is not yet enabled in this environment. Switch the active gateway to Razorpay or contact support.",
+          code: "GATEWAY_NOT_IMPLEMENTED",
+        },
+        400,
+      );
+    } else {
+      return jsonResponse(
+        { error: `Embedded checkout for ${gateway} is not yet supported.`, code: "GATEWAY_NOT_IMPLEMENTED" },
+        400,
+      );
     }
 
-    // Record the payment transaction
+    // Record canonical "order" transaction so payment-webhook can match it.
     await supabase.from("payment_transactions").insert({
       invoice_id: invoiceId,
       branch_id: branchId,
+      member_id: invoice.member_id,
       gateway,
       gateway_order_id: orderResponse.gatewayOrderId,
       amount: amountDue,
       currency: "INR",
-      status: "pending",
+      status: "created",
       source: "order",
     });
 
-    return new Response(JSON.stringify(orderResponse), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(orderResponse, 200);
   } catch (error: unknown) {
-    console.error("Error creating payment order:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("create-payment-order error:", errorMessage);
+    return jsonResponse({ error: errorMessage, code: "INTERNAL_ERROR" }, 500);
   }
 });

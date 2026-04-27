@@ -16,9 +16,17 @@ export interface PaymentOrder {
   gatewayOrderId?: string;
   checkoutUrl?: string;
   razorpayKey?: string;
+  embedded?: boolean;
 }
 
-// Fetch active payment gateway (global setting, not branch-specific)
+export interface PaymentOrderError extends Error {
+  code?: string;
+}
+
+/**
+ * Resolve the active payment gateway visible to a branch
+ * (branch-scoped first, then global fallback).
+ */
 export async function fetchActiveGateway(branchId: string): Promise<PaymentGatewayConfig | null> {
   const { data, error } = await supabase
     .from('integration_settings')
@@ -39,46 +47,64 @@ export async function fetchActiveGateway(branchId: string): Promise<PaymentGatew
   };
 }
 
-// Initialize a payment order
+/**
+ * Initialize a payment order. Routes through the create-payment-order edge
+ * function which now picks the correct gateway (branch first, then global)
+ * and returns enough data for an embedded Razorpay Standard Checkout.
+ */
 export async function initializePayment(
   invoiceId: string,
-  gateway: string,
-  branchId: string
+  branchId: string,
+  gateway?: string,
 ): Promise<PaymentOrder> {
   const { data, error } = await supabase.functions.invoke('create-payment-order', {
-    body: {
-      invoiceId,
-      gateway,
-      branchId,
-    },
+    body: { invoiceId, branchId, gateway },
   });
 
+  // The functions client surfaces non-2xx as `error`. Try to read structured detail
+  // from the response body for better UX.
   if (error) {
-    throw new Error(error.message || 'Failed to create payment order');
+    let detail: any = null;
+    try {
+      detail = (data as any) || JSON.parse((error as any)?.context?.body || '{}');
+    } catch {
+      detail = null;
+    }
+    const err: PaymentOrderError = new Error(detail?.error || error.message || 'Failed to create payment order');
+    err.code = detail?.code;
+    throw err;
   }
 
-  return data as PaymentOrder;
+  const parsed = (data as any) || {};
+  if (parsed.error) {
+    const err: PaymentOrderError = new Error(parsed.error);
+    err.code = parsed.code;
+    throw err;
+  }
+  return parsed as PaymentOrder;
 }
 
-// Verify payment status
-export async function verifyPayment(
-  transactionId: string,
-  gateway: string,
-  paymentData: Record<string, any>
-): Promise<{ success: boolean; status: string; message?: string }> {
+/**
+ * Verify a Razorpay handler response server-side and settle the invoice
+ * via the authoritative settle_payment RPC.
+ */
+export async function verifyRazorpayPayment(args: {
+  invoiceId: string;
+  branchId: string;
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}): Promise<{ success: boolean; new_status?: string; new_amount_paid?: number }> {
   const { data, error } = await supabase.functions.invoke('verify-payment', {
-    body: {
-      transactionId,
-      gateway,
-      paymentData,
-    },
+    body: { gateway: 'razorpay', ...args },
   });
-
   if (error) {
-    throw new Error(error.message || 'Failed to verify payment');
+    const detail: any = data || {};
+    throw new Error(detail.error || error.message || 'Payment verification failed');
   }
-
-  return data;
+  const result = (data as any) || {};
+  if (!result.success) throw new Error(result.error || 'Payment verification failed');
+  return result;
 }
 
 /**
@@ -91,7 +117,6 @@ export async function recordManualPayment(
   paymentMethod: 'cash' | 'card' | 'upi' | 'bank_transfer',
   notes?: string
 ): Promise<{ success: boolean }> {
-  // Get invoice details for branch_id and member_id
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .select('branch_id, member_id')
@@ -112,14 +137,14 @@ export async function recordManualPayment(
   return { success: true };
 }
 
-// Load Razorpay SDK dynamically
+// Load Razorpay SDK dynamically. The Standard Checkout opens an in-page modal
+// (no full-page redirect).
 export function loadRazorpayScript(): Promise<boolean> {
   return new Promise((resolve) => {
     if ((window as any).Razorpay) {
       resolve(true);
       return;
     }
-
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.onload = () => resolve(true);
@@ -128,12 +153,25 @@ export function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-// Open Razorpay checkout
+export interface RazorpayMemberInfo {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+/**
+ * Open the Razorpay Standard Checkout modal. Calls the success/error callbacks
+ * with the gateway response so the caller can verify it server-side.
+ */
 export async function openRazorpayCheckout(
   order: PaymentOrder,
-  memberInfo: { name: string; email: string; phone: string },
-  onSuccess: (response: any) => void,
-  onError: (error: any) => void
+  memberInfo: RazorpayMemberInfo,
+  onSuccess: (response: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) => void,
+  onError: (error: Error) => void
 ): Promise<void> {
   const loaded = await loadRazorpayScript();
   if (!loaded) {
@@ -141,38 +179,33 @@ export async function openRazorpayCheckout(
     return;
   }
 
-  const options = {
+  const options: any = {
     key: order.razorpayKey,
-    amount: order.amount * 100, // in paise
+    amount: order.amount * 100,
     currency: order.currency || 'INR',
-    name: 'Gym Membership',
-    description: `Invoice Payment - ${order.invoiceId}`,
+    name: 'Incline Fitness',
+    description: `Invoice ${order.invoiceId}`,
     order_id: order.gatewayOrderId,
     prefill: {
       name: memberInfo.name,
       email: memberInfo.email,
       contact: memberInfo.phone,
     },
-    handler: function (response: any) {
-      onSuccess({
-        razorpay_payment_id: response.razorpay_payment_id,
-        razorpay_order_id: response.razorpay_order_id,
-        razorpay_signature: response.razorpay_signature,
-      });
-    },
+    handler: (response: any) => onSuccess({
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_order_id: response.razorpay_order_id,
+      razorpay_signature: response.razorpay_signature,
+    }),
     modal: {
-      ondismiss: function () {
-        onError(new Error('Payment cancelled by user'));
-      },
+      ondismiss: () => onError(new Error('Payment cancelled')),
+      escape: true,
     },
-    theme: {
-      color: '#f97316', // Orange accent
-    },
+    theme: { color: '#f97316' },
   };
 
   const rzp = new (window as any).Razorpay(options);
-  rzp.on('payment.failed', function (response: any) {
-    onError(new Error(response.error.description || 'Payment failed'));
+  rzp.on('payment.failed', (response: any) => {
+    onError(new Error(response.error?.description || 'Payment failed'));
   });
   rzp.open();
 }

@@ -44,7 +44,7 @@ export function MemberBodyAvatarCanvas({ measurement, previousMeasurement, label
           dpr={isMobile ? [1, 1.25] : [1, 1.5]}
           camera={{ position: [0, 1.5, 4.2], fov: isMobile ? 34 : 30 }}
           gl={{ antialias: !isMobile, powerPreference: 'high-performance' }}
-          onCreated={({ gl }) => gl.setClearColor('transparent')}
+          onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
           onError={() => setHasCanvasError(true)}
         >
           <ambientLight intensity={1.4} />

@@ -73,8 +73,15 @@ export async function generateDailyWorkout(
     .eq('is_active', true);
   
   if (error) throw error;
+  // Empty catalog is an expected state, not an error — return empty workout
+  // so the UI shows a clean empty state instead of triggering global error logs.
   if (!exercises || exercises.length === 0) {
-    throw new Error(`No exercises found for muscle group: ${targetMuscle}`);
+    return {
+      exercises: [],
+      seed,
+      targetMuscle,
+      generatedAt: new Date().toISOString(),
+    };
   }
   
   // Shuffle the exercises using the seeded randomizer

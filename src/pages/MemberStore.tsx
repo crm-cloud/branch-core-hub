@@ -256,27 +256,14 @@ export default function MemberStore() {
 
       // Wallet covered everything — done.
       if (!isAwaiting) {
-        return { invoiceId, paymentUrl: null as string | null };
+        return { invoiceId, awaiting: false };
       }
 
-      // Online payment due → ask for a Razorpay payment link.
+      // Online payment due → return invoiceId; UI navigates to /member/pay
       if (!invoiceId) throw new Error('Invoice was not created');
-      const { data: linkData, error: linkErr } = await supabase.functions.invoke('create-razorpay-link', {
-        body: { invoiceId, amount: finalAmount, branchId: member.branch_id },
-      });
-      if (linkErr || linkData?.error) {
-        // Surface a clear "no gateway configured" message instead of silently falling back.
-        const code = linkData?.code || '';
-        if (code === 'NO_GATEWAY' || /not configured/i.test(linkData?.error || linkErr?.message || '')) {
-          throw new Error(
-            'Online payments are not configured for this branch yet. Your order has been saved as a pending invoice — you can pay it from My Invoices once a gateway is enabled.',
-          );
-        }
-        throw new Error(linkData?.error || linkErr?.message || 'Failed to create payment link');
-      }
-      return { invoiceId, paymentUrl: (linkData?.short_url as string | undefined) ?? null };
+      return { invoiceId, awaiting: true };
     },
-    onSuccess: ({ paymentUrl }) => {
+    onSuccess: ({ invoiceId, awaiting }) => {
       setCart([]);
       setAppliedDiscount(null);
       setPromoCode('');
@@ -286,12 +273,9 @@ export default function MemberStore() {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       queryClient.invalidateQueries({ queryKey: ['store-products'] });
 
-      if (paymentUrl) {
-        toast.success('Redirecting you to secure payment…');
-        // Hand off to the gateway. If the popup is blocked, fall back to a same-tab redirect.
-        const popup = window.open(paymentUrl, '_blank', 'noopener,noreferrer');
-        if (!popup) window.location.href = paymentUrl;
-        else navigate('/my-invoices');
+      if (awaiting && invoiceId) {
+        toast.success('Order placed. Continue to secure checkout…');
+        navigate(`/member/pay?invoice=${invoiceId}`);
       } else {
         toast.success('Order placed & paid via wallet!');
         navigate('/my-invoices');

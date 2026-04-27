@@ -208,7 +208,7 @@ export default function AnalyticsPage() {
       // Resolve top trainer name
       let topTrainer: { name: string; revenue: number; clients: number } | null = null;
       if (trainerStats.length > 0 && trainerStats[0].userId) {
-        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', trainerStats[0].userId).single();
+        const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', trainerStats[0].userId).maybeSingle();
         topTrainer = { name: profile?.full_name || 'Unknown', revenue: trainerStats[0].revenue, clients: trainerStats[0].clients };
       }
 
