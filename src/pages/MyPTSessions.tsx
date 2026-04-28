@@ -284,6 +284,13 @@ export default function MyPTSessions() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <PurchasePTPackageDrawer
+        open={purchaseOpen}
+        onOpenChange={setPurchaseOpen}
+        memberId={member.id}
+        branchId={member.branch_id}
+      />
     </AppLayout>
   );
 }
