@@ -1,105 +1,85 @@
-## Findings
+# Member Dashboard, Checkout, Plans & WhatsApp CRM Hardening
 
-The reported errors map to real issues in the current production flow:
+This sprint tackles four discrete issues raised in the readout: a broken POS checkout entry, a confusing plan-purchase drawer, a WhatsApp lead source that shows the raw token + missed admin notification, and a Convert-to-Lead flow that doesn't pre-fill anything and lacks context.
 
-1. `create-payment-order` fails because it only checks branch-specific payment settings. The project has an active global Razorpay gateway, so member invoice payments incorrectly return “Payment gateway not configured”.
-2. `/my-invoices` still uses the older direct Razorpay order flow and generic error handling, while store and membership flows use payment links. This needs one unified checkout handoff.
-3. `create_pos_sale` fails because the deployed RPC still casts invoice `source` to a non-existent `invoice_source` enum. The `invoices.source` column is plain text.
-4. The member-store flow currently opens a gateway URL in a new tab/redirect. The requested behavior is a checkout page with embedded/provider checkout where supported.
-5. The `profiles` 406 is caused by `.single()` on profile lookups where the API cannot coerce the response into one JSON object. These should use `.maybeSingle()` with safe fallback.
-6. `THREE.Color: Unknown color transparent` is caused by `gl.setClearColor('transparent')`. Three.js needs a real color plus alpha.
-7. `avatar-female.glb` 404 occurs because the app probes `/models/avatar-female.glb` but the file is not present. It should avoid missing-asset network noise and fall back cleanly.
-8. “No Active Diet Plan” and “No exercises found for Chest” are not crashes, but the workout issue is caused by an empty `exercises` table. The member UX should not log this as a system error.
-9. System Health has recorded these as open errors; after fixes, related known-noise entries should be marked resolved/cleaned up.
+## 1. POS checkout from Member Store → embedded Razorpay (no front-desk fallback)
 
-## Implementation Plan
+**Problem:** Clicking checkout still surfaces "An invoice will be generated. Pay at the front desk." in some flows; the unified `MemberCheckout` page exists but is not always reached, and `create_pos_sale` 400s have appeared.
 
-### Phase 1 — Stop current backend errors
+**Fix:**
+- Verify and harden the `MemberStore.checkout` mutation:
+  - Remove any remaining "pay at front desk" toast messaging — when `finalAmount > 0` we always navigate to `/member/pay?invoice=<id>`.
+  - Guard against the historic `create_pos_sale` 400 by validating `member.user_id` and item shape before the RPC call; surface a clear toast when payload is malformed instead of a raw 400.
+- On `MemberCheckout`:
+  - When the resolved gateway is Razorpay, **auto-open** the Standard Checkout modal on first render (no manual "Pay" tap) so it feels like an inline iframe. Keep the manual button as a retry path if the modal is dismissed.
+  - When no gateway is configured for the branch **or** the configured provider is not Razorpay, redirect to `Settings → Integrations → Payment Gateway` (admin) or show a clear "Online payments not enabled at this branch — please pay at the front desk" card (member) instead of erroring out.
+- Razorpay is the only provider with a true in-page modal. PhonePe / CCAvenue / PayU are redirect-only — keep them as a redirect path with an explanatory note (no fake iframe wrapper).
 
-- Patch the `create_pos_sale` RPC with a migration:
-  - remove `'pos'::invoice_source` and write `source = 'pos'` as text
-  - keep wallet, coupon, inventory, invoice, and idempotency behavior intact
-  - add safer idempotency behavior so retrying the same store checkout cannot create duplicate POS rows/invoices
-- Harden `create-payment-order` backend function:
-  - lookup active gateway by branch first, then global fallback
-  - return structured codes such as `NO_GATEWAY`, `INVOICE_PAID`, `INVALID_GATEWAY`, `GATEWAY_ERROR`
-  - record canonical `payment_transactions` with `source = 'order'`
-  - include enough client data for embedded checkout: Razorpay key/order ID, PhonePe token URL/redirect URL where configured
-- Keep `create-razorpay-link` for invoice sharing/manual link workflows, but stop using it as the default member checkout path.
+## 2. Plan purchase from Member Dashboard → select → confirm → pay (no drawer asking for plan)
 
-### Phase 2 — Unified member checkout page with embedded/provider flow
+**Problem:** When a member taps "Buy plan" on a *specific* plan card in `/member/plans`, the `PurchaseMembershipDrawer` opens and asks them to choose a plan again.
 
-- Convert `/member/pay?invoice=...` into the single member payment page used by:
-  - My Invoices
-  - Member Store checkout
-  - Membership purchase pending invoices
-  - Benefit/add-on invoice flows where applicable
-- Update Member Store so when payment is due it creates the pending invoice, then navigates to:
-  - `/member/pay?invoice=<invoiceId>`
-  instead of opening a new tab or redirecting to a payment link.
-- Update My Invoices “Pay” action to navigate/open the checkout page rather than invoking the old direct payment flow inside a drawer.
-- Implement provider-specific embedded behavior:
-  - Razorpay: use `checkout.js` Standard Checkout modal. This is Razorpay’s same-page embedded overlay, not a full-page redirect.
-  - PhonePe: use PhonePe Checkout script with `PhonePeCheckout.transact({ tokenUrl, type: 'IFRAME' })` when the gateway is PhonePe.
-  - PayU and CCAvenue: keep as prepared provider slots but do not fake iframe behavior unless credentials/API requirements are confirmed; return a clear “provider not yet supported for embedded checkout” message rather than silently redirecting.
-- Add realtime invoice status updates on the checkout page so members see paid/partial status as soon as webhooks settle the invoice.
+**Fix:**
+- Extend `PurchaseMembershipDrawer` to accept an optional `presetPlanId` prop. When provided, the plan selector is pre-filled and the drawer opens directly on the **Confirm & Pay** step (price summary, GST toggle, optional discount).
+- In `MemberPlans.tsx`:
+  - Pass `presetPlanId={plan.id}` from each plan card's "Buy plan / Renew with this plan" button.
+  - Top-level "Renew / Upgrade" and "Browse plans" buttons keep the existing plan-picker behaviour.
+- After successful purchase the drawer routes the member to `/member/pay?invoice=<id>` whenever an online balance is due, mirroring the store flow.
+- Add a direct **Pay Now** button on the Member Dashboard's "Outstanding dues" tile that links to the latest pending invoice via `/member/pay?invoice=<id>`.
+- Surface purchased benefit add-ons as entitlement chips on the Member Dashboard (read from `member_benefit_credits`) so add-ons are no longer invisible after purchase.
 
-### Phase 3 — Payment verification and webhook authority
+## 3. WhatsApp lead source: icon + label, and missing admin notification
 
-- Add/restore a `verify-payment` backend function for Razorpay handler verification from the checkout modal:
-  - verify signature server-side
-  - find the canonical `payment_transactions` row by gateway order ID
-  - call the authoritative `settle_payment` RPC with an idempotency key
-  - return updated invoice status to the client
-- Audit `payment-webhook` for order-based Razorpay payments so webhook retries also settle via `settle_payment` idempotently.
-- Ensure payment completion always flows through backend authority, never direct client-side invoice/payment writes.
+**Problem:**
+- Lead list shows raw `whatsapp_api` / `whatsapp_ai`. We want a WhatsApp icon + the word "WhatsApp".
+- A WhatsApp-API lead created yesterday did not trigger an admin notification.
 
-### Phase 4 — Fix frontend/system health noise
+**Fix:**
+- Update `src/lib/leadSource.ts` `SOURCE_META` and `normalizeSource`:
+  - Map `whatsapp_ai`, `whatsapp_api`, `whatsapp_ad`, `whatsapp_business` → label "WhatsApp", icon `MessageCircle` (green) so `LeadSourceBadge` automatically renders correctly across the Leads list, FollowUp Center, and Marketing CRM.
+- Notification gap: inspect why `notify-lead-created` did not fire for `lead e5e87a35` (no edge logs found):
+  - Add a server-side fallback inside `whatsapp-webhook` so that after the lead insert, we also write the `notifications` rows directly (admin + manager users for the branch) instead of relying on the fire-and-forget HTTP hop succeeding. The `notify-lead-created` function still owns WhatsApp/SMS dispatch; the in-app bell notification is now guaranteed.
+  - Add a debug log line + idempotency key on `notify-lead-created` so we can confirm invocations going forward.
 
-- Add `SheetDescription` to sheets missing descriptions or make the base `SheetContent` provide a hidden fallback description to eliminate the Radix warning.
-- Replace `gl.setClearColor('transparent')` with a valid transparent clear color, for example `gl.setClearColor(0x000000, 0)`.
-- Prevent `/models/avatar-female.glb` 404 by falling back to the procedural model unless a known model asset exists; avoid probing missing files in production.
-- Change profile `.single()` lookups in workout/analytics/class booking code to `.maybeSingle()` with fallback labels.
-- Handle empty workout exercise catalog gracefully:
-  - `generateDailyWorkout` returns an empty workout instead of throwing for empty catalog
-  - `/my-workout` shows a premium empty state and “request trainer plan” CTA without logging a backend/system error
-- Keep `/my-diet` UI/UX intact, but make “No Active Diet Plan” clearly an expected empty state, not an error.
+## 4. WhatsApp Chat → "Convert to Lead" auto-populates + premium context panel
 
-### Phase 5 — System Health cleanup and QA
+**Problem:** Convert-to-Lead opens an empty drawer; the chat layout doesn't show contact context (avatar, phone, email, past chats) on the right.
 
-- Review the latest `error_logs` entries and mark resolved the entries directly fixed by this sprint:
-  - `type invoice_source does not exist`
-  - `Payment gateway not configured` from global gateway fallback
-  - `Cannot coerce the result to a single JSON object` profile errors
-  - frontend payment errors caused by the failed function responses
-- Keep unrelated older/network/auth errors open unless they are also fixed or clearly stale.
-- Add targeted tests/checks:
-  - backend function test/call for missing params, paid invoice, global Razorpay fallback
-  - POS checkout RPC smoke test path where possible
-  - frontend build/typecheck
-  - manual end-to-end verification plan for member store -> invoice -> checkout -> gateway modal/iframe -> invoice status update
+**Fix:**
+- `AddLeadDrawer` props: accept optional `prefill` (`full_name`, `phone`, `source`, `notes`). When called from `WhatsAppChat`, pass:
+  - `full_name`: `selectedContact.contact_name`
+  - `phone`: normalized (+91 prefix enforced)
+  - `source`: `whatsapp_api`
+  - `notes`: last 3 inbound messages stitched together for quick context
+- Add a **right-side Context Panel** (240–280 px) inside `WhatsAppChat`, visible when a contact is selected on desktop (≥1024 px). Hidden behind a "Details" toggle on smaller screens. Contents (Vuexy-styled `rounded-2xl` cards with soft shadows):
+  - **Profile card** — avatar (initial fallback), contact name, phone with copy-to-clipboard, email if known, member badge / lead status pill.
+  - **Quick actions** — Convert to Lead, View Lead, View Member Profile, Assign Staff.
+  - **Past interactions** — counts of total messages, unread, last seen, last message preview.
+  - **Recent chats with this contact** — collapsible scroll of prior 20 messages with date headers.
+- Use the UI/UX skill rules already in project memory (Vuexy theme, `bg-indigo-50`/`text-indigo-600` icon badges, `rounded-2xl` cards, soft shadows).
 
-## Provider iframe/documentation decision
+## Out of scope this turn
+- Trainer Dashboard revenue KPI relabel/branch fix (logged for follow-up).
+- Building a dedicated Trainer operational cockpit page.
 
-- Razorpay’s documented Standard Checkout uses `checkout.js` and opens a secure same-page checkout modal; this satisfies the “not redirect” requirement for Razorpay.
-- PhonePe’s docs explicitly support IFrame mode via `PhonePeCheckout.transact({ tokenUrl, callback, type: 'IFRAME' })` using the Payment API response URL.
-- PayU/CCAvenue iframe support is more account/API-specific and less reliable from public docs. I will not implement a fake iframe for them; I will structure the checkout adapter so they can be added once exact merchant docs/credentials are confirmed.
+## Files touched (technical)
 
-## Files likely to change
+- **Member checkout / plans / dashboard**
+  - `src/pages/MemberStore.tsx` — toast cleanup, payload validation.
+  - `src/pages/MemberCheckout.tsx` — auto-open Razorpay modal; clearer fallback when gateway not configured.
+  - `src/pages/MemberPlans.tsx` — pass `presetPlanId` to drawer.
+  - `src/pages/MemberDashboard.tsx` — Pay Now CTA on dues tile, add-on entitlement chips.
+  - `src/components/members/PurchaseMembershipDrawer.tsx` — `presetPlanId` prop, jump straight to Confirm step, navigate to `/member/pay` on success.
 
-- `supabase/functions/create-payment-order/index.ts`
-- `supabase/functions/verify-payment/index.ts` (new/restored)
-- `supabase/functions/payment-webhook/index.ts`
-- a new migration for `create_pos_sale` and optional idempotency cleanup
-- `src/services/paymentService.ts`
-- `src/pages/MemberCheckout.tsx`
-- `src/pages/MyInvoices.tsx`
-- `src/pages/MemberStore.tsx`
-- `src/components/ui/sheet.tsx`
-- `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
-- `src/components/progress3d/AvatarGltf.tsx`
-- `src/services/workoutShufflerService.ts`
-- `src/pages/MyWorkout.tsx`
-- profile lookup call sites using `.single()` where they cause 406s
+- **Lead source label + WhatsApp notifications**
+  - `src/lib/leadSource.ts` — add `whatsapp_api`, `whatsapp_ad`, `whatsapp_business` aliases.
+  - `supabase/functions/whatsapp-webhook/index.ts` — guaranteed in-app notifications write after AI lead capture.
+  - `supabase/functions/notify-lead-created/index.ts` — extra logging + idempotency.
 
-After approval, I will implement these fixes in the order above and then run backend/function checks plus a frontend build/typecheck.
+- **WhatsApp Chat → Lead UX**
+  - `src/components/leads/AddLeadDrawer.tsx` — accept `prefill` prop.
+  - `src/pages/WhatsAppChat.tsx` — pass prefill, add right-side Context Panel.
+
+No DB migrations required. No new edge functions. No new secrets.
+
+Approve to proceed.
