@@ -665,6 +665,40 @@ export default function WhatsAppChatPage() {
   const igCount = enrichedContacts.filter(c => c.platform === 'instagram').length;
   const fbCount = enrichedContacts.filter(c => c.platform === 'messenger').length;
 
+  // Compute prefill for "Convert to Lead" — pulls last 3 inbound messages as context.
+  const leadPrefill = useMemo(() => {
+    if (!selectedContact) return undefined;
+    const phone = selectedContact.phone_number.startsWith('+')
+      ? selectedContact.phone_number
+      : `+${selectedContact.phone_number}`;
+    const lastInbound = (messages || [])
+      .filter((m: any) => m.direction === 'inbound' && m.content)
+      .slice(-3)
+      .map((m: any) => `• ${m.content}`)
+      .join('\n');
+    const platform = selectedContact.platform || 'whatsapp';
+    return {
+      full_name: selectedContact.contact_name || '',
+      phone,
+      source: platform === 'instagram' ? 'instagram' : platform === 'messenger' ? 'facebook' : 'whatsapp_api',
+      preferred_contact_channel: platform === 'whatsapp' ? 'whatsapp' : 'phone',
+      notes: lastInbound
+        ? `Captured from ${platform} chat. Recent messages:\n${lastInbound}`
+        : `Captured from ${platform} chat.`,
+    };
+  }, [selectedContact, messages]);
+
+  // Aggregate stats for the right-side context panel.
+  const contactStats = useMemo(() => {
+    if (!selectedContact) return null;
+    const total = messages.length;
+    const inbound = messages.filter((m: any) => m.direction === 'inbound').length;
+    const outbound = total - inbound;
+    const lastSeen = messages.length > 0 ? messages[messages.length - 1].created_at : null;
+    return { total, inbound, outbound, lastSeen };
+  }, [messages, selectedContact]);
+
+
   return (
     <AppLayout>
       <div className="h-[calc(100vh-5rem)] p-4">
