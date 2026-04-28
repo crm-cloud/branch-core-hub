@@ -85,7 +85,7 @@ export function AddLeadDrawer({ open, onOpenChange, defaultBranchId, prefill }: 
           }).catch(e => console.error('Lead notification failed:', e));
         });
       }
-      setNewLead({ full_name: '', phone: '', email: '', source: 'walk_in', notes: '', temperature: 'warm', goals: '', budget: '', preferred_contact_channel: 'phone', utm_source: '', utm_medium: '', utm_campaign: '' });
+      setNewLead({ ...EMPTY_LEAD });
       toast.success('Lead added successfully');
     },
     onError: () => toast.error('Failed to add lead'),
@@ -170,9 +170,10 @@ export function AddLeadDrawer({ open, onOpenChange, defaultBranchId, prefill }: 
                   <SelectItem value="walk_in">Walk-in</SelectItem>
                   <SelectItem value="website">Website</SelectItem>
                   <SelectItem value="referral">Referral</SelectItem>
-                  <SelectItem value="social_media">Social Media</SelectItem>
+                  <SelectItem value="whatsapp_api">WhatsApp</SelectItem>
                   <SelectItem value="instagram">Instagram</SelectItem>
                   <SelectItem value="facebook">Facebook</SelectItem>
+                  <SelectItem value="meta_ad">Meta Ads</SelectItem>
                   <SelectItem value="google_ads">Google Ads</SelectItem>
                   <SelectItem value="advertisement">Advertisement</SelectItem>
                   <SelectItem value="phone">Phone Call</SelectItem>
