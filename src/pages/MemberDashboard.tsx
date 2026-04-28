@@ -589,6 +589,18 @@ export default function MemberDashboard() {
           </Card>
         </div>
       </div>
+
+      {member && (
+        <PurchaseAddOnDrawer
+          open={addOnOpen}
+          onOpenChange={setAddOnOpen}
+          memberId={member.id}
+          memberName={profile?.full_name || undefined}
+          membershipId={activeMembership?.id ?? null}
+          branchId={member.branch_id}
+          mode="member"
+        />
+      )}
     </AppLayout>
   );
 }
