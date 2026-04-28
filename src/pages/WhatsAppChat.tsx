@@ -1592,6 +1592,7 @@ export default function WhatsAppChatPage() {
         open={convertLeadOpen}
         onOpenChange={setConvertLeadOpen}
         defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+        prefill={leadPrefill}
       />
     </AppLayout>
   );
