@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,28 +12,48 @@ import { leadService } from '@/services/leadService';
 import { toast } from 'sonner';
 import { Flame, Sun, Snowflake } from 'lucide-react';
 
+export interface LeadPrefill {
+  full_name?: string;
+  phone?: string;
+  email?: string;
+  source?: string;
+  notes?: string;
+  preferred_contact_channel?: string;
+}
+
 interface AddLeadDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultBranchId?: string;
+  prefill?: LeadPrefill;
 }
 
-export function AddLeadDrawer({ open, onOpenChange, defaultBranchId }: AddLeadDrawerProps) {
+const EMPTY_LEAD = {
+  full_name: '',
+  phone: '',
+  email: '',
+  source: 'walk_in',
+  notes: '',
+  temperature: 'warm',
+  goals: '',
+  budget: '',
+  preferred_contact_channel: 'phone',
+  utm_source: '',
+  utm_medium: '',
+  utm_campaign: '',
+};
+
+export function AddLeadDrawer({ open, onOpenChange, defaultBranchId, prefill }: AddLeadDrawerProps) {
   const queryClient = useQueryClient();
-  const [newLead, setNewLead] = useState({
-    full_name: '',
-    phone: '',
-    email: '',
-    source: 'walk_in',
-    notes: '',
-    temperature: 'warm',
-    goals: '',
-    budget: '',
-    preferred_contact_channel: 'phone',
-    utm_source: '',
-    utm_medium: '',
-    utm_campaign: '',
-  });
+  const [newLead, setNewLead] = useState({ ...EMPTY_LEAD });
+
+  // Apply prefill whenever the drawer opens with new data (e.g., from WhatsApp Chat).
+  useEffect(() => {
+    if (open && prefill) {
+      setNewLead({ ...EMPTY_LEAD, ...prefill });
+    }
+  }, [open, prefill]);
+
 
   const createLeadMutation = useMutation({
     mutationFn: (lead: typeof newLead) => leadService.createLead({
