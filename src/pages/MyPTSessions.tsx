@@ -105,9 +105,14 @@ export default function MyPTSessions() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My PT Sessions</h1>
-          <p className="text-muted-foreground">Manage your personal training sessions</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">My PT Sessions</h1>
+            <p className="text-muted-foreground">Manage your personal training sessions</p>
+          </div>
+          <Button onClick={() => setPurchaseOpen(true)}>
+            <ShoppingBag className="h-4 w-4 mr-2" /> Buy PT Package
+          </Button>
         </div>
 
         {/* Active Package Card */}
