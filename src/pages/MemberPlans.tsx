@@ -335,6 +335,8 @@ export default function MemberPlansPage() {
         memberId={member.id}
         memberName={(member as any).profiles?.full_name || member.member_code || 'Member'}
         branchId={member.branch_id}
+        presetPlanId={presetPlanId}
+        redirectToCheckout
       />
 
       <PurchaseAddOnDrawer
