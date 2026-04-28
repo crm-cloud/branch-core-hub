@@ -156,7 +156,10 @@ export default function MyPTSessions() {
               <div className="text-center py-6">
                 <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-2">No active PT package</p>
-                <p className="text-sm text-muted-foreground">Contact the front desk to purchase a package</p>
+                <p className="text-sm text-muted-foreground mb-4">Purchase a package to start training</p>
+                <Button onClick={() => setPurchaseOpen(true)}>
+                  <ShoppingBag className="h-4 w-4 mr-2" /> Buy PT Package
+                </Button>
               </div>
             )}
           </CardContent>
