@@ -70,13 +70,14 @@ export default function MemberClassBooking() {
   const { user } = useAuth();
   const { member, activeMembership, ptPackages, isLoading: memberLoading } = useMemberData();
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [jumpDate, setJumpDate] = useState<Date | undefined>(undefined);
   const [showMyBookings, setShowMyBookings] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
 
   const today = startOfDay(new Date());
-  const endDate = addDays(today, 6);
+  const endDate = addDays(today, 13); // 2 weeks
   const todayStr = format(today, 'yyyy-MM-dd');
   const endDateStr = format(endDate, 'yyyy-MM-dd');
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
   // ─── Profile (gender filter) ───
   const { data: profile } = useQuery({
