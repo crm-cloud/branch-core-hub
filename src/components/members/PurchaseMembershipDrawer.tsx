@@ -263,8 +263,11 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       onOpenChange(false);
       resetForm();
-      // Member-side flow: route to embedded checkout when there is a balance to pay online.
-      if (redirectToCheckout && invoiceId && paymentMethod !== 'cash' && paymentMethod !== 'wallet') {
+      // Member-mode: ALWAYS route to embedded checkout when there's an unpaid balance.
+      // Staff-mode: only route when explicitly requested.
+      const shouldRedirect = (isMemberMode || redirectToCheckout) && invoiceId
+        && paymentMethod !== 'cash' && paymentMethod !== 'wallet';
+      if (shouldRedirect) {
         navigate(`/member/pay?invoice=${invoiceId}`);
       }
     },
