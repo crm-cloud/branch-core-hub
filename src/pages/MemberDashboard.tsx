@@ -35,6 +35,23 @@ export default function MemberDashboard() {
 
   const isFrozen = activeMembership?.status === 'frozen';
   const [emblaRef] = useEmblaCarousel({ loop: true });
+  const [addOnOpen, setAddOnOpen] = useState(false);
+
+  // Fetch benefit add-on credits (purchased extras)
+  const { data: benefitCredits = [] } = useQuery({
+    queryKey: ['dashboard-benefit-credits', member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_benefit_credits')
+        .select('*, benefit_type:benefit_types(id, name, code, icon)')
+        .eq('member_id', member!.id)
+        .gte('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    },
+  });
 
   // Fetch freeze details for frozen state
   const { data: freezeDetails } = useQuery({
