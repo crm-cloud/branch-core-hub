@@ -156,7 +156,7 @@ export default function MemberAnnouncements() {
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {announcements.length === 0 ? (
           <Card className="overflow-hidden border-border/60 bg-card/90 shadow-xl shadow-slate-950/5">
