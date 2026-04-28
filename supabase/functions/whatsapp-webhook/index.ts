@@ -1431,9 +1431,35 @@ Your failure to output valid JSON means the lead data is PERMANENTLY LOST and th
           { onConflict: "branch_id,phone_number" },
         );
 
-        // Fire-and-forget: dispatch lead notifications (admin/manager/lead WhatsApp+SMS).
-        // Belt-and-suspenders: a DB trigger also fires this, but we keep the explicit
-        // call so notifications are dispatched immediately even if the trigger lags.
+        // Belt-and-suspenders #1: write in-app notifications directly so the bell
+        // updates immediately even if notify-lead-created or its dispatch fails.
+        try {
+          const { data: staffRoles } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("role", ["owner", "admin", "manager"]);
+          const seen = new Set<string>();
+          const notifications = (staffRoles || [])
+            .filter((r: any) => r.user_id && !seen.has(r.user_id) && seen.add(r.user_id))
+            .map((r: any) => ({
+              user_id: r.user_id,
+              branch_id: branchId,
+              title: "New WhatsApp Lead",
+              message: `${leadData.full_name} (${phoneNumber}) was captured via WhatsApp AI.`,
+              type: "info",
+              category: "lead",
+              action_url: `/leads`,
+              metadata: { lead_id: newLead.id, source: "whatsapp_ai" },
+              is_read: false,
+            }));
+          if (notifications.length > 0) {
+            await supabase.from("notifications").insert(notifications);
+          }
+        } catch (notifErr) {
+          console.error("In-app notification insert failed:", notifErr);
+        }
+
+        // Belt-and-suspenders #2: dispatch outbound WhatsApp/SMS via the dedicated function.
         try {
           const notifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-lead-created`;
           fetch(notifyUrl, {

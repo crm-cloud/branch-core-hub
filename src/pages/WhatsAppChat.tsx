@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook,
+  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook, Users,
 } from 'lucide-react';
 
 // Platform icon helper
@@ -664,6 +664,40 @@ export default function WhatsAppChatPage() {
   }).length;
   const igCount = enrichedContacts.filter(c => c.platform === 'instagram').length;
   const fbCount = enrichedContacts.filter(c => c.platform === 'messenger').length;
+
+  // Compute prefill for "Convert to Lead" — pulls last 3 inbound messages as context.
+  const leadPrefill = useMemo(() => {
+    if (!selectedContact) return undefined;
+    const phone = selectedContact.phone_number.startsWith('+')
+      ? selectedContact.phone_number
+      : `+${selectedContact.phone_number}`;
+    const lastInbound = (messages || [])
+      .filter((m: any) => m.direction === 'inbound' && m.content)
+      .slice(-3)
+      .map((m: any) => `• ${m.content}`)
+      .join('\n');
+    const platform = selectedContact.platform || 'whatsapp';
+    return {
+      full_name: selectedContact.contact_name || '',
+      phone,
+      source: platform === 'instagram' ? 'instagram' : platform === 'messenger' ? 'facebook' : 'whatsapp_api',
+      preferred_contact_channel: platform === 'whatsapp' ? 'whatsapp' : 'phone',
+      notes: lastInbound
+        ? `Captured from ${platform} chat. Recent messages:\n${lastInbound}`
+        : `Captured from ${platform} chat.`,
+    };
+  }, [selectedContact, messages]);
+
+  // Aggregate stats for the right-side context panel.
+  const contactStats = useMemo(() => {
+    if (!selectedContact) return null;
+    const total = messages.length;
+    const inbound = messages.filter((m: any) => m.direction === 'inbound').length;
+    const outbound = total - inbound;
+    const lastSeen = messages.length > 0 ? messages[messages.length - 1].created_at : null;
+    return { total, inbound, outbound, lastSeen };
+  }, [messages, selectedContact]);
+
 
   return (
     <AppLayout>
@@ -1310,6 +1344,106 @@ export default function WhatsAppChatPage() {
               </div>
             )}
           </div>
+
+          {/* ── Context Panel (desktop only, when contact selected) ───────────── */}
+          {selectedContact && (
+            <div className="hidden xl:flex w-[300px] border-l border-border/50 flex-col bg-card overflow-y-auto">
+              <div className="p-5 space-y-5">
+                {/* Profile card */}
+                <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-5 shadow-sm shadow-emerald-200/40 text-center">
+                  <Avatar className="h-16 w-16 mx-auto mb-3 ring-2 ring-emerald-500/30">
+                    <AvatarFallback className="bg-emerald-500 text-white text-xl font-bold">
+                      {(selectedContact.contact_name || selectedContact.phone_number)?.[0]?.toUpperCase() || <User className="h-6 w-6" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <h3 className="font-semibold text-foreground text-base break-words">
+                    {selectedContact.contact_name || 'Unknown contact'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedContact.phone_number);
+                      toast.success('Phone copied');
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 mt-1"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {selectedContact.phone_number}
+                  </button>
+                  <div className="flex flex-wrap justify-center gap-1.5 mt-3">
+                    {selectedContact.member_id ? (
+                      <Badge className="bg-emerald-500 text-white">Member</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">Lead</Badge>
+                    )}
+                    <Badge variant="outline" className="text-[10px]">
+                      {selectedContact.platform === 'instagram' ? 'Instagram' : selectedContact.platform === 'messenger' ? 'Messenger' : 'WhatsApp'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Quick actions */}
+                <div className="space-y-2">
+                  {!selectedContact.member_id && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full rounded-xl gap-2 bg-violet-600 hover:bg-violet-700"
+                      onClick={() => setConvertLeadOpen(true)}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Convert to Lead
+                    </Button>
+                  )}
+                  {selectedContact.member_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full rounded-xl gap-2"
+                      onClick={() => navigate('/members')}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View Member Profile
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full rounded-xl gap-2"
+                    onClick={() => setTransferStaffOpen(true)}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    Assign to Staff
+                  </Button>
+                </div>
+
+                {/* Stats */}
+                {contactStats && (
+                  <div className="rounded-2xl bg-muted/40 p-4">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Conversation</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold text-foreground">{contactStats.total}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-emerald-600">{contactStats.inbound}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">In</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-blue-600">{contactStats.outbound}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">Out</p>
+                      </div>
+                    </div>
+                    {contactStats.lastSeen && (
+                      <p className="text-[11px] text-muted-foreground mt-3 text-center">
+                        Last activity {format(new Date(contactStats.lastSeen), 'dd MMM, HH:mm')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1458,6 +1592,7 @@ export default function WhatsAppChatPage() {
         open={convertLeadOpen}
         onOpenChange={setConvertLeadOpen}
         defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
+        prefill={leadPrefill}
       />
     </AppLayout>
   );

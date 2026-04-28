@@ -41,7 +41,13 @@ interface Plan {
 export default function MemberPlansPage() {
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [presetPlanId, setPresetPlanId] = useState<string | undefined>(undefined);
   const [addOnOpen, setAddOnOpen] = useState(false);
+
+  const openPurchase = (planId?: string) => {
+    setPresetPlanId(planId);
+    setPurchaseOpen(true);
+  };
 
   // Available membership plans for this branch
   const { data: plans = [], isLoading: plansLoading } = useQuery({
@@ -140,7 +146,7 @@ export default function MemberPlansPage() {
               <Plus className="h-4 w-4 mr-2" />
               Buy Add-Ons
             </Button>
-            <Button onClick={() => setPurchaseOpen(true)}>
+            <Button onClick={() => openPurchase(undefined)}>
               <Sparkles className="h-4 w-4 mr-2" />
               {activeMembership ? 'Renew / Upgrade' : 'Buy Membership'}
             </Button>
@@ -180,7 +186,7 @@ export default function MemberPlansPage() {
             <AlertTitle>No active membership</AlertTitle>
             <AlertDescription className="flex items-center justify-between gap-3">
               <span>Pick a plan below or talk to the front desk to get started.</span>
-              <Button size="sm" onClick={() => setPurchaseOpen(true)}>
+              <Button size="sm" onClick={() => openPurchase(undefined)}>
                 Browse plans
               </Button>
             </AlertDescription>
@@ -264,7 +270,7 @@ export default function MemberPlansPage() {
                             + ₹{Number(plan.admission_fee).toLocaleString()} one-time admission
                           </p>
                         ) : null}
-                        <Button className="w-full" onClick={() => setPurchaseOpen(true)}>
+                        <Button className="w-full" onClick={() => openPurchase(plan.id)}>
                           <CreditCard className="h-4 w-4 mr-2" />
                           {activeMembership ? 'Renew with this plan' : 'Buy plan'}
                         </Button>
@@ -329,6 +335,8 @@ export default function MemberPlansPage() {
         memberId={member.id}
         memberName={(member as any).profiles?.full_name || member.member_code || 'Member'}
         branchId={member.branch_id}
+        presetPlanId={presetPlanId}
+        redirectToCheckout
       />
 
       <PurchaseAddOnDrawer

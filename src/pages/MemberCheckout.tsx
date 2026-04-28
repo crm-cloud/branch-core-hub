@@ -119,6 +119,19 @@ export default function MemberCheckout() {
 
   useEffect(() => { fetchInvoice(); }, [fetchInvoice]);
 
+  // Auto-open the embedded Razorpay modal as soon as the invoice loads.
+  // Behaves like an inline iframe — no extra tap required.
+  const [autoOpened, setAutoOpened] = useState(false);
+  useEffect(() => {
+    if (!autoOpened && invoice && !loading && invoice.status !== 'paid' && (invoice.total_amount - invoice.amount_paid) > 0) {
+      setAutoOpened(true);
+      // small delay so the page paints first
+      const t = setTimeout(() => { startPayment(); }, 350);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice, loading]);
+
   // Realtime confirmation when webhook settles in the background
   useEffect(() => {
     if (!invoiceId) return;

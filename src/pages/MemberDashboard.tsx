@@ -265,13 +265,22 @@ export default function MemberDashboard() {
             icon={Clock}
             variant="default"
           />
-          <StatCard
-            title="Pending Dues"
-            value={`₹${totalPendingAmount.toLocaleString()}`}
-            icon={FileText}
-            description={pendingInvoices.length > 0 ? `${pendingInvoices.length} invoice(s)` : 'All paid'}
-            variant={totalPendingAmount > 0 ? "warning" : "success"}
-          />
+          <div className="flex flex-col">
+            <StatCard
+              title="Pending Dues"
+              value={`₹${totalPendingAmount.toLocaleString()}`}
+              icon={FileText}
+              description={pendingInvoices.length > 0 ? `${pendingInvoices.length} invoice(s)` : 'All paid'}
+              variant={totalPendingAmount > 0 ? "warning" : "success"}
+            />
+            {totalPendingAmount > 0 && pendingInvoices[0]?.id && (
+              <Button asChild size="sm" className="mt-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white">
+                <Link to={`/member/pay?invoice=${pendingInvoices[0].id}`}>
+                  <CreditCard className="h-3.5 w-3.5 mr-1.5" /> Pay Now
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Quick Actions */}
