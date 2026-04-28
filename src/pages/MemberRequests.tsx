@@ -134,7 +134,62 @@ export default function MemberRequests() {
     },
   });
 
-  if (memberLoading || requestsLoading) {
+  // Request a Diet/Workout plan — creates tasks for the assigned trainer
+  // (or all branch trainers when none is assigned).
+  const submitPlanRequest = useMutation({
+    mutationFn: async (planType: 'diet' | 'workout') => {
+      const memberName = (member as any)?.profiles?.full_name || member!.member_code || 'Member';
+      const title = planType === 'diet'
+        ? `Diet plan request from ${memberName}`
+        : `Workout plan request from ${memberName}`;
+
+      // Resolve trainer assignees: prefer the assigned trainer; fall back to
+      // all active trainers in the branch.
+      const assignees: string[] = [];
+      if (member!.assigned_trainer_id) {
+        const { data: t } = await supabase
+          .from('trainers')
+          .select('user_id')
+          .eq('id', member!.assigned_trainer_id)
+          .maybeSingle();
+        if (t?.user_id) assignees.push(t.user_id);
+      }
+      if (assignees.length === 0) {
+        const { data: branchTrainers } = await supabase
+          .from('trainers')
+          .select('user_id')
+          .eq('branch_id', member!.branch_id)
+          .eq('is_active', true);
+        (branchTrainers || []).forEach((t: any) => t.user_id && assignees.push(t.user_id));
+      }
+
+      // Always at least record one task even if no trainers exist.
+      const targets = assignees.length > 0 ? assignees : [null];
+
+      const rows = targets.map((uid) => ({
+        branch_id: member!.branch_id,
+        title,
+        description: planNote || `Member ${memberName} has requested a new ${planType} plan.`,
+        priority: 'medium',
+        status: 'pending',
+        assigned_to: uid,
+        assigned_by: user!.id,
+        linked_entity_type: 'member',
+        linked_entity_id: member!.id,
+      }));
+      const { error } = await supabase.from('tasks').insert(rows as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Request sent to your trainer');
+      setPlanRequestOpen(null);
+      setPlanNote('');
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || 'Failed to submit request');
+    },
+  });
+
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">
