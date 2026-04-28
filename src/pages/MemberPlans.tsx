@@ -332,6 +332,7 @@ export default function MemberPlansPage() {
         branchId={member.branch_id}
         presetPlanId={presetPlanId}
         redirectToCheckout
+        mode="member"
       />
 
       <PurchaseAddOnDrawer
