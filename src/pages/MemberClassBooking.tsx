@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,10 +12,10 @@ import { useMemberData } from '@/hooks/useMemberData';
 import { useAuth } from '@/contexts/AuthContext';
 import { ensureSlotsForDateRange } from '@/services/benefitBookingService';
 import {
-  Calendar, Clock, User, Users, Loader2, AlertCircle, Dumbbell,
-  Droplets, Sparkles, Gift, Check, X, CalendarDays, Filter,
+  Calendar, Users, Loader2, AlertCircle, Dumbbell,
+  Droplets, Gift, Check, X, CalendarDays,
 } from 'lucide-react';
-import { format, addDays, startOfDay, isToday, isTomorrow, parseISO } from 'date-fns';
+import { format, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 
 type FilterType = 'all' | 'recovery' | 'classes' | 'pt';
