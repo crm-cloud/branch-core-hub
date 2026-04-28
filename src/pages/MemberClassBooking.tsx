@@ -41,11 +41,6 @@ const FILTER_CHIPS: { value: FilterType; label: string; icon: React.ReactNode }[
   { value: 'pt', label: 'PT', icon: <Dumbbell className="h-3.5 w-3.5" /> },
 ];
 
-function getDayLabel(date: Date): string {
-  if (isToday(date)) return `Today, ${format(date, 'MMM d')}`;
-  if (isTomorrow(date)) return `Tomorrow, ${format(date, 'MMM d')}`;
-  return format(date, 'EEEE, MMM d');
-}
 
 function getTypeIcon(type: string) {
   switch (type) {
