@@ -137,7 +137,7 @@ export default function MemberClassBooking() {
 
   // ─── Fetch Recovery Slots (7 days) ───
   const { data: recoverySlots = [], isLoading: slotsLoading } = useQuery({
-    queryKey: ['agenda-slots', member?.branch_id, todayStr],
+    queryKey: ['agenda-slots', member?.branch_id, todayStr, profile?.gender ?? 'unknown'],
     enabled: !!member,
     queryFn: async () => {
       const { data, error } = await supabase
