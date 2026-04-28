@@ -10,13 +10,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Calendar, Clock, CreditCard, Dumbbell, FileText, 
-  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles
+  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles, Plus, Heart
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import useEmblaCarousel from 'embla-carousel-react';
+import { useState } from 'react';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 
 export default function MemberDashboard() {
   const { profile } = useAuth();
