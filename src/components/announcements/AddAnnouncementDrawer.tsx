@@ -41,7 +41,7 @@ export function AddAnnouncementDrawer({ open, onOpenChange }: AddAnnouncementDra
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Create Announcement</SheetTitle>
-          <SheetDescription>Create a new announcement for your members</SheetDescription>
+          <SheetDescription>Create announcements for any audience: members, staff, trainers, managers, or individuals</SheetDescription>
         </SheetHeader>
 
         <div className="space-y-4 py-4">
@@ -71,10 +71,11 @@ export function AddAnnouncementDrawer({ open, onOpenChange }: AddAnnouncementDra
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Members</SelectItem>
-                <SelectItem value="active">Active Members</SelectItem>
+                <SelectItem value="all">All (Everyone)</SelectItem>
+                <SelectItem value="members">Members Only</SelectItem>
                 <SelectItem value="staff">Staff Only</SelectItem>
                 <SelectItem value="trainers">Trainers Only</SelectItem>
+                <SelectItem value="managers">Managers Only</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -46,7 +46,6 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Services',
     items: [
       { label: 'My Benefits', href: '/my-benefits', icon: Heart, roles: ['member'] },
-      { label: 'Book Facility', href: '/book-benefit', icon: Calendar, roles: ['member'] },
       { label: 'Refer & Earn', href: '/my-referrals', icon: Gift, roles: ['member'] },
       { label: 'Store', href: '/member-store', icon: ShoppingBag, roles: ['member'] },
       { label: 'My Invoices', href: '/my-invoices', icon: FileText, roles: ['member'] },
