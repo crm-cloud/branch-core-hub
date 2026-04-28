@@ -190,6 +190,7 @@ export default function MemberRequests() {
     },
   });
 
+  if (memberLoading || requestsLoading) {
     return (
       <AppLayout>
         <div className="flex items-center justify-center min-h-[50vh]">
