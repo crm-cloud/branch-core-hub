@@ -150,13 +150,16 @@ export default function MemberClassBooking() {
         .order('slot_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
-      // Gender filter — if member gender not set, show all facilities
+      // Gender filter — hide gender-locked facilities that don't match member gender.
+      // If member's gender is not set, hide ALL gender-locked facilities (only unisex shown)
+      // and prompt member to update profile.
       const memberGender = profile?.gender;
       return (data || []).filter((slot: any) => {
         if (!slot.facility) return true;
-        if (!memberGender) return true;
         const access = slot.facility.gender_access;
-        return access === 'unisex' || access === memberGender;
+        if (!access || access === 'unisex') return true;
+        if (!memberGender) return false; // unknown gender → cannot book gender-locked
+        return access === memberGender;
       });
     },
   });
