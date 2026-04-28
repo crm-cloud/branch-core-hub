@@ -242,7 +242,7 @@ export function PurchaseMembershipDrawer({
 
       return { membershipId, invoiceId };
     },
-    onSuccess: () => {
+    onSuccess: ({ invoiceId }) => {
       toast.success('Membership purchased successfully');
       invalidateMembersData(queryClient);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -257,6 +257,10 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       onOpenChange(false);
       resetForm();
+      // Member-side flow: route to embedded checkout when there is a balance to pay online.
+      if (redirectToCheckout && invoiceId && paymentMethod !== 'cash' && paymentMethod !== 'wallet') {
+        navigate(`/member/pay?invoice=${invoiceId}`);
+      }
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to purchase membership');
@@ -264,7 +268,8 @@ export function PurchaseMembershipDrawer({
   });
 
   const resetForm = () => {
-    setSelectedPlanId('');
+    // Preserve presetPlanId so reopening the drawer with a preset still pre-selects it.
+    setSelectedPlanId(presetPlanId ?? '');
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
     setDiscountAmount(0);
     setDiscountReason('');
