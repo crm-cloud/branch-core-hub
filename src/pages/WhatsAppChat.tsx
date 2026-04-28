@@ -1344,6 +1344,106 @@ export default function WhatsAppChatPage() {
               </div>
             )}
           </div>
+
+          {/* ── Context Panel (desktop only, when contact selected) ───────────── */}
+          {selectedContact && (
+            <div className="hidden xl:flex w-[300px] border-l border-border/50 flex-col bg-card overflow-y-auto">
+              <div className="p-5 space-y-5">
+                {/* Profile card */}
+                <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-5 shadow-sm shadow-emerald-200/40 text-center">
+                  <Avatar className="h-16 w-16 mx-auto mb-3 ring-2 ring-emerald-500/30">
+                    <AvatarFallback className="bg-emerald-500 text-white text-xl font-bold">
+                      {(selectedContact.contact_name || selectedContact.phone_number)?.[0]?.toUpperCase() || <User className="h-6 w-6" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <h3 className="font-semibold text-foreground text-base break-words">
+                    {selectedContact.contact_name || 'Unknown contact'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedContact.phone_number);
+                      toast.success('Phone copied');
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 mt-1"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {selectedContact.phone_number}
+                  </button>
+                  <div className="flex flex-wrap justify-center gap-1.5 mt-3">
+                    {selectedContact.member_id ? (
+                      <Badge className="bg-emerald-500 text-white">Member</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">Lead</Badge>
+                    )}
+                    <Badge variant="outline" className="text-[10px]">
+                      {selectedContact.platform === 'instagram' ? 'Instagram' : selectedContact.platform === 'messenger' ? 'Messenger' : 'WhatsApp'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Quick actions */}
+                <div className="space-y-2">
+                  {!selectedContact.member_id && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full rounded-xl gap-2 bg-violet-600 hover:bg-violet-700"
+                      onClick={() => setConvertLeadOpen(true)}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Convert to Lead
+                    </Button>
+                  )}
+                  {selectedContact.member_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full rounded-xl gap-2"
+                      onClick={() => navigate('/members')}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View Member Profile
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full rounded-xl gap-2"
+                    onClick={() => setTransferStaffOpen(true)}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    Assign to Staff
+                  </Button>
+                </div>
+
+                {/* Stats */}
+                {contactStats && (
+                  <div className="rounded-2xl bg-muted/40 p-4">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Conversation</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold text-foreground">{contactStats.total}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-emerald-600">{contactStats.inbound}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">In</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-blue-600">{contactStats.outbound}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">Out</p>
+                      </div>
+                    </div>
+                    {contactStats.lastSeen && (
+                      <p className="text-[11px] text-muted-foreground mt-3 text-center">
+                        Last activity {format(new Date(contactStats.lastSeen), 'dd MMM, HH:mm')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
