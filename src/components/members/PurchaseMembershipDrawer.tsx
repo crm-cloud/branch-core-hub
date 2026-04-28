@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,16 +24,32 @@ interface PurchaseMembershipDrawerProps {
   memberId: string;
   memberName: string;
   branchId: string;
+  /** Pre-selected plan id (used when launched from a specific plan card). */
+  presetPlanId?: string;
+  /** When true and the member has an outstanding balance after purchase,
+   *  redirect to /member/pay?invoice=<id> for embedded checkout. */
+  redirectToCheckout?: boolean;
 }
 
-export function PurchaseMembershipDrawer({ 
-  open, 
-  onOpenChange, 
-  memberId, 
+export function PurchaseMembershipDrawer({
+  open,
+  onOpenChange,
+  memberId,
   memberName,
-  branchId 
+  branchId,
+  presetPlanId,
+  redirectToCheckout = false,
 }: PurchaseMembershipDrawerProps) {
-  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const navigate = useNavigate();
+  const [selectedPlanId, setSelectedPlanId] = useState(presetPlanId ?? '');
+
+  // Sync preset plan whenever the drawer opens with a new preset.
+  useEffect(() => {
+    if (open && presetPlanId) {
+      setSelectedPlanId(presetPlanId);
+    }
+  }, [open, presetPlanId]);
+
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountReason, setDiscountReason] = useState('');
