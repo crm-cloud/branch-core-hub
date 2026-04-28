@@ -1,15 +1,19 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { Dumbbell, Calendar, User, AlertCircle, Loader2, CheckCircle, Clock } from 'lucide-react';
+import { PurchasePTPackageDrawer } from '@/components/pt/PurchasePTPackageDrawer';
+import { Dumbbell, Calendar, User, AlertCircle, Loader2, CheckCircle, Clock, ShoppingBag } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function MyPTSessions() {
   const { member, ptPackages, isLoading: memberLoading } = useMemberData();
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   // Get member's PT package IDs first
   const ptPackageIds = ptPackages.map(p => p.id);
@@ -101,9 +105,14 @@ export default function MyPTSessions() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My PT Sessions</h1>
-          <p className="text-muted-foreground">Manage your personal training sessions</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">My PT Sessions</h1>
+            <p className="text-muted-foreground">Manage your personal training sessions</p>
+          </div>
+          <Button onClick={() => setPurchaseOpen(true)}>
+            <ShoppingBag className="h-4 w-4 mr-2" /> Buy PT Package
+          </Button>
         </div>
 
         {/* Active Package Card */}
@@ -147,7 +156,10 @@ export default function MyPTSessions() {
               <div className="text-center py-6">
                 <Dumbbell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-2">No active PT package</p>
-                <p className="text-sm text-muted-foreground">Contact the front desk to purchase a package</p>
+                <p className="text-sm text-muted-foreground mb-4">Purchase a package to start training</p>
+                <Button onClick={() => setPurchaseOpen(true)}>
+                  <ShoppingBag className="h-4 w-4 mr-2" /> Buy PT Package
+                </Button>
               </div>
             )}
           </CardContent>
@@ -272,6 +284,13 @@ export default function MyPTSessions() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <PurchasePTPackageDrawer
+        open={purchaseOpen}
+        onOpenChange={setPurchaseOpen}
+        memberId={member.id}
+        branchId={member.branch_id}
+      />
     </AppLayout>
   );
 }

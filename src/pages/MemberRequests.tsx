@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { Snowflake, User, Clock, AlertCircle, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Snowflake, User, Clock, AlertCircle, Loader2, CheckCircle, XCircle, Plus, UtensilsCrossed, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -23,6 +23,8 @@ export default function MemberRequests() {
   const [freezeSheetOpen, setFreezeSheetOpen] = useState(false);
   const [trainerSheetOpen, setTrainerSheetOpen] = useState(false);
   const [unfreezeSheetOpen, setUnfreezeSheetOpen] = useState(false);
+  const [planRequestOpen, setPlanRequestOpen] = useState<null | 'diet' | 'workout'>(null);
+  const [planNote, setPlanNote] = useState('');
 
   const isFrozen = activeMembership?.status === 'frozen';
 
@@ -129,6 +131,62 @@ export default function MemberRequests() {
     },
     onError: () => {
       toast.error('Failed to submit request');
+    },
+  });
+
+  // Request a Diet/Workout plan — creates tasks for the assigned trainer
+  // (or all branch trainers when none is assigned).
+  const submitPlanRequest = useMutation({
+    mutationFn: async (planType: 'diet' | 'workout') => {
+      const memberName = (member as any)?.profiles?.full_name || member!.member_code || 'Member';
+      const title = planType === 'diet'
+        ? `Diet plan request from ${memberName}`
+        : `Workout plan request from ${memberName}`;
+
+      // Resolve trainer assignees: prefer the assigned trainer; fall back to
+      // all active trainers in the branch.
+      const assignees: string[] = [];
+      if (member!.assigned_trainer_id) {
+        const { data: t } = await supabase
+          .from('trainers')
+          .select('user_id')
+          .eq('id', member!.assigned_trainer_id)
+          .maybeSingle();
+        if (t?.user_id) assignees.push(t.user_id);
+      }
+      if (assignees.length === 0) {
+        const { data: branchTrainers } = await supabase
+          .from('trainers')
+          .select('user_id')
+          .eq('branch_id', member!.branch_id)
+          .eq('is_active', true);
+        (branchTrainers || []).forEach((t: any) => t.user_id && assignees.push(t.user_id));
+      }
+
+      // Always at least record one task even if no trainers exist.
+      const targets = assignees.length > 0 ? assignees : [null];
+
+      const rows = targets.map((uid) => ({
+        branch_id: member!.branch_id,
+        title,
+        description: planNote || `Member ${memberName} has requested a new ${planType} plan.`,
+        priority: 'medium',
+        status: 'pending',
+        assigned_to: uid,
+        assigned_by: user!.id,
+        linked_entity_type: 'member',
+        linked_entity_id: member!.id,
+      }));
+      const { error } = await supabase.from('tasks').insert(rows as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Request sent to your trainer');
+      setPlanRequestOpen(null);
+      setPlanNote('');
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || 'Failed to submit request');
     },
   });
 
@@ -368,7 +426,86 @@ export default function MemberRequests() {
               </Sheet>
             </CardContent>
           </Card>
+
+          {/* Diet Plan Request */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UtensilsCrossed className="h-5 w-5" />
+                Request Diet Plan
+              </CardTitle>
+              <CardDescription>
+                Ask your trainer to prepare a personalised nutrition plan
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setPlanRequestOpen('diet')}
+              >
+                <Plus className="h-4 w-4 mr-2" /> Request Diet Plan
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Workout Plan Request */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Dumbbell className="h-5 w-5" />
+                Request Workout Plan
+              </CardTitle>
+              <CardDescription>
+                Ask your trainer to design a workout routine for your goals
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setPlanRequestOpen('workout')}
+              >
+                <Plus className="h-4 w-4 mr-2" /> Request Workout Plan
+              </Button>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Plan request sheet */}
+        <Sheet open={!!planRequestOpen} onOpenChange={(o) => !o && setPlanRequestOpen(null)}>
+          <SheetContent side="right">
+            <SheetHeader>
+              <SheetTitle>
+                Request {planRequestOpen === 'diet' ? 'Diet' : 'Workout'} Plan
+              </SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Notes for your trainer (optional)</label>
+                <Textarea
+                  placeholder="Goals, allergies, preferences, schedule…"
+                  value={planNote}
+                  onChange={(e) => setPlanNote(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A task will be created for your assigned trainer (or all branch trainers)
+                so they can prepare your plan.
+              </p>
+            </div>
+            <SheetFooter>
+              <Button variant="outline" onClick={() => setPlanRequestOpen(null)}>Cancel</Button>
+              <Button
+                onClick={() => planRequestOpen && submitPlanRequest.mutate(planRequestOpen)}
+                disabled={submitPlanRequest.isPending}
+              >
+                {submitPlanRequest.isPending ? 'Submitting…' : 'Send Request'}
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
 
         {/* Request History */}
         <Card className="border-border/50">

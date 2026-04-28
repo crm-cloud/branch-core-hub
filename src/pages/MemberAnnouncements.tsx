@@ -15,14 +15,13 @@ export default function MemberAnnouncements() {
     queryKey: ['member-announcements', member?.branch_id],
     enabled: !!member,
     queryFn: async () => {
+      const nowIso = new Date().toISOString();
+      // Fetch broadly, then filter in JS — chained PostgREST .or() calls
+      // override each other and silently drop matches.
       const { data, error } = await supabase
         .from('announcements')
         .select('*')
         .eq('is_active', true)
-        .or(`branch_id.eq.${member!.branch_id},branch_id.is.null`)
-        .or('target_audience.eq.all,target_audience.eq.members,target_audience.is.null')
-        .lte('publish_at', new Date().toISOString())
-        .or(`expire_at.gt.${new Date().toISOString()},expire_at.is.null`)
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
 
@@ -30,7 +29,13 @@ export default function MemberAnnouncements() {
         console.error('Error fetching announcements:', error);
         return [];
       }
-      return data || [];
+      return (data || []).filter((a: any) => {
+        const branchOk = !a.branch_id || a.branch_id === member!.branch_id;
+        const audienceOk = !a.target_audience || ['all', 'members'].includes(a.target_audience);
+        const publishOk = !a.publish_at || a.publish_at <= nowIso;
+        const expireOk = !a.expire_at || a.expire_at > nowIso;
+        return branchOk && audienceOk && publishOk && expireOk;
+      });
     },
   });
 
