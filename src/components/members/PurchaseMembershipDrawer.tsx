@@ -59,14 +59,14 @@ export function PurchaseMembershipDrawer({
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountReason, setDiscountReason] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<string>(isMemberMode ? 'razorpay_link' : 'cash');
   const [selectedLockerId, setSelectedLockerId] = useState<string>('');
-  
+
   // GST State
   const [includeGst, setIncludeGst] = useState(false);
   const [gstRate, setGstRate] = useState(18);
-  
-  // Partial Payment State
+
+  // Partial Payment State (member mode never offers partial)
   const [isPartialPayment, setIsPartialPayment] = useState(false);
   const [amountPaying, setAmountPaying] = useState(0);
   const [paymentDueDate, setPaymentDueDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
