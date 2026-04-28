@@ -392,36 +392,48 @@ export default function MemberClassBooking() {
     return items.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
   }, [classes, recoverySlots, ptSessions, classBookingMap, slotBookingMap]);
 
-  // ─── Filter + Group ───
-  const filteredItems = useMemo(() => {
-    let items = agendaItems;
+  // ─── Filter to selected day + active filter ───
+  const dayItems = useMemo(() => {
+    let items = agendaItems.filter(i => format(i.datetime, 'yyyy-MM-dd') === selectedDateStr);
     if (activeFilter === 'recovery') items = items.filter(i => i.type === 'recovery');
     else if (activeFilter === 'classes') items = items.filter(i => i.type === 'class');
     else if (activeFilter === 'pt') items = items.filter(i => i.type === 'pt');
     if (showMyBookings) items = items.filter(i => i.isBooked);
     return items;
-  }, [agendaItems, activeFilter, showMyBookings]);
+  }, [agendaItems, activeFilter, showMyBookings, selectedDateStr]);
 
-  const groupedByDay = useMemo(() => {
-    const groups: Record<string, AgendaItem[]> = {};
-    filteredItems.forEach(item => {
-      const key = format(item.datetime, 'yyyy-MM-dd');
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
+  // ─── Group by time-of-day bucket ───
+  const timeGroups = useMemo(() => {
+    const buckets: Record<string, AgendaItem[]> = {
+      Morning: [],     // < 12:00
+      Afternoon: [],   // 12:00 - 16:59
+      Evening: [],     // 17:00 - 20:59
+      Night: [],       // >= 21:00
+    };
+    dayItems.forEach(it => {
+      const h = it.datetime.getHours();
+      if (h < 12) buckets.Morning.push(it);
+      else if (h < 17) buckets.Afternoon.push(it);
+      else if (h < 21) buckets.Evening.push(it);
+      else buckets.Night.push(it);
     });
-    return groups;
-  }, [filteredItems]);
+    return buckets;
+  }, [dayItems]);
 
-  const sortedDayKeys = Object.keys(groupedByDay).sort();
+  // Date strip — next 14 days
+  const dateStrip = useMemo(() => {
+    return Array.from({ length: 14 }, (_, i) => addDays(today, i));
+  }, [today]);
 
-  // ─── Jump to date ───
-  useEffect(() => {
-    if (jumpDate) {
-      const key = format(jumpDate, 'yyyy-MM-dd');
-      const el = document.getElementById(`day-${key}`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [jumpDate]);
+  // Per-day counts for badge on date strip (uses unfiltered agenda)
+  const countsByDay = useMemo(() => {
+    const m: Record<string, number> = {};
+    agendaItems.forEach(it => {
+      const k = format(it.datetime, 'yyyy-MM-dd');
+      m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [agendaItems]);
 
   const isLoading = memberLoading || classesLoading || slotsLoading || ptLoading;
 
@@ -432,32 +444,72 @@ export default function MemberClassBooking() {
     return <AppLayout><div className="flex flex-col items-center justify-center min-h-[50vh] gap-4"><AlertCircle className="h-12 w-12 text-warning" /><h2 className="text-xl font-semibold">No Member Profile Found</h2></div></AppLayout>;
   }
 
+  const noGenderSet = !profile?.gender;
+  const totalForDay = dayItems.length;
+
   return (
     <AppLayout>
-      <div className="space-y-5">
-        {/* ─── Header ─── */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Book & Schedule</h1>
-            <p className="text-muted-foreground text-sm">Upcoming sessions for the next 7 days</p>
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="icon" className="shrink-0">
-                <CalendarDays className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <CalendarPicker
-                mode="single"
-                selected={jumpDate}
-                onSelect={(date) => { setJumpDate(date || undefined); }}
-                disabled={(date) => date < today || date > endDate}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
+      <div className="space-y-5 max-w-5xl mx-auto">
+        {/* ─── Hero: Date Strip ─── */}
+        <Card className="border-0 shadow-lg shadow-indigo-500/10 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-600 text-white overflow-hidden">
+          <CardContent className="p-5 sm:p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Book & Schedule</h1>
+                <p className="text-white/80 text-sm mt-0.5">
+                  {format(selectedDate, 'EEEE, d MMMM yyyy')}
+                  {totalForDay > 0 && ` • ${totalForDay} session${totalForDay > 1 ? 's' : ''}`}
+                </p>
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="secondary" size="icon" className="shrink-0 bg-white/15 hover:bg-white/25 text-white border-0">
+                    <CalendarDays className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <CalendarPicker
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(d) => { if (d) setSelectedDate(startOfDay(d)); }}
+                    disabled={(d) => d < today || d > endDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Horizontal date strip */}
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+              {dateStrip.map(d => {
+                const k = format(d, 'yyyy-MM-dd');
+                const isSelected = k === selectedDateStr;
+                const count = countsByDay[k] || 0;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setSelectedDate(d)}
+                    className={`shrink-0 w-14 sm:w-16 rounded-2xl py-2.5 transition-all ${
+                      isSelected
+                        ? 'bg-white text-indigo-700 shadow-lg scale-105'
+                        : 'bg-white/10 text-white hover:bg-white/20'
+                    }`}
+                  >
+                    <div className="text-[10px] uppercase tracking-wider font-semibold opacity-80">
+                      {format(d, 'EEE')}
+                    </div>
+                    <div className={`text-xl font-bold ${isSelected ? '' : ''}`}>
+                      {format(d, 'd')}
+                    </div>
+                    {count > 0 && (
+                      <div className={`mt-1 mx-auto h-1 w-1 rounded-full ${isSelected ? 'bg-indigo-700' : 'bg-white/70'}`} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* ─── Filter Chips ─── */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -485,6 +537,22 @@ export default function MemberClassBooking() {
           </Button>
         </div>
 
+        {/* ─── Profile gender warning ─── */}
+        {noGenderSet && (activeFilter === 'all' || activeFilter === 'recovery') && (
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="py-3 px-4 flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+              <div className="flex-1 text-sm">
+                <span className="font-medium">Add your gender to your profile</span>
+                <span className="text-muted-foreground"> to see male/female-only recovery facilities.</span>
+              </div>
+              <Button size="sm" variant="outline" asChild>
+                <a href="/member-profile">Update</a>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ─── No membership warning ─── */}
         {!activeMembership && (
           <Card className="border-warning/20 bg-warning/5">
@@ -500,63 +568,54 @@ export default function MemberClassBooking() {
           <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-accent" /></div>
         )}
 
-        {/* ─── Agenda Feed ─── */}
-        {!isLoading && sortedDayKeys.length === 0 && (
+        {/* ─── Empty state ─── */}
+        {!isLoading && totalForDay === 0 && (
           <Card>
             <CardContent className="py-16 text-center">
-              {activeFilter === 'recovery' ? (
-                <>
-                  <Droplets className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-semibold mb-1">No recovery slots available</h3>
-                  <p className="text-sm text-muted-foreground">Facilities may be closed today or under maintenance. Check back later.</p>
-                </>
-              ) : (
-                <>
-                  <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-semibold mb-1">
-                    {showMyBookings ? 'No upcoming bookings' : 'No sessions available this week'}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {showMyBookings ? 'Book a class or recovery slot to see it here.' : 'Contact your gym to check the schedule.'}
-                  </p>
-                </>
-              )}
+              <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="font-semibold mb-1">
+                {showMyBookings ? 'No bookings on this day' : 'Nothing scheduled for this day'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {showMyBookings ? 'Pick another date or book a session.' : 'Try another date from the strip above.'}
+              </p>
             </CardContent>
           </Card>
         )}
 
-        {!isLoading && sortedDayKeys.map(dayKey => {
-          const dayItems = groupedByDay[dayKey];
-          const dayDate = parseISO(dayKey);
-
-          return (
-            <div key={dayKey} id={`day-${dayKey}`}>
-              {/* Day Header */}
-              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 mb-3 border-b border-border/50">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  {getDayLabel(dayDate)}
-                </h2>
-              </div>
-
-              {/* Items */}
-              <div className="space-y-2.5">
-                {dayItems.map(item => (
-                  <AgendaCard
-                    key={`${item.type}-${item.id}`}
-                    item={item}
-                    activeMembership={activeMembership}
-                    onBookClass={(id) => bookClass.mutate(id)}
-                    onCancelClass={(id) => cancelClassBooking.mutate(id)}
-                    onBookSlot={(id) => bookSlot.mutate(id)}
-                    onCancelSlot={(id) => cancelSlotBooking.mutate(id)}
-                    isBooking={bookClass.isPending || bookSlot.isPending}
-                    isCancelling={cancelClassBooking.isPending || cancelSlotBooking.isPending}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        {/* ─── Time-grouped sessions ─── */}
+        {!isLoading && totalForDay > 0 && (
+          <div className="space-y-5">
+            {(['Morning', 'Afternoon', 'Evening', 'Night'] as const).map(bucket => {
+              const items = timeGroups[bucket];
+              if (items.length === 0) return null;
+              return (
+                <div key={bucket}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{bucket}</h2>
+                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{items.length}</Badge>
+                    <div className="h-px flex-1 bg-border/50" />
+                  </div>
+                  <div className="space-y-2.5">
+                    {items.map(item => (
+                      <AgendaCard
+                        key={`${item.type}-${item.id}`}
+                        item={item}
+                        activeMembership={activeMembership}
+                        onBookClass={(id) => bookClass.mutate(id)}
+                        onCancelClass={(id) => cancelClassBooking.mutate(id)}
+                        onBookSlot={(id) => bookSlot.mutate(id)}
+                        onCancelSlot={(id) => cancelSlotBooking.mutate(id)}
+                        isBooking={bookClass.isPending || bookSlot.isPending}
+                        isCancelling={cancelClassBooking.isPending || cancelSlotBooking.isPending}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </AppLayout>
   );
