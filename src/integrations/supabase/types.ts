@@ -8651,6 +8651,17 @@ export type Database = {
             }
             Returns: Json
           }
+        | {
+            Args: {
+              p_branch_id: string
+              p_idempotency_key?: string
+              p_member_id: string
+              p_package_id: string
+              p_payment_source?: string
+              p_trainer_id?: string
+            }
+            Returns: Json
+          }
       record_member_measurement: {
         Args: { p_member_id: string; p_payload: Json }
         Returns: string

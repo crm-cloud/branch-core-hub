@@ -29,6 +29,10 @@ interface PurchaseMembershipDrawerProps {
   /** When true and the member has an outstanding balance after purchase,
    *  redirect to /member/pay?invoice=<id> for embedded checkout. */
   redirectToCheckout?: boolean;
+  /** 'staff' (default) shows full back-office controls (GST, discount, partial
+   *  payment, locker, payment-method picker). 'member' hides everything except
+   *  plan + start date and forces an online (Razorpay) payment link. */
+  mode?: 'staff' | 'member';
 }
 
 export function PurchaseMembershipDrawer({
@@ -39,7 +43,9 @@ export function PurchaseMembershipDrawer({
   branchId,
   presetPlanId,
   redirectToCheckout = false,
+  mode = 'staff',
 }: PurchaseMembershipDrawerProps) {
+  const isMemberMode = mode === 'member';
   const navigate = useNavigate();
   const [selectedPlanId, setSelectedPlanId] = useState(presetPlanId ?? '');
 
@@ -53,14 +59,14 @@ export function PurchaseMembershipDrawer({
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountReason, setDiscountReason] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<string>(isMemberMode ? 'razorpay_link' : 'cash');
   const [selectedLockerId, setSelectedLockerId] = useState<string>('');
-  
+
   // GST State
   const [includeGst, setIncludeGst] = useState(false);
   const [gstRate, setGstRate] = useState(18);
-  
-  // Partial Payment State
+
+  // Partial Payment State (member mode never offers partial)
   const [isPartialPayment, setIsPartialPayment] = useState(false);
   const [amountPaying, setAmountPaying] = useState(0);
   const [paymentDueDate, setPaymentDueDate] = useState(format(addDays(new Date(), 7), 'yyyy-MM-dd'));
@@ -257,8 +263,11 @@ export function PurchaseMembershipDrawer({
       queryClient.invalidateQueries({ queryKey: ['all-overdue-invoices'] });
       onOpenChange(false);
       resetForm();
-      // Member-side flow: route to embedded checkout when there is a balance to pay online.
-      if (redirectToCheckout && invoiceId && paymentMethod !== 'cash' && paymentMethod !== 'wallet') {
+      // Member-mode: ALWAYS route to embedded checkout when there's an unpaid balance.
+      // Staff-mode: only route when explicitly requested.
+      const shouldRedirect = (isMemberMode || redirectToCheckout) && invoiceId
+        && paymentMethod !== 'cash' && paymentMethod !== 'wallet';
+      if (shouldRedirect) {
         navigate(`/member/pay?invoice=${invoiceId}`);
       }
     },
@@ -417,37 +426,39 @@ export function PurchaseMembershipDrawer({
                 </CardContent>
               </Card>
 
-              {/* GST Toggle */}
-              <Card className="border-dashed">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
-                      <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+              {/* GST Toggle (back-office only) */}
+              {!isMemberMode && (
+                <Card className="border-dashed">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
+                        <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+                      </div>
+                      <Switch
+                        id="gst-toggle"
+                        checked={includeGst}
+                        onCheckedChange={setIncludeGst}
+                      />
                     </div>
-                    <Switch
-                      id="gst-toggle"
-                      checked={includeGst}
-                      onCheckedChange={setIncludeGst}
-                    />
-                  </div>
-                  {includeGst && (
-                    <div className="space-y-2">
-                      <Label>GST Rate</Label>
-                      <Select value={gstRate.toString()} onValueChange={(v) => setGstRate(Number(v))}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {gstRates.map((rate: number) => (
-                            <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    {includeGst && (
+                      <div className="space-y-2">
+                        <Label>GST Rate</Label>
+                        <Select value={gstRate.toString()} onValueChange={(v) => setGstRate(Number(v))}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gstRates.map((rate: number) => (
+                              <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Start Date */}
               <div className="space-y-2">
@@ -465,29 +476,31 @@ export function PurchaseMembershipDrawer({
                 </p>
               </div>
 
-              {/* Discount */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Discount Amount</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={discountAmount}
-                    onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                  />
+              {/* Discount (back-office only) */}
+              {!isMemberMode && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Discount Amount</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Discount Reason</Label>
+                    <Input
+                      placeholder="e.g., Referral, Promo"
+                      value={discountReason}
+                      onChange={(e) => setDiscountReason(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Discount Reason</Label>
-                  <Input
-                    placeholder="e.g., Referral, Promo"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
 
-              {/* Complimentary Locker Selection (if plan includes locker benefit) */}
-              {hasLockerBenefit && (
+              {/* Complimentary Locker Selection (back-office only, plan must include locker) */}
+              {!isMemberMode && hasLockerBenefit && (
                 <Card className="border-primary/50 bg-primary/5">
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-2 mb-3">
@@ -519,95 +532,109 @@ export function PurchaseMembershipDrawer({
                 </Card>
               )}
 
-              {/* Partial Payment Toggle */}
-              <Card className="border-dashed">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Wallet className="h-5 w-5 text-primary" />
-                      <div>
-                        <Label htmlFor="partial-payment" className="cursor-pointer">Partial Payment</Label>
-                        <p className="text-xs text-muted-foreground">Record partial payment with due date</p>
-                      </div>
-                    </div>
-                    <Switch
-                      id="partial-payment"
-                      checked={isPartialPayment}
-                      onCheckedChange={(checked) => {
-                        setIsPartialPayment(checked);
-                        if (checked) {
-                          setAmountPaying(Math.round(calculateTotal() * 0.5)); // Default to 50%
-                        }
-                      }}
-                    />
-                  </div>
-
-                  {isPartialPayment && (
-                    <div className="space-y-4 pt-2 border-t">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Amount Paying Now *</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={calculateTotal() - 1}
-                            value={amountPaying}
-                            onChange={(e) => setAmountPaying(Number(e.target.value))}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Due Date for Remaining *</Label>
-                          <Input
-                            type="date"
-                            value={paymentDueDate}
-                            min={format(addDays(new Date(), 1), 'yyyy-MM-dd')}
-                            onChange={(e) => setPaymentDueDate(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
-                        <div className="flex justify-between text-sm">
-                          <span>Remaining Amount:</span>
-                          <span className="font-bold text-warning">₹{remainingAmount}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Due on {format(new Date(paymentDueDate), 'dd MMM yyyy')}
-                        </p>
-                      </div>
-
+              {/* Partial Payment (back-office only) */}
+              {!isMemberMode && (
+                <Card className="border-dashed">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <Switch
-                          id="send-reminders"
-                          checked={sendReminders}
-                          onCheckedChange={setSendReminders}
-                        />
-                        <Label htmlFor="send-reminders" className="text-sm cursor-pointer">
-                          Send payment reminders (3 days before, on due date, 3 days after)
-                        </Label>
+                        <Wallet className="h-5 w-5 text-primary" />
+                        <div>
+                          <Label htmlFor="partial-payment" className="cursor-pointer">Partial Payment</Label>
+                          <p className="text-xs text-muted-foreground">Record partial payment with due date</p>
+                        </div>
                       </div>
+                      <Switch
+                        id="partial-payment"
+                        checked={isPartialPayment}
+                        onCheckedChange={(checked) => {
+                          setIsPartialPayment(checked);
+                          if (checked) {
+                            setAmountPaying(Math.round(calculateTotal() * 0.5));
+                          }
+                        }}
+                      />
                     </div>
-                  )}
-                </CardContent>
-              </Card>
 
-              {/* Payment Method */}
-              <div className="space-y-2">
-                <Label>Payment Method</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="card">Card</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="wallet">Wallet</SelectItem>
-                    <SelectItem value="razorpay_link">🔗 Send Payment Link</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                    {isPartialPayment && (
+                      <div className="space-y-4 pt-2 border-t">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Amount Paying Now *</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={calculateTotal() - 1}
+                              value={amountPaying}
+                              onChange={(e) => setAmountPaying(Number(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Due Date for Remaining *</Label>
+                            <Input
+                              type="date"
+                              value={paymentDueDate}
+                              min={format(addDays(new Date(), 1), 'yyyy-MM-dd')}
+                              onChange={(e) => setPaymentDueDate(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                          <div className="flex justify-between text-sm">
+                            <span>Remaining Amount:</span>
+                            <span className="font-bold text-warning">₹{remainingAmount}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Due on {format(new Date(paymentDueDate), 'dd MMM yyyy')}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="send-reminders"
+                            checked={sendReminders}
+                            onCheckedChange={setSendReminders}
+                          />
+                          <Label htmlFor="send-reminders" className="text-sm cursor-pointer">
+                            Send payment reminders (3 days before, on due date, 3 days after)
+                          </Label>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payment Method (back-office only — members always pay via Razorpay) */}
+              {!isMemberMode ? (
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="card">Card</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="wallet">Wallet</SelectItem>
+                      <SelectItem value="razorpay_link">🔗 Send Payment Link</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="flex items-center gap-3 pt-4">
+                    <img src="/assets/payment-logos/razorpay.svg" alt="Razorpay" className="h-6" />
+                    <div className="text-sm">
+                      <p className="font-medium">Secure online payment</p>
+                      <p className="text-xs text-muted-foreground">UPI, Cards, Net Banking & Wallets via Razorpay</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
 
@@ -616,12 +643,18 @@ export function PurchaseMembershipDrawer({
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button 
-              className="flex-1" 
+            <Button
+              className="flex-1"
               onClick={() => purchaseMembership.mutate()}
               disabled={!selectedPlanId || purchaseMembership.isPending || !canRenew}
             >
-              {purchaseMembership.isPending ? 'Processing...' : canRenew ? 'Complete Purchase' : 'Cannot Purchase Yet'}
+              {purchaseMembership.isPending
+                ? 'Processing...'
+                : !canRenew
+                  ? 'Cannot Purchase Yet'
+                  : isMemberMode
+                    ? 'Pay Now'
+                    : 'Complete Purchase'}
             </Button>
           </div>
         </div>
