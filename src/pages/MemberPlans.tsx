@@ -181,16 +181,11 @@ export default function MemberPlansPage() {
             </CardContent>
           </Card>
         ) : (
-          <Alert className="border-warning/30 bg-warning/5">
-            <AlertCircle className="h-4 w-4 text-warning" />
-            <AlertTitle>No active membership</AlertTitle>
-            <AlertDescription className="flex items-center justify-between gap-3">
-              <span>Pick a plan below or talk to the front desk to get started.</span>
-              <Button size="sm" onClick={() => openPurchase(undefined)}>
-                Browse plans
-              </Button>
-            </AlertDescription>
-          </Alert>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm">
+            <span className="text-muted-foreground">
+              You don't have an active membership yet — pick one below to get started.
+            </span>
+          </div>
         )}
 
         {/* Pending invoices quick view */}
