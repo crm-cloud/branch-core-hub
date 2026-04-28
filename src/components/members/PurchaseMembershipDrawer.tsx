@@ -476,26 +476,28 @@ export function PurchaseMembershipDrawer({
                 </p>
               </div>
 
-              {/* Discount */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Discount Amount</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={discountAmount}
-                    onChange={(e) => setDiscountAmount(Number(e.target.value))}
-                  />
+              {/* Discount (back-office only) */}
+              {!isMemberMode && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Discount Amount</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Discount Reason</Label>
+                    <Input
+                      placeholder="e.g., Referral, Promo"
+                      value={discountReason}
+                      onChange={(e) => setDiscountReason(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Discount Reason</Label>
-                  <Input
-                    placeholder="e.g., Referral, Promo"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Complimentary Locker Selection (if plan includes locker benefit) */}
               {hasLockerBenefit && (
