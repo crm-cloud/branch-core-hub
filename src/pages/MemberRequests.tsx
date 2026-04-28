@@ -23,6 +23,8 @@ export default function MemberRequests() {
   const [freezeSheetOpen, setFreezeSheetOpen] = useState(false);
   const [trainerSheetOpen, setTrainerSheetOpen] = useState(false);
   const [unfreezeSheetOpen, setUnfreezeSheetOpen] = useState(false);
+  const [planRequestOpen, setPlanRequestOpen] = useState<null | 'diet' | 'workout'>(null);
+  const [planNote, setPlanNote] = useState('');
 
   const isFrozen = activeMembership?.status === 'frozen';
 
