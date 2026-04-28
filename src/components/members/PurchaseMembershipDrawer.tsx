@@ -426,37 +426,39 @@ export function PurchaseMembershipDrawer({
                 </CardContent>
               </Card>
 
-              {/* GST Toggle */}
-              <Card className="border-dashed">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
-                      <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+              {/* GST Toggle (back-office only) */}
+              {!isMemberMode && (
+                <Card className="border-dashed">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
+                        <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+                      </div>
+                      <Switch
+                        id="gst-toggle"
+                        checked={includeGst}
+                        onCheckedChange={setIncludeGst}
+                      />
                     </div>
-                    <Switch
-                      id="gst-toggle"
-                      checked={includeGst}
-                      onCheckedChange={setIncludeGst}
-                    />
-                  </div>
-                  {includeGst && (
-                    <div className="space-y-2">
-                      <Label>GST Rate</Label>
-                      <Select value={gstRate.toString()} onValueChange={(v) => setGstRate(Number(v))}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {gstRates.map((rate: number) => (
-                            <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    {includeGst && (
+                      <div className="space-y-2">
+                        <Label>GST Rate</Label>
+                        <Select value={gstRate.toString()} onValueChange={(v) => setGstRate(Number(v))}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gstRates.map((rate: number) => (
+                              <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Start Date */}
               <div className="space-y-2">
