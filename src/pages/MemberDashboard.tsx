@@ -10,13 +10,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Calendar, Clock, CreditCard, Dumbbell, FileText, 
-  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles
+  TrendingUp, User, AlertCircle, CheckCircle, Lock, Gift, Snowflake, Sparkles, Plus, Heart
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import useEmblaCarousel from 'embla-carousel-react';
+import { useState } from 'react';
+import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 
 export default function MemberDashboard() {
   const { profile } = useAuth();
@@ -33,6 +35,23 @@ export default function MemberDashboard() {
 
   const isFrozen = activeMembership?.status === 'frozen';
   const [emblaRef] = useEmblaCarousel({ loop: true });
+  const [addOnOpen, setAddOnOpen] = useState(false);
+
+  // Fetch benefit add-on credits (purchased extras)
+  const { data: benefitCredits = [] } = useQuery({
+    queryKey: ['dashboard-benefit-credits', member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_benefit_credits')
+        .select('*, benefit_type:benefit_types(id, name, code, icon)')
+        .eq('member_id', member!.id)
+        .gte('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true });
+      if (error) { console.error(error); return []; }
+      return data || [];
+    },
+  });
 
   // Fetch freeze details for frozen state
   const { data: freezeDetails } = useQuery({
@@ -379,10 +398,49 @@ export default function MemberDashboard() {
                       </div>
                     );
                   })}
+                  {/* Add-On Credits (purchased extras) */}
+                  {benefitCredits.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Heart className="h-3 w-3 text-rose-500" /> Add-On Credits
+                      </p>
+                      {benefitCredits.map((credit: any) => {
+                        const daysLeft = Math.ceil((new Date(credit.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <div key={credit.id} className="flex items-center justify-between p-2.5 bg-rose-50 dark:bg-rose-500/10 rounded-lg">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="h-7 w-7 rounded-full bg-rose-500/20 flex items-center justify-center shrink-0">
+                                <Sparkles className="h-3.5 w-3.5 text-rose-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium truncate">{credit.benefit_type?.name || 'Add-On'}</p>
+                                <p className="text-[10px] text-muted-foreground">Exp. {format(new Date(credit.expires_at), 'dd MMM')} · {daysLeft}d left</p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-bold text-rose-600 shrink-0">
+                              {credit.credits_remaining}<span className="text-[10px] font-normal text-muted-foreground">/{credit.credits_total}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {!isFrozen && (
-                    <Button variant="outline" size="sm" className="w-full mt-2" asChild>
-                      <Link to="/my-classes">Book Now</Link>
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to="/my-classes">Book Now</Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAddOnOpen(true)}
+                        disabled={!activeMembership}
+                        className="border-rose-500/30 text-rose-600 hover:bg-rose-500/10"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Buy Add-On
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
@@ -531,6 +589,18 @@ export default function MemberDashboard() {
           </Card>
         </div>
       </div>
+
+      {member && (
+        <PurchaseAddOnDrawer
+          open={addOnOpen}
+          onOpenChange={setAddOnOpen}
+          memberId={member.id}
+          memberName={profile?.full_name || undefined}
+          membershipId={activeMembership?.id ?? null}
+          branchId={member.branch_id}
+          mode="member"
+        />
+      )}
     </AppLayout>
   );
 }
