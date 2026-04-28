@@ -41,7 +41,13 @@ interface Plan {
 export default function MemberPlansPage() {
   const { member, activeMembership, isLoading: memberLoading } = useMemberData();
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [presetPlanId, setPresetPlanId] = useState<string | undefined>(undefined);
   const [addOnOpen, setAddOnOpen] = useState(false);
+
+  const openPurchase = (planId?: string) => {
+    setPresetPlanId(planId);
+    setPurchaseOpen(true);
+  };
 
   // Available membership plans for this branch
   const { data: plans = [], isLoading: plansLoading } = useQuery({
