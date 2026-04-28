@@ -29,6 +29,10 @@ interface PurchaseMembershipDrawerProps {
   /** When true and the member has an outstanding balance after purchase,
    *  redirect to /member/pay?invoice=<id> for embedded checkout. */
   redirectToCheckout?: boolean;
+  /** 'staff' (default) shows full back-office controls (GST, discount, partial
+   *  payment, locker, payment-method picker). 'member' hides everything except
+   *  plan + start date and forces an online (Razorpay) payment link. */
+  mode?: 'staff' | 'member';
 }
 
 export function PurchaseMembershipDrawer({
@@ -39,7 +43,9 @@ export function PurchaseMembershipDrawer({
   branchId,
   presetPlanId,
   redirectToCheckout = false,
+  mode = 'staff',
 }: PurchaseMembershipDrawerProps) {
+  const isMemberMode = mode === 'member';
   const navigate = useNavigate();
   const [selectedPlanId, setSelectedPlanId] = useState(presetPlanId ?? '');
 
