@@ -1,15 +1,19 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { Dumbbell, Calendar, User, AlertCircle, Loader2, CheckCircle, Clock } from 'lucide-react';
+import { PurchasePTPackageDrawer } from '@/components/pt/PurchasePTPackageDrawer';
+import { Dumbbell, Calendar, User, AlertCircle, Loader2, CheckCircle, Clock, ShoppingBag } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function MyPTSessions() {
   const { member, ptPackages, isLoading: memberLoading } = useMemberData();
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   // Get member's PT package IDs first
   const ptPackageIds = ptPackages.map(p => p.id);
