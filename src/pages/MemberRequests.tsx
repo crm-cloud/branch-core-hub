@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
-import { Snowflake, User, Clock, AlertCircle, Loader2, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Snowflake, User, Clock, AlertCircle, Loader2, CheckCircle, XCircle, Plus, UtensilsCrossed, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
