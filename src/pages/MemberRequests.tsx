@@ -426,7 +426,86 @@ export default function MemberRequests() {
               </Sheet>
             </CardContent>
           </Card>
+
+          {/* Diet Plan Request */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UtensilsCrossed className="h-5 w-5" />
+                Request Diet Plan
+              </CardTitle>
+              <CardDescription>
+                Ask your trainer to prepare a personalised nutrition plan
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setPlanRequestOpen('diet')}
+              >
+                <Plus className="h-4 w-4 mr-2" /> Request Diet Plan
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Workout Plan Request */}
+          <Card className="border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Dumbbell className="h-5 w-5" />
+                Request Workout Plan
+              </CardTitle>
+              <CardDescription>
+                Ask your trainer to design a workout routine for your goals
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setPlanRequestOpen('workout')}
+              >
+                <Plus className="h-4 w-4 mr-2" /> Request Workout Plan
+              </Button>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Plan request sheet */}
+        <Sheet open={!!planRequestOpen} onOpenChange={(o) => !o && setPlanRequestOpen(null)}>
+          <SheetContent side="right">
+            <SheetHeader>
+              <SheetTitle>
+                Request {planRequestOpen === 'diet' ? 'Diet' : 'Workout'} Plan
+              </SheetTitle>
+            </SheetHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium">Notes for your trainer (optional)</label>
+                <Textarea
+                  placeholder="Goals, allergies, preferences, schedule…"
+                  value={planNote}
+                  onChange={(e) => setPlanNote(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A task will be created for your assigned trainer (or all branch trainers)
+                so they can prepare your plan.
+              </p>
+            </div>
+            <SheetFooter>
+              <Button variant="outline" onClick={() => setPlanRequestOpen(null)}>Cancel</Button>
+              <Button
+                onClick={() => planRequestOpen && submitPlanRequest.mutate(planRequestOpen)}
+                disabled={submitPlanRequest.isPending}
+              >
+                {submitPlanRequest.isPending ? 'Submitting…' : 'Send Request'}
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
 
         {/* Request History */}
         <Card className="border-border/50">
