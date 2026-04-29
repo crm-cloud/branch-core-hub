@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Settings2, Clock, Users, AlertTriangle, Sparkles, SlidersHorizontal } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Settings2, Clock, Users, AlertTriangle, Sparkles, SlidersHorizontal, Building2, CalendarClock, Wallet } from "lucide-react";
 import { useBenefitSettings, useUpsertBenefitSetting } from "@/hooks/useBenefitBookings";
-import { useBookableBenefitTypes } from "@/hooks/useBenefitTypes";
+import { useBookableBenefitTypes, useBenefitTypes } from "@/hooks/useBenefitTypes";
 import { BenefitTypesManager } from "./BenefitTypesManager";
 import { FacilitiesManager } from "./FacilitiesManager";
 import { toast } from "sonner";
@@ -17,6 +20,7 @@ import { Database } from "@/integrations/supabase/types";
 import * as LucideIcons from "lucide-react";
 import { safeBenefitEnum } from "@/lib/benefitEnums";
 import { useBranchContext } from "@/contexts/BranchContext";
+import { supabase } from "@/integrations/supabase/client";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
