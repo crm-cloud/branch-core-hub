@@ -181,9 +181,9 @@ function PlanDetailPanel({
               {!plan.is_active && (
                 <Badge className="bg-white/20 text-white border-white/30 shrink-0">Inactive</Badge>
               )}
-              {(plan.body_scan_allowed || plan.posture_scan_allowed) && (
+              {benefits.some((b: any) => ['3d_body_scanning', 'howbody_posture'].includes(b.benefit_types?.code)) && (
                 <Badge className="bg-white/20 text-white border-white/30 shrink-0 text-[10px]">
-                  HOWBODY Scan{plan.scans_per_month ? ` · ${plan.scans_per_month}/mo` : ''}
+                  HOWBODY Scan
                 </Badge>
               )}
             </div>
