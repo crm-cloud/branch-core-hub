@@ -8543,6 +8543,17 @@ export type Database = {
         }
         Returns: Json
       }
+      notify_member: {
+        Args: {
+          p_branch_id: string
+          p_category?: string
+          p_message: string
+          p_title: string
+          p_type?: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       onboard_member: {
         Args: {
           p_activity_level?: string
