@@ -265,6 +265,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         subject: template.subject || '',
         content: template.content,
         is_active: template.is_active,
+        header_type: (template.header_type as any) || 'none',
+        header_media_url: template.header_media_url || '',
+        attachment_source: (template.attachment_source as any) || 'none',
+        attachment_filename_template: template.attachment_filename_template || '',
       });
     } else {
       setSelectedTemplate(null);
@@ -275,6 +279,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         subject: '',
         content: '',
         is_active: true,
+        header_type: 'none',
+        header_media_url: '',
+        attachment_source: 'none',
+        attachment_filename_template: '',
       });
     }
     setShowEditor(true);
