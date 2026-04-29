@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Info, AlertCircle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 
 interface Insight {
   icon: string;
@@ -29,21 +30,55 @@ const SEVERITY_ICONS: Record<string, typeof Info> = {
 };
 
 export function AIInsightsWidget({ branchId }: { branchId?: string }) {
-  const [insights, setInsights] = useState<Insight[]>(() => {
-    const cached = localStorage.getItem('ai-insights-cache');
-    if (cached) {
-      try {
-        const { insights: cachedInsights, timestamp, branch } = JSON.parse(cached);
-        const hoursSinceCache = (Date.now() - timestamp) / (1000 * 60 * 60);
-        if (hoursSinceCache < 24 && branch === (branchId || 'all')) {
-          return cachedInsights;
-        }
-      } catch { /* ignore */ }
-    }
-    return [];
-  });
+  const [insights, setInsights] = useState<Insight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [lastGenerated, setLastGenerated] = useState<string | null>(null);
+  const [isHydrating, setIsHydrating] = useState(true);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+
+  // Hydrate persisted insights from DB (24h window) so they survive refresh.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setIsHydrating(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { setIsHydrating(false); return; }
+        let q = (supabase.from('ai_dashboard_insights') as any)
+          .select('insights, generated_at, branch_id')
+          .eq('user_id', user.id)
+          .gte('generated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .order('generated_at', { ascending: false })
+          .limit(1);
+        if (branchId) q = q.eq('branch_id', branchId);
+        else q = q.is('branch_id', null);
+        const { data } = await q;
+        if (!cancelled && data && data.length > 0) {
+          setInsights((data[0].insights as Insight[]) || []);
+          setGeneratedAt(data[0].generated_at);
+        }
+      } catch { /* silent */ }
+      finally { if (!cancelled) setIsHydrating(false); }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [branchId]);
+
+  const persistInsights = async (newInsights: Insight[]) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const now = new Date().toISOString();
+      await (supabase.from('ai_dashboard_insights') as any).insert({
+        user_id: user.id,
+        branch_id: branchId || null,
+        insights: newInsights,
+        generated_at: now,
+      });
+      setGeneratedAt(now);
+    } catch (e) {
+      console.warn('Failed to persist insights', e);
+    }
+  };
 
   const generateInsights = async () => {
     setIsLoading(true);
@@ -51,25 +86,11 @@ export function AIInsightsWidget({ branchId }: { branchId?: string }) {
       const { data, error } = await supabase.functions.invoke('ai-dashboard-insights', {
         body: { branch_id: branchId || null },
       });
-
       if (error) throw error;
-
-      if (data?.error) {
-        toast.error(data.error);
-        return;
-      }
-
-      const newInsights = data?.insights || [];
+      if (data?.error) { toast.error(data.error); return; }
+      const newInsights: Insight[] = data?.insights || [];
       setInsights(newInsights);
-      setLastGenerated(new Date().toLocaleTimeString());
-
-      // Cache results
-      localStorage.setItem('ai-insights-cache', JSON.stringify({
-        insights: newInsights,
-        timestamp: Date.now(),
-        branch: branchId || 'all',
-      }));
-
+      await persistInsights(newInsights);
       toast.success('AI insights generated!');
     } catch (err: any) {
       toast.error(err.message || 'Failed to generate insights');
@@ -77,6 +98,10 @@ export function AIInsightsWidget({ branchId }: { branchId?: string }) {
       setIsLoading(false);
     }
   };
+
+  const updatedLabel = generatedAt
+    ? `Updated ${formatDistanceToNow(new Date(generatedAt), { addSuffix: true })}`
+    : null;
 
   return (
     <Card className="shadow-lg rounded-2xl border-0 bg-gradient-to-br from-card to-card/95">
@@ -89,8 +114,8 @@ export function AIInsightsWidget({ branchId }: { branchId?: string }) {
             AI Insights
           </CardTitle>
           <div className="flex items-center gap-2">
-            {lastGenerated && (
-              <span className="text-xs text-muted-foreground">Updated {lastGenerated}</span>
+            {updatedLabel && (
+              <span className="text-xs text-muted-foreground">{updatedLabel}</span>
             )}
             <Button
               size="sm"
@@ -110,7 +135,7 @@ export function AIInsightsWidget({ branchId }: { branchId?: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading || isHydrating ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30">
