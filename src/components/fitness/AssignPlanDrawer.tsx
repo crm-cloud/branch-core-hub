@@ -49,6 +49,8 @@ interface AssignPlanDrawerProps {
     /** Optional: template this plan was loaded from. Stored on the
      * assignment so trainers can later see "N members on Template A". */
     template_id?: string | null;
+    /** Pre-selects the "Common Plan" toggle. Defaults to false. */
+    is_common?: boolean;
   } | null;
   branchId?: string;
 }
