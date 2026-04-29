@@ -22,7 +22,7 @@ function QuotaBlock({ icon: Icon, label, q }: { icon: any; label: string; q?: Sc
       <div className="min-w-0">
         <p className="text-xs font-medium leading-tight">{label}</p>
         <p className="text-xs text-muted-foreground leading-tight">
-          {q.plan_allowed ? `${usage} this month` : 'Not in your plan'}
+          {q.plan_limit > 0 ? `${usage} this month` : 'Not in your plan'}
           {q.addon_remaining > 0 && ` · +${q.addon_remaining} add-on`}
         </p>
       </div>
