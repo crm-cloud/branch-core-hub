@@ -3197,6 +3197,345 @@ export type Database = {
           },
         ]
       }
+      howbody_body_reports: {
+        Row: {
+          bmi: number | null
+          bmr: number | null
+          created_at: string
+          data_key: string
+          ecf: number | null
+          equipment_no: string | null
+          fat: number | null
+          fat_control: number | null
+          full_payload: Json
+          health_score: number | null
+          icf: number | null
+          id: string
+          member_id: string | null
+          metabolic_age: number | null
+          muscle_control: number | null
+          pbf: number | null
+          pr: number | null
+          scan_id: string | null
+          smm: number | null
+          target_weight: number | null
+          tbw: number | null
+          test_time: string | null
+          vfr: number | null
+          weight: number | null
+          weight_control: number | null
+          whr: number | null
+        }
+        Insert: {
+          bmi?: number | null
+          bmr?: number | null
+          created_at?: string
+          data_key: string
+          ecf?: number | null
+          equipment_no?: string | null
+          fat?: number | null
+          fat_control?: number | null
+          full_payload: Json
+          health_score?: number | null
+          icf?: number | null
+          id?: string
+          member_id?: string | null
+          metabolic_age?: number | null
+          muscle_control?: number | null
+          pbf?: number | null
+          pr?: number | null
+          scan_id?: string | null
+          smm?: number | null
+          target_weight?: number | null
+          tbw?: number | null
+          test_time?: string | null
+          vfr?: number | null
+          weight?: number | null
+          weight_control?: number | null
+          whr?: number | null
+        }
+        Update: {
+          bmi?: number | null
+          bmr?: number | null
+          created_at?: string
+          data_key?: string
+          ecf?: number | null
+          equipment_no?: string | null
+          fat?: number | null
+          fat_control?: number | null
+          full_payload?: Json
+          health_score?: number | null
+          icf?: number | null
+          id?: string
+          member_id?: string | null
+          metabolic_age?: number | null
+          muscle_control?: number | null
+          pbf?: number | null
+          pr?: number | null
+          scan_id?: string | null
+          smm?: number | null
+          target_weight?: number | null
+          tbw?: number | null
+          test_time?: string | null
+          vfr?: number | null
+          weight?: number | null
+          weight_control?: number | null
+          whr?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "howbody_body_reports_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      howbody_posture_reports: {
+        Row: {
+          back_img: string | null
+          body_slope: number | null
+          bust: number | null
+          calf_left: number | null
+          calf_right: number | null
+          created_at: string
+          data_key: string
+          equipment_no: string | null
+          front_img: string | null
+          full_payload: Json
+          head_forward: number | null
+          head_slant: number | null
+          high_low_shoulder: number | null
+          hip: number | null
+          id: string
+          knee_left: number | null
+          knee_right: number | null
+          left_img: string | null
+          left_thigh: number | null
+          leg_left: number | null
+          leg_right: number | null
+          member_id: string | null
+          model_url: string | null
+          pelvis_forward: number | null
+          right_img: string | null
+          right_thigh: number | null
+          scan_id: string | null
+          score: number | null
+          shoulder_back: number | null
+          shoulder_left: number | null
+          shoulder_right: number | null
+          test_time: string | null
+          up_arm_left: number | null
+          up_arm_right: number | null
+          waist: number | null
+        }
+        Insert: {
+          back_img?: string | null
+          body_slope?: number | null
+          bust?: number | null
+          calf_left?: number | null
+          calf_right?: number | null
+          created_at?: string
+          data_key: string
+          equipment_no?: string | null
+          front_img?: string | null
+          full_payload: Json
+          head_forward?: number | null
+          head_slant?: number | null
+          high_low_shoulder?: number | null
+          hip?: number | null
+          id?: string
+          knee_left?: number | null
+          knee_right?: number | null
+          left_img?: string | null
+          left_thigh?: number | null
+          leg_left?: number | null
+          leg_right?: number | null
+          member_id?: string | null
+          model_url?: string | null
+          pelvis_forward?: number | null
+          right_img?: string | null
+          right_thigh?: number | null
+          scan_id?: string | null
+          score?: number | null
+          shoulder_back?: number | null
+          shoulder_left?: number | null
+          shoulder_right?: number | null
+          test_time?: string | null
+          up_arm_left?: number | null
+          up_arm_right?: number | null
+          waist?: number | null
+        }
+        Update: {
+          back_img?: string | null
+          body_slope?: number | null
+          bust?: number | null
+          calf_left?: number | null
+          calf_right?: number | null
+          created_at?: string
+          data_key?: string
+          equipment_no?: string | null
+          front_img?: string | null
+          full_payload?: Json
+          head_forward?: number | null
+          head_slant?: number | null
+          high_low_shoulder?: number | null
+          hip?: number | null
+          id?: string
+          knee_left?: number | null
+          knee_right?: number | null
+          left_img?: string | null
+          left_thigh?: number | null
+          leg_left?: number | null
+          leg_right?: number | null
+          member_id?: string | null
+          model_url?: string | null
+          pelvis_forward?: number | null
+          right_img?: string | null
+          right_thigh?: number | null
+          scan_id?: string | null
+          score?: number | null
+          shoulder_back?: number | null
+          shoulder_left?: number | null
+          shoulder_right?: number | null
+          test_time?: string | null
+          up_arm_left?: number | null
+          up_arm_right?: number | null
+          waist?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "howbody_posture_reports_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      howbody_public_report_tokens: {
+        Row: {
+          created_at: string
+          data_key: string
+          expires_at: string | null
+          id: string
+          report_type: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          data_key: string
+          expires_at?: string | null
+          id?: string
+          report_type: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          data_key?: string
+          expires_at?: string | null
+          id?: string
+          report_type?: string
+          token?: string
+        }
+        Relationships: []
+      }
+      howbody_scan_sessions: {
+        Row: {
+          bound_at: string | null
+          completed_at: string | null
+          created_at: string
+          equipment_no: string
+          id: string
+          member_id: string | null
+          scan_id: string
+          status: string
+        }
+        Insert: {
+          bound_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          equipment_no: string
+          id?: string
+          member_id?: string | null
+          scan_id: string
+          status?: string
+        }
+        Update: {
+          bound_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          equipment_no?: string
+          id?: string
+          member_id?: string | null
+          scan_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "howbody_scan_sessions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      howbody_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+        }
+        Relationships: []
+      }
+      howbody_webhook_log: {
+        Row: {
+          created_at: string
+          data_key: string | null
+          endpoint: string
+          id: string
+          message: string | null
+          raw_payload: Json | null
+          status_code: number | null
+          third_uid: string | null
+        }
+        Insert: {
+          created_at?: string
+          data_key?: string | null
+          endpoint: string
+          id?: string
+          message?: string | null
+          raw_payload?: Json | null
+          status_code?: number | null
+          third_uid?: string | null
+        }
+        Update: {
+          created_at?: string
+          data_key?: string | null
+          endpoint?: string
+          id?: string
+          message?: string | null
+          raw_payload?: Json | null
+          status_code?: number | null
+          third_uid?: string | null
+        }
+        Relationships: []
+      }
       income_categories: {
         Row: {
           created_at: string
@@ -4853,6 +5192,7 @@ export type Database = {
           hardware_access_enabled: boolean | null
           hardware_access_status: string | null
           health_conditions: string | null
+          howbody_third_uid: string | null
           id: string
           injuries_limitations: string | null
           joined_at: string
@@ -4892,6 +5232,7 @@ export type Database = {
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
+          howbody_third_uid?: string | null
           id?: string
           injuries_limitations?: string | null
           joined_at?: string
@@ -4931,6 +5272,7 @@ export type Database = {
           hardware_access_enabled?: boolean | null
           hardware_access_status?: string | null
           health_conditions?: string | null
+          howbody_third_uid?: string | null
           id?: string
           injuries_limitations?: string | null
           joined_at?: string
@@ -5092,6 +5434,7 @@ export type Database = {
       membership_plans: {
         Row: {
           admission_fee: number | null
+          body_scan_allowed: boolean
           branch_id: string | null
           created_at: string
           description: string | null
@@ -5108,11 +5451,15 @@ export type Database = {
           is_visible_to_members: boolean | null
           max_freeze_days: number | null
           name: string
+          posture_scan_allowed: boolean
           price: number
+          public_report_link: boolean
+          scans_per_month: number
           updated_at: string
         }
         Insert: {
           admission_fee?: number | null
+          body_scan_allowed?: boolean
           branch_id?: string | null
           created_at?: string
           description?: string | null
@@ -5129,11 +5476,15 @@ export type Database = {
           is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name: string
+          posture_scan_allowed?: boolean
           price: number
+          public_report_link?: boolean
+          scans_per_month?: number
           updated_at?: string
         }
         Update: {
           admission_fee?: number | null
+          body_scan_allowed?: boolean
           branch_id?: string | null
           created_at?: string
           description?: string | null
@@ -5150,7 +5501,10 @@ export type Database = {
           is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name?: string
+          posture_scan_allowed?: boolean
           price?: number
+          public_report_link?: boolean
+          scans_per_month?: number
           updated_at?: string
         }
         Relationships: [
