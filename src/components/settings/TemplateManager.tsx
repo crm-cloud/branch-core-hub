@@ -151,7 +151,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     subject: '',
     content: '',
     is_active: true,
+    header_type: 'none' as 'none' | 'image' | 'document' | 'video',
+    header_media_url: '',
+    attachment_source: 'none' as 'none' | 'static' | 'dynamic',
+    attachment_filename_template: '',
   });
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all');
 
