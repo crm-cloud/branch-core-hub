@@ -49,6 +49,8 @@ interface AssignPlanDrawerProps {
     /** Optional: template this plan was loaded from. Stored on the
      * assignment so trainers can later see "N members on Template A". */
     template_id?: string | null;
+    /** Pre-selects the "Common Plan" toggle. Defaults to false. */
+    is_common?: boolean;
   } | null;
   branchId?: string;
 }
@@ -65,16 +67,19 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
   const [sendPdf, setSendPdf] = useState(false);
+  const [isCommon, setIsCommon] = useState(false);
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
-  // Reset every time the drawer is reopened
+  // Reset every time the drawer is reopened. Pre-fill the Common toggle from
+  // the incoming template (so common templates default to common assignments).
   useEffect(() => {
     if (open) {
       setResults(null);
       setSearchQuery('');
+      setIsCommon(!!plan?.is_common);
     }
-  }, [open]);
+  }, [open, plan?.is_common]);
 
   const { data: searchResults = [], isLoading: isSearching } = useQuery({
     queryKey: ['member-search-multi', searchQuery, branchId],
@@ -124,6 +129,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         branch_id: branchId,
         channels,
         template_id: plan?.template_id ?? null,
+        is_common: isCommon,
       });
 
       // If "Send PDF on assign" is enabled, dispatch PDFs to whichever
@@ -300,6 +306,21 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
                       );
                     })}
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-emerald-500/5 border-emerald-200/50 p-3 flex items-start gap-3">
+                <Users className="h-4 w-4 mt-0.5 text-emerald-600" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="is-common-toggle" className="text-sm font-medium cursor-pointer">
+                      Mark as Common Plan (no PT required)
+                    </Label>
+                    <Switch id="is-common-toggle" checked={isCommon} onCheckedChange={setIsCommon} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Common plans are shared across walk-in members who aren't on personal training.
+                  </p>
                 </div>
               </div>
 

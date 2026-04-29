@@ -30,6 +30,8 @@ export interface FitnessPlanTemplate {
   content: FitnessPlanContent;
   is_public: boolean | null;
   is_active: boolean | null;
+  is_common?: boolean | null;
+  system_template?: boolean | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -258,6 +260,8 @@ export interface BulkAssignParams {
   /** Optional back-reference to the originating template — lets trainers
    * see "X members are on Template A" and re-push template updates. */
   template_id?: string | null;
+  /** When true, marks the assignment as a "Common Plan" (no PT required). */
+  is_common?: boolean;
 }
 
 interface MemberContact {
@@ -382,6 +386,7 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
     branch_id: params.branch_id,
     created_by: user?.id,
     template_id: params.template_id ?? null,
+    is_common: params.is_common ?? false,
   }));
 
   const { data: inserted, error } = await supabase

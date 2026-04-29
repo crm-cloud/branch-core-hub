@@ -11,11 +11,14 @@ import {
   Loader2,
   Library,
   Trash2,
-  Shuffle,
-  Zap,
   UserPlus,
   Download,
   FilePlus,
+  Eye,
+  Pencil,
+  Users,
+  Lock,
+  Share2,
 } from "lucide-react";
 import { generatePlanPDF } from "@/utils/pdfGenerator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -35,193 +38,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Users } from "lucide-react";
 import { AssignPlanDrawer } from "@/components/fitness/AssignPlanDrawer";
 import { FitnessHubTabs } from "@/components/fitness/FitnessHubTabs";
+import { PlanViewerSheet } from "@/components/fitness/PlanViewerSheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-const DEFAULT_TEMPLATES = [
-  {
-    id: "default-beginner",
-    name: "Beginner Full Body",
-    type: "workout" as const,
-    description: "3-day full body program for absolute beginners",
-    difficulty: "beginner",
-    goal: "General Fitness",
-    isDefault: true,
-    content: {
-      name: "Beginner Full Body",
-      type: "workout",
-      difficulty: "beginner",
-      goal: "General Fitness",
-      description: "3-day full body program for absolute beginners",
-      weeks: [
-        {
-          week: 1,
-          days: [
-            {
-              day: "Monday",
-              focus: "Full Body A",
-              exercises: [
-                { name: "Bodyweight Squats", sets: 3, reps: "12", rest: "60s" },
-                { name: "Push-ups (or Knee Push-ups)", sets: 3, reps: "10", rest: "60s" },
-                { name: "Dumbbell Rows", sets: 3, reps: "10", rest: "60s" },
-                { name: "Plank Hold", sets: 3, reps: "30s", rest: "45s" },
-              ],
-            },
-            {
-              day: "Wednesday",
-              focus: "Full Body B",
-              exercises: [
-                { name: "Lunges", sets: 3, reps: "10/leg", rest: "60s" },
-                { name: "Dumbbell Press", sets: 3, reps: "10", rest: "60s" },
-                { name: "Lat Pulldown", sets: 3, reps: "12", rest: "60s" },
-                { name: "Russian Twists", sets: 3, reps: "20", rest: "45s" },
-              ],
-            },
-            {
-              day: "Friday",
-              focus: "Full Body C",
-              exercises: [
-                { name: "Goblet Squats", sets: 3, reps: "12", rest: "60s" },
-                { name: "Incline Push-ups", sets: 3, reps: "12", rest: "60s" },
-                { name: "Seated Cable Row", sets: 3, reps: "12", rest: "60s" },
-                { name: "Dead Bug", sets: 3, reps: "10/side", rest: "45s" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "default-weightloss",
-    name: "Weight Loss Circuit",
-    type: "workout" as const,
-    description: "High-intensity circuit training for maximum calorie burn",
-    difficulty: "intermediate",
-    goal: "Weight Loss",
-    isDefault: true,
-    content: {
-      name: "Weight Loss Circuit",
-      type: "workout",
-      difficulty: "intermediate",
-      goal: "Weight Loss",
-      description: "High-intensity circuit training for maximum calorie burn",
-      weeks: [
-        {
-          week: 1,
-          days: [
-            {
-              day: "Monday",
-              focus: "HIIT Circuit",
-              exercises: [
-                { name: "Burpees", sets: 4, reps: "10", rest: "30s" },
-                { name: "Mountain Climbers", sets: 4, reps: "20", rest: "30s" },
-                { name: "Jump Squats", sets: 4, reps: "15", rest: "30s" },
-                { name: "Kettlebell Swings", sets: 4, reps: "15", rest: "30s" },
-                { name: "Battle Ropes", sets: 4, reps: "30s", rest: "30s" },
-              ],
-            },
-            {
-              day: "Wednesday",
-              focus: "Cardio + Core",
-              exercises: [
-                { name: "Treadmill Intervals", sets: 1, reps: "20 min", rest: "-" },
-                { name: "Bicycle Crunches", sets: 3, reps: "20", rest: "30s" },
-                { name: "Leg Raises", sets: 3, reps: "15", rest: "30s" },
-                { name: "Box Jumps", sets: 4, reps: "10", rest: "45s" },
-              ],
-            },
-            {
-              day: "Friday",
-              focus: "Full Body Burn",
-              exercises: [
-                { name: "Deadlifts", sets: 4, reps: "10", rest: "45s" },
-                { name: "Push Press", sets: 4, reps: "10", rest: "45s" },
-                { name: "Rowing Machine", sets: 1, reps: "500m", rest: "-" },
-                { name: "Plank Jacks", sets: 3, reps: "20", rest: "30s" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    id: "default-muscle",
-    name: "Muscle Building Split",
-    type: "workout" as const,
-    description: "Push/Pull/Legs split for hypertrophy",
-    difficulty: "intermediate",
-    goal: "Muscle Gain",
-    isDefault: true,
-    content: {
-      name: "Muscle Building Split",
-      type: "workout",
-      difficulty: "intermediate",
-      goal: "Muscle Gain",
-      description: "Push/Pull/Legs split for hypertrophy",
-      weeks: [
-        {
-          week: 1,
-          days: [
-            {
-              day: "Monday",
-              focus: "Push (Chest/Shoulders/Triceps)",
-              exercises: [
-                { name: "Bench Press", sets: 4, reps: "8-10", rest: "90s" },
-                { name: "Overhead Press", sets: 3, reps: "10", rest: "90s" },
-                { name: "Incline Dumbbell Press", sets: 3, reps: "12", rest: "60s" },
-                { name: "Lateral Raises", sets: 3, reps: "15", rest: "45s" },
-                { name: "Tricep Pushdowns", sets: 3, reps: "12", rest: "45s" },
-              ],
-            },
-            {
-              day: "Wednesday",
-              focus: "Pull (Back/Biceps)",
-              exercises: [
-                { name: "Barbell Rows", sets: 4, reps: "8-10", rest: "90s" },
-                { name: "Pull-ups", sets: 3, reps: "8", rest: "90s" },
-                { name: "Face Pulls", sets: 3, reps: "15", rest: "45s" },
-                { name: "Barbell Curls", sets: 3, reps: "12", rest: "45s" },
-                { name: "Hammer Curls", sets: 3, reps: "12", rest: "45s" },
-              ],
-            },
-            {
-              day: "Friday",
-              focus: "Legs",
-              exercises: [
-                { name: "Barbell Squats", sets: 4, reps: "8-10", rest: "120s" },
-                { name: "Romanian Deadlifts", sets: 3, reps: "10", rest: "90s" },
-                { name: "Leg Press", sets: 3, reps: "12", rest: "90s" },
-                { name: "Leg Curls", sets: 3, reps: "12", rest: "60s" },
-                { name: "Calf Raises", sets: 4, reps: "15", rest: "45s" },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-];
-
-function seededShuffle<T>(array: T[], seed: string): T[] {
-  const arr = [...array];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  for (let i = arr.length - 1; i > 0; i--) {
-    hash = ((hash << 5) - hash) + i;
-    hash |= 0;
-    const j = Math.abs(hash) % (i + 1);
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
+type CommonFilter = "all" | "common" | "pt_only";
 
 function getDifficultyColor(difficulty: string | null) {
   switch (difficulty) {
@@ -237,26 +60,29 @@ function getDifficultyColor(difficulty: string | null) {
 }
 
 export default function FitnessTemplatesPage() {
-  const { profile, hasAnyRole } = useAuth();
+  const { hasAnyRole } = useAuth();
   const canCreate = hasAnyRole(["owner", "admin", "manager"]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [planType, setPlanType] = useState<"workout" | "diet">("workout");
+  const [commonFilter, setCommonFilter] = useState<CommonFilter>("all");
   const [assignDrawerOpen, setAssignDrawerOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-  const [shuffledWorkout, setShuffledWorkout] = useState<{ name: string; exercises: any[] } | null>(
-    null,
-  );
+  const [selectedTemplate, setSelectedTemplate] = useState<FitnessPlanTemplate | null>(null);
+  const [viewing, setViewing] = useState<FitnessPlanTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FitnessPlanTemplate | null>(null);
 
-  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+  const { data: allTemplates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["fitness-templates", planType],
     queryFn: () => fetchPlanTemplates(undefined, planType),
   });
 
-  // Number of member assignments per template — surfaced as a badge so trainers
-  // can tell which templates are actually being used before editing/deleting.
+  const templates = useMemo(() => {
+    if (commonFilter === "all") return allTemplates;
+    if (commonFilter === "common") return allTemplates.filter((t) => t.is_common);
+    return allTemplates.filter((t) => !t.is_common);
+  }, [allTemplates, commonFilter]);
+
   const templateIds = useMemo(() => templates.map((t) => t.id), [templates]);
   const { data: usageCounts = {} } = useQuery({
     queryKey: ["fitness-template-usage", templateIds],
@@ -275,33 +101,145 @@ export default function FitnessTemplatesPage() {
     onError: (err: any) => toast.error(err?.message || "Failed to delete template"),
   });
 
-  const handleQuickShuffle = () => {
-    const seed = `${profile?.id || "guest"}-${new Date().toISOString().split("T")[0]}`;
-    const allExercises = DEFAULT_TEMPLATES.flatMap((t) =>
-      t.content.weeks.flatMap((w: any) => w.days.flatMap((d: any) => d.exercises)),
-    );
-    const shuffled = seededShuffle(allExercises, seed).slice(0, 8);
-    setShuffledWorkout({
-      name: `Daily Workout — ${new Date().toLocaleDateString()}`,
-      exercises: shuffled,
-    });
-    toast.success("Daily workout shuffled!");
-  };
-
-  const handleAssignTemplate = (template: any) => {
+  const handleAssignTemplate = (template: FitnessPlanTemplate) => {
     setSelectedTemplate(template);
     setAssignDrawerOpen(true);
   };
 
-  const visibleDefaults = DEFAULT_TEMPLATES.filter(
-    (dt) => dt.type === planType && !templates.some((t: any) => t.name === dt.name),
-  );
-  const hasAnyTemplate = templates.length > 0 || visibleDefaults.length > 0;
+  // Split into system + user-created sections so trainers see starters first.
+  const systemTemplates = templates.filter((t) => t.system_template);
+  const userTemplates = templates.filter((t) => !t.system_template);
+  const hasAnyTemplate = templates.length > 0;
+
+  const renderTemplateCard = (template: FitnessPlanTemplate) => {
+    const usage = usageCounts[template.id] || 0;
+    const isSystem = !!template.system_template;
+    return (
+      <Card
+        key={template.id}
+        className="rounded-2xl border-0 hover:shadow-xl hover:shadow-slate-200/50 transition-shadow shadow-lg shadow-slate-200/30"
+      >
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <CardTitle className="text-base truncate">{template.name}</CardTitle>
+              <CardDescription className="text-xs mt-1 line-clamp-2">
+                {template.description}
+              </CardDescription>
+            </div>
+            <Badge
+              className={`border text-xs shrink-0 ${getDifficultyColor(template.difficulty)}`}
+            >
+              {template.difficulty || "intermediate"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <Badge variant="outline" className="text-xs">
+              {template.type === "workout" ? (
+                <Dumbbell className="h-3 w-3 mr-1" />
+              ) : (
+                <Utensils className="h-3 w-3 mr-1" />
+              )}
+              {template.type}
+            </Badge>
+            {template.goal && (
+              <Badge variant="secondary" className="text-xs">
+                {template.goal}
+              </Badge>
+            )}
+            {template.is_common && (
+              <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-200 text-xs gap-1">
+                <Share2 className="h-3 w-3" /> Common
+              </Badge>
+            )}
+            {isSystem && (
+              <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20 gap-1">
+                <Lock className="h-3 w-3" /> Built-in
+              </Badge>
+            )}
+            <Badge
+              variant="outline"
+              className="text-xs gap-1"
+              title={`Assigned to ${usage} member${usage === 1 ? "" : "s"}`}
+            >
+              <Users className="h-3 w-3" />
+              {usage} {usage === 1 ? "use" : "uses"}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" className="flex-1 min-w-[120px]" onClick={() => handleAssignTemplate(template)}>
+              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setViewing(template)} title="Preview plan">
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                generatePlanPDF({
+                  name: template.name,
+                  type: template.type,
+                  data: template.content,
+                })
+              }
+              title="Download PDF"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const path =
+                  template.type === "workout"
+                    ? "/fitness/create/manual/workout"
+                    : "/fitness/create/manual/diet";
+                navigate(`${path}?template=${template.id}`);
+              }}
+              title="Use as starting point"
+            >
+              <FilePlus className="h-3.5 w-3.5" />
+            </Button>
+            {canCreate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const path =
+                    template.type === "workout"
+                      ? "/fitness/create/manual/workout"
+                      : "/fitness/create/manual/diet";
+                  navigate(`${path}?template=${template.id}&edit=1`);
+                }}
+                title={isSystem ? "Customize a copy" : "Edit template content"}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canCreate && !isSystem && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDeleteTarget(template)}
+                title="Delete template"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <FitnessHubTabs />
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -310,7 +248,8 @@ export default function FitnessTemplatesPage() {
               Plan Templates
             </h2>
             <p className="text-sm text-muted-foreground">
-              Browse, shuffle, and assign workout & diet templates to members
+              Browse, preview, and assign workout & diet templates. Common plans are reusable across
+              walk-in members without dedicated trainers.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -332,79 +271,31 @@ export default function FitnessTemplatesPage() {
                 <Utensils className="h-4 w-4" /> Diet
               </Button>
             </div>
-            <Button variant="outline" onClick={handleQuickShuffle} className="gap-1.5">
-              <Shuffle className="h-4 w-4" /> Daily Shuffle
-            </Button>
           </div>
         </div>
 
-        {/* Quick Shuffle Result */}
-        {shuffledWorkout && (
-          <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-primary" />
-                  {shuffledWorkout.name}
-                </CardTitle>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedTemplate({
-                        name: shuffledWorkout.name,
-                        type: "workout",
-                        content: {
-                          name: shuffledWorkout.name,
-                          type: "workout",
-                          weeks: [
-                            {
-                              week: 1,
-                              days: [
-                                {
-                                  day: "Today",
-                                  focus: "Quick Shuffle",
-                                  exercises: shuffledWorkout.exercises,
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      });
-                      setAssignDrawerOpen(true);
-                    }}
-                  >
-                    <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setShuffledWorkout(null)}>
-                    ✕
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {shuffledWorkout.exercises.map((ex: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-background/80 border border-border/50"
-                  >
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                      {i + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{ex.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {ex.sets}×{ex.reps}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Common-plan filter chips */}
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "all", label: "All plans" },
+              { key: "common", label: "Common (no PT)" },
+              { key: "pt_only", label: "PT-specific" },
+            ] as { key: CommonFilter; label: string }[]
+          ).map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setCommonFilter(f.key)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                commonFilter === f.key
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted border-border"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
 
         {/* Templates */}
         {templatesLoading ? (
@@ -430,181 +321,24 @@ export default function FitnessTemplatesPage() {
           </Card>
         ) : (
           <>
-            {visibleDefaults.length > 0 && (
+            {systemTemplates.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Default Starter Plans
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5" /> Starter Plans
                 </h3>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {visibleDefaults.map((template) => (
-                    <Card
-                      key={template.id}
-                      className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30"
-                    >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-base">{template.name}</CardTitle>
-                            <CardDescription className="text-xs mt-1">
-                              {template.description}
-                            </CardDescription>
-                          </div>
-                          <Badge
-                            className={`border text-xs ${getDifficultyColor(template.difficulty)}`}
-                          >
-                            {template.difficulty}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center gap-2 mb-3">
-                          <Badge variant="outline" className="text-xs">
-                            <Dumbbell className="h-3 w-3 mr-1" />
-                            {template.type}
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {template.goal}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-primary/5 text-primary border-primary/20"
-                          >
-                            Built-in
-                          </Badge>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="w-full"
-                          onClick={() => handleAssignTemplate(template)}
-                        >
-                          <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign to Member
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {systemTemplates.map(renderTemplateCard)}
                 </div>
               </div>
             )}
 
-            {templates.length > 0 && (
+            {userTemplates.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                   Your Saved Templates
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {templates.map((template: FitnessPlanTemplate) => {
-                    const usage = usageCounts[template.id] || 0;
-                    return (
-                      <Card
-                        key={template.id}
-                        className="rounded-2xl hover:border-primary/30 transition-colors shadow-lg shadow-slate-200/30"
-                      >
-                        <CardHeader className="pb-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <CardTitle className="text-base truncate">{template.name}</CardTitle>
-                              <CardDescription className="text-xs mt-1">
-                                {template.description}
-                              </CardDescription>
-                            </div>
-                            <Badge
-                              className={`border text-xs shrink-0 ${getDifficultyColor(template.difficulty)}`}
-                            >
-                              {template.difficulty || "intermediate"}
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex flex-wrap items-center gap-2 mb-3">
-                            <Badge variant="outline" className="text-xs">
-                              {template.type === "workout" ? (
-                                <Dumbbell className="h-3 w-3 mr-1" />
-                              ) : (
-                                <Utensils className="h-3 w-3 mr-1" />
-                              )}
-                              {template.type}
-                            </Badge>
-                            {template.goal && (
-                              <Badge variant="secondary" className="text-xs">
-                                {template.goal}
-                              </Badge>
-                            )}
-                            <Badge
-                              variant="outline"
-                              className="text-xs gap-1"
-                              title={`Assigned to ${usage} member${usage === 1 ? "" : "s"}`}
-                            >
-                              <Users className="h-3 w-3" />
-                              {usage} {usage === 1 ? "use" : "uses"}
-                            </Badge>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => handleAssignTemplate(template)}
-                            >
-                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                generatePlanPDF({
-                                  name: template.name,
-                                  type: template.type,
-                                  data: template.content,
-                                })
-                              }
-                              title="Download PDF"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const path =
-                                  template.type === "workout"
-                                    ? "/fitness/create/manual/workout"
-                                    : "/fitness/create/manual/diet";
-                                navigate(`${path}?template=${template.id}`);
-                              }}
-                              title="Use as starting point"
-                            >
-                              <FilePlus className="h-3.5 w-3.5" />
-                            </Button>
-                            {canCreate && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  const path =
-                                    template.type === "workout"
-                                      ? "/fitness/create/manual/workout"
-                                      : "/fitness/create/manual/diet";
-                                  navigate(`${path}?template=${template.id}&edit=1`);
-                                }}
-                                title="Edit template content"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {canCreate && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setDeleteTarget(template)}
-                                title="Delete template"
-                              >
-                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  {userTemplates.map(renderTemplateCard)}
                 </div>
               </div>
             )}
@@ -619,12 +353,37 @@ export default function FitnessTemplatesPage() {
           selectedTemplate
             ? {
                 name: selectedTemplate.name,
-                type: selectedTemplate.type as "workout" | "diet",
+                type: selectedTemplate.type,
                 description: selectedTemplate.description || undefined,
                 content: selectedTemplate.content,
-                template_id: selectedTemplate.id?.startsWith("default-") ? undefined : selectedTemplate.id,
+                template_id: selectedTemplate.id,
+                is_common: !!selectedTemplate.is_common,
               }
             : null
+        }
+      />
+
+      <PlanViewerSheet
+        open={!!viewing}
+        onOpenChange={(o) => !o && setViewing(null)}
+        plan={
+          viewing
+            ? {
+                id: viewing.id,
+                name: viewing.name,
+                type: viewing.type,
+                description: viewing.description,
+                data: viewing.content,
+              }
+            : null
+        }
+        onDownload={() =>
+          viewing &&
+          generatePlanPDF({
+            name: viewing.name,
+            type: viewing.type,
+            data: viewing.content,
+          })
         }
       />
 
@@ -660,4 +419,3 @@ export default function FitnessTemplatesPage() {
     </AppLayout>
   );
 }
-

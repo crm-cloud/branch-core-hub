@@ -242,6 +242,44 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_dashboard_insights: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          expires_at: string
+          generated_at: string
+          id: string
+          insights: Json
+          user_id: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          expires_at?: string
+          generated_at?: string
+          id?: string
+          insights: Json
+          user_id: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          expires_at?: string
+          generated_at?: string
+          id?: string
+          insights?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_dashboard_insights_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_plan_logs: {
         Row: {
           created_at: string
@@ -3044,8 +3082,10 @@ export type Database = {
           goal: string | null
           id: string
           is_active: boolean | null
+          is_common: boolean
           is_public: boolean | null
           name: string
+          system_template: boolean
           type: string
           updated_at: string | null
         }
@@ -3059,8 +3099,10 @@ export type Database = {
           goal?: string | null
           id?: string
           is_active?: boolean | null
+          is_common?: boolean
           is_public?: boolean | null
           name: string
+          system_template?: boolean
           type: string
           updated_at?: string | null
         }
@@ -3074,8 +3116,10 @@ export type Database = {
           goal?: string | null
           id?: string
           is_active?: boolean | null
+          is_common?: boolean
           is_public?: boolean | null
           name?: string
+          system_template?: boolean
           type?: string
           updated_at?: string | null
         }
@@ -4724,6 +4768,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
+          is_common: boolean
           is_custom: boolean | null
           is_public: boolean | null
           member_id: string | null
@@ -4741,6 +4786,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          is_common?: boolean
           is_custom?: boolean | null
           is_public?: boolean | null
           member_id?: string | null
@@ -4758,6 +4804,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          is_common?: boolean
           is_custom?: boolean | null
           is_public?: boolean | null
           member_id?: string | null
