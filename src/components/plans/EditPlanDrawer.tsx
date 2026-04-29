@@ -171,6 +171,17 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         },
       });
 
+      // Persist scanner-access fields directly (not in the typed updatePlan signature)
+      const { error: scanErr } = await supabase
+        .from('membership_plans')
+        .update({
+          body_scan_allowed: scanner.body_scan_allowed,
+          posture_scan_allowed: scanner.posture_scan_allowed,
+          scans_per_month: (scanner.body_scan_allowed || scanner.posture_scan_allowed) ? scanner.scans_per_month : null,
+        } as any)
+        .eq('id', plan.id);
+      if (scanErr) throw scanErr;
+
       // Delete existing benefits and re-insert
       const { error: deleteError } = await supabase.from('plan_benefits').delete().eq('plan_id', plan.id);
       if (deleteError) throw deleteError;
