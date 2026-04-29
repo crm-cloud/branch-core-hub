@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
-import { Sparkles, Plus, Pencil, Trash2 } from "lucide-react";
+import { Sparkles, Plus, Pencil, Trash2, Info, Building2, Users, Package } from "lucide-react";
 import { toast } from "sonner";
 import * as LucideIcons from "lucide-react";
 
@@ -31,11 +32,10 @@ export interface BenefitTypeRecord {
   updated_at: string;
 }
 
-const ICON_OPTIONS = [
-  "Sparkles", "Thermometer", "Snowflake", "Droplets", "Flame", "Wind", 
-  "Dumbbell", "Heart", "Star", "Zap", "Sun", "Moon", "Coffee", "Bath"
-];
+interface FacilityLite { id: string; name: string; gender_access: string; capacity: number; is_active: boolean; under_maintenance: boolean; }
+interface DependencyCounts { facilities: FacilityLite[]; plan_count: number; member_credit_count: number; }
 
+const ICON_OPTIONS = ["Sparkles","Thermometer","Snowflake","Droplets","Flame","Wind","Dumbbell","Heart","Star","Zap","Sun","Moon","Coffee","Bath"];
 const CATEGORY_OPTIONS = [
   { value: "wellness", label: "Wellness" },
   { value: "fitness", label: "Fitness" },
@@ -44,30 +44,23 @@ const CATEGORY_OPTIONS = [
 ];
 
 interface BenefitTypeFormData {
-  name: string;
-  code: string;
-  description: string;
-  icon: string;
-  is_bookable: boolean;
-  is_active: boolean;
-  category: string;
-  default_duration_minutes: number;
+  name: string; code: string; description: string; icon: string;
+  is_bookable: boolean; is_active: boolean; category: string; default_duration_minutes: number;
 }
-
 const defaultFormData: BenefitTypeFormData = {
-  name: "",
-  code: "",
-  description: "",
-  icon: "Sparkles",
-  is_bookable: true,
-  is_active: true,
-  category: "wellness",
-  default_duration_minutes: 30,
+  name: "", code: "", description: "", icon: "Sparkles",
+  is_bookable: true, is_active: true, category: "wellness", default_duration_minutes: 30,
 };
 
 function getIconComponent(iconName: string) {
   const Icon = (LucideIcons as any)[iconName];
   return Icon ? <Icon className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />;
+}
+
+function genderBadgeClass(g: string) {
+  if (g === "male") return "bg-blue-50 text-blue-700 border-blue-200";
+  if (g === "female") return "bg-pink-50 text-pink-700 border-pink-200";
+  return "bg-slate-50 text-slate-700 border-slate-200";
 }
 
 export function BenefitTypesManager() {
@@ -76,26 +69,39 @@ export function BenefitTypesManager() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<BenefitTypeFormData>(defaultFormData);
+  const [showInactive, setShowInactive] = useState(false);
 
   const branchId = effectiveBranchId || "";
 
-  // Fetch benefit types
   const { data: benefitTypes, isLoading } = useQuery({
-    queryKey: ["benefit-types", branchId],
+    queryKey: ["benefit-types-with-deps", branchId, showInactive],
     queryFn: async () => {
       if (!branchId) return [];
-      const { data, error } = await supabase
+      const query = supabase
         .from("benefit_types")
-        .select("*")
+        .select(`
+          *,
+          facilities(id, name, gender_access, capacity, is_active, under_maintenance),
+          plan_benefits(count),
+          member_benefit_credits(count)
+        `)
         .eq("branch_id", branchId)
         .order("display_order", { ascending: true });
+      if (!showInactive) query.eq("is_active", true);
+      const { data, error } = await query;
       if (error) throw error;
-      return data as BenefitTypeRecord[];
+      return (data || []).map((bt: any) => ({
+        ...bt,
+        _deps: {
+          facilities: (bt.facilities || []) as FacilityLite[],
+          plan_count: bt.plan_benefits?.[0]?.count ?? 0,
+          member_credit_count: bt.member_benefit_credits?.[0]?.count ?? 0,
+        } as DependencyCounts,
+      }));
     },
     enabled: !!branchId,
   });
 
-  // Create/Update mutation
   const upsertMutation = useMutation({
     mutationFn: async (data: BenefitTypeFormData & { id?: string }) => {
       const payload = {
@@ -109,48 +115,50 @@ export function BenefitTypesManager() {
         category: data.category,
         default_duration_minutes: data.default_duration_minutes,
       };
-
       if (data.id) {
-        const { data: result, error } = await supabase
-          .from("benefit_types")
-          .update(payload)
-          .eq("id", data.id)
-          .select()
-          .single();
+        const { error } = await supabase.from("benefit_types").update(payload).eq("id", data.id);
         if (error) throw error;
-        return result;
       } else {
-        const { data: result, error } = await supabase
-          .from("benefit_types")
-          .insert(payload)
-          .select()
-          .single();
+        const { error } = await supabase.from("benefit_types").insert(payload);
         if (error) throw error;
-        return result;
       }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["benefit-types-with-deps"] });
       queryClient.invalidateQueries({ queryKey: ["benefit-types"] });
       toast.success(editingId ? "Benefit type updated" : "Benefit type created");
       resetForm();
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to save benefit type");
+      const msg = error?.message?.includes("uq_benefit_types_branch_name_ci")
+        ? "A benefit type with this name already exists in this branch."
+        : error?.message || "Failed to save benefit type";
+      toast.error(msg);
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("benefit_types").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["benefit-types-with-deps"] });
       queryClient.invalidateQueries({ queryKey: ["benefit-types"] });
       toast.success("Benefit type deleted");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete benefit type");
+    onError: (error: any) => toast.error(error.message || "Failed to delete"),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("benefit_types").update({ is_active: false }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["benefit-types-with-deps"] });
+      queryClient.invalidateQueries({ queryKey: ["benefit-types"] });
+      toast.success("Benefit type deactivated");
     },
   });
 
@@ -160,130 +168,120 @@ export function BenefitTypesManager() {
     setIsDrawerOpen(false);
   };
 
-  const handleEdit = (benefitType: BenefitTypeRecord) => {
+  const handleEdit = (bt: BenefitTypeRecord) => {
     setFormData({
-      name: benefitType.name,
-      code: benefitType.code,
-      description: benefitType.description || "",
-      icon: benefitType.icon || "Sparkles",
-      is_bookable: benefitType.is_bookable ?? true,
-      is_active: benefitType.is_active ?? true,
-      category: benefitType.category || "wellness",
-      default_duration_minutes: benefitType.default_duration_minutes || 30,
+      name: bt.name, code: bt.code,
+      description: bt.description || "", icon: bt.icon || "Sparkles",
+      is_bookable: bt.is_bookable ?? true, is_active: bt.is_active ?? true,
+      category: bt.category || "wellness",
+      default_duration_minutes: bt.default_duration_minutes || 30,
     });
-    setEditingId(benefitType.id);
+    setEditingId(bt.id);
     setIsDrawerOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.code) {
-      toast.error("Please fill in required fields");
-      return;
+    if (!formData.name || !formData.code) { toast.error("Please fill in required fields"); return; }
+    if (/\b(male|female|men|women|m|f)\b/i.test(formData.name)) {
+      toast.warning("Tip: don't put gender in the benefit name. Add separate Facilities (rooms) for each gender instead.");
     }
     upsertMutation.mutate({ ...formData, id: editingId || undefined });
   };
 
-  const generateCode = (name: string) => {
-    return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+  const handleDelete = (bt: any) => {
+    const deps = bt._deps as DependencyCounts;
+    const totalRefs = deps.facilities.length + deps.plan_count + deps.member_credit_count;
+    if (totalRefs > 0) {
+      const ok = confirm(
+        `"${bt.name}" is in use:\n` +
+        `• ${deps.facilities.length} facility/rooms\n` +
+        `• ${deps.plan_count} plan(s)\n` +
+        `• ${deps.member_credit_count} active member credit(s)\n\n` +
+        `It cannot be deleted. Deactivate it instead? (it will be hidden from new bookings but history is preserved)`
+      );
+      if (ok) deactivateMutation.mutate(bt.id);
+      return;
+    }
+    if (confirm(`Delete "${bt.name}"? This cannot be undone.`)) deleteMutation.mutate(bt.id);
   };
 
+  const generateCode = (name: string) => name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+
   if (!branchId) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No branch found. Please create a branch first.
-      </div>
-    );
+    return <div className="text-center py-8 text-muted-foreground">No branch found. Please create a branch first.</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Sparkles className="h-6 w-6 text-primary" />
+          <div className="p-2 bg-primary/10 rounded-xl"><Sparkles className="h-6 w-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-semibold">Benefit Types</h2>
-            <p className="text-muted-foreground">
-              Manage custom benefits like Sauna, Ice Bath, Steam Room, etc.
-            </p>
+            <p className="text-sm text-muted-foreground">Categories like Ice Bath, Sauna, Steam Room — these get attached to plans and facilities.</p>
           </div>
         </div>
-
-        <Button onClick={() => setIsDrawerOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Benefit Type
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowInactive(!showInactive)}>
+            {showInactive ? "Hide" : "Show"} inactive
+          </Button>
+          <Button onClick={() => setIsDrawerOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Add Benefit Type
+          </Button>
+        </div>
       </div>
 
-      {/* Side Drawer for Add/Edit - NOT Dialog */}
+      <Alert className="bg-indigo-50/50 border-indigo-200">
+        <Info className="h-4 w-4 text-indigo-600" />
+        <AlertDescription className="text-sm text-slate-700">
+          <strong className="text-slate-900">One category per benefit, multiple rooms per category.</strong> Don't create
+          "Ice Bath Male" and "Ice Bath Female" as separate types — create one <strong>Ice Bath</strong> benefit, then add
+          two facilities (rooms) under <em>Facilities &amp; Rooms</em> with different gender access. Members buy one entitlement
+          and the system routes them to the room their gender allows.
+        </AlertDescription>
+      </Alert>
+
       <Sheet open={isDrawerOpen} onOpenChange={(open) => { setIsDrawerOpen(open); if (!open) resetForm(); }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{editingId ? "Edit Benefit Type" : "Add Benefit Type"}</SheetTitle>
-            <SheetDescription>
-              Create custom benefit types that can be included in membership plans
-            </SheetDescription>
+            <SheetDescription>Create custom benefit categories. Gender, capacity and rooms are configured under Facilities.</SheetDescription>
           </SheetHeader>
-
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Name *</Label>
                 <Input
                   value={formData.name}
-                  onChange={(e) => {
-                    setFormData({
-                      ...formData,
-                      name: e.target.value,
-                      code: editingId ? formData.code : generateCode(e.target.value),
-                    });
-                  }}
-                  placeholder="Ice Bath, Sauna, etc."
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value, code: editingId ? formData.code : generateCode(e.target.value) })}
+                  placeholder="Ice Bath"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Code *</Label>
-                <Input
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  placeholder="ice_bath"
-                  disabled={!!editingId}
-                />
+                <Input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} placeholder="ice_bath" disabled={!!editingId} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Describe this benefit..."
-                rows={2}
-              />
+              <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Describe this benefit..." rows={2} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Icon</Label>
-                <Select
-                  value={formData.icon}
-                  onValueChange={(v) => setFormData({ ...formData, icon: v })}
-                >
+                <Select value={formData.icon} onValueChange={(v) => setFormData({ ...formData, icon: v })}>
                   <SelectTrigger>
                     <SelectValue>
-                      <span className="flex items-center gap-2">
-                        {getIconComponent(formData.icon)}
-                        {formData.icon}
-                      </span>
+                      <span className="flex items-center gap-2">{getIconComponent(formData.icon)}{formData.icon}</span>
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ICON_OPTIONS.map((icon) => (
                       <SelectItem key={icon} value={icon}>
-                        <span className="flex items-center gap-2">
-                          {getIconComponent(icon)}
-                          {icon}
-                        </span>
+                        <span className="flex items-center gap-2">{getIconComponent(icon)}{icon}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -291,19 +289,10 @@ export function BenefitTypesManager() {
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(v) => setFormData({ ...formData, category: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {CATEGORY_OPTIONS.map((cat) => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </SelectItem>
-                    ))}
+                    {CATEGORY_OPTIONS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -311,25 +300,17 @@ export function BenefitTypesManager() {
 
             <div className="space-y-2">
               <Label>Default Duration (minutes)</Label>
-              <Input
-                type="number"
-                value={formData.default_duration_minutes}
+              <Input type="number" value={formData.default_duration_minutes}
                 onChange={(e) => setFormData({ ...formData, default_duration_minutes: parseInt(e.target.value) || 30 })}
-                min={5}
-                max={180}
-              />
+                min={5} max={180} />
             </div>
-
 
             <div className="flex items-center justify-between py-2">
               <div>
                 <Label>Requires Slot Booking</Label>
                 <p className="text-xs text-muted-foreground">Enable time-based booking for this benefit</p>
               </div>
-              <Switch
-                checked={formData.is_bookable}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_bookable: checked })}
-              />
+              <Switch checked={formData.is_bookable} onCheckedChange={(c) => setFormData({ ...formData, is_bookable: c })} />
             </div>
 
             <div className="flex items-center justify-between py-2">
@@ -337,16 +318,11 @@ export function BenefitTypesManager() {
                 <Label>Active</Label>
                 <p className="text-xs text-muted-foreground">Show in benefit selection</p>
               </div>
-              <Switch
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-              />
+              <Switch checked={formData.is_active} onCheckedChange={(c) => setFormData({ ...formData, is_active: c })} />
             </div>
 
             <SheetFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={resetForm}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
               <Button type="submit" disabled={upsertMutation.isPending}>
                 {upsertMutation.isPending ? "Saving..." : editingId ? "Update" : "Create"}
               </Button>
@@ -359,61 +335,62 @@ export function BenefitTypesManager() {
         <div className="text-center py-8">Loading benefit types...</div>
       ) : benefitTypes && benefitTypes.length > 0 ? (
         <div className="grid gap-3">
-          {benefitTypes.map((bt) => (
-            <Card key={bt.id}>
-              <CardContent className="flex items-center justify-between py-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    {getIconComponent(bt.icon || "Sparkles")}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{bt.name}</span>
-                      <Badge variant="outline" className="text-xs">{bt.code}</Badge>
-                      {bt.is_bookable && (
-                        <Badge variant="secondary" className="text-xs">Bookable</Badge>
-                      )}
-                      {!bt.is_active && (
-                        <Badge variant="destructive" className="text-xs">Inactive</Badge>
-                      )}
+          {benefitTypes.map((bt: any) => {
+            const deps: DependencyCounts = bt._deps;
+            return (
+              <Card key={bt.id} className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className="p-2.5 bg-primary/10 rounded-xl text-primary">{getIconComponent(bt.icon || "Sparkles")}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-slate-900">{bt.name}</span>
+                          <Badge variant="outline" className="text-xs font-mono">{bt.code}</Badge>
+                          {bt.is_bookable && <Badge variant="secondary" className="text-xs">Bookable</Badge>}
+                          {!bt.is_active && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
+                        </div>
+                        {bt.description && <p className="text-sm text-muted-foreground mt-1">{bt.description}</p>}
+                      </div>
                     </div>
-                    {bt.description && (
-                      <p className="text-sm text-muted-foreground">{bt.description}</p>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(bt)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(bt)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleEdit(bt)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (confirm("Are you sure you want to delete this benefit type?")) {
-                        deleteMutation.mutate(bt.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* Dependency strip */}
+                  <div className="flex items-center gap-3 text-xs text-slate-500 pt-2 border-t">
+                    <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />{deps.facilities.length} room{deps.facilities.length !== 1 ? "s" : ""}</span>
+                    <span className="flex items-center gap-1.5"><Package className="h-3.5 w-3.5" />{deps.plan_count} plan{deps.plan_count !== 1 ? "s" : ""}</span>
+                    <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{deps.member_credit_count} member credit{deps.member_credit_count !== 1 ? "s" : ""}</span>
+                  </div>
+
+                  {/* Inline facility list */}
+                  {deps.facilities.length > 0 && (
+                    <div className="grid sm:grid-cols-2 gap-2 pt-1">
+                      {deps.facilities.map((f) => (
+                        <div key={f.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 rounded-lg text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium text-slate-800 truncate">{f.name}</span>
+                            <Badge variant="outline" className={`text-[10px] capitalize ${genderBadgeClass(f.gender_access)}`}>{f.gender_access}</Badge>
+                          </div>
+                          <span className="text-xs text-slate-500 shrink-0">cap {f.capacity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       ) : (
         <Card>
           <CardContent className="text-center py-12">
             <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-            <p className="text-muted-foreground mb-4">
-              No benefit types created yet. Add custom benefits like Ice Bath, Sauna, Steam Room, etc.
-            </p>
-            <Button onClick={() => setIsDrawerOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Your First Benefit Type
-            </Button>
+            <p className="text-muted-foreground mb-4">No benefit types yet. Add categories like Ice Bath, Sauna, Steam Room.</p>
+            <Button onClick={() => setIsDrawerOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Your First Benefit Type</Button>
           </CardContent>
         </Card>
       )}
