@@ -153,15 +153,18 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     is_active: true,
   });
 
+  const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all');
+
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['communication-templates'],
     queryFn: async () => {
+      // Use the unified status view so we get approval_status (Approved/Pending/Rejected/Draft)
       const { data, error } = await supabase
-        .from('templates')
+        .from('v_template_with_meta_status' as any)
         .select('*')
         .order('type', { ascending: true });
       if (error) throw error;
-      return data as Template[];
+      return (data || []) as any[];
     },
   });
 
