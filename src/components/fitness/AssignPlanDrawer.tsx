@@ -67,6 +67,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
   const [sendPdf, setSendPdf] = useState(false);
+  const [isCommon, setIsCommon] = useState(false);
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
