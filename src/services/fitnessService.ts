@@ -260,6 +260,8 @@ export interface BulkAssignParams {
   /** Optional back-reference to the originating template — lets trainers
    * see "X members are on Template A" and re-push template updates. */
   template_id?: string | null;
+  /** When true, marks the assignment as a "Common Plan" (no PT required). */
+  is_common?: boolean;
 }
 
 interface MemberContact {
