@@ -68,11 +68,11 @@ table tr:nth-child(odd){background:#f8fafc}
 </style></head><body>
 <header>
   <h1>The Incline Life by Incline</h1>
-  <span>HOWBODY Health Report</span>
+  <span>Body Scan Health Report</span>
 </header>
 ${body}
 <p style="margin-top:24px;font-size:11px;color:#94a3b8;text-align:center">
-This report is generated from your HOWBODY scan and is intended as a wellness reference, not medical advice.
+This report is generated from your body scan and is intended as a wellness reference, not medical advice.
 </p>
 </body></html>`;
 }

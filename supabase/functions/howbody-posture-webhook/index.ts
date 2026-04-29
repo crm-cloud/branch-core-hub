@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     const testTime = payload.testTime ? new Date(Number(payload.testTime) * 1000).toISOString() : null;
     const num = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
 
-    await sb.from("howbody_posture_reports").upsert({
+    const { data: upserted } = await sb.from("howbody_posture_reports").upsert({
       member_id: member.id,
       data_key: dataKey,
       equipment_no: payload.equipmentNo ?? null,
@@ -72,12 +72,19 @@ Deno.serve(async (req) => {
       back_img: payload.backImg ?? null,
       model_url: payload.murl ?? null,
       full_payload: payload,
-    }, { onConflict: "data_key" });
+    }, { onConflict: "data_key" }).select("id").maybeSingle();
 
     if (payload.scanId) {
       await sb.from("howbody_scan_sessions")
         .update({ status: "completed", completed_at: new Date().toISOString() })
         .eq("scan_id", payload.scanId);
+    }
+
+    // Fire-and-forget: deliver report to member (Email + WhatsApp + in-app)
+    if (upserted?.id) {
+      sb.functions.invoke("deliver-scan-report", {
+        body: { report_id: upserted.id, kind: "posture" },
+      }).catch((err) => console.error("deliver-scan-report (posture) invoke failed:", err));
     }
 
     await logWebhook("posture", thirdUid, dataKey, 200, "ok", null);

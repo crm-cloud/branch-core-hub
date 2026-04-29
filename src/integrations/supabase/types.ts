@@ -7175,6 +7175,51 @@ export type Database = {
         }
         Relationships: []
       }
+      scan_report_deliveries: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          email_error: string | null
+          email_status: string | null
+          id: string
+          inapp_status: string | null
+          kind: string
+          member_id: string | null
+          pdf_url: string | null
+          report_id: string
+          whatsapp_error: string | null
+          whatsapp_status: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          email_error?: string | null
+          email_status?: string | null
+          id?: string
+          inapp_status?: string | null
+          kind: string
+          member_id?: string | null
+          pdf_url?: string | null
+          report_id: string
+          whatsapp_error?: string | null
+          whatsapp_status?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          email_error?: string | null
+          email_status?: string | null
+          id?: string
+          inapp_status?: string | null
+          kind?: string
+          member_id?: string | null
+          pdf_url?: string | null
+          report_id?: string
+          whatsapp_error?: string | null
+          whatsapp_status?: string | null
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           branch_id: string | null

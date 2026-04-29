@@ -133,6 +133,43 @@ export const TEMPLATE_EVENTS: TemplateEvent[] = [
     ],
   },
   {
+    id: 'body_scan_ready',
+    label: 'Body Scan Ready',
+    category: 'engagement',
+    variables: [
+      ...COMMON,
+      { key: 'weight', label: 'Weight (kg)', sample: '72.4' },
+      { key: 'bmi', label: 'BMI', sample: '23.8' },
+      { key: 'body_fat', label: 'Body Fat %', sample: '18.2' },
+      { key: 'health_score', label: 'Health Score', sample: '82' },
+      { key: 'scan_date', label: 'Scan Date', sample: '29 Apr 2026' },
+      { key: 'report_url', label: 'Report URL', sample: 'https://...' },
+    ],
+  },
+  {
+    id: 'posture_scan_ready',
+    label: 'Posture Scan Ready',
+    category: 'engagement',
+    variables: [
+      ...COMMON,
+      { key: 'posture_type', label: 'Posture Type', sample: 'Forward Head' },
+      { key: 'body_slope', label: 'Body Slope', sample: '2.1' },
+      { key: 'scan_date', label: 'Scan Date', sample: '29 Apr 2026' },
+      { key: 'report_url', label: 'Report URL', sample: 'https://...' },
+    ],
+  },
+  {
+    id: 'scan_ready_internal',
+    label: 'Scan Ready (Internal Alert)',
+    category: 'engagement',
+    variables: [
+      { key: 'member_name', label: 'Member Name', sample: 'Ryan Lekhari' },
+      { key: 'member_code', label: 'Member Code', sample: 'INC-01-100' },
+      { key: 'kind', label: 'Scan Kind', sample: 'body' },
+      { key: 'scan_date', label: 'Scan Date', sample: '29 Apr 2026' },
+    ],
+  },
+  {
     id: 'custom',
     label: 'Custom / Broadcast',
     category: 'engagement',

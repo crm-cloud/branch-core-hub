@@ -142,7 +142,7 @@ export default function HowbodyLogin() {
           <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
           <h2 className="mt-4 text-xl font-bold">Invalid QR link</h2>
           <p className="mt-2 text-muted-foreground">
-            Please scan the QR code shown on the HOWBODY scanner directly.
+            Please scan the QR code shown on the body scanner directly.
           </p>
         </Card>
       </Shell>
@@ -300,12 +300,12 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-teal-50/40 px-4 py-8">
       <div className="mx-auto max-w-md">
         <div className="mb-6 text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-teal-600">HOWBODY · Incline</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-teal-600">Incline · Body Scan</p>
           <h1 className="mt-1 text-lg font-bold text-slate-900">Body Composition Scanner</h1>
         </div>
         {children}
         <p className="mt-6 text-center text-xs text-slate-400">
-          The Incline Life by Incline · Powered by HOWBODY
+          The Incline Life by Incline
         </p>
       </div>
     </div>
