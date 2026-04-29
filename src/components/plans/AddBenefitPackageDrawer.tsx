@@ -51,6 +51,10 @@ export function AddBenefitPackageDrawer({ open, onOpenChange, branchId, initial 
   const [validityDays, setValidityDays] = useState<number>(30);
   const [isActive, setIsActive] = useState(true);
   const [displayOrder, setDisplayOrder] = useState<number>(0);
+  const [hsnCode, setHsnCode] = useState<string>('');
+  const [taxRate, setTaxRate] = useState<number>(18);
+  const [taxInclusive, setTaxInclusive] = useState<boolean>(true);
+  const [gstCategory, setGstCategory] = useState<'goods' | 'services'>('services');
 
   const { data: benefitTypes = [] } = useQuery({
     queryKey: ['benefit-types-for-package', branchId],
