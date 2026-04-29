@@ -1,4 +1,4 @@
-// v3.0.0 — AI-powered contextual lead nurture follow-up with retry reset + cooldown
+// v3.1.0 — Skips chats already converted to a lead OR linked to a member to stop redundant follow-ups
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
@@ -110,6 +110,16 @@ serve(async (req) => {
         .maybeSingle();
 
       const partialData = chat.partial_lead_data as Record<string, any> | null;
+
+      // v3.1.0 guard: if a lead already exists for this phone+branch OR the
+      // chat is linked to an existing member, do not nurture further.
+      if (lead?.id) continue;
+      const { data: linkedMember } = await supabase
+        .from("members")
+        .select("id")
+        .eq("phone_number", chat.phone_number)
+        .maybeSingle();
+      if (linkedMember?.id) continue;
 
       // Skip if no lead AND no partial data (nothing to nurture)
       if (!lead && !partialData) continue;
