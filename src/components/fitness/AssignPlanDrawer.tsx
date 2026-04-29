@@ -71,13 +71,15 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
-  // Reset every time the drawer is reopened
+  // Reset every time the drawer is reopened. Pre-fill the Common toggle from
+  // the incoming template (so common templates default to common assignments).
   useEffect(() => {
     if (open) {
       setResults(null);
       setSearchQuery('');
+      setIsCommon(!!plan?.is_common);
     }
-  }, [open]);
+  }, [open, plan?.is_common]);
 
   const { data: searchResults = [], isLoading: isSearching } = useQuery({
     queryKey: ['member-search-multi', searchQuery, branchId],
