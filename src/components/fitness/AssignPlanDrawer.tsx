@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import {
   Search,
   User,
@@ -17,6 +18,7 @@ import {
   MessageCircle,
   Bell,
   Users,
+  FileText,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,6 +27,8 @@ import {
   BulkAssignResult,
   NotificationChannel,
 } from '@/services/fitnessService';
+import { sendPlanToMember } from '@/utils/sendPlanToMember';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addWeeks } from 'date-fns';
 
@@ -60,6 +64,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   const [selected, setSelected] = useState<MemberLite[]>([]);
   const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
+  const [sendPdf, setSendPdf] = useState(false);
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
