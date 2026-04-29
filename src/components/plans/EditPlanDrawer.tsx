@@ -353,6 +353,8 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
 
           <Separator className="my-4" />
 
+          <PlanScannerAccessSection value={scanner} onChange={setScanner} />
+
           {/* ===== PLAN BENEFITS (matching AddPlanDrawer pattern) ===== */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
