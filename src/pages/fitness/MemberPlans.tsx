@@ -48,7 +48,7 @@ import {
   revokeMemberAssignment,
   type MemberAssignmentRow,
 } from "@/services/fitnessService";
-import { useBranch } from "@/contexts/BranchContext";
+import { useBranchContext } from "@/contexts/BranchContext";
 import { PlanViewerSheet } from "@/components/fitness/PlanViewerSheet";
 import { SendPlanPdfMenu } from "@/components/fitness/SendPlanPdfMenu";
 import { sendPlanToMember } from "@/utils/sendPlanToMember";
@@ -84,7 +84,7 @@ function KpiCard({
 
 export default function FitnessMemberPlansPage() {
   const navigate = useNavigate();
-  const { activeBranchId } = useBranch();
+  const { activeBranchId } = useBranchContext();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
