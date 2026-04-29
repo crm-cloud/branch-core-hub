@@ -494,28 +494,6 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         </div>
       ) : (
         <>
-          {/* WhatsApp approval status filter chips (always visible — applies only to WhatsApp tab) */}
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">WhatsApp status:</span>
-            {([
-              { v: 'all',      label: 'All',       cls: 'bg-muted text-foreground' },
-              { v: 'approved', label: '✅ Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-              { v: 'pending',  label: '⏳ Pending',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-              { v: 'rejected', label: '❌ Rejected', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-              { v: 'draft',    label: '⚪ Draft',    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
-            ] as const).map((s) => (
-              <button
-                key={s.v}
-                type="button"
-                onClick={() => setStatusFilter(s.v as any)}
-                className={`text-xs px-3 py-1 rounded-full border transition ${statusFilter === s.v ? 'ring-2 ring-primary/40 ' : ''}${s.cls}`}
-                title={s.v === 'draft' ? 'Local-only template — not sent to Meta yet. WhatsApp send will be blocked.' : ''}
-              >
-                {s.label}
-                <span className="ml-1.5 opacity-70">{statusCounts[s.v] ?? 0}</span>
-              </button>
-            ))}
-          </div>
         <Tabs defaultValue="whatsapp" className="w-full">
           <TabsList className="w-full grid grid-cols-3">
             {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
@@ -532,6 +510,30 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
           </TabsList>
           {TEMPLATE_TYPES.map(({ value, label }) => (
             <TabsContent key={value} value={value}>
+              {/* WhatsApp-only approval status filter chips */}
+              {value === 'whatsapp' && (
+                <div className="flex flex-wrap items-center gap-2 mt-4 mb-3 px-1">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">Status:</span>
+                  {([
+                    { v: 'all',      label: 'All',       cls: 'bg-muted text-foreground' },
+                    { v: 'approved', label: '✅ Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                    { v: 'pending',  label: '⏳ Pending',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                    { v: 'rejected', label: '❌ Rejected', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+                    { v: 'draft',    label: '⚪ Draft',    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+                  ] as const).map((s) => (
+                    <button
+                      key={s.v}
+                      type="button"
+                      onClick={() => setStatusFilter(s.v as any)}
+                      className={`text-xs px-3 py-1 rounded-full border transition ${statusFilter === s.v ? 'ring-2 ring-primary/40 ' : ''}${s.cls}`}
+                      title={s.v === 'draft' ? 'Local-only template — not sent to Meta yet. WhatsApp send will be blocked.' : ''}
+                    >
+                      {s.label}
+                      <span className="ml-1.5 opacity-70">{statusCounts[s.v] ?? 0}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <Card>
                 <CardContent className="pt-4">
                   {!groupedTemplates[value]?.length ? (
