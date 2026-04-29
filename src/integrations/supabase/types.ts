@@ -1669,6 +1669,13 @@ export type Database = {
             referencedRelation: "templates"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "communication_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "v_template_with_meta_status"
+            referencedColumns: ["id"]
+          },
         ]
       }
       communication_retry_queue: {
@@ -8368,6 +8375,13 @@ export type Database = {
             referencedRelation: "templates"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_triggers_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "v_template_with_meta_status"
+            referencedColumns: ["id"]
+          },
         ]
       }
       workout_plans: {
@@ -8629,6 +8643,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "trainers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_template_with_meta_status: {
+        Row: {
+          approval_status: string | null
+          branch_id: string | null
+          content: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          meta_rejection_reason: string | null
+          meta_template_name: string | null
+          meta_template_status: string | null
+          name: string | null
+          subject: string | null
+          trigger_event: string | null
+          type: string | null
+          updated_at: string | null
+          whatsapp_category: string | null
+          whatsapp_language: string | null
+          whatsapp_meta_status: string | null
+          whatsapp_rejected_reason: string | null
+          whatsapp_template_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "templates_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"

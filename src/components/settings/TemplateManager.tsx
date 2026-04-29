@@ -153,15 +153,18 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     is_active: true,
   });
 
+  const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all');
+
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['communication-templates'],
     queryFn: async () => {
+      // Use the unified status view so we get approval_status (Approved/Pending/Rejected/Draft)
       const { data, error } = await supabase
-        .from('templates')
+        .from('v_template_with_meta_status' as any)
         .select('*')
         .order('type', { ascending: true });
       if (error) throw error;
-      return data as Template[];
+      return (data || []) as any[];
     },
   });
 
@@ -449,7 +452,22 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     }
   };
 
-  const groupedTemplates = templates.reduce((acc, t) => {
+  // Status counts (across all channels — relevant only for whatsapp but shown unified)
+  const statusCounts = templates.reduce((acc: Record<string, number>, t: any) => {
+    const s = (t.approval_status as string) || (t.type === 'whatsapp' ? 'draft' : 'not_applicable');
+    acc[s] = (acc[s] || 0) + 1;
+    acc.all = (acc.all || 0) + 1;
+    return acc;
+  }, {});
+
+  // Apply status filter (only restricts WhatsApp templates; SMS/Email always pass)
+  const filteredTemplates = templates.filter((t: any) => {
+    if (statusFilter === 'all') return true;
+    if (t.type !== 'whatsapp') return false; // status sub-tabs are WhatsApp-specific
+    return (t.approval_status || 'draft') === statusFilter;
+  });
+
+  const groupedTemplates = filteredTemplates.reduce((acc: Record<string, Template[]>, t: any) => {
     if (!acc[t.type]) acc[t.type] = [];
     acc[t.type].push(t);
     return acc;
@@ -475,6 +493,29 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : (
+        <>
+          {/* WhatsApp approval status filter chips (always visible — applies only to WhatsApp tab) */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">WhatsApp status:</span>
+            {([
+              { v: 'all',      label: 'All',       cls: 'bg-muted text-foreground' },
+              { v: 'approved', label: '✅ Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+              { v: 'pending',  label: '⏳ Pending',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+              { v: 'rejected', label: '❌ Rejected', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+              { v: 'draft',    label: '⚪ Draft',    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+            ] as const).map((s) => (
+              <button
+                key={s.v}
+                type="button"
+                onClick={() => setStatusFilter(s.v as any)}
+                className={`text-xs px-3 py-1 rounded-full border transition ${statusFilter === s.v ? 'ring-2 ring-primary/40 ' : ''}${s.cls}`}
+                title={s.v === 'draft' ? 'Local-only template — not sent to Meta yet. WhatsApp send will be blocked.' : ''}
+              >
+                {s.label}
+                <span className="ml-1.5 opacity-70">{statusCounts[s.v] ?? 0}</span>
+              </button>
+            ))}
+          </div>
         <Tabs defaultValue="whatsapp" className="w-full">
           <TabsList className="w-full grid grid-cols-3">
             {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
@@ -566,6 +607,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
             </TabsContent>
           ))}
         </Tabs>
+        </>
       )}
 
       {/* Template Editor Drawer */}

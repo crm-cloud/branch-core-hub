@@ -1,4 +1,4 @@
-// v1.0.0 — Auto-deliver body/posture scan reports to member (Email + WhatsApp + in-app)
+// v1.1.0 — Auto-deliver body/posture scan reports (templates-driven, logged to communication_logs)
 // Triggered fire-and-forget by howbody-body-webhook / howbody-posture-webhook after a row is upserted.
 // Idempotent on (report_id, kind): repeated invocations skip already-sent channels.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -210,8 +210,15 @@ Deno.serve(async (req) => {
       .single();
     const deliveryId = delivery?.id;
 
-    // Build human-readable summary
+    // Build human-readable summary + template variables
     let summaryLines: string[] = [];
+    const templateVars: Record<string, string> = {
+      member_name: memberName,
+      member_code: member.member_code || "",
+      branch_name: branchName,
+      report_url: pdfUrl || "",
+      scan_type: kind === "body" ? "body" : "posture",
+    };
     if (kind === "body") {
       summaryLines = [
         `Weight: ${report.weight ?? "—"} kg`,
@@ -219,29 +226,87 @@ Deno.serve(async (req) => {
         `Body Fat: ${report.pbf ?? "—"}%`,
         `Health Score: ${report.health_score ?? "—"}`,
       ];
+      Object.assign(templateVars, {
+        weight: String(report.weight ?? "—"),
+        bmi: String(report.bmi ?? "—"),
+        body_fat: String(report.pbf ?? "—"),
+        health_score: String(report.health_score ?? "—"),
+      });
     } else {
       summaryLines = [
         `Posture Score: ${report.score ?? "—"}`,
         `Body Slope: ${report.body_slope ?? "—"}`,
       ];
+      Object.assign(templateVars, {
+        posture_score: String(report.score ?? "—"),
+        body_slope: String(report.body_slope ?? "—"),
+      });
     }
+    templateVars.summary = summaryLines.join(" · ");
 
-    const subject = kind === "body"
-      ? `Your Body Scan Report — ${branchName}`
-      : `Your Posture Scan Report — ${branchName}`;
-    const greetingHtml = `
-      <h2 style="margin:0 0 12px">Hi ${memberName},</h2>
-      <p>Your latest ${kind === "body" ? "body composition" : "posture"} scan from <strong>${branchName}</strong> is ready.</p>
-      <ul style="line-height:1.8">${summaryLines.map((s) => `<li>${s}</li>`).join("")}</ul>
-      ${pdfUrl ? `<p style="margin-top:18px"><a class="cta-btn" href="${pdfUrl}">Download Full Report (PDF)</a></p>` : ""}
-      <p style="color:#888;font-size:12px;margin-top:18px">You can also view your scan history any time inside your member portal under Progress.</p>
-    `;
+    const triggerEvent = kind === "body" ? "body_scan_ready" : "posture_scan_ready";
 
-    const captionWa = [
-      `Hi ${memberName}, your ${kind === "body" ? "body scan" : "posture scan"} from ${branchName} is ready.`,
-      ...summaryLines,
-      pdfUrl ? `\nReport: ${pdfUrl}` : "",
-    ].filter(Boolean).join("\n");
+    // Pull member-facing templates by trigger_event + branch
+    const { data: memberTemplates } = await supabase
+      .from("templates")
+      .select("id, type, subject, content")
+      .eq("branch_id", member.branch_id)
+      .eq("trigger_event", triggerEvent)
+      .eq("is_active", true);
+
+    const renderTpl = (s: string | null | undefined) =>
+      (s || "").replace(/\{\{(\w+)\}\}/g, (_m, k) => templateVars[k] ?? "");
+
+    const emailTpl = memberTemplates?.find((t: any) => t.type === "email");
+    const waTpl = memberTemplates?.find((t: any) => t.type === "whatsapp");
+
+    const subject = emailTpl
+      ? renderTpl(emailTpl.subject) || (kind === "body" ? `Your Body Scan Report — ${branchName}` : `Your Posture Scan Report — ${branchName}`)
+      : (kind === "body" ? `Your Body Scan Report — ${branchName}` : `Your Posture Scan Report — ${branchName}`);
+
+    const greetingHtml = emailTpl
+      ? renderTpl(emailTpl.content)
+      : `<h2>Hi ${memberName},</h2><p>Your ${kind === "body" ? "body composition" : "posture"} scan from <strong>${branchName}</strong> is ready.</p><ul>${summaryLines.map((s) => `<li>${s}</li>`).join("")}</ul>${pdfUrl ? `<p><a href="${pdfUrl}">Download Full Report (PDF)</a></p>` : ""}`;
+
+    const captionWa = waTpl
+      ? renderTpl(waTpl.content)
+      : [`Hi ${memberName}, your ${kind === "body" ? "body scan" : "posture scan"} from ${branchName} is ready.`, ...summaryLines, pdfUrl ? `\nReport: ${pdfUrl}` : ""].filter(Boolean).join("\n");
+
+    // Helper to write a communication_logs row for this delivery
+    async function logComm(opts: {
+      type: 'email' | 'whatsapp' | 'sms';
+      recipient: string;
+      content: string;
+      subject?: string | null;
+      template_id?: string | null;
+      status: 'sent' | 'failed';
+      error?: string | null;
+      provider_message_id?: string | null;
+    }) {
+      try {
+        await supabase.from("communication_logs").insert({
+          branch_id: member.branch_id,
+          member_id: member.id,
+          type: opts.type,
+          recipient: opts.recipient,
+          subject: opts.subject ?? null,
+          content: opts.content,
+          template_id: opts.template_id ?? null,
+          status: opts.status,
+          delivery_status: opts.status === 'sent' ? 'sent' : 'failed',
+          provider_message_id: opts.provider_message_id ?? null,
+          error_message: opts.error ?? null,
+          delivery_metadata: {
+            scan_report_delivery_id: deliveryId,
+            report_id,
+            kind,
+            trigger_event: triggerEvent,
+          },
+        });
+      } catch (e) {
+        console.error("communication_logs insert failed:", e);
+      }
+    }
 
     // ── Member Email ────────────────────────────────────────────────
     let emailStatus = "skipped";
@@ -259,8 +324,18 @@ Deno.serve(async (req) => {
         });
         emailStatus = r.error ? "failed" : "sent";
         if (r.error) emailError = r.error.message || String(r.error);
+        await logComm({
+          type: 'email',
+          recipient: memberEmail,
+          content: greetingHtml,
+          subject,
+          template_id: emailTpl?.id || null,
+          status: emailStatus === 'sent' ? 'sent' : 'failed',
+          error: emailError,
+        });
       } catch (e) {
         emailStatus = "failed"; emailError = String(e);
+        await logComm({ type: 'email', recipient: memberEmail, content: greetingHtml, subject, template_id: emailTpl?.id || null, status: 'failed', error: emailError });
       }
     }
 
@@ -304,8 +379,17 @@ Deno.serve(async (req) => {
           waStatus = "sent";
           await supabase.from("whatsapp_messages").update({ status: "sent" }).eq("id", msgRow.id);
         }
+        await logComm({
+          type: 'whatsapp',
+          recipient: memberPhone,
+          content: captionWa,
+          template_id: waTpl?.id || null,
+          status: waStatus === 'sent' ? 'sent' : 'failed',
+          error: waError,
+        });
       } catch (e) {
         waStatus = "failed"; waError = String(e);
+        await logComm({ type: 'whatsapp', recipient: memberPhone, content: captionWa, template_id: waTpl?.id || null, status: 'failed', error: waError });
       }
     }
 
