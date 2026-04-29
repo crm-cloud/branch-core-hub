@@ -177,9 +177,16 @@ function PlanDetailPanel({
                 <p className="text-white/80 text-sm mt-1.5 max-w-xs">{plan.description}</p>
               )}
             </div>
-            {!plan.is_active && (
-              <Badge className="bg-white/20 text-white border-white/30 shrink-0">Inactive</Badge>
-            )}
+            <div className="flex flex-col gap-1 items-end">
+              {!plan.is_active && (
+                <Badge className="bg-white/20 text-white border-white/30 shrink-0">Inactive</Badge>
+              )}
+              {(plan.body_scan_allowed || plan.posture_scan_allowed) && (
+                <Badge className="bg-white/20 text-white border-white/30 shrink-0 text-[10px]">
+                  HOWBODY Scan{plan.scans_per_month ? ` · ${plan.scans_per_month}/mo` : ''}
+                </Badge>
+              )}
+            </div>
           </div>
           <div className="flex items-baseline gap-2 mt-4">
             <span className="text-4xl font-extrabold tracking-tight">
