@@ -1,5 +1,5 @@
-// HOWBODY scanner integration settings panel.
-// Shows the URLs to give to the HOWBODY team and a connection test button.
+// Body Scanner integration settings panel.
+// Shows the URLs to give to the device vendor and a connection test button.
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,9 @@ export function HowbodySettings() {
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const urls = [
-    { label: "QR Login URL", value: `${origin}/howbody-login`, hint: "Static base — HOWBODY appends ?equipmentNo=…&scanId=…" },
-    { label: "Body Composition Webhook", value: `${SUPABASE_URL}/functions/v1/howbody-body-webhook`, hint: "Receives body scan reports" },
-    { label: "Posture Webhook", value: `${SUPABASE_URL}/functions/v1/howbody-posture-webhook`, hint: "Receives posture scan reports" },
+    { label: "QR Login URL", value: `${origin}/scan-login`, hint: "Static base — the scanner appends ?equipmentNo=…&scanId=…" },
+    { label: "Body Composition Webhook", value: `${SUPABASE_URL}/functions/v1/howbody-body-webhook`, hint: "Receives body composition results" },
+    { label: "Posture Webhook", value: `${SUPABASE_URL}/functions/v1/howbody-posture-webhook`, hint: "Receives posture analysis results" },
   ];
 
   function copy(text: string) {
@@ -48,13 +48,13 @@ export function HowbodySettings() {
           <div className="flex items-start gap-3">
             <div className="rounded-full bg-teal-50 p-2 text-teal-600"><ScanLine className="h-5 w-5" /></div>
             <div>
-              <h2 className="text-lg font-bold">HOWBODY Body Scanner</h2>
+              <h2 className="text-lg font-bold">Body Scanner Integration</h2>
               <p className="text-sm text-muted-foreground">
-                Provide these URLs to the HOWBODY team to enable QR login and report delivery.
+                Provide these URLs to the device vendor to enable QR login and automatic report delivery.
               </p>
             </div>
           </div>
-          <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-700">580 / S580</Badge>
+          <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-700">Active</Badge>
         </div>
 
         <div className="mt-6 space-y-4">
@@ -76,7 +76,7 @@ export function HowbodySettings() {
       <Card className="rounded-2xl p-6 shadow-lg shadow-slate-200/50">
         <h3 className="text-base font-bold">Test connection</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Calls HOWBODY's <span className="font-mono">/openApi/getToken</span> to verify your credentials.
+          Verifies the configured device-vendor credentials.
         </p>
         <Button onClick={runTest} disabled={testing} className="mt-4 bg-teal-500 hover:bg-teal-600">
           {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -88,6 +88,9 @@ export function HowbodySettings() {
             <span>{testResult.msg}</span>
           </div>
         )}
+        <p className="mt-4 text-[11px] text-slate-400">
+          Vendor: HOWBODY S580 (admin reference only — not visible to members).
+        </p>
       </Card>
     </div>
   );
