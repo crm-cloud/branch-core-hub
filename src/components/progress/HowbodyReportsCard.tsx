@@ -43,7 +43,7 @@ export function HowbodyReportsCard({ memberId }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Scan className="h-5 w-5 text-primary" />
-            HOWBODY Scan Reports
+            Body Scan Reports
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -55,7 +55,7 @@ export function HowbodyReportsCard({ memberId }: Props) {
             <div className="rounded-xl bg-muted/40 p-6 text-center">
               <Scan className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                No scans yet. Use the HOWBODY device at your gym to record your first body composition or posture scan.
+                No scans yet. Use the body scanner at your gym to record your first body composition or posture scan.
               </p>
             </div>
           ) : (

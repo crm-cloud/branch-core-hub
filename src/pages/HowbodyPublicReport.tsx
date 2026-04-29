@@ -62,7 +62,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-teal-50/40 px-4 py-8">
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-teal-600">HOWBODY Report</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-teal-600">Incline Body Scan Report</p>
         </div>
         {children}
         <p className="text-center text-xs text-slate-400">The Incline Life by Incline</p>
