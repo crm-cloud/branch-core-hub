@@ -30,6 +30,8 @@ export interface FitnessPlanTemplate {
   content: FitnessPlanContent;
   is_public: boolean | null;
   is_active: boolean | null;
+  is_common?: boolean | null;
+  system_template?: boolean | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
