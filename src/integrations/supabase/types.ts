@@ -8839,6 +8839,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      howbody_scan_quota: {
+        Args: { _kind: string; _member_id: string }
+        Returns: Json
+      }
       issue_referral_reward: {
         Args: {
           p_actor_user_id?: string
@@ -9149,6 +9153,8 @@ export type Database = {
         | "sauna_session"
         | "cardio_area"
         | "functional_training"
+        | "body_scan"
+        | "posture_scan"
       class_booking_status:
         | "booked"
         | "attended"
@@ -9412,6 +9418,8 @@ export const Constants = {
         "sauna_session",
         "cardio_area",
         "functional_training",
+        "body_scan",
+        "posture_scan",
       ],
       class_booking_status: [
         "booked",
