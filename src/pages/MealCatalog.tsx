@@ -12,7 +12,7 @@ import {
   ResponsiveSheetTitle,
   ResponsiveSheetFooter,
 } from '@/components/ui/ResponsiveSheet';
-import { Plus, Trash2, Edit, UtensilsCrossed, Loader2, Search } from 'lucide-react';
+import { Plus, Trash2, Edit, UtensilsCrossed, Loader2, Search, Eye } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchMealCatalog,
@@ -57,6 +57,7 @@ export default function MealCatalog() {
   const [filterDiet, setFilterDiet] = useState<string>('all');
   const [filterCuisine, setFilterCuisine] = useState<string>('all');
   const [editing, setEditing] = useState<MealCatalogEntry | null>(null);
+  const [viewing, setViewing] = useState<MealCatalogEntry | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
   const [draft, setDraft] = useState<typeof EMPTY>(EMPTY);
 
@@ -187,10 +188,13 @@ export default function MealCatalog() {
                           {m.default_quantity && <p className="text-xs text-muted-foreground">{m.default_quantity}</p>}
                         </div>
                         <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)}>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setViewing(m)} title="View">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)} title="Edit">
                             <Edit className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(m.id)}>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(m.id)} title="Delete">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
