@@ -45,36 +45,19 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Member is not active" }, 403);
     }
 
-    // Active membership + plan capabilities
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: ms } = await sb
-      .from("memberships")
-      .select("id, plan_id, status, end_date, membership_plans:plan_id(body_scan_allowed,posture_scan_allowed,scans_per_month)")
-      .eq("member_id", memberId)
-      .eq("status", "active")
-      .gte("end_date", today)
-      .order("end_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const plan: any = ms?.membership_plans;
-    if (!plan || (!plan.body_scan_allowed && !plan.posture_scan_allowed)) {
-      return json({ ok: false, error: "Your current plan does not include body scanning. Please ask staff." }, 403);
-    }
-
-    // Monthly scan quota (combined)
-    if (plan.scans_per_month && plan.scans_per_month > 0) {
-      const monthStart = new Date();
-      monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-      const monthIso = monthStart.toISOString();
-      const [{ count: bodyCount }, { count: postureCount }] = await Promise.all([
-        sb.from("howbody_body_reports").select("id", { count: "exact", head: true }).eq("member_id", memberId).gte("created_at", monthIso),
-        sb.from("howbody_posture_reports").select("id", { count: "exact", head: true }).eq("member_id", memberId).gte("created_at", monthIso),
-      ]);
-      const used = (bodyCount || 0) + (postureCount || 0);
-      if (used >= plan.scans_per_month) {
-        return json({ ok: false, error: `Monthly scan limit (${plan.scans_per_month}) reached.` }, 403);
-      }
+    // Unified scan quota: plan benefits + add-on credits (body OR posture)
+    const [bodyQ, postureQ] = await Promise.all([
+      sb.rpc("howbody_scan_quota", { _member_id: memberId, _kind: "body" }),
+      sb.rpc("howbody_scan_quota", { _member_id: memberId, _kind: "posture" }),
+    ]);
+    const bodyAllowed = (bodyQ.data as any)?.allowed === true;
+    const postureAllowed = (postureQ.data as any)?.allowed === true;
+    if (!bodyAllowed && !postureAllowed) {
+      return json({
+        ok: false,
+        error: "Your current plan does not include body or posture scans, and you have no add-on scans remaining. Please ask staff.",
+        quota: { body: bodyQ.data, posture: postureQ.data },
+      }, 403);
     }
 
     const profile: any = member.profiles || {};

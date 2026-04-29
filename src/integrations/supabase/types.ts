@@ -5434,7 +5434,6 @@ export type Database = {
       membership_plans: {
         Row: {
           admission_fee: number | null
-          body_scan_allowed: boolean
           branch_id: string | null
           created_at: string
           description: string | null
@@ -5451,15 +5450,12 @@ export type Database = {
           is_visible_to_members: boolean | null
           max_freeze_days: number | null
           name: string
-          posture_scan_allowed: boolean
           price: number
           public_report_link: boolean
-          scans_per_month: number
           updated_at: string
         }
         Insert: {
           admission_fee?: number | null
-          body_scan_allowed?: boolean
           branch_id?: string | null
           created_at?: string
           description?: string | null
@@ -5476,15 +5472,12 @@ export type Database = {
           is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name: string
-          posture_scan_allowed?: boolean
           price: number
           public_report_link?: boolean
-          scans_per_month?: number
           updated_at?: string
         }
         Update: {
           admission_fee?: number | null
-          body_scan_allowed?: boolean
           branch_id?: string | null
           created_at?: string
           description?: string | null
@@ -5501,10 +5494,8 @@ export type Database = {
           is_visible_to_members?: boolean | null
           max_freeze_days?: number | null
           name?: string
-          posture_scan_allowed?: boolean
           price?: number
           public_report_link?: boolean
-          scans_per_month?: number
           updated_at?: string
         }
         Relationships: [
@@ -8741,6 +8732,10 @@ export type Database = {
           p_order_total: number
         }
         Returns: Json
+      }
+      consume_scan_credit_if_needed: {
+        Args: { _kind: string; _member_id: string }
+        Returns: boolean
       }
       convert_lead_to_member: {
         Args: {

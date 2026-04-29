@@ -17,7 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import type { MembershipPlanWithBenefits } from '@/types/membership';
-import { PlanScannerAccessSection, type ScannerAccessValue } from './PlanScannerAccessSection';
+
 
 interface EditPlanDrawerProps {
   open: boolean;
@@ -58,11 +58,6 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
     includes_free_locker: false,
     free_locker_size: 'medium',
   });
-  const [scanner, setScanner] = useState<ScannerAccessValue>({
-    body_scan_allowed: false,
-    posture_scan_allowed: false,
-    scans_per_month: 0,
-  });
 
   const [selectedBenefits, setSelectedBenefits] = useState<SelectedBenefit[]>([]);
 
@@ -82,11 +77,6 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         is_visible_to_members: (plan as any).is_visible_to_members ?? true,
         includes_free_locker: (plan as any).includes_free_locker ?? false,
         free_locker_size: (plan as any).free_locker_size || 'medium',
-      });
-      setScanner({
-        body_scan_allowed: (plan as any).body_scan_allowed ?? false,
-        posture_scan_allowed: (plan as any).posture_scan_allowed ?? false,
-        scans_per_month: (plan as any).scans_per_month ?? 0,
       });
     }
   }, [plan]);
@@ -171,16 +161,6 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         },
       });
 
-      // Persist scanner-access fields directly (not in the typed updatePlan signature)
-      const { error: scanErr } = await supabase
-        .from('membership_plans')
-        .update({
-          body_scan_allowed: scanner.body_scan_allowed,
-          posture_scan_allowed: scanner.posture_scan_allowed,
-          scans_per_month: (scanner.body_scan_allowed || scanner.posture_scan_allowed) ? scanner.scans_per_month : null,
-        } as any)
-        .eq('id', plan.id);
-      if (scanErr) throw scanErr;
 
       // Delete existing benefits and re-insert
       const { error: deleteError } = await supabase.from('plan_benefits').delete().eq('plan_id', plan.id);
@@ -351,9 +331,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
             </div>
           )}
 
-          <Separator className="my-4" />
 
-          <PlanScannerAccessSection value={scanner} onChange={setScanner} />
 
           {/* ===== PLAN BENEFITS (matching AddPlanDrawer pattern) ===== */}
           <div className="space-y-3">

@@ -16,7 +16,7 @@ import { Loader2, ExternalLink, Plus, X, Infinity as InfinityIcon } from 'lucide
 import { useNavigate } from 'react-router-dom';
 import { getBenefitIcon } from '@/lib/benefitIcons';
 import { safeBenefitEnum } from '@/lib/benefitEnums';
-import { PlanScannerAccessSection, type ScannerAccessValue } from './PlanScannerAccessSection';
+
 
 interface AddPlanDrawerProps {
   open: boolean;
@@ -53,11 +53,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
     is_visible_to_members: true,
     includes_free_locker: false,
     free_locker_size: 'medium',
-  });
-  const [scanner, setScanner] = useState<ScannerAccessValue>({
-    body_scan_allowed: false,
-    posture_scan_allowed: false,
-    scans_per_month: 0,
   });
 
   const [selectedBenefits, setSelectedBenefits] = useState<SelectedBenefit[]>([]);
@@ -113,9 +108,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         branch_id: branchId || null,
         includes_free_locker: formData.includes_free_locker,
         free_locker_size: formData.includes_free_locker ? formData.free_locker_size : null,
-        body_scan_allowed: scanner.body_scan_allowed,
-        posture_scan_allowed: scanner.posture_scan_allowed,
-        scans_per_month: (scanner.body_scan_allowed || scanner.posture_scan_allowed) ? scanner.scans_per_month : null,
       }).select().single();
 
       if (planError) throw planError;
@@ -144,7 +136,7 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
         admission_fee: 0, max_freeze_days: 0, is_transferable: false, is_active: true,
         is_visible_to_members: true, includes_free_locker: false, free_locker_size: 'medium',
       });
-      setScanner({ body_scan_allowed: false, posture_scan_allowed: false, scans_per_month: 0 });
+      
       setSelectedBenefits([]);
     } catch (error: any) {
       console.error('Error creating plan:', error);
@@ -292,9 +284,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
               </Select>
             </div>
           )}
-
-          <PlanScannerAccessSection value={scanner} onChange={setScanner} />
-
           {/* ===== PLAN BENEFITS ===== */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">

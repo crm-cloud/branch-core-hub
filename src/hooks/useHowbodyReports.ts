@@ -51,8 +51,10 @@ export function useHowbodyReports(memberId?: string, limit = 12) {
 
 export interface ScanQuota {
   kind: string;
-  plan_allowed: boolean;
+  benefit_code: string;
   plan_limit: number;
+  plan_frequency: string | null;
+  used_this_period: number;
   used_this_month: number;
   plan_remaining: number;
   addon_remaining: number;

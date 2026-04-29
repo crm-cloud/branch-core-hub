@@ -1,136 +1,99 @@
+## Audit finding
 
-## Goal
+You're right — this is inconsistent. The project already has a consistent pattern:
 
-Tie HOWBODY scans into the existing plan/benefit/add-on system so admins can:
-1. Allow scans on a plan, set a monthly cap, and sell extra scans as add-on packs.
-2. Auto-mirror every body scan into `member_measurements` so the existing Progress tab "just works".
-3. Let members view & download their HOWBODY reports from `/my-progress`.
+| Service | How it's modeled today |
+|---|---|
+| Sauna (M/F) | `benefit_types` row → attached to plans via `plan_benefits` (with frequency + limit) → sold à la carte via `benefit_packages` |
+| Ice Bath (M/F) | same |
+| **3D Body Scanning** | already exists as a `benefit_types` row (category `service`, code `3d_body_scanning`) |
 
-Builds on what already exists (`howbody_body_reports`, `howbody_posture_reports`, `member_measurements`, `benefit_packages`, `membership_plans.body_scan_allowed/posture_scan_allowed/scans_per_month`).
+But in the previous step I added **direct columns** (`body_scan_allowed`, `posture_scan_allowed`, `scans_per_month`) on `membership_plans` and a separate quota engine that reads them. That created two parallel systems for the same concept.
 
----
-
-## 1. Plans ↔ Scans (Admin UI)
-
-**Plans → Edit Plan drawer** (`src/components/plans/EditPlanDrawer.tsx` + AddPlanDrawer):
-- Add a "Body Scanner Access" section with:
-  - Toggle: Body Composition Scan allowed
-  - Toggle: Posture Scan allowed
-  - Number: Scans per month (0 = unlimited when either toggle on; blank = none)
-- Persist directly to `membership_plans.body_scan_allowed / posture_scan_allowed / scans_per_month` (columns already exist).
-- Show a small "Body Scan" badge on each plan card in `Plans.tsx` when enabled.
-
-**Plans → Add-On Packages tab** (`BenefitPackagesPanel` + `AddBenefitPackageDrawer`):
-- Seed two new `benefit_types` rows per branch on first use: `body_scan` and `posture_scan` (category: `wellness`, `is_bookable=false`).
-- The existing add-on drawer already supports any benefit_type, so admins can create e.g. "5 Extra Body Scans – ₹999 / 60 days".
-- These are sold through the existing `MemberStore` "Buy Add-Ons" flow — no new checkout needed.
+**Decision:** unify HOWBODY scans onto the existing benefit-type pattern. Treat them like sauna/ice-bath: one benefit type per scan kind, attached to a plan via `plan_benefits` (with monthly limit), sold as add-on credits via `benefit_packages` → `member_benefit_credits`. Remove the parallel plan flags.
 
 ---
 
-## 2. Scan Quota Engine (single source of truth)
+## What changes
 
-New SQL function `public.howbody_scan_quota(_member_id uuid, _kind text)` returns:
-```
-{ allowed: boolean, used_this_month: int, plan_limit: int, addon_remaining: int, total_remaining: int, reason: text }
-```
-Logic:
-1. Find active membership + plan capability flag for `_kind` (`body` / `posture`). If not allowed → `allowed=false, reason='plan_no_scan'`.
-2. Count scans this calendar month from `howbody_body_reports` / `howbody_posture_reports`.
-3. Sum unconsumed add-on credits from `member_benefits` where `benefit_type IN ('body_scan','posture_scan')` and not expired.
-4. `allowed = (plan_limit=0) OR (used < plan_limit) OR (addon_remaining > 0)`.
+### 1. Database — collapse to one model
 
-Used by:
-- `howbody-bind-user` edge function (replace inline counting in lines 60-78 with one RPC call).
-- New `MyProgress` UI badge ("3 of 5 scans used this month • 2 add-on credits").
+**Migration:**
+- Reuse the existing `3d_body_scanning` benefit type as **Body Composition Scan** (rename label, keep code), and create a sibling **Posture Scan** type (code `howbody_posture`, category `service`, `is_bookable=false` — booking happens at the device, not via the slot system).
+- Drop the parallel columns added last round: `membership_plans.body_scan_allowed`, `posture_scan_allowed`, `scans_per_month`. Drop the values from `benefit_type` enum if used (`body_scan`, `posture_scan`) — they're not needed since we use `benefit_type_id` (the FK), not the enum, for these.
+- Rewrite `public.howbody_scan_quota(_member_id, _kind)` to read from the unified ledger:
+  1. plan limit = sum of `plan_benefits.limit_count` for that benefit type on the active membership (interpreted as monthly when `frequency='monthly'`, total when `'per_membership'`, etc.)
+  2. used = count of HOWBODY reports in the relevant period
+  3. add-on remaining = sum of `member_benefit_credits.credits_remaining` matching the benefit type
+- Replace the `howbody_*_to_measurements` mirror trigger so it also **decrements one credit** from the oldest non-expired `member_benefit_credits` row when the plan quota is exhausted (FIFO).
 
-Add-on consumption: when a webhook arrives and the plan quota is already exhausted, decrement one `member_benefits` credit (FIFO oldest expiry) inside the body/posture webhook handlers.
+### 2. Admin UI — remove the parallel "Scanner Access" section
 
----
+**Plans → Add/Edit Plan drawer:**
+- Delete the `PlanScannerAccessSection` I added.
+- Admins simply add the **Body Composition Scan** or **Posture Scan** benefit type using the existing benefit picker, and set the limit/frequency exactly like sauna or ice bath. No special UI.
+- The Plan card "HOWBODY Scan" badge stays, but it's now derived: shown when any benefit on the plan has `benefit_type_id` matching the scan types.
 
-## 3. Auto-mirror Scans → `member_measurements`
+**Plans → Add-On Packages tab:**
+- No change. Admins create a "5× Body Scans / 60 days" pack via the existing `AddBenefitPackageDrawer` — same flow used for "10 Sauna Sessions".
 
-Both webhook functions (`howbody-body-webhook`, `howbody-posture-webhook`) get a new step after the report upsert:
+**Settings → Benefit Types:**
+- The seeded `Body Composition Scan` and `Posture Scan` rows are managed exactly like sauna/ice-bath rows. Admins can rename, deactivate, or set icons.
 
-**Body webhook** maps:
-- `weight` → `weight_kg`
-- `pbf` → `body_fat_percentage`
-- (height stays from member's last manual entry; HOWBODY doesn't push height)
-- Sets `recorded_at = test_time`, `recorded_by = NULL`, `notes = 'HOWBODY auto-sync'`
+### 3. Edge functions — read the unified quota
 
-**Posture webhook** updates the same row (same `data_key` window) with:
-- `posture_type`, `body_shape_profile` (already columns in `member_measurements`)
+- `howbody-bind-user`: still calls the new `howbody_scan_quota` RPC, which now uses the benefit ledger underneath. Same external behavior.
+- `howbody-body-webhook` / `howbody-posture-webhook`: after the upsert, call new SQL helper `consume_scan_credit_if_needed(_member_id, _kind)` which:
+  - Checks if plan benefit covers this scan in the current period.
+  - If not, decrements oldest valid `member_benefit_credits` row by 1.
+  - If neither, logs the scan anyway but flags it `unauthorized=true` (admin sees in webhook log).
 
-Strategy: upsert into `member_measurements` keyed by `(member_id, recorded_at)` rounded to the minute, so a body+posture pair from one session merges into one measurement row. This means the existing `MyProgress` charts and 3D avatar update automatically — zero UI work for the chart side.
+### 4. Member UI — no visible change
 
----
+- `ScanQuotaStrip` and `HowbodyReportsCard` keep working — they call the same `useScanQuota` hook, which reads the rewritten RPC.
+- Display labels switch to plain "Body Composition · 2 of 5 this month" — driven by the benefit type's `name` column.
 
-## 4. Member Progress Tab — HOWBODY surface
+### 5. Member self-purchase
 
-`src/pages/MyProgress.tsx`:
-- Add a **"Body Scan Reports"** card listing the last 6 `howbody_body_reports` + `howbody_posture_reports` for the member.
-- Each row shows: date, type icon (Body / Posture), key metric (Health Score or Posture Type), and two buttons:
-  - **View** → opens a new in-app drawer `HowbodyReportDrawer` rendering the same content blocks as `HowbodyPublicReport` but inside `AppLayout` (no token needed — RLS ensures member can read own rows).
-  - **Download PDF** → calls new edge function `howbody-report-pdf` (returns a styled HTML→PDF using existing PDF pattern in the project). File saved with name `Incline-BodyReport-<date>.pdf`.
-- Add a **scan-quota strip** at the top: "Body Scans: 2/5 this month · Posture: 1/5 · Add-on credits: 0 · [Buy More]" → links to `/store?tab=addons`.
-- New `useHowbodyReports(memberId)` hook handles the dual-table fetch with TanStack Query.
-
-RLS: add `SELECT` policy on `howbody_body_reports` / `howbody_posture_reports` for `auth.uid() = (SELECT user_id FROM members WHERE id = member_id)`.
+- "Buy Add-On Scans" already routes to `/store`. The existing add-on flow (which sells sauna/ice-bath credits) will sell scan credits the same way once the seeded benefit packages exist.
+- Optional: add a "Body Scanner" filter chip in the add-ons store for discoverability.
 
 ---
 
-## 5. PDF Download Edge Function
+## Why this is the right call
 
-New `supabase/functions/howbody-report-pdf/index.ts`:
-- Auth required (`getClaims`); validate the requesting user owns the member row.
-- Inputs: `{ dataKey, reportType }`.
-- Renders branded HTML (Incline header, member name, scan datetime, all metrics, recommendations) and returns a PDF via `https://esm.sh/pdf-lib` or the existing receipt generator pattern (whichever the project already uses — will reuse to stay consistent).
-- Public report page also gets a "Download PDF" button that calls a sibling public endpoint validated by the opaque token.
-
----
-
-## 6. Notifications
-
-When a body or posture webhook completes, insert a row into `notifications` for the member: "Your new HOWBODY scan is ready — view in Progress." This plugs into the existing realtime bell.
+1. **Single source of truth.** Plan benefits, add-on credits, and consumption all flow through `plan_benefits` + `member_benefit_credits`. No special-case columns on `membership_plans`.
+2. **Admins already know the pattern.** They configure scans the same way they configure sauna/ice-bath/PT — no new mental model.
+3. **Receipts, GST, and the ledger work for free.** Add-on scan packs go through the same invoicing pipeline. No bespoke billing.
+4. **Future-proof.** Adding "InBody scan", "VO2 max test", or any other measurement service is just one more benefit type row — no schema change.
+5. **Removes the duplicate `body_scan` / `posture_scan` enum values** I added — they were never needed because we identify the type by FK, not by enum.
 
 ---
 
 ## Technical Section
 
-**Migrations**
-- Add `SELECT` RLS policies on `howbody_body_reports` and `howbody_posture_reports` for the owning member.
-- Insert seed `benefit_types` rows (`body_scan`, `posture_scan`) per branch (idempotent ON CONFLICT).
-- Create `public.howbody_scan_quota(_member_id uuid, _kind text) RETURNS jsonb` (SECURITY DEFINER, search_path=public).
-- Create trigger function `howbody_mirror_to_measurements()` on `howbody_body_reports` AFTER INSERT/UPDATE → upserts into `member_measurements`. Same for posture (updates only the posture/shape columns).
+**Migration steps**
+1. `UPDATE benefit_types SET name='Body Composition Scan', icon='Scan' WHERE code='3d_body_scanning';`
+2. `INSERT` Posture Scan benefit type per branch (skip on conflict).
+3. `ALTER TABLE membership_plans DROP COLUMN body_scan_allowed, DROP COLUMN posture_scan_allowed, DROP COLUMN scans_per_month;`
+4. `CREATE OR REPLACE FUNCTION howbody_scan_quota` — rewrite to read from `plan_benefits` (joined to active membership) + `member_benefit_credits`.
+5. `CREATE FUNCTION consume_scan_credit_if_needed(_member_id, _kind)` returning `boolean` (true if a credit was consumed).
+6. Update both webhook trigger functions (or the webhook edge functions) to call it.
 
-**Edge function changes**
-- `howbody-bind-user`: replace inline quota math (lines 60-78) with `rpc('howbody_scan_quota', { _member_id, _kind: 'body' or 'posture' })`. Currently bind doesn't know which scan type — extend body to optionally accept `kind` and bind once per kind, or check `body OR posture` like today (acceptable v1).
-- `howbody-body-webhook` / `howbody-posture-webhook`: after upsert, if plan quota was already exhausted, consume one `member_benefits` credit of matching type (FIFO oldest `expiry_date`).
-- New `howbody-report-pdf` edge function (auth) and `howbody-public-report-pdf` (token-gated).
+**Files to change**
+- `src/components/plans/AddPlanDrawer.tsx` — remove `PlanScannerAccessSection`, scanner state, scanner fields in INSERT.
+- `src/components/plans/EditPlanDrawer.tsx` — same removal + drop the separate scanner UPDATE.
+- `src/components/plans/PlanScannerAccessSection.tsx` — **delete**.
+- `src/pages/Plans.tsx` — change the badge condition to look for scan benefit types in `plan_benefits` instead of the dropped columns.
+- `supabase/functions/howbody-bind-user/index.ts` — already calls the RPC; behavior unchanged.
+- `supabase/functions/howbody-body-webhook/` & `howbody-posture-webhook/` — call `consume_scan_credit_if_needed`.
+- One migration for schema + RPC rewrite.
 
-**Files to create**
-- `src/components/progress/HowbodyReportDrawer.tsx`
-- `src/components/progress/HowbodyReportsCard.tsx`
-- `src/components/progress/ScanQuotaStrip.tsx`
-- `src/hooks/useHowbodyReports.ts`
-- `supabase/functions/howbody-report-pdf/index.ts`
-- `supabase/functions/howbody-public-report-pdf/index.ts`
-- One migration file (RLS + seeds + RPC + triggers)
-
-**Files to modify**
-- `src/pages/MyProgress.tsx` — add quota strip + reports card
-- `src/components/plans/AddPlanDrawer.tsx` & `EditPlanDrawer.tsx` — add scanner access section
-- `src/pages/Plans.tsx` — show "Body Scan" badge on plan card
-- `src/pages/HowbodyPublicReport.tsx` — add "Download PDF" button
-- `supabase/functions/howbody-bind-user/index.ts` — use new quota RPC
-- `supabase/functions/howbody-body-webhook/index.ts` & `howbody-posture-webhook/index.ts` — measurement mirror trigger handles it; just add notification + add-on consumption fallback
-- `supabase/config.toml` — register two new edge functions
-
-No new secrets needed; HOWBODY credentials already configured.
+**Files unchanged**
+- `MyProgress.tsx`, `ScanQuotaStrip`, `HowbodyReportsCard`, `HowbodyReportDrawer`, `useHowbodyReports`, `howbody-report-pdf` edge function — all still work via the RPC.
 
 ---
 
-## Out of scope (flag for later)
-
-- Bind UX picking `body` vs `posture` explicitly (currently treated as one quota pool).
-- Trainer-side comparison view of a member's HOWBODY trend.
-- Auto-suggesting workout/diet adjustments from scan deltas.
+## Out of scope
+- Migrating any existing plans that were configured with the old toggle (none in production yet).
+- Refactoring sauna/ice-bath to ever depart from this pattern.
