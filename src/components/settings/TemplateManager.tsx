@@ -452,7 +452,22 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     }
   };
 
-  const groupedTemplates = templates.reduce((acc, t) => {
+  // Status counts (across all channels — relevant only for whatsapp but shown unified)
+  const statusCounts = templates.reduce((acc: Record<string, number>, t: any) => {
+    const s = (t.approval_status as string) || (t.type === 'whatsapp' ? 'draft' : 'not_applicable');
+    acc[s] = (acc[s] || 0) + 1;
+    acc.all = (acc.all || 0) + 1;
+    return acc;
+  }, {});
+
+  // Apply status filter (only restricts WhatsApp templates; SMS/Email always pass)
+  const filteredTemplates = templates.filter((t: any) => {
+    if (statusFilter === 'all') return true;
+    if (t.type !== 'whatsapp') return false; // status sub-tabs are WhatsApp-specific
+    return (t.approval_status || 'draft') === statusFilter;
+  });
+
+  const groupedTemplates = filteredTemplates.reduce((acc: Record<string, Template[]>, t: any) => {
     if (!acc[t.type]) acc[t.type] = [];
     acc[t.type].push(t);
     return acc;
