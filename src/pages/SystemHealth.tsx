@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -149,6 +149,21 @@ export default function SystemHealth() {
       return (data || []) as ErrorLog[];
     },
   });
+
+  // Live updates: subscribe to error_logs changes so new edge errors stream in.
+  useEffect(() => {
+    const channel = supabase
+      .channel('error-logs-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'error_logs' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
 
   const resolveError = useMutation({
     mutationFn: async (id: string) => {

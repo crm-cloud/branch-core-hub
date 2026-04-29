@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.howbody-test-connection]
 verify_jwt = true
+
+[functions.log-edge-error]
+verify_jwt = false
