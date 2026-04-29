@@ -289,6 +289,65 @@ export default function MealCatalog() {
           </Button>
         </ResponsiveSheetFooter>
       </ResponsiveSheet>
+
+      <ResponsiveSheet open={!!viewing} onOpenChange={(o) => !o && setViewing(null)} width="md">
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>Meal Details</ResponsiveSheetTitle>
+        </ResponsiveSheetHeader>
+        {viewing && (
+          <div className="space-y-4 mt-4 flex-1">
+            <div>
+              <h3 className="text-lg font-semibold">{viewing.name}</h3>
+              {viewing.default_quantity && (
+                <p className="text-sm text-muted-foreground">{viewing.default_quantity}</p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline">{viewing.dietary_type.replace('_', ' ')}</Badge>
+              <Badge variant="outline">{viewing.cuisine.replace('_', ' ')}</Badge>
+              <Badge variant="secondary">{viewing.meal_type}</Badge>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {([
+                ['Calories', viewing.calories, 'kcal'],
+                ['Protein', viewing.protein, 'g'],
+                ['Carbs', viewing.carbs, 'g'],
+                ['Fats', viewing.fats, 'g'],
+                ['Fiber', viewing.fiber, 'g'],
+              ] as const).map(([label, val, unit]) => (
+                <div key={label} className="rounded-lg border p-2 text-center">
+                  <p className="text-base font-bold">{val}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase">{label} ({unit})</p>
+                </div>
+              ))}
+            </div>
+            {viewing.tags?.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Tags</p>
+                <div className="flex flex-wrap gap-1">
+                  {viewing.tags.map((t) => (
+                    <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {viewing.notes && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Notes</p>
+                <p className="text-sm whitespace-pre-wrap">{viewing.notes}</p>
+              </div>
+            )}
+          </div>
+        )}
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
+          {viewing && (
+            <Button onClick={() => { openEdit(viewing); setViewing(null); }}>
+              <Edit className="h-4 w-4 mr-2" />Edit
+            </Button>
+          )}
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
     </AppLayout>
   );
 }
