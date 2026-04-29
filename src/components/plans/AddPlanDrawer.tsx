@@ -284,9 +284,6 @@ export function AddPlanDrawer({ open, onOpenChange, branchId }: AddPlanDrawerPro
               </Select>
             </div>
           )}
-
-          <PlanScannerAccessSection value={scanner} onChange={setScanner} />
-
           {/* ===== PLAN BENEFITS ===== */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
