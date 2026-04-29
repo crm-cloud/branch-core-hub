@@ -40,7 +40,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook, Users,
+  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook, Users, PanelRightOpen, PanelRightClose,
 } from 'lucide-react';
 
 // Platform icon helper
@@ -148,6 +148,8 @@ export default function WhatsAppChatPage() {
   const [clearChatConfirmOpen, setClearChatConfirmOpen] = useState(false);
   // Transfer to staff
   const [transferStaffOpen, setTransferStaffOpen] = useState(false);
+  // Right context panel — collapsed by default to maximise chat view area
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -964,6 +966,15 @@ export default function WhatsAppChatPage() {
                         className="scale-75"
                       />
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl hidden xl:inline-flex"
+                      onClick={() => setContextPanelOpen(v => !v)}
+                      title={contextPanelOpen ? 'Hide details' : 'Show details'}
+                    >
+                      {contextPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="rounded-xl">
@@ -1334,8 +1345,8 @@ export default function WhatsAppChatPage() {
             )}
           </div>
 
-          {/* ── Context Panel (desktop only, when contact selected) ───────────── */}
-          {selectedContact && (
+          {/* ── Context Panel (desktop only, when contact selected & opened) ─── */}
+          {selectedContact && contextPanelOpen && (
             <div className="hidden xl:flex w-[300px] border-l border-border/50 flex-col bg-card overflow-y-auto">
               <div className="p-5 space-y-5">
                 {/* Profile card */}

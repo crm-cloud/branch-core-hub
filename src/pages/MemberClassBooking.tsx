@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,6 +68,7 @@ export default function MemberClassBooking() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [showMyBookings, setShowMyBookings] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [timeBucket, setTimeBucket] = useState<'all' | 'Morning' | 'Afternoon' | 'Evening' | 'Night'>('all');
 
   const today = startOfDay(new Date());
   const endDate = addDays(today, 13); // 2 weeks
@@ -578,21 +580,35 @@ export default function MemberClassBooking() {
           </Card>
         )}
 
-        {/* ─── Time-grouped sessions ─── */}
+        {/* ─── Time-bucket sub-tabs ─── */}
         {!isLoading && totalForDay > 0 && (
-          <div className="space-y-5">
-            {(['Morning', 'Afternoon', 'Evening', 'Night'] as const).map(bucket => {
-              const items = timeGroups[bucket];
-              if (items.length === 0) return null;
+          <Tabs value={timeBucket} onValueChange={(v) => setTimeBucket(v as any)} className="w-full">
+            <TabsList className="grid grid-cols-5 w-full h-auto p-1 rounded-2xl bg-muted/60">
+              <TabsTrigger value="all" className="rounded-xl text-xs py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                All <span className="ml-1 opacity-60">{totalForDay}</span>
+              </TabsTrigger>
+              {(['Morning', 'Afternoon', 'Evening', 'Night'] as const).map(b => (
+                <TabsTrigger
+                  key={b}
+                  value={b}
+                  disabled={timeGroups[b].length === 0}
+                  className="rounded-xl text-xs py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
+                  {b} <span className="ml-1 opacity-60">{timeGroups[b].length}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {(['all', 'Morning', 'Afternoon', 'Evening', 'Night'] as const).map(bucket => {
+              const items = bucket === 'all'
+                ? (['Morning', 'Afternoon', 'Evening', 'Night'] as const).flatMap(b => timeGroups[b])
+                : timeGroups[bucket];
               return (
-                <div key={bucket}>
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{bucket}</h2>
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{items.length}</Badge>
-                    <div className="h-px flex-1 bg-border/50" />
-                  </div>
-                  <div className="space-y-2.5">
-                    {items.map(item => (
+                <TabsContent key={bucket} value={bucket} className="mt-4 space-y-2.5">
+                  {items.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-muted-foreground">No sessions in this time slot.</div>
+                  ) : (
+                    items.map(item => (
                       <AgendaCard
                         key={`${item.type}-${item.id}`}
                         item={item}
@@ -604,12 +620,12 @@ export default function MemberClassBooking() {
                         isBooking={bookClass.isPending || bookSlot.isPending}
                         isCancelling={cancelClassBooking.isPending || cancelSlotBooking.isPending}
                       />
-                    ))}
-                  </div>
-                </div>
+                    ))
+                  )}
+                </TabsContent>
               );
             })}
-          </div>
+          </Tabs>
         )}
       </div>
     </AppLayout>
