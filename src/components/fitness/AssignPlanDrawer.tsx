@@ -302,6 +302,24 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
                   </div>
                 </div>
               </div>
+
+              {(channels.includes('whatsapp') || channels.includes('email')) && (
+                <div className="rounded-xl border bg-muted/30 p-3 flex items-start gap-3">
+                  <FileText className="h-4 w-4 mt-0.5 text-primary" />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="send-pdf-toggle" className="text-sm font-medium cursor-pointer">
+                        Send PDF on assign
+                      </Label>
+                      <Switch id="send-pdf-toggle" checked={sendPdf} onCheckedChange={setSendPdf} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Generates a styled PDF of this plan and delivers it via the selected
+                      WhatsApp / Email channels alongside the notification.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
