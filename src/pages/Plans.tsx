@@ -485,6 +485,18 @@ export default function PlansPage() {
           </Card>
         </div>
 
+        {/* Tabs: Membership Plans vs Add-On Packages */}
+        <Tabs defaultValue="membership" className="w-full">
+          <TabsList className="rounded-xl">
+            <TabsTrigger value="membership" className="rounded-lg">Membership Plans</TabsTrigger>
+            <TabsTrigger value="addons" className="rounded-lg">Add-On Packages</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="addons" className="mt-5">
+            <BenefitPackagesPanel branchId={defaultBranchId || undefined} />
+          </TabsContent>
+
+          <TabsContent value="membership" className="mt-5 space-y-6">
         {/* Two-panel area */}
         {isLoading ? (
           <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-white/20 shadow-2xl rounded-3xl overflow-hidden">
