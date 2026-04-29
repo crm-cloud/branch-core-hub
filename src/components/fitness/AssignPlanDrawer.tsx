@@ -112,8 +112,8 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   };
 
   const assignMutation = useMutation({
-    mutationFn: () =>
-      assignPlanToMembers({
+    mutationFn: async () => {
+      const data = await assignPlanToMembers({
         member_ids: selected.map((m) => m.id),
         plan_name: plan!.name,
         plan_type: plan!.type,
@@ -124,11 +124,58 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         branch_id: branchId,
         channels,
         template_id: plan?.template_id ?? null,
-      }),
+      });
+
+      // If "Send PDF on assign" is enabled, dispatch PDFs to whichever
+      // channels (whatsapp / email) are also selected. Best-effort: errors
+      // are surfaced via toast but don't block the assignment success path.
+      const pdfChannels: ('whatsapp' | 'email')[] = [];
+      if (sendPdf && channels.includes('whatsapp')) pdfChannels.push('whatsapp');
+      if (sendPdf && channels.includes('email')) pdfChannels.push('email');
+
+      if (sendPdf && pdfChannels.length > 0) {
+        const memberIds = data.filter((r) => r.success).map((r) => r.member_id);
+        if (memberIds.length > 0) {
+          const { data: members } = await supabase
+            .from('members')
+            .select('id, full_name, phone, email')
+            .in('id', memberIds);
+          const memberMap = new Map((members || []).map((m: any) => [m.id, m]));
+          let pdfFailures = 0;
+          for (const r of data) {
+            if (!r.success) continue;
+            const m = memberMap.get(r.member_id);
+            if (!m) continue;
+            try {
+              await sendPlanToMember({
+                member: { id: m.id, full_name: m.full_name, phone: m.phone, email: m.email },
+                plan: {
+                  name: plan!.name,
+                  type: plan!.type,
+                  description: plan!.description,
+                  data: plan!.content,
+                  valid_until: validUntil,
+                },
+                branchId,
+                channels: pdfChannels,
+              });
+            } catch (e) {
+              pdfFailures++;
+            }
+          }
+          if (pdfFailures > 0) {
+            toast.warning(`PDF delivery failed for ${pdfFailures} member${pdfFailures === 1 ? '' : 's'}`);
+          }
+        }
+      }
+
+      return data;
+    },
     onSuccess: (data) => {
       const ok = data.filter((r) => r.success).length;
       toast.success(`Assigned plan to ${ok} of ${data.length} members`);
       queryClient.invalidateQueries({ queryKey: ['member-fitness-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['fitness-member-assignments'] });
       setResults(data);
       setSelected([]);
     },
