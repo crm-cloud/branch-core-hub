@@ -607,6 +607,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
             </TabsContent>
           ))}
         </Tabs>
+        </>
       )}
 
       {/* Template Editor Drawer */}
