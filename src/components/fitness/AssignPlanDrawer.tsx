@@ -129,6 +129,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         branch_id: branchId,
         channels,
         template_id: plan?.template_id ?? null,
+        is_common: isCommon,
       });
 
       // If "Send PDF on assign" is enabled, dispatch PDFs to whichever
