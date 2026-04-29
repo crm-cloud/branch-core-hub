@@ -176,7 +176,8 @@ function RoutedContent() {
           <Route path="/contract-sign/:token" element={<ContractSignPage />} />
           <Route path="/member/pay" element={<MemberCheckout />} />
 
-          {/* HOWBODY scanner public flows */}
+          {/* Body scanner public flows (alias /scan-login is preferred; /howbody-login kept for legacy QR codes) */}
+          <Route path="/scan-login" element={<HowbodyLogin />} />
           <Route path="/howbody-login" element={<HowbodyLogin />} />
           <Route path="/reports/body/:token" element={<HowbodyPublicReport reportType="body" />} />
           <Route path="/reports/posture/:token" element={<HowbodyPublicReport reportType="posture" />} />
