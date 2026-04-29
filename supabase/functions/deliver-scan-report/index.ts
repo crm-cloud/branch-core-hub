@@ -358,12 +358,25 @@ Deno.serve(async (req) => {
     const recipientUserIds = new Set<string>();
     const { data: roleRows } = await supabase
       .from("user_roles")
-      .select("user_id, role, branch_id")
+      .select("user_id, role")
       .in("role", ["owner", "admin", "manager"]);
+    // Resolve manager → branch via employees table
+    const managerCandidates = (roleRows || [])
+      .filter((r: any) => r.role === "manager")
+      .map((r: any) => r.user_id);
+    let managersInBranch = new Set<string>();
+    if (managerCandidates.length) {
+      const { data: emps } = await supabase
+        .from("employees")
+        .select("user_id, branch_id")
+        .in("user_id", managerCandidates)
+        .eq("branch_id", member.branch_id);
+      managersInBranch = new Set((emps || []).map((e: any) => e.user_id));
+    }
     for (const rr of roleRows || []) {
       if (rr.role === "owner" || rr.role === "admin") {
         recipientUserIds.add(rr.user_id);
-      } else if (rr.role === "manager" && rr.branch_id === member.branch_id) {
+      } else if (rr.role === "manager" && managersInBranch.has(rr.user_id)) {
         recipientUserIds.add(rr.user_id);
       }
     }
