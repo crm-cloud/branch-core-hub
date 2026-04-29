@@ -1,140 +1,87 @@
-## Root-Cause Audit
+# Fitness Templates, Common Plans, AI Insights & Edge Logs — Plan
 
-I dug into the schema, services, and pages. Here is what is actually broken vs. what just needs polish.
+## Diagnosis (root causes)
 
-### 1. Critical bug: "No Member Plans Assigned" (count 2 vs page empty)
+1. **"Templates present, no View/Edit/Delete UI"** — confirmed via DB: `fitness_plan_templates` has **0 rows**. The page only shows the 3 hardcoded `DEFAULT_TEMPLATES` (Built-in cards) which intentionally only have "Assign". Edit/Delete/View buttons live in the "Your Saved Templates" block, which never renders. Built-ins are also non-editable because they only exist in the React file.
+2. **No "Common Plan" concept** — there is no flag/category to mark a plan as "shared / no PT required". Trainers must individually re-assign the same plan to every walk-in member.
+3. **AI Insights goes blank on refresh** — `AIInsightsWidget` caches in `localStorage` with a 24h window, but the cache key requires the same `branchId` on next mount. When a user lands on Dashboard before `branchId` resolves (or switches branch context), state initializes empty and never re-hydrates.
+4. **System Health is missing live Edge errors** — `error_logs` only receives writes from `ErrorBoundary` (frontend) + a couple of edge functions that opportunistically insert. Most edge functions don't, and there is no central capture wrapper.
+5. **No AI generation for trainer/staff/member** — current "Create AI" route is exposed broadly. Needs role gating.
 
-The KPI strip on the Diet & Workout hub correctly counts **2 plans** because assignments are written to `public.member_fitness_plans` (verified in DB — 2 rows exist). However, `src/pages/fitness/MemberPlans.tsx` queries the **wrong table** (`diet_plans`, which has 0 rows and is a legacy table). So the listing always renders the empty state.
+## Scope of changes
 
-```text
-Templates "Assign" → assignPlanToMembers() → INSERT member_fitness_plans  ✅
-KPI counter           → SELECT count(member_fitness_plans)                ✅
-Member Plans page     → SELECT diet_plans  ❌  (wrong table, no joins, no template_id)
+### A. Fitness Templates page (`/fitness/templates`)
+
+- **Seed real templates into the DB** so the "Saved Templates" block (with View/Edit/Delete/Download) renders for the 3 starter plans (Beginner Full Body, Weight Loss Circuit, Muscle Building Split) + 3 starter diet templates (Balanced 1800kcal, High-Protein 2400kcal, Vegetarian 1600kcal). Use a one-time migration with a stable `system_template = true` flag (new column) so they aren't duplicated.
+- **Make built-ins actionable**: Add `View` (opens `PlanViewerSheet`) on every card — both system and user-created. Hide `Delete` only on `system_template = true` (keep View/Edit/Assign/Download).
+- **Common Plan flag**: Add column `is_common boolean default false` to both `fitness_plan_templates` and `member_fitness_plans`. New "Common Plans" filter chip on the Templates page (All / Common / PT-only). When assigning, expose a "Mark as Common (no trainer needed)" toggle in `AssignPlanDrawer`.
+- **Bulk Assign for Common Plans**: New "Assign to many" button on common templates → opens a sheet with member multi-select (filter by tag, plan type, walk-ins) → creates one `member_fitness_plans` row per member referencing the same `template_id`.
+- **AI generation gating**: `/fitness/create/ai` becomes admin/manager-only. Trainer/Staff/Member roles see only Manual + Templates. Update `CreateModePicker` to hide AI tile based on `hasAnyRole(["owner","admin","manager"])`.
+
+### B. Member Plans page (`/fitness/member-plans`)
+
+- **Group by member with Workout/Diet tabs**: Replace the flat card grid with a member-grouped list. Each member becomes one expandable row containing a small `Tabs` (Workout · Diet). Inside each tab: the active assignment + history. Keeps KPI strip and search/filters.
+- Card actions stay (View / Share / Revoke) but move into each tab so workout actions don't bleed into diet.
+
+### C. AI Insights persistence
+
+- New table `ai_dashboard_insights`:
+  ```
+  id uuid pk
+  branch_id uuid null         -- null = "All branches"
+  user_id uuid                -- generated for this user
+  insights jsonb              -- array of {icon,title,description,severity}
+  generated_at timestamptz
+  expires_at timestamptz      -- generated_at + 24h
+  ```
+  RLS: user can read/insert/update own rows scoped to their branch access.
+- Widget loads from this table on mount (latest non-expired row for current `user_id` + `branch_id`), falls back to localStorage, then to empty state. On `Generate`, writes/upserts the row. This guarantees data survives refresh and branch switches.
+
+### D. System Health — live edge-function errors
+
+- New edge function `log-edge-error` (HTTP POST, service role) that other edge functions call to insert into `error_logs` with `source = 'edge_function'`.
+- Add a tiny shared helper `supabase/functions/_shared/captureEdgeError.ts` exporting `captureEdgeError(fnName, err, ctx?)` — wraps the existing try/catch pattern already standardised in our edge functions.
+- Retrofit the high-traffic edge functions (`send-whatsapp`, `whatsapp-webhook`, `process-comm-retry-queue`, `record-payment`, `mips-*`, `ai-dashboard-insights`, `ai-fitness-plan`) to call `captureEdgeError` in their catch blocks.
+- System Health page: enable Supabase realtime on `error_logs` and subscribe for live updates; add a small "Live" pulse dot when subscribed. Already filters by source = `edge_function`, so the existing UI just lights up.
+- Add a one-click "Copy AI fix prompt" button next to each edge error (already exists for frontend errors — extend the prompt template to mention which edge function and link to its logs).
+
+## Out of scope / deferred
+
+- Dropping legacy `diet_templates` / `workout_templates` tables (per prior memo).
+- Importing historical Supabase edge logs into `error_logs` — only new errors will flow.
+
+## Technical details
+
+**Migration**
+```sql
+ALTER TABLE public.fitness_plan_templates
+  ADD COLUMN IF NOT EXISTS is_common boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS system_template boolean NOT NULL DEFAULT false;
+
+ALTER TABLE public.member_fitness_plans
+  ADD COLUMN IF NOT EXISTS is_common boolean NOT NULL DEFAULT false;
+
+CREATE TABLE public.ai_dashboard_insights (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  branch_id uuid REFERENCES public.branches(id) ON DELETE CASCADE,
+  insights jsonb NOT NULL,
+  generated_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours'
+);
+ALTER TABLE public.ai_dashboard_insights ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "self read" ON public.ai_dashboard_insights FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "self write" ON public.ai_dashboard_insights FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "self update" ON public.ai_dashboard_insights FOR UPDATE USING (user_id = auth.uid());
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.error_logs;
 ```
+Plus a `INSERT … ON CONFLICT DO NOTHING` seed for the 6 system templates.
 
-`MyDiet.tsx` already reads `member_fitness_plans` first (with a legacy `diet_plans` fallback) and `MyWorkout.tsx` reads `member_fitness_plans` — so members will see assigned plans **once we fix the listing query**. The "missing plans on member dashboard" symptom is the same bug surfaced from a different role: the hub page lies, not the member page.
+**Files**
+- Migration: `supabase/migrations/<ts>_common_plans_and_insights.sql`
+- Edited: `src/pages/fitness/Templates.tsx`, `src/pages/fitness/MemberPlans.tsx`, `src/pages/fitness/CreateModePicker.tsx`, `src/components/fitness/AssignPlanDrawer.tsx`, `src/components/dashboard/AIInsightsWidget.tsx`, `src/pages/SystemHealth.tsx`, `src/services/fitnessService.ts`
+- New: `src/components/fitness/BulkAssignCommonDrawer.tsx`, `supabase/functions/_shared/captureEdgeError.ts`, `supabase/functions/log-edge-error/index.ts`
+- Touched edge functions: ~8 to wire `captureEdgeError`.
 
-Three legacy tables are still in the schema but have **0 rows** and no writer code paths: `diet_plans`, `workout_plans`, `diet_templates`, `workout_templates`. They are dead weight that confuses the team — we keep `diet_plans` read-fallback in `MyDiet.tsx` only.
-
-### 2. "No members found" inside Assign drawer
-
-`searchMembersForAssignment()` calls the `search_members` RPC and then filters with `m.member_status === 'active'`. The RPC returns `member_status` only when a profile/member row exists and is marked active — inactive, frozen, or members in branches outside the active scope are silently dropped. Combined with the 2-character minimum, trainers searching by partial code/name often get an empty list. We will:
-- Lower minimum to 1 character.
-- Stop hard-filtering on `active` (show frozen/expired with a muted badge — assignment is still valid).
-- Pass `branchId` through (currently `undefined` from Templates page → all-branch search).
-
-### 3. Templates / Member Plans / Meal Catalog buttons
-
-- **Templates**: Saved templates already have Assign / Download PDF / Use as starter / Edit / Delete. Built-in "Default Starter Plans" cards only have **Assign** — no View, no Download, no Use-as-starter. We will add those.
-- **Member Plans**: zero action buttons today. We will add **View**, **Send PDF (WhatsApp)**, **Send PDF (Email)**, **Download**, **Reassign/Edit**.
-- **Meal Catalog**: has Edit + Delete but no **View** (read-only macros + photo) — we will add it as a side sheet.
-
-### 4. WhatsApp & Email with PDF attachments
-
-`utils/pdfGenerator.ts` already produces a styled PDF for plans (916 lines, supports both workout & diet). `utils/whatsappDocumentSender.ts` exists. What's missing:
-- A `whatsappDocumentSender` call wired into Member Plans / Templates rows.
-- A new edge function `send-plan-pdf` that: generates the PDF (or accepts a base64 from client), uploads to a `plan-attachments` storage bucket, then dispatches via WhatsApp document message + email attachment using existing template engine.
-- Two seeded **system templates** (`plan_assigned_workout`, `plan_assigned_diet`) with `header_type='document'` and `attachment_source='dynamic'` (uses the new template attachment fields we already migrated last turn).
-
-### 5. Duplicate / dead code to clean up
-
-- Delete legacy reads of `diet_plans` / `workout_plans` from any non-member page (verified usage list: only `MyDiet` legacy fallback should remain).
-- Two near-identical members-list queries in `Templates.tsx` shuffled-card flow and `AssignPlanDrawer` — consolidate into `searchMembersForAssignment`.
-- `FitnessHubTabs` is fine; no duplicates there.
-
----
-
-## Implementation Plan
-
-### A. Fix the data layer (highest priority)
-
-1. **`src/pages/fitness/MemberPlans.tsx`** — rewrite the query to:
-   - `from('member_fitness_plans')` joined to members → profiles for name/avatar/code.
-   - Pull `template_id → fitness_plan_templates(name)` and `created_by → profiles(full_name)` (trainer).
-   - Filter by active branch (BranchContext) and date validity (`valid_until >= today` OR null).
-   - Tabs: **Active**, **Expired**, **All**. Filter chips: **Workout / Diet / Both**.
-
-2. **`src/services/fitnessService.ts`** — add helpers:
-   - `fetchMemberAssignments(branchId, { type, status, search })`.
-   - `revokeMemberAssignment(id)` (soft-delete by setting `valid_until = today`).
-   - `resendPlanNotification(planId, channels)` — reuses `sendOneNotification`.
-
-3. **`searchMembersForAssignment`** — drop the active-only filter, allow 1-char queries, return status badge so the UI can dim non-active members.
-
-### B. PDF + WhatsApp/Email send pipeline
-
-4. **Storage**: create `plan-attachments` bucket (private, signed URLs).
-5. **Edge function `send-plan-pdf`**: input `{ member_id, plan_id, channels: ['whatsapp','email'] }`. Steps:
-   - Load plan from `member_fitness_plans`.
-   - Render PDF on the server using the existing HTML template (port `pdfGenerator` snippet to a Deno-compatible HTML→PDF via `puppeteer-core` is too heavy — instead generate the PDF on the **client** via `generatePlanPDF`, upload as base64, and pass the storage path to the function). This keeps the function light and reuses our tested generator.
-   - Dispatch WhatsApp document via `send-whatsapp` (`message_type='document'`, `media_url=signedUrl`).
-   - Dispatch email via `send-email` with attachment.
-   - Log to `whatsapp_messages` + `email_logs`.
-
-6. **Two seeded templates** in `public.templates` (idempotent migration):
-   - `plan_assigned_workout` (channel: whatsapp + email), `header_type=document`, `attachment_source=dynamic`, body has `{{member_name}}`, `{{plan_name}}`, `{{trainer_name}}`, `{{valid_until}}`.
-   - `plan_assigned_diet` — same shape, diet wording.
-
-7. **AssignPlanDrawer** — add a `Send PDF on assign` toggle. When on, after `assignPlanToMembers` resolves, it loops the new `plan_id`s and calls `send-plan-pdf` per member.
-
-### C. Member-Plans hub UI/UX overhaul (Vuexy aesthetic)
-
-8. New layout in `MemberPlans.tsx`:
-
-```text
-┌─ KPIs (gradient hero strip) ───────────────────────────┐
-│ Active Workouts │ Active Diets │ Expiring 7d │ Members │
-└────────────────────────────────────────────────────────┘
-┌─ Filters: [Search] [Workout|Diet|Both] [Active|Expired|All] [Trainer] ┐
-└──────────────────────────────────────────────────────────────────────┘
-┌─ Cards grid (rounded-2xl, soft shadow) ────────────────┐
-│ Avatar  Member Name (code)        [Active badge]       │
-│ Plan: 4-week Muscle Gain  ·  workout                   │
-│ Trainer: Coach A · From 22 Apr → 20 May (28d left)    │
-│ Linked to template: Beginner Full Body                 │
-│ [View] [Download PDF] [WhatsApp] [Email] [⋯]           │
-└────────────────────────────────────────────────────────┘
-```
-
-9. **Plan Viewer Sheet** (right-side, per Vuexy rule):
-   - Workout: week-by-week accordion with sets/reps/rest, embedded exercise videos when present.
-   - Diet: meal-by-meal cards with macros bar, Shopping List button, swap history.
-   - Sticky footer: Download PDF / Send WhatsApp / Send Email / Reassign / Revoke.
-
-### D. Templates + Meal Catalog polish
-
-10. **Templates page**:
-    - Add **View** + **Download PDF** + **Use as starter** to **Default Starter Plans** cards.
-    - Animate cards (staggered fade-up on mount via `framer-motion` already used elsewhere).
-    - Hero KPI strip already exists — wire `Member Assignments` to the corrected count.
-
-11. **Meal Catalog**:
-    - Add **View Meal** sheet (read-only photo, macros chart, ingredients).
-    - Add filters: cuisine chip strip + dietary-type chip strip with live counts.
-    - Add a "Used in N diet plans" badge per meal.
-
-### E. Cleanup
-
-12. Delete unused legacy reads (none found outside `MyDiet` fallback). Add `// LEGACY` comment to that one path.
-13. Add a Supabase migration that **comments** the dead tables (`COMMENT ON TABLE diet_plans IS 'DEPRECATED — use member_fitness_plans'`) — we don't drop them yet to avoid breaking any historical export.
-14. Update `mem://architecture/deprecated-schema-items` with the legacy fitness tables.
-
----
-
-## Files to change
-
-- `src/pages/fitness/MemberPlans.tsx` — full rewrite (query + UI).
-- `src/pages/fitness/Templates.tsx` — built-in card actions + view sheet.
-- `src/pages/MealCatalog.tsx` — view sheet + filters + usage badge.
-- `src/services/fitnessService.ts` — new `fetchMemberAssignments`, `revokeMemberAssignment`, relax search.
-- `src/components/fitness/AssignPlanDrawer.tsx` — "Send PDF on assign" toggle.
-- `src/components/fitness/PlanViewerSheet.tsx` — **new**, shared by Templates + Member Plans.
-- `src/components/fitness/SendPlanPdfMenu.tsx` — **new**, dropdown for WhatsApp/Email/Download.
-- `supabase/functions/send-plan-pdf/index.ts` — **new** edge function.
-- Migration: create `plan-attachments` bucket + RLS, seed two templates, add deprecation comments.
-
-## Out of scope (flag for later)
-
-- Dropping `diet_plans`/`workout_plans`/`diet_templates`/`workout_templates` — defer until next cleanup window.
-- Multi-language PDF rendering — current generator is English-only.
-- AI-generated PDF cover image — nice-to-have, not blocking.
+After approval I'll implement in this order: migration → templates UI fixes → common plan flow → member plans tabbed view → AI insights persistence → edge-error capture + realtime.
