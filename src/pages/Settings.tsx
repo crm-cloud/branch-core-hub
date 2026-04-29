@@ -21,23 +21,23 @@ import { AIAgentControlCenter } from '@/components/settings/AIAgentControlCenter
 import { TaxGstSettings } from '@/components/settings/TaxGstSettings';
 
 const SETTINGS_MENU = [
-  { value: 'organization', label: 'Organization', icon: SettingsIcon },
-  { value: 'branches', label: 'Branches', icon: Building2 },
-  { value: 'appearance', label: 'Appearance', icon: Palette },
   { value: 'ai-agent', label: 'AI Agent', icon: Bot },
-  { value: 'benefits', label: 'Benefits', icon: Sparkles },
-  { value: 'referrals', label: 'Referrals', icon: Gift },
-  { value: 'templates', label: 'Templates Manager', icon: MessageSquare },
-  { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
-  { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
-  { value: 'tax-gst', label: 'Tax & GST', icon: IndianRupee },
-  { value: 'retention', label: 'Marketing & Retention', icon: Megaphone },
-  { value: 'integrations', label: 'Integrations', icon: Plug },
-  { value: 'notifications', label: 'Notifications', icon: Bell },
-  { value: 'security', label: 'Security', icon: Shield },
-  { value: 'website', label: 'Website', icon: Globe },
+  { value: 'appearance', label: 'Appearance', icon: Palette },
   { value: 'backup', label: 'Backup & Restore', icon: Database },
+  { value: 'benefits', label: 'Benefits', icon: Sparkles },
   { value: 'howbody', label: 'Body Scanner', icon: ScanLine },
+  { value: 'branches', label: 'Branches', icon: Building2 },
+  { value: 'finance-categories', label: 'Finance Categories', icon: Receipt },
+  { value: 'integrations', label: 'Integrations', icon: Plug },
+  { value: 'retention', label: 'Marketing & Retention', icon: Megaphone },
+  { value: 'notifications', label: 'Notifications', icon: Bell },
+  { value: 'organization', label: 'Organization', icon: SettingsIcon },
+  { value: 'plan-templates', label: 'Plan & Benefit Templates', icon: FileBox },
+  { value: 'referrals', label: 'Referrals', icon: Gift },
+  { value: 'security', label: 'Security', icon: Shield },
+  { value: 'tax-gst', label: 'Tax & GST', icon: IndianRupee },
+  { value: 'templates', label: 'Templates Manager', icon: MessageSquare },
+  { value: 'website', label: 'Website', icon: Globe },
 ];
 
 const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
