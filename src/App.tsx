@@ -126,6 +126,9 @@ function PageLoader() {
 
 const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/lead-form", "/member/pay"];
 
+const HowbodyLogin = lazy(() => import("./pages/HowbodyLogin"));
+const HowbodyPublicReport = lazy(() => import("./pages/HowbodyPublicReport"));
+
 function PublicWhatsAppWidget() {
   const location = useLocation();
   const isPublic = PUBLIC_PATHS.some(
@@ -172,6 +175,11 @@ function RoutedContent() {
           <Route path="/embed/lead-form" element={<EmbedLeadForm />} />
           <Route path="/contract-sign/:token" element={<ContractSignPage />} />
           <Route path="/member/pay" element={<MemberCheckout />} />
+
+          {/* HOWBODY scanner public flows */}
+          <Route path="/howbody-login" element={<HowbodyLogin />} />
+          <Route path="/reports/body/:token" element={<HowbodyPublicReport reportType="body" />} />
+          <Route path="/reports/posture/:token" element={<HowbodyPublicReport reportType="posture" />} />
 
           {/* Smart Dashboard Redirect */}
           <Route path="/home" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
