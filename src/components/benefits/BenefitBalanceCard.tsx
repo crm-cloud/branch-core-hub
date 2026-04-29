@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   Dumbbell, Droplets, Thermometer, Snowflake, 
-  Users, Ticket, Apple, Activity, Car, Bath
+  Users, Ticket, Apple, Activity, Car, Bath, Scan, PersonStanding
 } from 'lucide-react';
 import { type MemberBenefitBalance, benefitTypeLabels, frequencyLabels } from '@/services/benefitService';
 import type { Database } from '@/integrations/supabase/types';
@@ -28,6 +28,8 @@ const benefitIcons: Record<BenefitType, React.ComponentType<{ className?: string
   spa_access: Bath,
   cardio_area: Activity,
   functional_training: Dumbbell,
+  body_scan: Scan,
+  posture_scan: PersonStanding,
   other: Ticket,
 };
 

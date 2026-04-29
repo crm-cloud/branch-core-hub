@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useMemberData } from '@/hooks/useMemberData';
 import { MeasurementProgressView } from '@/components/members/MeasurementProgressView';
+import { ScanQuotaStrip } from '@/components/progress/ScanQuotaStrip';
+import { HowbodyReportsCard } from '@/components/progress/HowbodyReportsCard';
+import { useScanQuota } from '@/hooks/useHowbodyReports';
 import {
   TrendingUp,
   Activity,
@@ -19,6 +22,7 @@ import { Link } from 'react-router-dom';
 
 export default function MyProgress() {
   const { member, measurements, isLoading: memberLoading } = useMemberData();
+  const { data: quota } = useScanQuota(member?.id);
 
   if (memberLoading) {
     return (
@@ -178,6 +182,10 @@ export default function MyProgress() {
             </Card>
           </div>
         )}
+
+        {/* HOWBODY: scan quota + reports */}
+        <ScanQuotaStrip body={quota?.body} posture={quota?.posture} />
+        <HowbodyReportsCard memberId={member.id} />
 
         {/* Progress Chart */}
         <MeasurementProgressView memberId={member.id} />

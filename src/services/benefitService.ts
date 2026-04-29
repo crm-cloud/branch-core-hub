@@ -300,6 +300,8 @@ export const benefitTypeLabels: Record<BenefitType, string> = {
   spa_access: 'Spa Access',
   cardio_area: 'Cardio Area',
   functional_training: 'Functional Training',
+  body_scan: 'Body Composition Scan',
+  posture_scan: 'Posture Scan',
   other: 'Other',
 };
 
