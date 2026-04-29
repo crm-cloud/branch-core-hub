@@ -386,6 +386,7 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
     branch_id: params.branch_id,
     created_by: user?.id,
     template_id: params.template_id ?? null,
+    is_common: params.is_common ?? false,
   }));
 
   const { data: inserted, error } = await supabase
