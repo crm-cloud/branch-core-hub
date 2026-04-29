@@ -1,125 +1,136 @@
-# HOWBODY 580/S580 Scanner Integration
 
-Integrates the HOWBODY body composition + posture scanner into the existing Incline gym CRM. Reuses the project's `integration_settings` dispatcher, `members` table, edge function CORS standards, Vuexy UI, and right-side Sheet form policy. Does **not** create a parallel members/plans schema — bolts onto what already exists.
+## Goal
 
-## Architecture Overview
+Tie HOWBODY scans into the existing plan/benefit/add-on system so admins can:
+1. Allow scans on a plan, set a monthly cap, and sell extra scans as add-on packs.
+2. Auto-mirror every body scan into `member_measurements` so the existing Progress tab "just works".
+3. Let members view & download their HOWBODY reports from `/my-progress`.
 
-```text
-HOWBODY device  ──QR──▶  /howbody-login (member binds session)
-        │                       │
-        │                       ▼
-        │            edge: howbody-bind-user ──▶ POST /openApi/setUserInfo
-        │
-        ├──body scan──▶  edge: howbody-body-webhook   ──▶ howbody_body_reports
-        └──posture───▶  edge: howbody-posture-webhook ──▶ howbody_posture_reports
-                                │
-                                ▼
-                  notify_member() trigger (existing) → in-app bell
-```
-
-## Database Migrations
-
-New tables (all with RLS):
-
-- **`howbody_tokens`** — `id`, `token`, `expires_at`, `created_at`. Service-role only. Holds the cached 24h auth token.
-- **`howbody_scan_sessions`** — `id`, `scan_id` (unique), `equipment_no`, `member_id` (fk members), `status` ('pending'|'bound'|'completed'|'expired'), `bound_at`, `completed_at`, `created_at`. RLS: members can read their own; staff/admin read all in branch.
-- **`howbody_body_reports`** — `id`, `member_id`, `data_key` (unique), `equipment_no`, `scan_id`, `test_time` (timestamptz), `health_score`, scalar metrics (weight, bmi, pbf, fat, smm, tbw, pr, bmr, whr, vfr, metabolic_age, target_weight, weight_control, muscle_control, fat_control, icf, ecf), `full_payload jsonb`, `created_at`. RLS: member reads own; staff/admin read all.
-- **`howbody_posture_reports`** — `id`, `member_id`, `data_key` (unique), `equipment_no`, `scan_id`, `test_time`, `score`, scalar angles (head_forward, head_slant, shoulder_left/right, high_low_shoulder, pelvis_forward, knee_left/right, leg_left/right, body_slope), measurements (bust, waist, hip, left/right_thigh, calf_left/right, shoulder_back, up_arm_left/right), image URLs (front_img, left_img, right_img, back_img, model_url), `full_payload jsonb`, `created_at`.
-- **`howbody_public_report_tokens`** — `id`, `data_key`, `report_type` ('body'|'posture'), `token` (unique opaque slug), `expires_at`, `created_at`. Drives shareable links without exposing UUIDs.
-
-Alter `members`: add `howbody_third_uid uuid unique` (default `gen_random_uuid()` via trigger on insert, backfill existing).
-
-Alter `membership_plans`: add `body_scan_allowed boolean default false`, `posture_scan_allowed boolean default false`, `scans_per_month integer default 0` (-1 = unlimited), `public_report_link boolean default false`.
-
-Triggers: reuse existing `notify_member()` to fire in-app notifications on insert into both report tables ("Your body scan report is ready").
-
-Index `(member_id, test_time desc)` on both report tables for trend queries.
-
-## Edge Functions (Deno)
-
-All follow project standards: try/catch wrapper, `corsHeaders`, version comment, no path-style invocation.
-
-1. **`howbody-get-token`** (internal helper, not directly invoked from client)
-   - Reads `HOWBODY_BASE_URL`, `HOWBODY_USERNAME`, `HOWBODY_APPKEY` secrets.
-   - Selects newest row from `howbody_tokens` where `expires_at > now() + interval '5 minutes'`.
-   - If missing/expired → POST `/openApi/getToken` with `{userName, appKey, timeStamp}`, insert new row with `expires_at = now() + 23 hours`.
-   - Returns token + appkey + timestamp headers builder.
-
-2. **`howbody-bind-user`** (called by `/howbody-login` page)
-   - Auth: requires logged-in member or staff (validates JWT via `getClaims`).
-   - Body schema (zod): `equipmentNo`, `scanId`, `memberId`.
-   - Loads member → checks active membership + plan.body_scan_allowed/posture_scan_allowed + monthly scan quota (count from reports this month).
-   - Calls `/openApi/setUserInfo` with `thirdUid = members.howbody_third_uid`, `nickname`, `tel`, `sex` (1=male/0=female from members.gender), `height`, `age`.
-   - Upserts `howbody_scan_sessions` with status `bound`.
-   - Returns `{ ok: true }` or HOWBODY error code mapped to user-friendly message ("device offline", "session expired").
-
-3. **`howbody-body-webhook`** (PUBLIC — `verify_jwt = false` in `supabase/config.toml`)
-   - Validates `appkey` header equals `HOWBODY_APPKEY` secret (fail → 401).
-   - Looks up member by `thirdUid` (matches `members.howbody_third_uid`).
-   - Upserts `howbody_body_reports` on `data_key` with all scalar columns + full payload.
-   - Marks corresponding `howbody_scan_sessions` row `completed`.
-   - Returns `{ code: 200, message: "Push successful", data: null }` per spec; 500 with same envelope on failure.
-
-4. **`howbody-posture-webhook`** (PUBLIC — `verify_jwt = false`)
-   - Same pattern as body webhook; persists to `howbody_posture_reports`.
-   - Stores image URLs as-is (HOWBODY-hosted).
-
-5. **`howbody-test-connection`** (admin only) — calls `getToken` and returns success/error for the Settings "Test connection" button.
-
-`supabase/config.toml` adds `[functions.howbody-body-webhook]` and `[functions.howbody-posture-webhook]` blocks with `verify_jwt = false`.
-
-## Frontend Pages & Components
-
-### `/howbody-login` (public — `src/pages/HowbodyLogin.tsx`)
-- Reads `equipmentNo` & `scanId` from URL.
-- If unauth: shows member login (email/phone) → AuthContext signIn → continue.
-- If auth: shows member's profile card + "Bind to scanner" CTA.
-- Staff variant: search bar (name/phone/member ID) to bind a walk-in member.
-- Calls `howbody-bind-user` edge function.
-- Success: full-screen teal-tinted card "✅ Step on the scanner now". Auto-polls `howbody_scan_sessions` via Supabase realtime for `status=completed`, then navigates to the new report.
-- Errors mapped to friendly toasts.
-
-### Member profile (`src/pages/MemberProfile.tsx`) — extend existing tabs
-Add two tabs (or sub-tabs under a new "Scanner" tab to keep it tidy):
-- **Body Composition**: latest report hero card (health score gauge), key metrics grid with min/max range bars (`weight`, `bmi`, `pbf`, `fat`, `smm`, `tbw`, `bmr`, `whr`, `vfr`, `metabolic_age`), segmental muscle/fat radar from `jrjh`/`jdzf` arrays, Recharts trend lines, history table.
-- **Posture**: 4-image grid (front/left/right/back) with lightbox; angle metrics color-coded against healthy ranges (green/amber/red); measurement table; trend vs previous scan using `*2` fields.
-
-Reuses existing Vuexy card styling + `BenefitTracking`/`MyProgress` patterns.
-
-### `/reports/body/:token` and `/reports/posture/:token` (public — gated)
-- Resolve `token` → `howbody_public_report_tokens` → fetch report.
-- Gate: only renders if member's plan has `public_report_link = true` and token not expired.
-- Same visual layout as the in-app tab, plus QR code (qrcode.react) pointing to current URL for re-share, and "Powered by The Incline Life by Incline" footer per brand rule.
-
-### Settings → new "Body Scanner" panel (`src/components/settings/HowbodySettings.tsx`)
-- Three read-only URL fields with copy buttons:
-  - QR Login: `${origin}/howbody-login`
-  - Body Webhook: `${SUPABASE_URL}/functions/v1/howbody-body-webhook`
-  - Posture Webhook: `${SUPABASE_URL}/functions/v1/howbody-posture-webhook`
-- "Test connection" button → invokes `howbody-test-connection`, shows token TTL.
-- Last 10 webhook events (from a small `howbody_webhook_log` view).
-- Mounted as a tab inside existing `Settings.tsx`.
-
-### Membership plan editor — extend existing plan drawer
-Add 4 toggles/inputs: `body_scan_allowed`, `posture_scan_allowed`, `scans_per_month`, `public_report_link`. Per project rule, this stays in the right-side **Sheet**, not a modal.
-
-## Secrets to Add
-
-Will request via `add_secret` after approval (DO NOT proceed before user supplies):
-- `HOWBODY_BASE_URL`
-- `HOWBODY_USERNAME`
-- `HOWBODY_APPKEY`
-
-## Theme
-
-Project standard is the existing Vuexy theme (rounded-2xl cards, soft shadows, indigo/violet accents). The user requested a **teal #00d4b8** accent for HOWBODY surfaces — I'll scope the teal to scanner-specific surfaces (health score gauge, scan success screen, public report hero) so it reads as a sub-brand without breaking the rest of the app.
-
-## Out of Scope (this round)
-
-- Multi-device fleet management UI (only URL/test panel; can extend later via existing `DeviceManagement.tsx` if needed).
-- AI insights on the report (can layer in via existing `ai-dashboard-insights` later).
-- Bulk historical CSV import from HOWBODY portal.
+Builds on what already exists (`howbody_body_reports`, `howbody_posture_reports`, `member_measurements`, `benefit_packages`, `membership_plans.body_scan_allowed/posture_scan_allowed/scans_per_month`).
 
 ---
 
-**Approve to proceed.** I'll then request the 3 HOWBODY secrets, run the migrations, build the 5 edge functions + config, and wire the pages.
+## 1. Plans ↔ Scans (Admin UI)
+
+**Plans → Edit Plan drawer** (`src/components/plans/EditPlanDrawer.tsx` + AddPlanDrawer):
+- Add a "Body Scanner Access" section with:
+  - Toggle: Body Composition Scan allowed
+  - Toggle: Posture Scan allowed
+  - Number: Scans per month (0 = unlimited when either toggle on; blank = none)
+- Persist directly to `membership_plans.body_scan_allowed / posture_scan_allowed / scans_per_month` (columns already exist).
+- Show a small "Body Scan" badge on each plan card in `Plans.tsx` when enabled.
+
+**Plans → Add-On Packages tab** (`BenefitPackagesPanel` + `AddBenefitPackageDrawer`):
+- Seed two new `benefit_types` rows per branch on first use: `body_scan` and `posture_scan` (category: `wellness`, `is_bookable=false`).
+- The existing add-on drawer already supports any benefit_type, so admins can create e.g. "5 Extra Body Scans – ₹999 / 60 days".
+- These are sold through the existing `MemberStore` "Buy Add-Ons" flow — no new checkout needed.
+
+---
+
+## 2. Scan Quota Engine (single source of truth)
+
+New SQL function `public.howbody_scan_quota(_member_id uuid, _kind text)` returns:
+```
+{ allowed: boolean, used_this_month: int, plan_limit: int, addon_remaining: int, total_remaining: int, reason: text }
+```
+Logic:
+1. Find active membership + plan capability flag for `_kind` (`body` / `posture`). If not allowed → `allowed=false, reason='plan_no_scan'`.
+2. Count scans this calendar month from `howbody_body_reports` / `howbody_posture_reports`.
+3. Sum unconsumed add-on credits from `member_benefits` where `benefit_type IN ('body_scan','posture_scan')` and not expired.
+4. `allowed = (plan_limit=0) OR (used < plan_limit) OR (addon_remaining > 0)`.
+
+Used by:
+- `howbody-bind-user` edge function (replace inline counting in lines 60-78 with one RPC call).
+- New `MyProgress` UI badge ("3 of 5 scans used this month • 2 add-on credits").
+
+Add-on consumption: when a webhook arrives and the plan quota is already exhausted, decrement one `member_benefits` credit (FIFO oldest expiry) inside the body/posture webhook handlers.
+
+---
+
+## 3. Auto-mirror Scans → `member_measurements`
+
+Both webhook functions (`howbody-body-webhook`, `howbody-posture-webhook`) get a new step after the report upsert:
+
+**Body webhook** maps:
+- `weight` → `weight_kg`
+- `pbf` → `body_fat_percentage`
+- (height stays from member's last manual entry; HOWBODY doesn't push height)
+- Sets `recorded_at = test_time`, `recorded_by = NULL`, `notes = 'HOWBODY auto-sync'`
+
+**Posture webhook** updates the same row (same `data_key` window) with:
+- `posture_type`, `body_shape_profile` (already columns in `member_measurements`)
+
+Strategy: upsert into `member_measurements` keyed by `(member_id, recorded_at)` rounded to the minute, so a body+posture pair from one session merges into one measurement row. This means the existing `MyProgress` charts and 3D avatar update automatically — zero UI work for the chart side.
+
+---
+
+## 4. Member Progress Tab — HOWBODY surface
+
+`src/pages/MyProgress.tsx`:
+- Add a **"Body Scan Reports"** card listing the last 6 `howbody_body_reports` + `howbody_posture_reports` for the member.
+- Each row shows: date, type icon (Body / Posture), key metric (Health Score or Posture Type), and two buttons:
+  - **View** → opens a new in-app drawer `HowbodyReportDrawer` rendering the same content blocks as `HowbodyPublicReport` but inside `AppLayout` (no token needed — RLS ensures member can read own rows).
+  - **Download PDF** → calls new edge function `howbody-report-pdf` (returns a styled HTML→PDF using existing PDF pattern in the project). File saved with name `Incline-BodyReport-<date>.pdf`.
+- Add a **scan-quota strip** at the top: "Body Scans: 2/5 this month · Posture: 1/5 · Add-on credits: 0 · [Buy More]" → links to `/store?tab=addons`.
+- New `useHowbodyReports(memberId)` hook handles the dual-table fetch with TanStack Query.
+
+RLS: add `SELECT` policy on `howbody_body_reports` / `howbody_posture_reports` for `auth.uid() = (SELECT user_id FROM members WHERE id = member_id)`.
+
+---
+
+## 5. PDF Download Edge Function
+
+New `supabase/functions/howbody-report-pdf/index.ts`:
+- Auth required (`getClaims`); validate the requesting user owns the member row.
+- Inputs: `{ dataKey, reportType }`.
+- Renders branded HTML (Incline header, member name, scan datetime, all metrics, recommendations) and returns a PDF via `https://esm.sh/pdf-lib` or the existing receipt generator pattern (whichever the project already uses — will reuse to stay consistent).
+- Public report page also gets a "Download PDF" button that calls a sibling public endpoint validated by the opaque token.
+
+---
+
+## 6. Notifications
+
+When a body or posture webhook completes, insert a row into `notifications` for the member: "Your new HOWBODY scan is ready — view in Progress." This plugs into the existing realtime bell.
+
+---
+
+## Technical Section
+
+**Migrations**
+- Add `SELECT` RLS policies on `howbody_body_reports` and `howbody_posture_reports` for the owning member.
+- Insert seed `benefit_types` rows (`body_scan`, `posture_scan`) per branch (idempotent ON CONFLICT).
+- Create `public.howbody_scan_quota(_member_id uuid, _kind text) RETURNS jsonb` (SECURITY DEFINER, search_path=public).
+- Create trigger function `howbody_mirror_to_measurements()` on `howbody_body_reports` AFTER INSERT/UPDATE → upserts into `member_measurements`. Same for posture (updates only the posture/shape columns).
+
+**Edge function changes**
+- `howbody-bind-user`: replace inline quota math (lines 60-78) with `rpc('howbody_scan_quota', { _member_id, _kind: 'body' or 'posture' })`. Currently bind doesn't know which scan type — extend body to optionally accept `kind` and bind once per kind, or check `body OR posture` like today (acceptable v1).
+- `howbody-body-webhook` / `howbody-posture-webhook`: after upsert, if plan quota was already exhausted, consume one `member_benefits` credit of matching type (FIFO oldest `expiry_date`).
+- New `howbody-report-pdf` edge function (auth) and `howbody-public-report-pdf` (token-gated).
+
+**Files to create**
+- `src/components/progress/HowbodyReportDrawer.tsx`
+- `src/components/progress/HowbodyReportsCard.tsx`
+- `src/components/progress/ScanQuotaStrip.tsx`
+- `src/hooks/useHowbodyReports.ts`
+- `supabase/functions/howbody-report-pdf/index.ts`
+- `supabase/functions/howbody-public-report-pdf/index.ts`
+- One migration file (RLS + seeds + RPC + triggers)
+
+**Files to modify**
+- `src/pages/MyProgress.tsx` — add quota strip + reports card
+- `src/components/plans/AddPlanDrawer.tsx` & `EditPlanDrawer.tsx` — add scanner access section
+- `src/pages/Plans.tsx` — show "Body Scan" badge on plan card
+- `src/pages/HowbodyPublicReport.tsx` — add "Download PDF" button
+- `supabase/functions/howbody-bind-user/index.ts` — use new quota RPC
+- `supabase/functions/howbody-body-webhook/index.ts` & `howbody-posture-webhook/index.ts` — measurement mirror trigger handles it; just add notification + add-on consumption fallback
+- `supabase/config.toml` — register two new edge functions
+
+No new secrets needed; HOWBODY credentials already configured.
+
+---
+
+## Out of scope (flag for later)
+
+- Bind UX picking `body` vs `posture` explicitly (currently treated as one quota pool).
+- Trainer-side comparison view of a member's HOWBODY trend.
+- Auto-suggesting workout/diet adjustments from scan deltas.
