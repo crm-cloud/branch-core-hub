@@ -708,11 +708,15 @@ export type Database = {
           created_at: string
           description: string | null
           display_order: number | null
+          gst_category: string
+          hsn_code: string | null
           id: string
           is_active: boolean | null
           name: string
           price: number
           quantity: number
+          tax_inclusive: boolean
+          tax_rate: number
           updated_at: string
           validity_days: number
         }
@@ -723,11 +727,15 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_order?: number | null
+          gst_category?: string
+          hsn_code?: string | null
           id?: string
           is_active?: boolean | null
           name: string
           price: number
           quantity: number
+          tax_inclusive?: boolean
+          tax_rate?: number
           updated_at?: string
           validity_days?: number
         }
@@ -738,11 +746,15 @@ export type Database = {
           created_at?: string
           description?: string | null
           display_order?: number | null
+          gst_category?: string
+          hsn_code?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
           price?: number
           quantity?: number
+          tax_inclusive?: boolean
+          tax_rate?: number
           updated_at?: string
           validity_days?: number
         }
@@ -7622,9 +7634,14 @@ export type Database = {
       }
       templates: {
         Row: {
+          attachment_filename_template: string | null
+          attachment_source: string | null
           branch_id: string | null
           content: string
           created_at: string
+          header_media_handle: string | null
+          header_media_url: string | null
+          header_type: string | null
           id: string
           is_active: boolean | null
           last_validated_at: string | null
@@ -7640,9 +7657,14 @@ export type Database = {
           variables: Json | null
         }
         Insert: {
+          attachment_filename_template?: string | null
+          attachment_source?: string | null
           branch_id?: string | null
           content: string
           created_at?: string
+          header_media_handle?: string | null
+          header_media_url?: string | null
+          header_type?: string | null
           id?: string
           is_active?: boolean | null
           last_validated_at?: string | null
@@ -7658,9 +7680,14 @@ export type Database = {
           variables?: Json | null
         }
         Update: {
+          attachment_filename_template?: string | null
+          attachment_source?: string | null
           branch_id?: string | null
           content?: string
           created_at?: string
+          header_media_handle?: string | null
+          header_media_url?: string | null
+          header_type?: string | null
           id?: string
           is_active?: boolean | null
           last_validated_at?: string | null

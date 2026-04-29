@@ -1,108 +1,122 @@
-# Audit & Refactor: Benefit Types vs Facilities
+# Settings, Benefits, Templates & Add-On Pricing Overhaul
 
-## What I found
+Five focused fixes spanning Settings IA, Benefits page UX, WhatsApp filter placement, template attachment audit, and add-on package GST.
 
-Your architecture is **already correct in the schema** — but the data and UI are not using it correctly.
+---
 
-**Schema (good):**
-- `benefit_types` = the *category* (Ice Bath, Sauna). No gender column (was dropped Feb 2026).
-- `facilities` = physical *rooms* with `gender_access` (`male` / `female` / `unisex`), `capacity`, `available_days`, `under_maintenance`.
-- `book_facility_slot` RPC enforces gender at booking time using `facilities.gender_access` vs `profiles.gender`. Working correctly.
-- `MemberClassBooking`, `BookBenefitSlot`, `ConciergeBookingDrawer`, `MemberProfileDrawer` all already filter by `facility.gender_access`.
+## 1. Benefit Settings → Tabbed layout with KPI cards
 
-**Data (broken — this is the real problem):**
-Current `benefit_types` in the DB:
-- `Ice Bath Male` (`ice_bath_m`) → 1 male facility
-- `Ice Bath Female` (`ice_bath_f`) → 1 female facility
-- `Sauna Therapy Male` (`sauna_therapy_m`) → 1 male facility
-- `Sauna Therapy Female` (`sauna_therapy_female`) → 1 female facility
-- `Steam room` (no facility yet)
-- `Body Composition & Posture Scan` (not a bookable facility)
+**File:** `src/components/settings/BenefitSettingsComponent.tsx`
 
-So the operator created **duplicate categories per gender**, defeating the design. A male and a female ice bath should be **two facilities of one benefit type "Ice Bath"** — not two benefit types.
+Currently stacks `BenefitTypesManager` + `FacilitiesManager` + Slot Settings vertically. Convert to a tabbed shell with a KPI strip on top.
 
-**UI (the cause):**
-- `BenefitTypesManager` does not surface that gender lives on facilities, so users invent `_m`/`_f` codes.
-- `FacilitiesManager` placeholder text literally says *"Ice Bath - Male Room"* — encouraging gendered names and reinforcing the wrong mental model.
-- No grouped view showing "Ice Bath → 2 rooms (1 male, 1 female)".
-- Delete on a benefit type with linked facilities/plans throws raw FK error instead of guarding.
+**KPI Strip (4 cards):**
+- Total Benefit Types (active count)
+- Facilities/Rooms (count + maintenance count badge)
+- Bookable Today (slot-enabled benefit types)
+- Active Member Credits (count of `member_benefit_credits` with `remaining > 0`)
 
-## The right model (recommendation)
+**Tabs:**
+- a. **Benefits** — existing `<BenefitTypesManager />`
+- b. **Facilities / Rooms** — existing `<FacilitiesManager />`
+- c. **Slot Booking Settings** — existing slot-settings grid + `ConfigureSheet`
 
-```text
-Benefit Type: "Ice Bath"  (category, gender-agnostic)
-  ├── Facility: "Ice Bath Room A"    gender_access=male,   capacity=2
-  └── Facility: "Ice Bath Room B"    gender_access=female, capacity=2
+URL persists via `?subtab=benefits|facilities|slots`. Vuexy card styling (`rounded-2xl`, soft shadows, gradient icon badges).
 
-Benefit Type: "Sauna"
-  ├── Facility: "Sauna - Men's Wing" gender_access=male
-  └── Facility: "Sauna - Women's Wing" gender_access=female
-  └── Facility: "Couples Sauna"       gender_access=unisex
+---
+
+## 2. WhatsApp Status filter → Move under WhatsApp tab
+
+**File:** `src/components/settings/TemplateManager.tsx` (lines ~155, ~460–520)
+
+Today the "WHATSAPP STATUS: All / Approved / Pending / Rejected / Draft" pills render globally above the SMS/Email/WhatsApp channel tabs. Per the screenshot, this is confusing because the filter is WhatsApp-specific.
+
+**Fix:** Render the status pill row **only inside the WhatsApp `TabsContent`** (conditional on `activeChannelTab === 'whatsapp'`). Keep counts driven by the same memoized list. SMS/Email tabs no longer show those pills.
+
+---
+
+## 3. Settings menu → Alphabetical order
+
+**File:** `src/pages/Settings.tsx` — `SETTINGS_MENU` array (lines 23–41)
+
+Reorder by label A→Z (keys / icons / content keys preserved so URL `?tab=` and functionality stay intact):
+
+```
+AI Agent → Appearance → Backup & Restore → Benefits → Body Scanner →
+Branches → Finance Categories → Integrations → Marketing & Retention →
+Notifications → Organization → Plan & Benefit Templates → Referrals →
+Security → Tax & GST → Templates Manager → Website
 ```
 
-Members holding "Ice Bath × 8 sessions" can book **either** room their gender allows — one balance, one pass, no double-counting.
+Pure ordering change; no key/value renames, no route breakage.
 
-## Plan
+---
 
-### 1. Data migration (one-shot, reversible-by-backup)
+## 4. Template Attachments Audit (PDFs / Images for Reports & Invoices)
 
-Write a SQL migration that:
-- Picks one canonical type per duplicate set (keeps `Ice Bath Male` → renames to `Ice Bath`, code `ice_bath`; same for sauna). Picks the older row to preserve history.
-- Repoints linked rows of the duplicate to the canonical id:
-  - `facilities.benefit_type_id`
-  - `member_benefits.benefit_type_id`
-  - `plan_benefits.benefit_type_id` (and any `*_template_*` tables — verified at write time)
-  - `benefit_packages.benefit_type_id`
-  - `benefit_usage_log.benefit_type_id`
-- Soft-deletes the duplicate type (`is_active=false`, suffix code with `_deprecated_<ts>`) instead of hard-delete, so any cached id still resolves.
-- Logs the merge into `audit_log` so it's visible in Audit Logs.
+**Finding:** The `templates` table has **no** attachment / header-media columns — only `name, type, subject, content, variables, meta_template_*`. Edge functions like `deliver-scan-report` and invoice senders attach PDFs ad-hoc inline at send time, bypassing the template system. So the user is correct: there is no template-level attachment support.
 
-### 2. UI/UX overhaul — `BenefitTypesManager`
+**Plan — add first-class attachment support:**
 
-- Add a banner explaining: *"A benefit type is the category (Ice Bath). Gender, capacity and room belong to Facilities."* with link to Facilities tab.
-- Replace flat card list with **grouped cards**: each benefit type expands to show its linked facilities inline (name, gender badge, capacity, status), with quick "Add Facility" CTA inside the card.
-- Add a **"Used in" footer** per type: # plans, # active member benefits, # facilities. Clicking opens a side sheet with the dependency list.
-- **Delete guard**: if facilities or plans reference the type, block delete and offer "Deactivate" instead. If only inactive references, allow delete with confirm.
-- Code field: auto-generate, lock once any dependency exists.
-- Drawer copy refresh: example placeholder `"Ice Bath"`, not `"Ice Bath - Male Room"`.
+DB migration on `public.templates`:
+- `header_type text` — `none | image | document | video`
+- `header_media_url text` — static media link (e.g. brand logo, sample PDF)
+- `header_media_handle text` — Meta media handle for WhatsApp templates
+- `attachment_source text` — `none | static | dynamic`
+  - `static` → use `header_media_url`
+  - `dynamic` → resolve at send time from `{{attachment_url}}` variable (so report/invoice PDFs flow through naturally)
+- `attachment_filename_template text` — e.g. `Invoice_{{invoice_number}}.pdf`
 
-### 3. UI/UX overhaul — `FacilitiesManager`
+**TemplateManager UI** (`TemplateManager.tsx`):
+- New "Attachment" section in the editor sheet (visible for WhatsApp + Email).
+- Upload to existing `template-media` storage bucket (create if missing) with RLS for admin/owner/manager.
+- Live preview chip showing filename + type.
 
-- Rename column heading from generic to **"Rooms & Equipment"** (clearer for staff).
-- Group rows by `benefit_type` with a header row showing the type icon + total capacity across rooms.
-- Filter chips: All / Unisex / Male / Female / Under Maintenance / Inactive.
-- Drawer placeholder changes from `"Ice Bath - Male Room"` to `"Room A"` or `"Men's Wing"` to discourage embedding gender in the name (gender is its own field already).
-- Inline gender badge using semantic tokens (blue/pink/neutral).
-- Add a *"Why two rooms?"* helper tooltip on the Gender field.
+**Edge function alignment:**
+- `deliver-scan-report` and invoice senders: when invoking by `template_id`, pass `attachment_url` + `attachment_filename` into the template context so the resolver attaches automatically.
+- Add 2 starter templates seeded:
+  - `scan_report_delivery` (WhatsApp, document header, dynamic)
+  - `invoice_delivery` (WhatsApp + Email, document header, dynamic)
 
-### 4. Guardrails & validation
+This unblocks "Send PDF report / Send Invoice" flows from the unified Template Manager.
 
-- DB unique index on `(branch_id, lower(name))` for `benefit_types` to prevent re-creating duplicates.
-- DB check: facility name must not contain "male"/"female" alone (warning, not hard error — surfaced as a UI warning).
-- Booking RPC already enforces gender — verified, no change needed.
+---
 
-### 5. Member-facing impact
+## 5. Add-On Packages → HSN / Tax / GST inclusive toggle
 
-- `MyBenefits` and `MemberClassBooking` will show **one** "Ice Bath" balance instead of two — matches what the member actually purchased.
-- Booking flow already routes them to the correct gendered room via existing `gender_access` filter — no UX change needed.
+**Files:**
+- DB migration on `public.benefit_packages`
+- `src/components/plans/AddBenefitPackageDrawer.tsx`
+- `src/components/plans/BenefitPackagesPanel.tsx`
 
-## Files touched
+**DB migration — add columns:**
+- `hsn_code text` (nullable)
+- `tax_rate numeric(5,2) default 0` — GST %
+- `tax_inclusive boolean default true` — toggle: price already includes tax vs. tax added on top
+- `gst_category text` — `goods | services` (defaults `services` for sessions)
 
-**Migrations**
-- `supabase/migrations/<ts>_consolidate_gendered_benefit_types.sql` — merge data, add unique index, audit log entry.
+**Drawer UI additions** (new "Tax & GST" section below Price):
+- HSN/SAC Code input (with helper: SAC for service-based benefits)
+- Tax Rate select (0 / 5 / 12 / 18 / 28) — pull defaults from existing `useGstRates` if available
+- Switch: **"Price is GST inclusive"** (default ON, matches India retail norm)
+- Live preview row computing base + CGST + SGST split based on toggle:
+  - Inclusive: `base = price / (1 + rate/100)`, `tax = price - base`
+  - Exclusive: `base = price`, `total = price * (1 + rate/100)`
 
-**Frontend**
-- `src/components/settings/BenefitTypesManager.tsx` — grouped UI, dependency footer, delete guard, copy.
-- `src/components/settings/FacilitiesManager.tsx` — grouping by type, filter chips, copy.
-- `src/hooks/useBenefitTypes.ts` — extend to optionally return facility counts (single query with aggregate).
-- New: `src/components/settings/BenefitTypeDependencySheet.tsx` — shows what references a type.
+**Panel display:** Add small `HSN: 9999` and `GST 18%` chips on each card; show "incl. GST" / "+ GST" suffix on the price badge.
 
-**No changes needed (already correct):**
-- `book_facility_slot` RPC, `MemberClassBooking`, `BookBenefitSlot`, `ConciergeBookingDrawer`, `MemberProfileDrawer` — all read gender from facility.
+**Invoicing flow:** `record_payment` RPC already handles tax splits when invoice line items carry `tax_rate` + `hsn_code` (per `gst-compliant-invoicing` memory). Pass these through when an add-on package is sold so GST invoices come out correctly.
 
-## Out of scope
+---
 
-- Changing `benefit_type` enum on `member_benefits` (legacy column, custom types use `'other'` + `benefit_type_id` UUID — already documented in `mem://architecture/benefit-uniqueness-constraints`).
-- Touching scan/posture types — they're not facility-bound.
+## Order of execution
 
-Reply **approve** to proceed, or tell me what to change.
+1. DB migrations (templates attachments + benefit_packages GST) — single migration file.
+2. Settings menu reorder (trivial).
+3. WhatsApp status filter move.
+4. Benefit Settings tabs + KPI strip.
+5. Add-On drawer GST fields + panel chips.
+6. Template Manager attachment UI + storage bucket + 2 seeded templates.
+7. Wire `deliver-scan-report` / invoice senders to pass dynamic attachment context.
+
+No breaking changes to existing routes, RLS, or data.
