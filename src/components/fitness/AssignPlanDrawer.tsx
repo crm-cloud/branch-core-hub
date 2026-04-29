@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import {
   Search,
   User,
@@ -17,6 +18,7 @@ import {
   MessageCircle,
   Bell,
   Users,
+  FileText,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,6 +27,8 @@ import {
   BulkAssignResult,
   NotificationChannel,
 } from '@/services/fitnessService';
+import { sendPlanToMember } from '@/utils/sendPlanToMember';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, addWeeks } from 'date-fns';
 
@@ -60,6 +64,7 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   const [selected, setSelected] = useState<MemberLite[]>([]);
   const [validUntil, setValidUntil] = useState(format(addWeeks(new Date(), 4), 'yyyy-MM-dd'));
   const [channels, setChannels] = useState<NotificationChannel[]>(['in_app']);
+  const [sendPdf, setSendPdf] = useState(false);
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const queryClient = useQueryClient();
 
@@ -107,8 +112,8 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
   };
 
   const assignMutation = useMutation({
-    mutationFn: () =>
-      assignPlanToMembers({
+    mutationFn: async () => {
+      const data = await assignPlanToMembers({
         member_ids: selected.map((m) => m.id),
         plan_name: plan!.name,
         plan_type: plan!.type,
@@ -119,11 +124,58 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
         branch_id: branchId,
         channels,
         template_id: plan?.template_id ?? null,
-      }),
+      });
+
+      // If "Send PDF on assign" is enabled, dispatch PDFs to whichever
+      // channels (whatsapp / email) are also selected. Best-effort: errors
+      // are surfaced via toast but don't block the assignment success path.
+      const pdfChannels: ('whatsapp' | 'email')[] = [];
+      if (sendPdf && channels.includes('whatsapp')) pdfChannels.push('whatsapp');
+      if (sendPdf && channels.includes('email')) pdfChannels.push('email');
+
+      if (sendPdf && pdfChannels.length > 0) {
+        const memberIds = data.filter((r) => r.success).map((r) => r.member_id);
+        if (memberIds.length > 0) {
+          const { data: members } = await supabase
+            .from('members')
+            .select('id, full_name, phone, email')
+            .in('id', memberIds);
+          const memberMap = new Map((members || []).map((m: any) => [m.id, m]));
+          let pdfFailures = 0;
+          for (const r of data) {
+            if (!r.success) continue;
+            const m = memberMap.get(r.member_id);
+            if (!m) continue;
+            try {
+              await sendPlanToMember({
+                member: { id: m.id, full_name: m.full_name, phone: m.phone, email: m.email },
+                plan: {
+                  name: plan!.name,
+                  type: plan!.type,
+                  description: plan!.description,
+                  data: plan!.content,
+                  valid_until: validUntil,
+                },
+                branchId,
+                channels: pdfChannels,
+              });
+            } catch (e) {
+              pdfFailures++;
+            }
+          }
+          if (pdfFailures > 0) {
+            toast.warning(`PDF delivery failed for ${pdfFailures} member${pdfFailures === 1 ? '' : 's'}`);
+          }
+        }
+      }
+
+      return data;
+    },
     onSuccess: (data) => {
       const ok = data.filter((r) => r.success).length;
       toast.success(`Assigned plan to ${ok} of ${data.length} members`);
       queryClient.invalidateQueries({ queryKey: ['member-fitness-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['fitness-member-assignments'] });
       setResults(data);
       setSelected([]);
     },
@@ -250,6 +302,24 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
                   </div>
                 </div>
               </div>
+
+              {(channels.includes('whatsapp') || channels.includes('email')) && (
+                <div className="rounded-xl border bg-muted/30 p-3 flex items-start gap-3">
+                  <FileText className="h-4 w-4 mt-0.5 text-primary" />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="send-pdf-toggle" className="text-sm font-medium cursor-pointer">
+                        Send PDF on assign
+                      </Label>
+                      <Switch id="send-pdf-toggle" checked={sendPdf} onCheckedChange={setSendPdf} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Generates a styled PDF of this plan and delivers it via the selected
+                      WhatsApp / Email channels alongside the notification.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
