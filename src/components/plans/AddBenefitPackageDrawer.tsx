@@ -205,6 +205,69 @@ export function AddBenefitPackageDrawer({ open, onOpenChange, branchId, initial 
             </div>
           </div>
 
+          {/* Tax & GST */}
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">Tax & GST</p>
+                <p className="text-xs text-muted-foreground">Configure HSN/SAC and tax treatment for invoices.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">Inclusive</Label>
+                <Switch checked={taxInclusive} onCheckedChange={setTaxInclusive} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>HSN / SAC Code</Label>
+                <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} placeholder="e.g. 999723" />
+              </div>
+              <div className="space-y-2">
+                <Label>GST Rate (%)</Label>
+                <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {GST_RATES.map((r) => (
+                      <SelectItem key={r} value={String(r)}>{r}%</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={gstCategory} onValueChange={(v) => setGstCategory(v as 'goods' | 'services')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="services">Services (SAC)</SelectItem>
+                  <SelectItem value="goods">Goods (HSN)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Live tax preview */}
+            {price > 0 && (
+              <div className="rounded-lg bg-background border border-border/60 p-3 text-xs space-y-1">
+                {(() => {
+                  const rate = taxRate / 100;
+                  const base = taxInclusive ? price / (1 + rate) : price;
+                  const tax = taxInclusive ? price - base : price * rate;
+                  const total = taxInclusive ? price : price + tax;
+                  return (
+                    <>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Base</span><span className="font-medium">₹{base.toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">CGST ({(taxRate/2).toFixed(1)}%)</span><span className="font-medium">₹{(tax/2).toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">SGST ({(taxRate/2).toFixed(1)}%)</span><span className="font-medium">₹{(tax/2).toFixed(2)}</span></div>
+                      <div className="flex justify-between border-t border-border/60 pt-1 mt-1"><span className="font-semibold">Total {taxInclusive ? '(incl. GST)' : '(+ GST)'}</span><span className="font-bold">₹{total.toFixed(2)}</span></div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
             <div>
               <p className="text-sm font-medium">Active</p>
