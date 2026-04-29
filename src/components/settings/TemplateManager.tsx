@@ -82,6 +82,10 @@ interface Template {
   meta_template_name?: string | null;
   meta_template_status?: string | null;
   meta_rejection_reason?: string | null;
+  header_type?: 'none' | 'image' | 'document' | 'video' | null;
+  header_media_url?: string | null;
+  attachment_source?: 'none' | 'static' | 'dynamic' | null;
+  attachment_filename_template?: string | null;
 }
 
 function metaStatusBadge(status: string | null | undefined) {
@@ -151,7 +155,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     subject: '',
     content: '',
     is_active: true,
+    header_type: 'none' as 'none' | 'image' | 'document' | 'video',
+    header_media_url: '',
+    attachment_source: 'none' as 'none' | 'static' | 'dynamic',
+    attachment_filename_template: '',
   });
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all');
 
@@ -256,6 +265,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         subject: template.subject || '',
         content: template.content,
         is_active: template.is_active,
+        header_type: (template.header_type as any) || 'none',
+        header_media_url: template.header_media_url || '',
+        attachment_source: (template.attachment_source as any) || 'none',
+        attachment_filename_template: template.attachment_filename_template || '',
       });
     } else {
       setSelectedTemplate(null);
@@ -266,6 +279,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         subject: '',
         content: '',
         is_active: true,
+        header_type: 'none',
+        header_media_url: '',
+        attachment_source: 'none',
+        attachment_filename_template: '',
       });
     }
     setShowEditor(true);
@@ -290,6 +307,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       subject: '',
       content: prefill.content,
       is_active: true,
+      header_type: 'none',
+      header_media_url: '',
+      attachment_source: 'none',
+      attachment_filename_template: '',
     });
     setShowEditor(true);
     onPrefillConsumed?.();
@@ -313,6 +334,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       content: formData.content,
       is_active: formData.is_active,
       variables: AVAILABLE_VARIABLES.filter((v) => formData.content.includes(v)),
+      header_type: formData.header_type,
+      header_media_url: formData.header_media_url || null,
+      attachment_source: formData.attachment_source,
+      attachment_filename_template: formData.attachment_filename_template || null,
     };
 
     if (selectedTemplate) {
@@ -494,28 +519,6 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         </div>
       ) : (
         <>
-          {/* WhatsApp approval status filter chips (always visible — applies only to WhatsApp tab) */}
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">WhatsApp status:</span>
-            {([
-              { v: 'all',      label: 'All',       cls: 'bg-muted text-foreground' },
-              { v: 'approved', label: '✅ Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-              { v: 'pending',  label: '⏳ Pending',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-              { v: 'rejected', label: '❌ Rejected', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-              { v: 'draft',    label: '⚪ Draft',    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
-            ] as const).map((s) => (
-              <button
-                key={s.v}
-                type="button"
-                onClick={() => setStatusFilter(s.v as any)}
-                className={`text-xs px-3 py-1 rounded-full border transition ${statusFilter === s.v ? 'ring-2 ring-primary/40 ' : ''}${s.cls}`}
-                title={s.v === 'draft' ? 'Local-only template — not sent to Meta yet. WhatsApp send will be blocked.' : ''}
-              >
-                {s.label}
-                <span className="ml-1.5 opacity-70">{statusCounts[s.v] ?? 0}</span>
-              </button>
-            ))}
-          </div>
         <Tabs defaultValue="whatsapp" className="w-full">
           <TabsList className="w-full grid grid-cols-3">
             {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
@@ -532,6 +535,30 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
           </TabsList>
           {TEMPLATE_TYPES.map(({ value, label }) => (
             <TabsContent key={value} value={value}>
+              {/* WhatsApp-only approval status filter chips */}
+              {value === 'whatsapp' && (
+                <div className="flex flex-wrap items-center gap-2 mt-4 mb-3 px-1">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">Status:</span>
+                  {([
+                    { v: 'all',      label: 'All',       cls: 'bg-muted text-foreground' },
+                    { v: 'approved', label: '✅ Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                    { v: 'pending',  label: '⏳ Pending',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                    { v: 'rejected', label: '❌ Rejected', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+                    { v: 'draft',    label: '⚪ Draft',    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+                  ] as const).map((s) => (
+                    <button
+                      key={s.v}
+                      type="button"
+                      onClick={() => setStatusFilter(s.v as any)}
+                      className={`text-xs px-3 py-1 rounded-full border transition ${statusFilter === s.v ? 'ring-2 ring-primary/40 ' : ''}${s.cls}`}
+                      title={s.v === 'draft' ? 'Local-only template — not sent to Meta yet. WhatsApp send will be blocked.' : ''}
+                    >
+                      {s.label}
+                      <span className="ml-1.5 opacity-70">{statusCounts[s.v] ?? 0}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <Card>
                 <CardContent className="pt-4">
                   {!groupedTemplates[value]?.length ? (
@@ -783,6 +810,115 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 ))}
               </div>
             </div>
+
+
+            {/* Attachment / Header media — applies to WhatsApp and Email */}
+            {(formData.type === 'whatsapp' || formData.type === 'email') && (
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div>
+                  <Label className="font-medium">Attachment / Header Media</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Attach a PDF, image, or video. Use <span className="font-mono">Dynamic</span> for invoice/report PDFs that change per send.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Header Type</Label>
+                    <Select
+                      value={formData.header_type}
+                      onValueChange={(v) => setFormData({ ...formData, header_type: v as any })}
+                    >
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None (text only)</SelectItem>
+                        <SelectItem value="image">Image</SelectItem>
+                        <SelectItem value="document">Document (PDF)</SelectItem>
+                        <SelectItem value="video">Video</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Source</Label>
+                    <Select
+                      value={formData.attachment_source}
+                      onValueChange={(v) => setFormData({ ...formData, attachment_source: v as any })}
+                      disabled={formData.header_type === 'none'}
+                    >
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Pick —</SelectItem>
+                        <SelectItem value="static">Static (same file every time)</SelectItem>
+                        <SelectItem value="dynamic">Dynamic (resolved at send time)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {formData.header_type !== 'none' && formData.attachment_source === 'static' && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Upload File</Label>
+                    <Input
+                      type="file"
+                      accept={
+                        formData.header_type === 'image' ? 'image/*'
+                        : formData.header_type === 'video' ? 'video/*'
+                        : 'application/pdf'
+                      }
+                      disabled={uploadingMedia}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingMedia(true);
+                        try {
+                          const ext = file.name.split('.').pop() || 'bin';
+                          const path = `${effectiveBranchId || 'global'}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                          const { error: upErr } = await supabase.storage.from('template-media').upload(path, file, { upsert: false, contentType: file.type });
+                          if (upErr) throw upErr;
+                          const { data: pub } = supabase.storage.from('template-media').getPublicUrl(path);
+                          setFormData({ ...formData, header_media_url: pub.publicUrl });
+                          toast.success('File uploaded');
+                        } catch (err: any) {
+                          toast.error(err.message || 'Upload failed');
+                        } finally {
+                          setUploadingMedia(false);
+                        }
+                      }}
+                    />
+                    {formData.header_media_url && (
+                      <div className="flex items-center justify-between gap-2 text-xs bg-background border rounded-md px-2 py-1.5">
+                        <span className="truncate font-mono text-muted-foreground">{formData.header_media_url.split('/').pop()}</span>
+                        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs"
+                          onClick={() => setFormData({ ...formData, header_media_url: '' })}>
+                          Remove
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {formData.header_type === 'document' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Filename Template</Label>
+                    <Input
+                      placeholder="e.g. Invoice_{{invoice_number}}.pdf"
+                      value={formData.attachment_filename_template}
+                      onChange={(e) => setFormData({ ...formData, attachment_filename_template: e.target.value })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Used as the filename shown to recipients. Variables get replaced at send time.
+                    </p>
+                  </div>
+                )}
+
+                {formData.attachment_source === 'dynamic' && formData.header_type !== 'none' && (
+                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-2 text-[11px] text-amber-800 dark:text-amber-200">
+                    The sender (e.g. Send Invoice / Send Scan Report) must pass <span className="font-mono">attachment_url</span> in the template context.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
               <div>

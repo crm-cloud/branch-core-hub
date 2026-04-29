@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -7,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Settings2, Clock, Users, AlertTriangle, Sparkles, SlidersHorizontal } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Settings2, Clock, Users, AlertTriangle, Sparkles, SlidersHorizontal, Building2, CalendarClock, Wallet } from "lucide-react";
 import { useBenefitSettings, useUpsertBenefitSetting } from "@/hooks/useBenefitBookings";
-import { useBookableBenefitTypes } from "@/hooks/useBenefitTypes";
+import { useBookableBenefitTypes, useBenefitTypes } from "@/hooks/useBenefitTypes";
 import { BenefitTypesManager } from "./BenefitTypesManager";
 import { FacilitiesManager } from "./FacilitiesManager";
 import { toast } from "sonner";
@@ -17,6 +20,7 @@ import { Database } from "@/integrations/supabase/types";
 import * as LucideIcons from "lucide-react";
 import { safeBenefitEnum } from "@/lib/benefitEnums";
 import { useBranchContext } from "@/contexts/BranchContext";
+import { supabase } from "@/integrations/supabase/client";
 
 type BenefitType = Database["public"]["Enums"]["benefit_type"];
 type NoShowPolicy = Database["public"]["Enums"]["no_show_policy"];
@@ -184,8 +188,38 @@ function ConfigureSheet({ open, onOpenChange, branchId, benefitType, benefitType
 
 /* ── Main Component ── */
 
+/* ── KPI Strip ── */
+
+interface KpiCardProps {
+  label: string;
+  value: string | number;
+  hint?: string;
+  icon: React.ReactNode;
+  gradient: string;
+}
+
+function KpiCard({ label, value, hint, icon, gradient }: KpiCardProps) {
+  return (
+    <Card className="rounded-2xl border-0 shadow-lg shadow-slate-200/60 dark:shadow-slate-900/40 overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{value}</p>
+            {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+          </div>
+          <div className={`p-2.5 rounded-xl text-white shadow-md ${gradient}`}>{icon}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── Main Component ── */
+
 export function BenefitSettingsComponent() {
   const { effectiveBranchId } = useBranchContext();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [configureType, setConfigureType] = useState<{
     id: string;
     code: string;
@@ -198,7 +232,38 @@ export function BenefitSettingsComponent() {
   const branchId = effectiveBranchId || "";
   const { data: settings, isLoading: loadingSettings } = useBenefitSettings(branchId);
   const { data: bookableBenefitTypes, isLoading: loadingTypes } = useBookableBenefitTypes(branchId);
+  const { data: allBenefitTypes } = useBenefitTypes(branchId);
   const upsertSetting = useUpsertBenefitSetting();
+
+  // KPIs
+  const { data: facilityStats } = useQuery({
+    queryKey: ["benefits-kpi-facilities", branchId],
+    enabled: !!branchId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("facilities")
+        .select("id, status")
+        .eq("branch_id", branchId);
+      if (error) throw error;
+      const total = data?.length ?? 0;
+      const maintenance = (data ?? []).filter((f: any) => f.status === "maintenance").length;
+      return { total, maintenance };
+    },
+  });
+
+  const { data: activeCreditsCount } = useQuery({
+    queryKey: ["benefits-kpi-credits", branchId],
+    enabled: !!branchId,
+    queryFn: async () => {
+      const { count, error } = await (supabase as any)
+        .from("member_benefit_credits")
+        .select("id", { count: "exact", head: true })
+        .eq("branch_id", branchId)
+        .gt("remaining", 0);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
 
   if (!branchId) {
     return (
@@ -244,90 +309,149 @@ export function BenefitSettingsComponent() {
     }
   };
 
+  const subtab = searchParams.get("subtab") || "benefits";
+  const setSubtab = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("subtab", v);
+    setSearchParams(next, { replace: true });
+  };
+
+  const benefitsCount = allBenefitTypes?.length ?? 0;
+  const bookableCount = bookableBenefitTypes?.length ?? 0;
+  const slotEnabledCount = (settings ?? []).filter((s: any) => s.is_slot_booking_enabled).length;
+
   return (
-    <div className="space-y-8">
-      <BenefitTypesManager />
-      <FacilitiesManager />
-
-      {/* Slot Booking Settings — compact card grid */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Settings2 className="h-6 w-6 text-primary" />
-          <div>
-            <h2 className="text-xl font-semibold">Slot Booking Settings</h2>
-            <p className="text-muted-foreground">Configure slot-based booking for bookable benefits</p>
-          </div>
-        </div>
-
-        {bookableBenefitTypes && bookableBenefitTypes.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bookableBenefitTypes.map((bt) => {
-              const s = getSettingsForType(bt.code, bt.id);
-              const enabled = s?.is_slot_booking_enabled ?? false;
-
-              return (
-                <Card key={bt.id} className={`transition-shadow hover:shadow-md ${enabled ? "border-primary/30" : ""}`}>
-                  <CardContent className="pt-5 pb-4 px-5 space-y-3">
-                    {/* Header row */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-xl ${enabled ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
-                          {getIconComponent(bt.icon)}
-                        </div>
-                        <div>
-                          <p className="font-semibold leading-tight">{bt.name}</p>
-                          {bt.category && (
-                            <Badge variant="secondary" className="mt-1 text-xs font-normal">{bt.category}</Badge>
-                          )}
-                        </div>
-                      </div>
-                      <Switch
-                        checked={enabled}
-                        onCheckedChange={() => handleToggle(bt, enabled)}
-                        disabled={upsertSetting.isPending}
-                      />
-                    </div>
-
-                    {/* Stats summary */}
-                    {enabled && s && (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>{s.slot_duration_minutes ?? 30} min</span>
-                        <span>·</span>
-                        <Users className="h-3.5 w-3.5" />
-                        <span>Cap: {s.capacity_per_slot ?? 4}</span>
-                        <span>·</span>
-                        <span>{s.operating_hours_start ?? "06:00"}–{s.operating_hours_end ?? "22:00"}</span>
-                      </div>
-                    )}
-
-                    {/* Configure button */}
-                    {enabled && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => setConfigureType({ id: bt.id, code: bt.code, name: bt.name, icon: bt.icon, category: bt.category, settings: s })}
-                      >
-                        <SlidersHorizontal className="h-4 w-4 mr-2" />
-                        Configure
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="text-center py-8">
-              <p className="text-muted-foreground">
-                No bookable benefit types found. Create benefit types above and enable "Requires Slot Booking" to configure slot settings.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+    <div className="space-y-6">
+      {/* KPI Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          label="Benefit Types"
+          value={benefitsCount}
+          hint={`${bookableCount} bookable`}
+          icon={<Sparkles className="h-5 w-5" />}
+          gradient="bg-gradient-to-br from-violet-500 to-indigo-600"
+        />
+        <KpiCard
+          label="Facilities / Rooms"
+          value={facilityStats?.total ?? 0}
+          hint={facilityStats?.maintenance ? `${facilityStats.maintenance} in maintenance` : "All operational"}
+          icon={<Building2 className="h-5 w-5" />}
+          gradient="bg-gradient-to-br from-sky-500 to-cyan-600"
+        />
+        <KpiCard
+          label="Slot Booking Enabled"
+          value={slotEnabledCount}
+          hint={`of ${bookableCount} bookable`}
+          icon={<CalendarClock className="h-5 w-5" />}
+          gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
+        />
+        <KpiCard
+          label="Active Credits"
+          value={activeCreditsCount ?? 0}
+          hint="Members with remaining credits"
+          icon={<Wallet className="h-5 w-5" />}
+          gradient="bg-gradient-to-br from-amber-500 to-orange-600"
+        />
       </div>
+
+      {/* Tabbed shell */}
+      <Tabs value={subtab} onValueChange={setSubtab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 rounded-xl">
+          <TabsTrigger value="benefits" className="gap-1.5">
+            <Sparkles className="h-4 w-4" /> Benefits
+          </TabsTrigger>
+          <TabsTrigger value="facilities" className="gap-1.5">
+            <Building2 className="h-4 w-4" /> Facilities / Rooms
+          </TabsTrigger>
+          <TabsTrigger value="slots" className="gap-1.5">
+            <CalendarClock className="h-4 w-4" /> Slot Booking
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="benefits" className="mt-6">
+          <BenefitTypesManager />
+        </TabsContent>
+
+        <TabsContent value="facilities" className="mt-6">
+          <FacilitiesManager />
+        </TabsContent>
+
+        <TabsContent value="slots" className="mt-6 space-y-6">
+          <div className="flex items-center gap-3">
+            <Settings2 className="h-6 w-6 text-primary" />
+            <div>
+              <h2 className="text-xl font-semibold">Slot Booking Settings</h2>
+              <p className="text-muted-foreground">Configure slot-based booking for bookable benefits</p>
+            </div>
+          </div>
+
+          {bookableBenefitTypes && bookableBenefitTypes.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {bookableBenefitTypes.map((bt) => {
+                const s = getSettingsForType(bt.code, bt.id);
+                const enabled = s?.is_slot_booking_enabled ?? false;
+
+                return (
+                  <Card key={bt.id} className={`rounded-2xl transition-shadow hover:shadow-md ${enabled ? "border-primary/30" : ""}`}>
+                    <CardContent className="pt-5 pb-4 px-5 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-xl ${enabled ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+                            {getIconComponent(bt.icon)}
+                          </div>
+                          <div>
+                            <p className="font-semibold leading-tight">{bt.name}</p>
+                            {bt.category && (
+                              <Badge variant="secondary" className="mt-1 text-xs font-normal">{bt.category}</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enabled}
+                          onCheckedChange={() => handleToggle(bt, enabled)}
+                          disabled={upsertSetting.isPending}
+                        />
+                      </div>
+
+                      {enabled && s && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>{s.slot_duration_minutes ?? 30} min</span>
+                          <span>·</span>
+                          <Users className="h-3.5 w-3.5" />
+                          <span>Cap: {s.capacity_per_slot ?? 4}</span>
+                          <span>·</span>
+                          <span>{s.operating_hours_start ?? "06:00"}–{s.operating_hours_end ?? "22:00"}</span>
+                        </div>
+                      )}
+
+                      {enabled && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setConfigureType({ id: bt.id, code: bt.code, name: bt.name, icon: bt.icon, category: bt.category, settings: s })}
+                        >
+                          <SlidersHorizontal className="h-4 w-4 mr-2" />
+                          Configure
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="rounded-2xl">
+              <CardContent className="text-center py-8">
+                <p className="text-muted-foreground">
+                  No bookable benefit types found. Create benefit types in the Benefits tab and enable "Requires Slot Booking" to configure slot settings.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Configure Sheet */}
       {configureType && (

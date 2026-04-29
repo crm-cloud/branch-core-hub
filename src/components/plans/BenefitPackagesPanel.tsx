@@ -103,7 +103,15 @@ export function BenefitPackagesPanel({ branchId }: BenefitPackagesPanelProps) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className="bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20">{p.quantity} credits</Badge>
                   <Badge variant="outline">{p.validity_days} days</Badge>
-                  <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20">₹{Number(p.price).toLocaleString('en-IN')}</Badge>
+                  <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20">
+                    ₹{Number(p.price).toLocaleString('en-IN')}{Number(p.tax_rate ?? 0) > 0 ? (p.tax_inclusive ? ' incl. GST' : ' + GST') : ''}
+                  </Badge>
+                  {Number(p.tax_rate ?? 0) > 0 && (
+                    <Badge variant="outline" className="bg-amber-500/5 text-amber-700 dark:text-amber-300 border-amber-500/20">GST {Number(p.tax_rate)}%</Badge>
+                  )}
+                  {p.hsn_code && (
+                    <Badge variant="outline" className="font-mono text-[10px]">HSN {p.hsn_code}</Badge>
+                  )}
                 </div>
                 <div className="flex items-center justify-end gap-1.5 pt-1">
                   <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => { setEditing(p); setDrawerOpen(true); }}>
