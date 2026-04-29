@@ -1,99 +1,180 @@
-## Audit finding
 
-You're right — this is inconsistent. The project already has a consistent pattern:
+# Body Scan Reports — Delivery, Notifications & De-branding
 
-| Service | How it's modeled today |
+Three deliverables in one pass:
+
+1. **De-brand HOWBODY** from every member/staff-facing surface (settings, public report pages, login/QR page, badges, drawers, route paths). The integration keeps working — only the visible name and assets change.
+2. **Auto-deliver every new scan** to the member by Email + WhatsApp (with the PDF), and raise an in-app notification to the member, their assigned trainer, the branch manager(s), and admins/owner.
+3. **Hand-off package for HOWBODY**: a clean draft email + spec PDF with the exact endpoints, headers, payload mapping, and behavior we expect from their device — so we can replace their on-device "Send report to mobile" with our Email/WhatsApp delivery.
+
+---
+
+## 1. De-branding (UI only)
+
+Public/member-visible name becomes **"Body Scan"** (composition) and **"Posture Scan"**. Internal tables, edge function names, and DB columns stay (no migration churn).
+
+Surfaces to clean:
+
+| File | Change |
 |---|---|
-| Sauna (M/F) | `benefit_types` row → attached to plans via `plan_benefits` (with frequency + limit) → sold à la carte via `benefit_packages` |
-| Ice Bath (M/F) | same |
-| **3D Body Scanning** | already exists as a `benefit_types` row (category `service`, code `3d_body_scanning`) |
+| `src/components/settings/HowbodySettings.tsx` | Rename panel to **"Body Scanner Integration"**. Keep URLs, but label them generically ("QR Login URL", "Body Webhook", "Posture Webhook"). Hide the word HOWBODY from labels/help text. Move the raw vendor name into a small "Vendor: HOWBODY S580" line at the bottom (admin-only context). |
+| `src/pages/Settings.tsx` | Tab label already "Body Scanner" ✓. No change. |
+| `src/pages/HowbodyLogin.tsx` | Brand strip: `"Body Scan · Incline"`. Footer: `"The Incline Life by Incline"` (drop "Powered by HOWBODY"). Page title + meta. |
+| `src/pages/HowbodyPublicReport.tsx` | Strip header from "HOWBODY Report" → **"Incline Body Scan Report"**. Update meta title. |
+| `src/components/progress/HowbodyReportsCard.tsx` | Card title "Body Scan Reports". Empty state: "No scans yet. Use the body scanner at your gym…". |
+| `src/components/progress/HowbodyReportDrawer.tsx` | Drawer title "Scan Report". |
+| `src/pages/Plans.tsx` | Badge text "Body Scan" instead of "HOWBODY Scan". |
+| `src/components/progress/ScanQuotaStrip.tsx` | "Body Scan / Posture Scan" labels. |
+| `supabase/functions/howbody-report-pdf/index.ts` | PDF header right-side label: **"Body Scan Health Report"** (drop HOWBODY word). Footer line: "Generated from your body scan…". |
+| `src/App.tsx` routes | Add cleaner public aliases: `/scan-login`, `/reports/body/:token` (already), `/reports/posture/:token` (already). Keep `/howbody-login` as a hidden alias so existing QR codes printed on devices still work. |
 
-But in the previous step I added **direct columns** (`body_scan_allowed`, `posture_scan_allowed`, `scans_per_month`) on `membership_plans` and a separate quota engine that reads them. That created two parallel systems for the same concept.
-
-**Decision:** unify HOWBODY scans onto the existing benefit-type pattern. Treat them like sauna/ice-bath: one benefit type per scan kind, attached to a plan via `plan_benefits` (with monthly limit), sold as add-on credits via `benefit_packages` → `member_benefit_credits`. Remove the parallel plan flags.
-
----
-
-## What changes
-
-### 1. Database — collapse to one model
-
-**Migration:**
-- Reuse the existing `3d_body_scanning` benefit type as **Body Composition Scan** (rename label, keep code), and create a sibling **Posture Scan** type (code `howbody_posture`, category `service`, `is_bookable=false` — booking happens at the device, not via the slot system).
-- Drop the parallel columns added last round: `membership_plans.body_scan_allowed`, `posture_scan_allowed`, `scans_per_month`. Drop the values from `benefit_type` enum if used (`body_scan`, `posture_scan`) — they're not needed since we use `benefit_type_id` (the FK), not the enum, for these.
-- Rewrite `public.howbody_scan_quota(_member_id, _kind)` to read from the unified ledger:
-  1. plan limit = sum of `plan_benefits.limit_count` for that benefit type on the active membership (interpreted as monthly when `frequency='monthly'`, total when `'per_membership'`, etc.)
-  2. used = count of HOWBODY reports in the relevant period
-  3. add-on remaining = sum of `member_benefit_credits.credits_remaining` matching the benefit type
-- Replace the `howbody_*_to_measurements` mirror trigger so it also **decrements one credit** from the oldest non-expired `member_benefit_credits` row when the plan quota is exhausted (FIFO).
-
-### 2. Admin UI — remove the parallel "Scanner Access" section
-
-**Plans → Add/Edit Plan drawer:**
-- Delete the `PlanScannerAccessSection` I added.
-- Admins simply add the **Body Composition Scan** or **Posture Scan** benefit type using the existing benefit picker, and set the limit/frequency exactly like sauna or ice bath. No special UI.
-- The Plan card "HOWBODY Scan" badge stays, but it's now derived: shown when any benefit on the plan has `benefit_type_id` matching the scan types.
-
-**Plans → Add-On Packages tab:**
-- No change. Admins create a "5× Body Scans / 60 days" pack via the existing `AddBenefitPackageDrawer` — same flow used for "10 Sauna Sessions".
-
-**Settings → Benefit Types:**
-- The seeded `Body Composition Scan` and `Posture Scan` rows are managed exactly like sauna/ice-bath rows. Admins can rename, deactivate, or set icons.
-
-### 3. Edge functions — read the unified quota
-
-- `howbody-bind-user`: still calls the new `howbody_scan_quota` RPC, which now uses the benefit ledger underneath. Same external behavior.
-- `howbody-body-webhook` / `howbody-posture-webhook`: after the upsert, call new SQL helper `consume_scan_credit_if_needed(_member_id, _kind)` which:
-  - Checks if plan benefit covers this scan in the current period.
-  - If not, decrements oldest valid `member_benefit_credits` row by 1.
-  - If neither, logs the scan anyway but flags it `unauthorized=true` (admin sees in webhook log).
-
-### 4. Member UI — no visible change
-
-- `ScanQuotaStrip` and `HowbodyReportsCard` keep working — they call the same `useScanQuota` hook, which reads the rewritten RPC.
-- Display labels switch to plain "Body Composition · 2 of 5 this month" — driven by the benefit type's `name` column.
-
-### 5. Member self-purchase
-
-- "Buy Add-On Scans" already routes to `/store`. The existing add-on flow (which sells sauna/ice-bath credits) will sell scan credits the same way once the seeded benefit packages exist.
-- Optional: add a "Body Scanner" filter chip in the add-ons store for discoverability.
+No DB rename, no edge function rename. The vendor name remains only in Settings as "Vendor: HOWBODY" (so admins know what hardware it is).
 
 ---
 
-## Why this is the right call
+## 2. Scan-report Delivery & Notifications
 
-1. **Single source of truth.** Plan benefits, add-on credits, and consumption all flow through `plan_benefits` + `member_benefit_credits`. No special-case columns on `membership_plans`.
-2. **Admins already know the pattern.** They configure scans the same way they configure sauna/ice-bath/PT — no new mental model.
-3. **Receipts, GST, and the ledger work for free.** Add-on scan packs go through the same invoicing pipeline. No bespoke billing.
-4. **Future-proof.** Adding "InBody scan", "VO2 max test", or any other measurement service is just one more benefit type row — no schema change.
-5. **Removes the duplicate `body_scan` / `posture_scan` enum values** I added — they were never needed because we identify the type by FK, not by enum.
+Trigger point: the existing `howbody-body-webhook` and `howbody-posture-webhook` edge functions (called by the device after every scan).
+
+After we successfully store the row, we fire one new internal function, **`deliver-scan-report`**, fire-and-forget:
+
+```text
+device → howbody-*-webhook → INSERT report row
+                           → invoke('deliver-scan-report', { report_id, kind })
+```
+
+### `deliver-scan-report` (new edge function)
+
+Steps:
+
+1. Load the report row + member + assigned trainer profile + branch.
+2. Render the PDF once by calling existing `howbody-report-pdf` with a service-role bearer (returns HTML → convert to PDF via the same path we already use for invoices, or reuse the printable HTML and let the recipient browser print; for v1 we attach the **HTML-to-PDF** generated on the server using the same lightweight wrapper used by `pdfBlob.ts`/`memberDocumentUrls.ts`).
+3. Upload PDF to the `attachments` storage bucket under `scans/<member_id>/<report_id>.pdf`. Get a long-lived signed URL.
+4. Insert a row in `scan_report_deliveries` (new small audit table: `report_id`, `kind`, `pdf_url`, `email_status`, `whatsapp_status`, `created_at`).
+5. **Member email** via `send-email` with the PDF link + summary (template: `body_scan_ready` / `posture_scan_ready`).
+6. **Member WhatsApp** via `sendWhatsAppDocument` (`src/utils/whatsappDocumentSender.ts`) — uploads the PDF, sends as document with caption from the WhatsApp template.
+7. **In-app notifications** via `notifications` table inserted for:
+   - The member (`category: 'scan'`, action_url = `/my-progress`).
+   - `members.assigned_trainer_id` → resolve to `user_id` via trainers/profiles → notify.
+   - All users with role **manager** for that `branch_id`.
+   - All users with role **admin** or **owner** (global, no branch filter).
+
+   Title: "New Body Scan for {{member_name}}", body: short metric summary (Weight, BMI, Body Fat %), action_url to the member's progress page (`/members/<id>?tab=progress`).
+8. Realtime fan-out is already handled by the existing notification subscription.
+
+Idempotency: keyed on `report_id` + channel — we skip if `scan_report_deliveries` already has a successful row for that channel.
+
+### Templates registry additions
+
+Add four events to `src/lib/templates/eventRegistry.ts` so admins can edit the wording in the existing template editor:
+
+| Event id | Channel(s) | Variables |
+|---|---|---|
+| `body_scan_ready` | WhatsApp + Email | `member_name, branch_name, weight, bmi, body_fat, health_score, scan_date, report_url` |
+| `posture_scan_ready` | WhatsApp + Email | `member_name, branch_name, posture_type, body_slope, scan_date, report_url` |
+| `scan_ready_internal` | In-app (trainer/manager/admin) | `member_name, member_code, kind, scan_date` |
+
+### WhatsApp template sync
+
+For Meta-approved WhatsApp templates the user sends through `manage-whatsapp-templates`, we add two **default seed templates** the admin can submit for approval:
+
+```text
+body_scan_ready_v1 (UTILITY, en):
+Hi {{1}}, your latest body scan from {{2}} is ready.
+Weight: {{3}} kg · BMI: {{4}} · Body Fat: {{5}}%
+Tap to view your full report: {{6}}
+
+posture_scan_ready_v1 (UTILITY, en):
+Hi {{1}}, your posture analysis from {{2}} is ready.
+Posture: {{3}} · Body slope: {{4}}
+View report: {{5}}
+```
+
+Both are sent as **document messages** with the PDF attachment (caption = the rendered text). If the branch has no active WhatsApp integration, `sendWhatsAppDocument` already gracefully falls back to a `wa.me` link with the public PDF URL — no silent failure.
+
+### "Send to mobile" on the device — replaced
+
+The on-device "Send report to mobile" function becomes a no-op for us — every scan automatically reaches the member by Email + WhatsApp + in-app. The HOWBODY hand-off (section 3) tells the vendor to disable/ignore that button for our deployment, since we handle delivery server-side.
 
 ---
 
-## Technical Section
+## 3. HOWBODY Hand-off Package
 
-**Migration steps**
-1. `UPDATE benefit_types SET name='Body Composition Scan', icon='Scan' WHERE code='3d_body_scanning';`
-2. `INSERT` Posture Scan benefit type per branch (skip on conflict).
-3. `ALTER TABLE membership_plans DROP COLUMN body_scan_allowed, DROP COLUMN posture_scan_allowed, DROP COLUMN scans_per_month;`
-4. `CREATE OR REPLACE FUNCTION howbody_scan_quota` — rewrite to read from `plan_benefits` (joined to active membership) + `member_benefit_credits`.
-5. `CREATE FUNCTION consume_scan_credit_if_needed(_member_id, _kind)` returning `boolean` (true if a credit was consumed).
-6. Update both webhook trigger functions (or the webhook edge functions) to call it.
+We generate two artifacts in `/mnt/documents/`:
 
-**Files to change**
-- `src/components/plans/AddPlanDrawer.tsx` — remove `PlanScannerAccessSection`, scanner state, scanner fields in INSERT.
-- `src/components/plans/EditPlanDrawer.tsx` — same removal + drop the separate scanner UPDATE.
-- `src/components/plans/PlanScannerAccessSection.tsx` — **delete**.
-- `src/pages/Plans.tsx` — change the badge condition to look for scan benefit types in `plan_benefits` instead of the dropped columns.
-- `supabase/functions/howbody-bind-user/index.ts` — already calls the RPC; behavior unchanged.
-- `supabase/functions/howbody-body-webhook/` & `howbody-posture-webhook/` — call `consume_scan_credit_if_needed`.
-- One migration for schema + RPC rewrite.
+**(a) `incline_howbody_integration_spec_v1.pdf`** — single-page integration spec they can wire to. Includes:
+- Vendor branding rules: Their device & cloud must NOT show our brand or push to their own consumer app for our members. Our members are bound via QR.
+- **QR login URL pattern**: `https://www.theincline.in/howbody-login?equipmentNo={equipmentNo}&scanId={scanId}` (and the new alias `/scan-login`).
+- **Body composition webhook**: `POST https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/howbody-body-webhook`, header `appkey: <shared-secret>`, JSON body matching the existing `howbody-body-webhook` parser (thirdUid, dataKey, testTime, healthScore, weight, bmi, pbf, fat, smm, tbw, pr, bmr, whr, vfr, metabolicAge, …). Expected response envelope: `{ code: 200, message: "Push successful", data: null }`.
+- **Posture webhook**: same auth, mirror schema.
+- **Bind flow**: After member completes QR login, our `howbody-bind-user` calls HOWBODY's `/openApi/getToken` and `/openApi/bindUser` with the chosen `thirdUid` (= our `members.id`).
+- **Disable on-device "Send report to mobile"**: We deliver Email + WhatsApp + PDF ourselves; the device should not push to their own app.
+- **Quota / access gating**: Our `/openApi/checkUserAccess` style hook (already implemented as `howbody-bind-user` returning 403 on quota exhaustion) — they must respect the `403` response and refuse to scan.
+- **Error contract**: 401 = wrong appkey, 404 = unknown user, 400 = missing required fields. They must retry with backoff for 5xx.
 
-**Files unchanged**
-- `MyProgress.tsx`, `ScanQuotaStrip`, `HowbodyReportsCard`, `HowbodyReportDrawer`, `useHowbodyReports`, `howbody-report-pdf` edge function — all still work via the RPC.
+**(b) `incline_howbody_email_draft.txt`** — ready-to-send email draft to the HOWBODY team summarizing the above and attaching the spec PDF. Includes the appkey rotation procedure.
+
+Both are deliverables — emitted as `<lov-artifact>` after generation.
 
 ---
 
-## Out of scope
-- Migrating any existing plans that were configured with the old toggle (none in production yet).
-- Refactoring sauna/ice-bath to ever depart from this pattern.
+## 4. Technical Plan / File-by-file
+
+**New files**
+- `supabase/functions/deliver-scan-report/index.ts` — orchestrator (steps above).
+- `supabase/functions/_shared/scanReportPdf.ts` — small wrapper that renders the existing `howbody-report-pdf` HTML and returns a PDF Blob (uses the same html-to-pdf util we already ship for invoices).
+- `supabase/migrations/<ts>_scan_report_deliveries.sql` — `scan_report_deliveries` audit table (RLS: staff read; service role write) + add `body_scan` / `posture_scan` event ids to whatever enum/registry we use for triggers, if any.
+- `/mnt/documents/incline_howbody_integration_spec_v1.pdf`
+- `/mnt/documents/incline_howbody_email_draft.txt`
+
+**Modified files**
+- `supabase/functions/howbody-body-webhook/index.ts` — after successful upsert, fire-and-forget `deliver-scan-report`.
+- `supabase/functions/howbody-posture-webhook/index.ts` — same.
+- `supabase/functions/howbody-report-pdf/index.ts` — drop HOWBODY wording from header/footer.
+- `src/lib/templates/eventRegistry.ts` — add `body_scan_ready`, `posture_scan_ready`, `scan_ready_internal`.
+- `src/components/settings/HowbodySettings.tsx`, `src/pages/HowbodyLogin.tsx`, `src/pages/HowbodyPublicReport.tsx`, `src/components/progress/HowbodyReportsCard.tsx`, `src/components/progress/HowbodyReportDrawer.tsx`, `src/components/progress/ScanQuotaStrip.tsx`, `src/pages/Plans.tsx` — copy/visual de-branding only.
+- `src/App.tsx` — add `/scan-login` alias route.
+
+**Not touched**
+- DB column names (`howbody_third_uid` etc.), table names, edge function names, existing migrations.
+- Quota/benefit logic — already correct from the previous unified-benefits change.
+
+---
+
+## 5. ASCII flow
+
+```text
+                Device scans member
+                       |
+                       v
+          POST /howbody-body-webhook
+                       |
+                       v
+            INSERT howbody_body_reports
+                       |
+                       +--- mirror trigger -> member_measurements
+                       |
+                       v
+       invoke('deliver-scan-report', { report_id })
+                       |
+        +--------------+---------------+----------------+
+        v              v               v                v
+   render PDF    notify member    notify trainer    notify managers
+   upload to     (in-app +         (in-app)         + admins/owner
+   storage       email+WA doc)                       (in-app)
+        |
+        v
+   scan_report_deliveries  (audit)
+```
+
+---
+
+## 6. What you'll see after approval
+
+- Every scan auto-arrives in the member's WhatsApp & inbox with the PDF.
+- The member's progress page already updates (existing measurement-mirror trigger).
+- Trainer dashboard / manager dashboard / admin notification bell shows "New Body Scan for {member}".
+- All HOWBODY brand text disappears from member/admin UI; vendor name kept only in Settings as a small "Vendor" line.
+- Two artifacts ready in `/mnt/documents/` to forward to HOWBODY.
+
+Approve to implement.
