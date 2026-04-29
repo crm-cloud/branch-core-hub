@@ -84,7 +84,7 @@ function KpiCard({
 
 export default function FitnessMemberPlansPage() {
   const navigate = useNavigate();
-  const { activeBranchId } = useBranchContext();
+  const { effectiveBranchId: activeBranchId } = useBranchContext();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
