@@ -82,6 +82,10 @@ export function AddBenefitPackageDrawer({ open, onOpenChange, branchId, initial 
       setValidityDays(initial.validity_days || 30);
       setIsActive(initial.is_active);
       setDisplayOrder(initial.display_order || 0);
+      setHsnCode(initial.hsn_code || '');
+      setTaxRate(Number(initial.tax_rate ?? 18));
+      setTaxInclusive(initial.tax_inclusive ?? true);
+      setGstCategory((initial.gst_category as any) || 'services');
     } else {
       setName('');
       setDescription('');
@@ -91,6 +95,10 @@ export function AddBenefitPackageDrawer({ open, onOpenChange, branchId, initial 
       setValidityDays(30);
       setIsActive(true);
       setDisplayOrder(0);
+      setHsnCode('');
+      setTaxRate(18);
+      setTaxInclusive(true);
+      setGstCategory('services');
     }
   }, [open, initial]);
 
