@@ -78,8 +78,6 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
         includes_free_locker: (plan as any).includes_free_locker ?? false,
         free_locker_size: (plan as any).free_locker_size || 'medium',
       });
-      setScanner({
-      });
     }
   }, [plan]);
 
@@ -333,9 +331,7 @@ export function EditPlanDrawer({ open, onOpenChange, plan, branchId }: EditPlanD
             </div>
           )}
 
-          <Separator className="my-4" />
 
-          <PlanScannerAccessSection value={scanner} onChange={setScanner} />
 
           {/* ===== PLAN BENEFITS (matching AddPlanDrawer pattern) ===== */}
           <div className="space-y-3">
