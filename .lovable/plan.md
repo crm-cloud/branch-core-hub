@@ -1,122 +1,140 @@
-# Settings, Benefits, Templates & Add-On Pricing Overhaul
+## Root-Cause Audit
 
-Five focused fixes spanning Settings IA, Benefits page UX, WhatsApp filter placement, template attachment audit, and add-on package GST.
+I dug into the schema, services, and pages. Here is what is actually broken vs. what just needs polish.
 
----
+### 1. Critical bug: "No Member Plans Assigned" (count 2 vs page empty)
 
-## 1. Benefit Settings → Tabbed layout with KPI cards
+The KPI strip on the Diet & Workout hub correctly counts **2 plans** because assignments are written to `public.member_fitness_plans` (verified in DB — 2 rows exist). However, `src/pages/fitness/MemberPlans.tsx` queries the **wrong table** (`diet_plans`, which has 0 rows and is a legacy table). So the listing always renders the empty state.
 
-**File:** `src/components/settings/BenefitSettingsComponent.tsx`
-
-Currently stacks `BenefitTypesManager` + `FacilitiesManager` + Slot Settings vertically. Convert to a tabbed shell with a KPI strip on top.
-
-**KPI Strip (4 cards):**
-- Total Benefit Types (active count)
-- Facilities/Rooms (count + maintenance count badge)
-- Bookable Today (slot-enabled benefit types)
-- Active Member Credits (count of `member_benefit_credits` with `remaining > 0`)
-
-**Tabs:**
-- a. **Benefits** — existing `<BenefitTypesManager />`
-- b. **Facilities / Rooms** — existing `<FacilitiesManager />`
-- c. **Slot Booking Settings** — existing slot-settings grid + `ConfigureSheet`
-
-URL persists via `?subtab=benefits|facilities|slots`. Vuexy card styling (`rounded-2xl`, soft shadows, gradient icon badges).
-
----
-
-## 2. WhatsApp Status filter → Move under WhatsApp tab
-
-**File:** `src/components/settings/TemplateManager.tsx` (lines ~155, ~460–520)
-
-Today the "WHATSAPP STATUS: All / Approved / Pending / Rejected / Draft" pills render globally above the SMS/Email/WhatsApp channel tabs. Per the screenshot, this is confusing because the filter is WhatsApp-specific.
-
-**Fix:** Render the status pill row **only inside the WhatsApp `TabsContent`** (conditional on `activeChannelTab === 'whatsapp'`). Keep counts driven by the same memoized list. SMS/Email tabs no longer show those pills.
-
----
-
-## 3. Settings menu → Alphabetical order
-
-**File:** `src/pages/Settings.tsx` — `SETTINGS_MENU` array (lines 23–41)
-
-Reorder by label A→Z (keys / icons / content keys preserved so URL `?tab=` and functionality stay intact):
-
-```
-AI Agent → Appearance → Backup & Restore → Benefits → Body Scanner →
-Branches → Finance Categories → Integrations → Marketing & Retention →
-Notifications → Organization → Plan & Benefit Templates → Referrals →
-Security → Tax & GST → Templates Manager → Website
+```text
+Templates "Assign" → assignPlanToMembers() → INSERT member_fitness_plans  ✅
+KPI counter           → SELECT count(member_fitness_plans)                ✅
+Member Plans page     → SELECT diet_plans  ❌  (wrong table, no joins, no template_id)
 ```
 
-Pure ordering change; no key/value renames, no route breakage.
+`MyDiet.tsx` already reads `member_fitness_plans` first (with a legacy `diet_plans` fallback) and `MyWorkout.tsx` reads `member_fitness_plans` — so members will see assigned plans **once we fix the listing query**. The "missing plans on member dashboard" symptom is the same bug surfaced from a different role: the hub page lies, not the member page.
+
+Three legacy tables are still in the schema but have **0 rows** and no writer code paths: `diet_plans`, `workout_plans`, `diet_templates`, `workout_templates`. They are dead weight that confuses the team — we keep `diet_plans` read-fallback in `MyDiet.tsx` only.
+
+### 2. "No members found" inside Assign drawer
+
+`searchMembersForAssignment()` calls the `search_members` RPC and then filters with `m.member_status === 'active'`. The RPC returns `member_status` only when a profile/member row exists and is marked active — inactive, frozen, or members in branches outside the active scope are silently dropped. Combined with the 2-character minimum, trainers searching by partial code/name often get an empty list. We will:
+- Lower minimum to 1 character.
+- Stop hard-filtering on `active` (show frozen/expired with a muted badge — assignment is still valid).
+- Pass `branchId` through (currently `undefined` from Templates page → all-branch search).
+
+### 3. Templates / Member Plans / Meal Catalog buttons
+
+- **Templates**: Saved templates already have Assign / Download PDF / Use as starter / Edit / Delete. Built-in "Default Starter Plans" cards only have **Assign** — no View, no Download, no Use-as-starter. We will add those.
+- **Member Plans**: zero action buttons today. We will add **View**, **Send PDF (WhatsApp)**, **Send PDF (Email)**, **Download**, **Reassign/Edit**.
+- **Meal Catalog**: has Edit + Delete but no **View** (read-only macros + photo) — we will add it as a side sheet.
+
+### 4. WhatsApp & Email with PDF attachments
+
+`utils/pdfGenerator.ts` already produces a styled PDF for plans (916 lines, supports both workout & diet). `utils/whatsappDocumentSender.ts` exists. What's missing:
+- A `whatsappDocumentSender` call wired into Member Plans / Templates rows.
+- A new edge function `send-plan-pdf` that: generates the PDF (or accepts a base64 from client), uploads to a `plan-attachments` storage bucket, then dispatches via WhatsApp document message + email attachment using existing template engine.
+- Two seeded **system templates** (`plan_assigned_workout`, `plan_assigned_diet`) with `header_type='document'` and `attachment_source='dynamic'` (uses the new template attachment fields we already migrated last turn).
+
+### 5. Duplicate / dead code to clean up
+
+- Delete legacy reads of `diet_plans` / `workout_plans` from any non-member page (verified usage list: only `MyDiet` legacy fallback should remain).
+- Two near-identical members-list queries in `Templates.tsx` shuffled-card flow and `AssignPlanDrawer` — consolidate into `searchMembersForAssignment`.
+- `FitnessHubTabs` is fine; no duplicates there.
 
 ---
 
-## 4. Template Attachments Audit (PDFs / Images for Reports & Invoices)
+## Implementation Plan
 
-**Finding:** The `templates` table has **no** attachment / header-media columns — only `name, type, subject, content, variables, meta_template_*`. Edge functions like `deliver-scan-report` and invoice senders attach PDFs ad-hoc inline at send time, bypassing the template system. So the user is correct: there is no template-level attachment support.
+### A. Fix the data layer (highest priority)
 
-**Plan — add first-class attachment support:**
+1. **`src/pages/fitness/MemberPlans.tsx`** — rewrite the query to:
+   - `from('member_fitness_plans')` joined to members → profiles for name/avatar/code.
+   - Pull `template_id → fitness_plan_templates(name)` and `created_by → profiles(full_name)` (trainer).
+   - Filter by active branch (BranchContext) and date validity (`valid_until >= today` OR null).
+   - Tabs: **Active**, **Expired**, **All**. Filter chips: **Workout / Diet / Both**.
 
-DB migration on `public.templates`:
-- `header_type text` — `none | image | document | video`
-- `header_media_url text` — static media link (e.g. brand logo, sample PDF)
-- `header_media_handle text` — Meta media handle for WhatsApp templates
-- `attachment_source text` — `none | static | dynamic`
-  - `static` → use `header_media_url`
-  - `dynamic` → resolve at send time from `{{attachment_url}}` variable (so report/invoice PDFs flow through naturally)
-- `attachment_filename_template text` — e.g. `Invoice_{{invoice_number}}.pdf`
+2. **`src/services/fitnessService.ts`** — add helpers:
+   - `fetchMemberAssignments(branchId, { type, status, search })`.
+   - `revokeMemberAssignment(id)` (soft-delete by setting `valid_until = today`).
+   - `resendPlanNotification(planId, channels)` — reuses `sendOneNotification`.
 
-**TemplateManager UI** (`TemplateManager.tsx`):
-- New "Attachment" section in the editor sheet (visible for WhatsApp + Email).
-- Upload to existing `template-media` storage bucket (create if missing) with RLS for admin/owner/manager.
-- Live preview chip showing filename + type.
+3. **`searchMembersForAssignment`** — drop the active-only filter, allow 1-char queries, return status badge so the UI can dim non-active members.
 
-**Edge function alignment:**
-- `deliver-scan-report` and invoice senders: when invoking by `template_id`, pass `attachment_url` + `attachment_filename` into the template context so the resolver attaches automatically.
-- Add 2 starter templates seeded:
-  - `scan_report_delivery` (WhatsApp, document header, dynamic)
-  - `invoice_delivery` (WhatsApp + Email, document header, dynamic)
+### B. PDF + WhatsApp/Email send pipeline
 
-This unblocks "Send PDF report / Send Invoice" flows from the unified Template Manager.
+4. **Storage**: create `plan-attachments` bucket (private, signed URLs).
+5. **Edge function `send-plan-pdf`**: input `{ member_id, plan_id, channels: ['whatsapp','email'] }`. Steps:
+   - Load plan from `member_fitness_plans`.
+   - Render PDF on the server using the existing HTML template (port `pdfGenerator` snippet to a Deno-compatible HTML→PDF via `puppeteer-core` is too heavy — instead generate the PDF on the **client** via `generatePlanPDF`, upload as base64, and pass the storage path to the function). This keeps the function light and reuses our tested generator.
+   - Dispatch WhatsApp document via `send-whatsapp` (`message_type='document'`, `media_url=signedUrl`).
+   - Dispatch email via `send-email` with attachment.
+   - Log to `whatsapp_messages` + `email_logs`.
+
+6. **Two seeded templates** in `public.templates` (idempotent migration):
+   - `plan_assigned_workout` (channel: whatsapp + email), `header_type=document`, `attachment_source=dynamic`, body has `{{member_name}}`, `{{plan_name}}`, `{{trainer_name}}`, `{{valid_until}}`.
+   - `plan_assigned_diet` — same shape, diet wording.
+
+7. **AssignPlanDrawer** — add a `Send PDF on assign` toggle. When on, after `assignPlanToMembers` resolves, it loops the new `plan_id`s and calls `send-plan-pdf` per member.
+
+### C. Member-Plans hub UI/UX overhaul (Vuexy aesthetic)
+
+8. New layout in `MemberPlans.tsx`:
+
+```text
+┌─ KPIs (gradient hero strip) ───────────────────────────┐
+│ Active Workouts │ Active Diets │ Expiring 7d │ Members │
+└────────────────────────────────────────────────────────┘
+┌─ Filters: [Search] [Workout|Diet|Both] [Active|Expired|All] [Trainer] ┐
+└──────────────────────────────────────────────────────────────────────┘
+┌─ Cards grid (rounded-2xl, soft shadow) ────────────────┐
+│ Avatar  Member Name (code)        [Active badge]       │
+│ Plan: 4-week Muscle Gain  ·  workout                   │
+│ Trainer: Coach A · From 22 Apr → 20 May (28d left)    │
+│ Linked to template: Beginner Full Body                 │
+│ [View] [Download PDF] [WhatsApp] [Email] [⋯]           │
+└────────────────────────────────────────────────────────┘
+```
+
+9. **Plan Viewer Sheet** (right-side, per Vuexy rule):
+   - Workout: week-by-week accordion with sets/reps/rest, embedded exercise videos when present.
+   - Diet: meal-by-meal cards with macros bar, Shopping List button, swap history.
+   - Sticky footer: Download PDF / Send WhatsApp / Send Email / Reassign / Revoke.
+
+### D. Templates + Meal Catalog polish
+
+10. **Templates page**:
+    - Add **View** + **Download PDF** + **Use as starter** to **Default Starter Plans** cards.
+    - Animate cards (staggered fade-up on mount via `framer-motion` already used elsewhere).
+    - Hero KPI strip already exists — wire `Member Assignments` to the corrected count.
+
+11. **Meal Catalog**:
+    - Add **View Meal** sheet (read-only photo, macros chart, ingredients).
+    - Add filters: cuisine chip strip + dietary-type chip strip with live counts.
+    - Add a "Used in N diet plans" badge per meal.
+
+### E. Cleanup
+
+12. Delete unused legacy reads (none found outside `MyDiet` fallback). Add `// LEGACY` comment to that one path.
+13. Add a Supabase migration that **comments** the dead tables (`COMMENT ON TABLE diet_plans IS 'DEPRECATED — use member_fitness_plans'`) — we don't drop them yet to avoid breaking any historical export.
+14. Update `mem://architecture/deprecated-schema-items` with the legacy fitness tables.
 
 ---
 
-## 5. Add-On Packages → HSN / Tax / GST inclusive toggle
+## Files to change
 
-**Files:**
-- DB migration on `public.benefit_packages`
-- `src/components/plans/AddBenefitPackageDrawer.tsx`
-- `src/components/plans/BenefitPackagesPanel.tsx`
+- `src/pages/fitness/MemberPlans.tsx` — full rewrite (query + UI).
+- `src/pages/fitness/Templates.tsx` — built-in card actions + view sheet.
+- `src/pages/MealCatalog.tsx` — view sheet + filters + usage badge.
+- `src/services/fitnessService.ts` — new `fetchMemberAssignments`, `revokeMemberAssignment`, relax search.
+- `src/components/fitness/AssignPlanDrawer.tsx` — "Send PDF on assign" toggle.
+- `src/components/fitness/PlanViewerSheet.tsx` — **new**, shared by Templates + Member Plans.
+- `src/components/fitness/SendPlanPdfMenu.tsx` — **new**, dropdown for WhatsApp/Email/Download.
+- `supabase/functions/send-plan-pdf/index.ts` — **new** edge function.
+- Migration: create `plan-attachments` bucket + RLS, seed two templates, add deprecation comments.
 
-**DB migration — add columns:**
-- `hsn_code text` (nullable)
-- `tax_rate numeric(5,2) default 0` — GST %
-- `tax_inclusive boolean default true` — toggle: price already includes tax vs. tax added on top
-- `gst_category text` — `goods | services` (defaults `services` for sessions)
+## Out of scope (flag for later)
 
-**Drawer UI additions** (new "Tax & GST" section below Price):
-- HSN/SAC Code input (with helper: SAC for service-based benefits)
-- Tax Rate select (0 / 5 / 12 / 18 / 28) — pull defaults from existing `useGstRates` if available
-- Switch: **"Price is GST inclusive"** (default ON, matches India retail norm)
-- Live preview row computing base + CGST + SGST split based on toggle:
-  - Inclusive: `base = price / (1 + rate/100)`, `tax = price - base`
-  - Exclusive: `base = price`, `total = price * (1 + rate/100)`
-
-**Panel display:** Add small `HSN: 9999` and `GST 18%` chips on each card; show "incl. GST" / "+ GST" suffix on the price badge.
-
-**Invoicing flow:** `record_payment` RPC already handles tax splits when invoice line items carry `tax_rate` + `hsn_code` (per `gst-compliant-invoicing` memory). Pass these through when an add-on package is sold so GST invoices come out correctly.
-
----
-
-## Order of execution
-
-1. DB migrations (templates attachments + benefit_packages GST) — single migration file.
-2. Settings menu reorder (trivial).
-3. WhatsApp status filter move.
-4. Benefit Settings tabs + KPI strip.
-5. Add-On drawer GST fields + panel chips.
-6. Template Manager attachment UI + storage bucket + 2 seeded templates.
-7. Wire `deliver-scan-report` / invoice senders to pass dynamic attachment context.
-
-No breaking changes to existing routes, RLS, or data.
+- Dropping `diet_plans`/`workout_plans`/`diet_templates`/`workout_templates` — defer until next cleanup window.
+- Multi-language PDF rendering — current generator is English-only.
+- AI-generated PDF cover image — nice-to-have, not blocking.
