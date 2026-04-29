@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
@@ -280,6 +281,7 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error generating fitness plan:", error);
+    await captureEdgeError('generate-fitness-plan', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
