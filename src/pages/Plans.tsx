@@ -617,6 +617,8 @@ export default function PlansPage() {
             </div>
           </div>
         )}
+          </TabsContent>
+        </Tabs>
 
         <AddPlanDrawer open={addPlanOpen} onOpenChange={setAddPlanOpen} branchId={defaultBranchId} />
         <EditPlanDrawer
