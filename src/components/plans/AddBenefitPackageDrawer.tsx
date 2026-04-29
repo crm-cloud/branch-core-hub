@@ -26,7 +26,13 @@ interface BenefitPackageRow {
   validity_days: number;
   is_active: boolean;
   display_order: number;
+  hsn_code?: string | null;
+  tax_rate?: number | null;
+  tax_inclusive?: boolean | null;
+  gst_category?: 'goods' | 'services' | null;
 }
+
+const GST_RATES = [0, 5, 12, 18, 28];
 
 interface AddBenefitPackageDrawerProps {
   open: boolean;
