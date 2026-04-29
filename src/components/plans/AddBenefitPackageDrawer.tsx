@@ -124,13 +124,17 @@ export function AddBenefitPackageDrawer({ open, onOpenChange, branchId, initial 
         validity_days: validityDays,
         is_active: isActive,
         display_order: displayOrder,
+        hsn_code: hsnCode.trim() || null,
+        tax_rate: taxRate,
+        tax_inclusive: taxInclusive,
+        gst_category: gstCategory,
       };
 
       if (initial?.id) {
-        const { error } = await supabase.from('benefit_packages').update(payload).eq('id', initial.id);
+        const { error } = await (supabase as any).from('benefit_packages').update(payload).eq('id', initial.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('benefit_packages').insert(payload as any);
+        const { error } = await (supabase as any).from('benefit_packages').insert(payload);
         if (error) throw error;
       }
     },
