@@ -72,7 +72,7 @@ export function MemberBodyAvatarSvg({ measurement, label, memberGender }: Member
           {/* Measurement bands */}
           <MeasurementBand y={130} value={m?.chest_cm ? `${m.chest_cm}"` : '—'} label="Chest" />
           <MeasurementBand y={185} value={m?.waist_cm ? `${m.waist_cm}"` : '—'} label="Waist" />
-          <MeasurementBand y={235} value={m?.hip_cm ? `${m.hip_cm}"` : '—'} label="Hips" />
+          <MeasurementBand y={235} value={m?.hips_cm ? `${m.hips_cm}"` : '—'} label="Hips" />
         </svg>
       </div>
     </Card>
