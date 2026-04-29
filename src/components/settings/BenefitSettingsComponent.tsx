@@ -255,7 +255,7 @@ export function BenefitSettingsComponent() {
     queryKey: ["benefits-kpi-credits", branchId],
     enabled: !!branchId,
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await (supabase as any)
         .from("member_benefit_credits")
         .select("id", { count: "exact", head: true })
         .eq("branch_id", branchId)
