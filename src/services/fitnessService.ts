@@ -419,16 +419,21 @@ export async function assignPlanToMembers(params: BulkAssignParams): Promise<Bul
   return results;
 }
 
-// Search members for plan assignment
+// Search members for plan assignment.
+// NOTE: We intentionally do NOT filter by member_status here — frozen / expired
+// members are still valid plan recipients (e.g. trainers prep new plans before
+// renewal). The UI dims non-active rows via the returned `member_status` badge.
 export async function searchMembersForAssignment(searchTerm: string, branchId?: string | null): Promise<{
   id: string;
   member_code: string;
   full_name: string;
+  member_status?: string | null;
 }[]> {
+  if (!searchTerm || searchTerm.trim().length < 1) return [];
   const { data, error } = await supabase.rpc('search_members', {
     search_term: searchTerm,
     p_branch_id: branchId || null,
-    p_limit: 10,
+    p_limit: 25,
   });
 
   if (error) {
@@ -436,9 +441,114 @@ export async function searchMembersForAssignment(searchTerm: string, branchId?: 
     return [];
   }
 
-  return (data || []).filter((m: any) => m.member_status === 'active').map((m: any) => ({
+  return (data || []).map((m: any) => ({
     id: m.id,
     member_code: m.member_code,
     full_name: m.full_name,
+    member_status: m.member_status ?? null,
   }));
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Hub helpers — Member assignments listing & lifecycle
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface MemberAssignmentRow {
+  id: string;
+  member_id: string;
+  member_name: string;
+  member_code: string | null;
+  avatar_url: string | null;
+  phone: string | null;
+  email: string | null;
+  plan_name: string;
+  plan_type: 'workout' | 'diet';
+  description: string | null;
+  plan_data: any;
+  trainer_name: string | null;
+  template_id: string | null;
+  template_name: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  created_at: string;
+  branch_id: string | null;
+  is_expired: boolean;
+}
+
+/**
+ * Fetch all member plan assignments scoped to the active branch.
+ * Joins members → profiles for display, and lazily resolves trainer + template names.
+ */
+export async function fetchMemberAssignments(
+  branchId?: string | null,
+): Promise<MemberAssignmentRow[]> {
+  let query = supabase
+    .from('member_fitness_plans')
+    .select('id, member_id, plan_name, plan_type, description, plan_data, valid_from, valid_until, created_at, created_by, template_id, branch_id')
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (branchId) query = query.eq('branch_id', branchId);
+
+  const { data: rows, error } = await query;
+  if (error) throw error;
+  if (!rows?.length) return [];
+
+  const memberIds = Array.from(new Set(rows.map((r) => r.member_id).filter(Boolean)));
+  const trainerIds = Array.from(new Set(rows.map((r) => r.created_by).filter(Boolean) as string[]));
+  const templateIds = Array.from(new Set(rows.map((r: any) => r.template_id).filter(Boolean) as string[]));
+
+  const [membersRes, trainersRes, templatesRes] = await Promise.all([
+    memberIds.length
+      ? supabase.from('members').select('id, member_code, user_id, profiles:user_id(full_name, avatar_url, phone, email)').in('id', memberIds)
+      : Promise.resolve({ data: [], error: null } as any),
+    trainerIds.length
+      ? supabase.from('profiles').select('id, full_name').in('id', trainerIds)
+      : Promise.resolve({ data: [], error: null } as any),
+    templateIds.length
+      ? supabase.from('fitness_plan_templates').select('id, name').in('id', templateIds)
+      : Promise.resolve({ data: [], error: null } as any),
+  ]);
+
+  const memberMap = new Map<string, any>();
+  for (const m of membersRes.data || []) memberMap.set((m as any).id, m);
+  const trainerMap = new Map<string, string>();
+  for (const t of trainersRes.data || []) trainerMap.set((t as any).id, (t as any).full_name);
+  const templateMap = new Map<string, string>();
+  for (const t of templatesRes.data || []) templateMap.set((t as any).id, (t as any).name);
+
+  const today = new Date().toISOString().slice(0, 10);
+  return rows.map((r: any) => {
+    const member: any = memberMap.get(r.member_id);
+    const profile: any = member?.profiles;
+    return {
+      id: r.id,
+      member_id: r.member_id,
+      member_name: profile?.full_name || 'Unknown member',
+      member_code: member?.member_code ?? null,
+      avatar_url: profile?.avatar_url ?? null,
+      phone: profile?.phone ?? null,
+      email: profile?.email ?? null,
+      plan_name: r.plan_name,
+      plan_type: r.plan_type as 'workout' | 'diet',
+      description: r.description ?? null,
+      plan_data: r.plan_data,
+      trainer_name: r.created_by ? trainerMap.get(r.created_by) ?? null : null,
+      template_id: r.template_id ?? null,
+      template_name: r.template_id ? templateMap.get(r.template_id) ?? null : null,
+      valid_from: r.valid_from,
+      valid_until: r.valid_until,
+      created_at: r.created_at,
+      branch_id: r.branch_id ?? null,
+      is_expired: !!(r.valid_until && r.valid_until < today),
+    };
+  });
+}
+
+/** Soft-revoke an assignment by setting valid_until = today. */
+export async function revokeMemberAssignment(assignmentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('member_fitness_plans')
+    .update({ valid_until: new Date().toISOString().slice(0, 10) })
+    .eq('id', assignmentId);
+  if (error) throw error;
 }
