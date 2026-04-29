@@ -307,6 +307,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       subject: '',
       content: prefill.content,
       is_active: true,
+      header_type: 'none',
+      header_media_url: '',
+      attachment_source: 'none',
+      attachment_filename_template: '',
     });
     setShowEditor(true);
     onPrefillConsumed?.();
@@ -330,6 +334,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       content: formData.content,
       is_active: formData.is_active,
       variables: AVAILABLE_VARIABLES.filter((v) => formData.content.includes(v)),
+      header_type: formData.header_type,
+      header_media_url: formData.header_media_url || null,
+      attachment_source: formData.attachment_source,
+      attachment_filename_template: formData.attachment_filename_template || null,
     };
 
     if (selectedTemplate) {
