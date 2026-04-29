@@ -14,7 +14,8 @@ import { supabase } from '@/integrations/supabase/client';
 export default function CreateModePickerPage() {
   const navigate = useNavigate();
   const { hasAnyRole } = useAuth();
-  const isAdmin = hasAnyRole(['owner', 'admin']);
+  // AI generation is gated to staff with management privileges (cost + quality control).
+  const isAdmin = hasAnyRole(['owner', 'admin', 'manager']);
   const canSeePipeline = hasAnyRole(['owner', 'admin', 'manager']);
   const { effectiveBranchId } = useBranchContext();
 

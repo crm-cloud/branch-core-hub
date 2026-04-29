@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { captureEdgeError } from '../_shared/capture-edge-error.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -184,6 +185,7 @@ Gym Dashboard Metrics (as of ${today}):
     );
   } catch (error) {
     console.error('AI insights error:', error);
+    await captureEdgeError('ai-dashboard-insights', error);
     const errMsg = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errMsg }),

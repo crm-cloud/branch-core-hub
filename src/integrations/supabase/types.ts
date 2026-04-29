@@ -2719,42 +2719,51 @@ export type Database = {
       }
       error_logs: {
         Row: {
+          branch_id: string | null
           browser_info: string | null
           component_name: string | null
+          context: Json | null
           created_at: string | null
           error_message: string
           id: string
           resolved_at: string | null
           resolved_by: string | null
           route: string | null
+          severity: string
           source: string | null
           stack_trace: string | null
           status: string
           user_id: string | null
         }
         Insert: {
+          branch_id?: string | null
           browser_info?: string | null
           component_name?: string | null
+          context?: Json | null
           created_at?: string | null
           error_message: string
           id?: string
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
+          severity?: string
           source?: string | null
           stack_trace?: string | null
           status?: string
           user_id?: string | null
         }
         Update: {
+          branch_id?: string | null
           browser_info?: string | null
           component_name?: string | null
+          context?: Json | null
           created_at?: string | null
           error_message?: string
           id?: string
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
+          severity?: string
           source?: string | null
           stack_trace?: string | null
           status?: string

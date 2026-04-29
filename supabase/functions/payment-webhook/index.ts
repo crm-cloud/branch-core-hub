@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -478,6 +479,7 @@ serve(async (req: Request) => {
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("Webhook error:", errorMessage);
+    await captureEdgeError('payment-webhook', error, { severity: 'critical' });
     return reply({ error: "Internal server error" }, 500, errorMessage);
   }
 });
