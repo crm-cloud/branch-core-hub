@@ -309,6 +309,21 @@ export function AssignPlanDrawer({ open, onOpenChange, plan, branchId }: AssignP
                 </div>
               </div>
 
+              <div className="rounded-xl border bg-emerald-500/5 border-emerald-200/50 p-3 flex items-start gap-3">
+                <Users className="h-4 w-4 mt-0.5 text-emerald-600" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="is-common-toggle" className="text-sm font-medium cursor-pointer">
+                      Mark as Common Plan (no PT required)
+                    </Label>
+                    <Switch id="is-common-toggle" checked={isCommon} onCheckedChange={setIsCommon} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Common plans are shared across walk-in members who aren't on personal training.
+                  </p>
+                </div>
+              </div>
+
               {(channels.includes('whatsapp') || channels.includes('email')) && (
                 <div className="rounded-xl border bg-muted/30 p-3 flex items-start gap-3">
                   <FileText className="h-4 w-4 mt-0.5 text-primary" />
