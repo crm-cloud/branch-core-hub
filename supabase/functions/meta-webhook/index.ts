@@ -1,3 +1,5 @@
+// v4.1.0 — Recognize `instagram_login` provider alongside `instagram` and `messenger`
+//          for page-id detection, integration lookup, and app_secret resolution.
 // v4.0.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0), HMAC signature
 //                   verification, IG comments + mentions + story replies,
 //                   Instagram sender profile resolution.
@@ -43,7 +45,7 @@ async function getActiveIgPageIds(): Promise<Set<string>> {
   const { data } = await supabase
     .from("integration_settings")
     .select("config")
-    .eq("integration_type", "instagram")
+    .in("integration_type", ["instagram", "instagram_login"])
     .eq("is_active", true);
   const set = new Set<string>();
   for (const row of data || []) {
@@ -87,7 +89,7 @@ async function handleVerification(req: Request) {
   const { data: integration } = await supabase
     .from("integration_settings")
     .select("id, integration_type")
-    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .in("integration_type", ["whatsapp", "instagram", "instagram_login", "messenger"])
     .eq("is_active", true)
     .eq("config->>webhook_verify_token", verifyToken)
     .limit(1)
@@ -168,7 +170,7 @@ async function getActiveAppSecrets(): Promise<string[]> {
   const { data } = await supabase
     .from("integration_settings")
     .select("credentials")
-    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .in("integration_type", ["whatsapp", "instagram", "instagram_login", "messenger"])
     .eq("is_active", true);
   const set = new Set<string>();
   for (const row of data || []) {
@@ -469,17 +471,22 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function findIntegrationByPageId(pageId: string, integrationType: string) {
+  // For Instagram, check both `instagram` (FB Page flow) and `instagram_login` providers.
+  const types = integrationType === "instagram"
+    ? ["instagram_login", "instagram"]
+    : [integrationType];
   const { data } = await supabase
     .from("integration_settings")
-    .select("id, branch_id, config, credentials")
-    .eq("integration_type", integrationType)
+    .select("id, branch_id, config, credentials, integration_type")
+    .in("integration_type", types)
     .eq("is_active", true)
-    .limit(20);
+    .limit(50);
   if (!data) return null;
-  return data.find((i: any) =>
+  const exact = data.find((i: any) =>
     String(i.config?.page_id) === pageId ||
     String(i.config?.instagram_account_id) === pageId
-  ) || data[0] || null;
+  );
+  return exact || data[0] || null;
 }
 
 let _fallbackBranchId: string | null = null;

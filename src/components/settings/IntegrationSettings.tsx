@@ -620,6 +620,38 @@ export function IntegrationSettings() {
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="gap-1.5"
+                    onClick={async () => {
+                      const t = toast.loading('Subscribing Page & IG account to Meta webhooks…');
+                      try {
+                        const { data, error } = await supabase.functions.invoke('meta-subscribe', {
+                          body: { integration_type: 'instagram' },
+                        });
+                        if (error) throw error;
+                        toast.dismiss(t);
+                        if (data?.success) {
+                          toast.success(`Subscribed! ${data.results?.length || 0} target(s) hooked. Send a fresh DM to test.`, { duration: 6000 });
+                        } else {
+                          toast.error(data?.hint || 'Subscription failed — check token scopes.', { duration: 8000 });
+                          console.warn('[meta-subscribe] result:', data);
+                        }
+                      } catch (e: any) {
+                        toast.dismiss(t);
+                        toast.error(e?.message || 'Subscription request failed');
+                      }
+                    }}
+                  >
+                    <Webhook className="h-3.5 w-3.5" />
+                    Subscribe Page & IG to Webhook Events
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Required after first connection. Without this, Meta won't deliver DMs to our endpoint even if the URL is configured.
+                  </p>
+                </div>
               </div>
 
               {/* Setup Path Guide — IG Login vs FB Login */}
