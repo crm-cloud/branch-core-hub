@@ -1,3 +1,5 @@
+// v4.3.1 — Some Instagram Login deliveries arrive as messaging[].message_edit
+//          without messaging[].message. Resolve the mid via Graph and ingest.
 // v4.3.0 — Instagram Login webhooks deliver DMs under entry.changes[] with
 //          field="messages" (not entry.messaging[]). Parse that shape and
 //          route through ingestMessagingEvent so inbound IG DMs reach the CRM.
@@ -15,7 +17,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
-import { META_API_BASE, verifyXHubSignature } from "../_shared/meta-config.ts";
+import { META_API_BASE, IG_API_BASE, detectMetaHost, metaFetchWithFallback, verifyXHubSignature } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -283,9 +285,13 @@ async function processInstagramEvent(payload: any) {
     // F3a: DMs (incl. story replies under messaging[].message.reply_to.story)
     const messaging = Array.isArray(entry.messaging) ? entry.messaging : [];
     for (const event of messaging) {
-      if (!event.message) continue;
-      console.log(`[IG] direct-object event sender=${event.sender?.id} recipient=${event.recipient?.id}`);
-      await ingestMessagingEvent(event, "instagram");
+      if (event.message) {
+        console.log(`[IG] direct-object event sender=${event.sender?.id} recipient=${event.recipient?.id}`);
+        await ingestMessagingEvent(event, "instagram");
+      } else if (event.message_edit?.mid) {
+        console.log(`[IG] message_edit mid=${event.message_edit.mid} sender=${event.sender?.id || "?"} recipient=${event.recipient?.id || entry.id || "?"}`);
+        await ingestInstagramMessageEdit(event, String(entry.id || ""));
+      }
     }
 
     // F3b: Instagram Login + comments/mentions arrive under entry.changes[]
@@ -410,6 +416,42 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
     );
     await triggerAiReply(inserted.id, contactId, branchId, platform, integration);
   }
+}
+
+async function ingestInstagramMessageEdit(event: any, entryAccountId: string) {
+  const mid = String(event.message_edit?.mid || "");
+  if (!mid) return;
+  const { data: existing } = await supabase
+    .from("whatsapp_messages")
+    .select("id")
+    .eq("platform_message_id", mid)
+    .maybeSingle();
+  if (existing) {
+    console.log(`[IG] message_edit dedup mid=${mid}`);
+    return;
+  }
+
+  const integration = await findIntegrationByPageId(String(event.recipient?.id || entryAccountId), "instagram")
+    || await findIntegrationByPageId(entryAccountId, "instagram");
+  const resolved = integration ? await fetchInstagramMessageByMid(mid, integration) : null;
+  const fromId = String(resolved?.from?.id || event.sender?.id || "");
+  const toId = String(resolved?.to?.data?.[0]?.id || resolved?.to?.id || event.recipient?.id || entryAccountId || "");
+  const businessId = String(integration?.config?.instagram_account_id || integration?.config?.page_id || entryAccountId || "");
+  const isOutbound = !!fromId && (fromId === businessId || fromId === toId && event.sender?.id === businessId);
+  const contactId = isOutbound ? toId : fromId;
+  const messageText = resolved?.message || resolved?.text || "[Instagram message edited]";
+
+  if (!contactId) {
+    console.log(`[IG] message_edit unresolved contact mid=${mid}`);
+    return;
+  }
+
+  await ingestMessagingEvent({
+    sender: { id: isOutbound ? businessId : contactId },
+    recipient: { id: isOutbound ? contactId : businessId },
+    timestamp: event.timestamp,
+    message: { mid, text: messageText, is_echo: isOutbound },
+  }, "instagram");
 }
 
 // ─── F3: Instagram comments + mentions ────────────────────────────────────────
@@ -546,6 +588,27 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
     return display;
   } catch (e) {
     console.warn(`[IG profile] error for ${igUserId}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+async function fetchInstagramMessageByMid(mid: string, integration: any): Promise<any | null> {
+  const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
+  if (!accessToken) return null;
+  const { isInstagramLogin } = detectMetaHost(accessToken);
+  const base = isInstagramLogin ? IG_API_BASE : META_API_BASE;
+  const fields = "id,message,from,to,created_time,attachments";
+  try {
+    const url = `${base}/${encodeURIComponent(mid)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await metaFetchWithFallback(url);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.warn(`[IG] fetch message failed mid=${mid}: ${data?.error?.message || resp.status}`);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.warn(`[IG] fetch message error mid=${mid}:`, e instanceof Error ? e.message : e);
     return null;
   }
 }
