@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const height = Math.max(80, Math.min(250, Number(meas?.height_cm) || 170));
 
     // Call HOWBODY setUserInfo
-    const { baseUrl } = howbodyCreds();
+    const { baseUrl } = await getHowbodyCreds();
     const headers = await howbodyAuthedHeaders();
     const hbResp = await fetch(`${baseUrl}/openApi/setUserInfo`, {
       method: "POST",
