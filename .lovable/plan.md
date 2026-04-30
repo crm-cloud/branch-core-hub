@@ -1,60 +1,77 @@
-Audit result: Meta is delivering to our webhook successfully. This is not a tester-role or app-secret delivery failure anymore.
+## Goal
 
-What I found:
-- Live webhook payloads are arriving as `object=instagram`, signature verified with the Instagram App Secret prefix `e40219`.
-- The latest ingress rows show Meta sends only `messaging[].message_edit.mid` with no `sender`, no `recipient`, and no `text`.
-- Our current fallback tries to fetch message details by MID, but the code only logs `unresolved contact` and then drops it, so no CRM message row is created.
-- Your integration row is active, token is valid, and `/subscribed_apps` reports the correct fields: `messages`, `messaging_postbacks`, `messaging_seen`, `comments`, `mentions`, `story_insights`, `messaging_referral`.
-- Official Meta docs say Business Login messaging payloads should normally include `sender`, `recipient`, and `message.text`; `message_edit` should include `text`. Your live payload is a stripped/minimal `message_edit` shape, so we need a more robust recovery path instead of dropping it.
-- One configuration mismatch also exists: the row is stored as `integration_type='instagram'` + `provider='instagram_meta'`, but it contains an IGAA Instagram Login token. The code mostly auto-detects IGAA now, but some UI/diagnostic paths still classify it as the Facebook-login provider, which is risky.
+Make Privacy/Terms easily crawlable by Meta/Google for app review, add a 3D body-scanner showcase as a USP on the public site, ensure all AI/social crawlers are explicitly allowed in `robots.txt`, and run a live end-to-end Instagram DM test now that the app is in Live Mode.
 
-Plan to fix:
+---
 
-1. Harden the webhook for stripped `message_edit` payloads
-- Update `meta-webhook` so `messaging[].message_edit` is never silently dropped.
-- If Meta includes `message_edit.text`, ingest that directly.
-- If text/sender is missing, fetch the MID from the Graph conversations/message endpoint using the IGAA token and log the exact Meta API response shape when resolution fails.
-- Support both response shapes from Meta:
-  - `{ from, to, message }`
-  - conversation-style nested message arrays if Meta requires conversation lookup first.
-- If Meta still refuses to expose the message body, store a forensic placeholder inbound row like `[Instagram message received — content unavailable from Meta]` instead of dropping it, so the CRM shows the conversation and contact trail.
+## Current state (already in place)
 
-2. Add an explicit webhook processing audit table
-- Add a `webhook_processing_log` table with fields such as:
-  - source/object_type
-  - platform_message_id
-  - processing_status: `stored`, `deduped`, `dropped`, `resolve_failed`, `placeholder_stored`
-  - reason
-  - meta_error_code/subcode/message
-  - sample payload
-- This is different from the existing ingress log: ingress confirms Meta delivered; processing log confirms whether our parser stored or dropped the message.
+- Routes `/privacy-policy`, `/terms`, `/data-deletion` already exist publicly in `src/App.tsx` (lines 168-170) and are in `PUBLIC_PATHS`.
+- `src/pages/Auth.tsx` footer already links to all three.
+- `src/pages/PublicWebsite.tsx` footer already links to Privacy + Terms.
+- Home `/` renders `InclineAscent` → `Scene3D` (3D dumbbell with ScrollControls).
+- `index.html` has rich JSON-LD (Organization, HealthClub, WebSite) and OG tags.
+- `public/robots.txt` already lists GPTBot, ChatGPT-User, PerplexityBot, ClaudeBot, Google-Extended, Applebot, facebookexternalhit.
 
-3. Improve `meta-diagnose` to show the real failure
-- Add checks for:
-  - last Meta delivery time
-  - last payload shape (`message`, `message_edit`, `changes[]`, etc.)
-  - last processing result
-  - last resolved/stored message
-- The diagnosis should no longer say “all checks passed” when traffic arrives but messages are being dropped.
+What is missing or weak:
 
-4. Fix Instagram Login classification
-- Normalize the integration lookup so IGAA tokens are treated as Instagram Login regardless of the saved `provider` label.
-- Update diagnostics/help text to show that this integration is actually using Instagram Business Login (`graph.instagram.com`) even if the older row says `instagram_meta`.
-- Avoid relying on the stored provider string for host selection; use token prefix and account ID.
+1. The home `/` 3D landing page (`ScrollOverlay`) does **not** link to Privacy/Terms — Meta crawler landing on `/` finds no anchor to legal pages.
+2. `robots.txt` is missing several relevant crawlers (Twitterbot, LinkedInBot, Meta-ExternalAgent, Meta-ExternalFetcher, Bytespider, Amazonbot, CCBot, cohere-ai, Diffbot) and has a stray "allowlist facebookexternalhit" comment line that should be cleaned.
+3. No public showcase for the **3D Body Scanner / HOWBODY** USP — only the dumbbell hero exists.
+4. Instagram DM live test has not been executed against the production webhook now that the app is Live.
 
-5. Add live curl/synthetic tests after implementation
-- Run a signed webhook test with:
-  - standard `messaging[].message` payload
-  - `changes[].field='messages'` payload
-  - stripped `messaging[].message_edit.mid` payload
-  - `message_edit` with `text` included
-- Verify each case produces either a real inbound CRM message or a visible placeholder plus processing log.
-- Re-run `meta-diagnose` and read latest function/database logs to confirm the pipeline is no longer silently dropping live Meta deliveries.
+---
 
-6. Manual Meta setting to verify in parallel
-- In Meta’s Instagram API setup with Instagram Login, ensure the webhook subscription has “Include Values” enabled. Meta docs state payloads can be sent as reduced changed-field notifications when values are not included. Your payload looks stripped, so this is a likely dashboard-side contributor.
-- Also verify the Instagram account has “Allow access to messages / connected tools” enabled in Instagram message controls. Official docs call this out for professional accounts using messaging APIs.
+## Changes
 
-Expected result:
-- Fresh Instagram DMs from tester accounts should appear in the CRM chat.
-- If Meta sends only MID and refuses detail fetch, the CRM will still show an inbound placeholder instead of nothing, and diagnostics will show the exact Meta reason so we can escalate/fix settings precisely.
+### 1. Add Privacy/Terms links to the home 3D landing footer
+
+**File:** `src/components/ui/ScrollOverlay.tsx` (footer block, lines 188-199)
+
+Add a row of small text links above the copyright line: `Privacy Policy · Terms of Service · Data Deletion`. Use `react-router-dom` `Link` so SPA navigation works and Meta's crawler sees real anchors.
+
+### 2. Expand `robots.txt` for AI + social crawlers
+
+**File:** `public/robots.txt`
+
+- Remove the stray "allowlist facebookexternalhit" comment line.
+- Add explicit `Allow: /` blocks for: `Twitterbot`, `LinkedInBot`, `Slackbot`, `WhatsApp`, `TelegramBot`, `Discordbot`, `Meta-ExternalAgent`, `Meta-ExternalFetcher`, `meta-externalagent`, `Bytespider`, `Amazonbot`, `CCBot`, `cohere-ai`, `Diffbot`, `YouBot`, `anthropic-ai`, `Omgilibot`.
+- Keep existing `Disallow` rules for private app routes intact.
+- Keep sitemap + host directives.
+
+### 3. Add a 3D Body Scanner USP section to the public website
+
+**File:** `src/pages/PublicWebsite.tsx` 
+
+Add a new section "3D Body Intelligence" that showcases the HOWBODY scanner USP. Reuse the existing `AvatarGltf`/procedural body component (already loads `public/models/avatar-female.glb`) inside a `Canvas` from `@react-three/fiber` with `OrbitControls` so visitors can rotate the model. Copy: "Step on. Stand still. Get scanned. Posture, body composition, and progress tracked in real 3D — only at Incline."
+
+Also surface a smaller teaser card on the home `ScrollOverlay` (one new scroll page) that pulses the same model and CTA "See your body in 3D" linking to `/website-v1#scanner`.
+
+No new dependencies — `@react-three/fiber@^8.18` and `@react-three/drei@^9.122` are already installed.
+
+### 4. Live Instagram DM end-to-end test
+
+Once the above is deployed, run a live audit against the production webhook:
+
+1. Call `meta-diagnose` edge function via `supabase--curl_edge_functions` to capture: token validity, subscribed fields, last payload shape, last processing result.
+2. Query `webhook_ingress_log` and `webhook_processing_log` (last 30 min) via `supabase--read_query` to confirm signature verification + per-event status (`stored` / `placeholder_stored` / `resolve_failed`).
+3. Tail `meta-webhook` edge function logs via `supabase--edge_function_logs` filtered by the test sender's IG ID.
+4. Ask user to send a fresh DM from a tester account, wait 30 s, then re-query the logs and the CRM `whatsapp_conversations` / `instagram_conversations` table to confirm the message landed.
+5. If a `placeholder_stored` row appears (Meta sent stripped `message_edit`), report the exact Graph API error code/subcode from `webhook_processing_log.reason` so we know whether it's a token scope issue, a "Connected Tools → Allow access to messages" issue, or a Meta-side delivery bug.
+
+No code changes are made in this step unless the audit reveals a regression — it is purely diagnostic since v4.4.0 of `meta-webhook` already implements multi-stage resolution + placeholder fallback.
+
+---
+
+## Files touched
+
+- `src/components/ui/ScrollOverlay.tsx` — add legal-links row in footer + (optional) scanner teaser scroll page.
+- `public/robots.txt` — expanded crawler allowlist, cleanup.
+- `src/pages/PublicWebsite.tsx` — new "3D Body Intelligence" section with interactive model.
+- No edge function or DB changes. Instagram test is read-only diagnostics.
+
+## Out of scope
+
+- Rewriting Privacy/Terms copy (already updated in prior turn for Meta review).
+- Changes to the 3D dumbbell hero animation.
+- Any modification to MIPS / HOWBODY device integration.
