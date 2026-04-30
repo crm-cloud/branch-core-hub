@@ -114,7 +114,8 @@ export async function getCachedToken(): Promise<{ token: string; expires_at: str
   });
   const body = await resp.json().catch(() => ({}));
   if (body?.code !== 200 || !body?.data?.token) {
-    throw new Error(`HOWBODY getToken failed: ${body?.message || resp.status}`);
+    // HOWBODY returns `msg` (not `message`) in production responses
+    throw new Error(`HOWBODY getToken failed: ${body?.msg || body?.message || resp.status}`);
   }
   const token = body.data.token as string;
   const expiresAt = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString();
