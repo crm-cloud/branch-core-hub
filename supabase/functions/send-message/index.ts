@@ -100,29 +100,29 @@ serve(async (req) => {
     }
 
     // Instagram or Messenger — use Meta Graph API
-    const integrationType = platform === "instagram" ? "instagram" : "messenger";
+    // Prefer the dedicated Instagram Login provider (`instagram_login`) when present
+    // for Instagram DMs; fall back to the Facebook Page-based `instagram` provider.
+    const integrationCandidates = platform === "instagram"
+      ? ["instagram_login", "instagram"]
+      : ["messenger"];
 
-    const { data: branchInteg } = await supabase
-      .from("integration_settings")
-      .select("config, credentials, is_active")
-      .eq("branch_id", branch_id)
-      .eq("integration_type", integrationType)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    let integration: any = branchInteg;
-    if (!integration) {
-      const { data: globalInteg } = await supabase
-        .from("integration_settings")
-        .select("config, credentials, is_active")
-        .is("branch_id", null)
-        .eq("integration_type", integrationType)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-      integration = globalInteg;
+    async function loadIntegration(branchScoped: boolean) {
+      for (const it of integrationCandidates) {
+        let q = supabase
+          .from("integration_settings")
+          .select("config, credentials, is_active, integration_type")
+          .eq("integration_type", it)
+          .eq("is_active", true)
+          .limit(1);
+        q = branchScoped ? q.eq("branch_id", branch_id) : q.is("branch_id", null);
+        const { data } = await q.maybeSingle();
+        if (data) return data;
+      }
+      return null;
     }
+
+    let integration: any = await loadIntegration(true);
+    if (!integration) integration = await loadIntegration(false);
 
     if (!integration) {
       await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
