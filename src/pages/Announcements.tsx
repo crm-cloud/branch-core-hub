@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Megaphone, Send, Trash2, Radio, Activity, AlertCircle, Sparkles } from 'lucide-react';
+import { Plus, Megaphone, Send, Trash2, Radio, Activity, AlertCircle, Sparkles, Rocket } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { communicationService } from '@/services/communicationService';
 import { toast } from 'sonner';
@@ -14,14 +14,27 @@ import { BroadcastDrawer } from '@/components/announcements/BroadcastDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { LiveFeed } from '@/components/communications/LiveFeed';
 import { RetryQueuePanel } from '@/components/communications/RetryQueuePanel';
-import { Link } from 'react-router-dom';
+import { CampaignsPanel } from '@/components/campaigns/CampaignsPanel';
+import { Link, useSearchParams } from 'react-router-dom';
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
   const { effectiveBranchId: defaultBranchId = '' } = useBranchContext();
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [showBroadcastDrawer, setShowBroadcastDrawer] = useState(false);
-  const [activeTab, setActiveTab] = useState('live');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'live';
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && t !== activeTab) setActiveTab(t);
+  }, [searchParams]);
+
+  const handleTabChange = (v: string) => {
+    setActiveTab(v);
+    setSearchParams({ tab: v }, { replace: true });
+  };
 
   const { data: announcements = [], isLoading } = useQuery({
     queryKey: ['announcements'],
@@ -70,7 +83,7 @@ export default function AnnouncementsPage() {
         </div>
 
         {/* Main Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList className="bg-muted/50 rounded-xl p-1 h-auto flex-wrap">
             <TabsTrigger value="live" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <Activity className="h-3.5 w-3.5" />Live Feed
@@ -78,6 +91,9 @@ export default function AnnouncementsPage() {
             <TabsTrigger value="announcements" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <Megaphone className="h-3.5 w-3.5" />Announcements
               <Badge variant="secondary" className="rounded-full text-[10px] h-4 px-1.5">{announcements.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" className="rounded-lg gap-2 data-[state=active]:shadow-md">
+              <Rocket className="h-3.5 w-3.5" />Campaigns
             </TabsTrigger>
             <TabsTrigger value="retry" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <AlertCircle className="h-3.5 w-3.5" />Retry Queue
@@ -149,6 +165,10 @@ export default function AnnouncementsPage() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="campaigns" className="mt-0 animate-fade-in">
+            <CampaignsPanel />
           </TabsContent>
 
           <TabsContent value="retry" className="mt-0 animate-fade-in">

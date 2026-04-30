@@ -1469,6 +1469,7 @@ export type Database = {
           created_by: string | null
           failure_count: number
           id: string
+          last_run_error: string | null
           message: string
           name: string
           recipients_count: number
@@ -1477,6 +1478,7 @@ export type Database = {
           status: string
           subject: string | null
           success_count: number
+          timezone: string
           trigger_type: string
           updated_at: string
         }
@@ -1488,6 +1490,7 @@ export type Database = {
           created_by?: string | null
           failure_count?: number
           id?: string
+          last_run_error?: string | null
           message: string
           name: string
           recipients_count?: number
@@ -1496,6 +1499,7 @@ export type Database = {
           status?: string
           subject?: string | null
           success_count?: number
+          timezone?: string
           trigger_type?: string
           updated_at?: string
         }
@@ -1507,6 +1511,7 @@ export type Database = {
           created_by?: string | null
           failure_count?: number
           id?: string
+          last_run_error?: string | null
           message?: string
           name?: string
           recipients_count?: number
@@ -1515,6 +1520,7 @@ export type Database = {
           status?: string
           subject?: string | null
           success_count?: number
+          timezone?: string
           trigger_type?: string
           updated_at?: string
         }
@@ -7644,6 +7650,50 @@ export type Database = {
           },
         ]
       }
+      staff_whatsapp_routing: {
+        Row: {
+          branch_id: string
+          created_at: string
+          id: string
+          is_available: boolean
+          last_assigned_at: string | null
+          personal_phone: string
+          role_filter: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          id?: string
+          is_available?: boolean
+          last_assigned_at?: string | null
+          personal_phone: string
+          role_filter?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          id?: string
+          is_available?: boolean
+          last_assigned_at?: string | null
+          personal_phone?: string
+          role_filter?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_whatsapp_routing_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_movements: {
         Row: {
           branch_id: string
@@ -8385,6 +8435,8 @@ export type Database = {
           captured_lead_id: string | null
           conversation_summary: string | null
           created_at: string | null
+          handoff_reason: string | null
+          handoff_requested_at: string | null
           id: string
           is_unread: boolean | null
           last_nurture_at: string | null
@@ -8405,6 +8457,8 @@ export type Database = {
           captured_lead_id?: string | null
           conversation_summary?: string | null
           created_at?: string | null
+          handoff_reason?: string | null
+          handoff_requested_at?: string | null
           id?: string
           is_unread?: boolean | null
           last_nurture_at?: string | null
@@ -8425,6 +8479,8 @@ export type Database = {
           captured_lead_id?: string | null
           conversation_summary?: string | null
           created_at?: string | null
+          handoff_reason?: string | null
+          handoff_requested_at?: string | null
           id?: string
           is_unread?: boolean | null
           last_nurture_at?: string | null
@@ -9417,10 +9473,20 @@ export type Database = {
           phone: string
         }[]
       }
-      set_handoff: {
-        Args: { _phone: string; _reason?: string; _urgency?: string }
-        Returns: undefined
-      }
+      set_handoff:
+        | {
+            Args: { _phone: string; _reason?: string; _urgency?: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              _assigned_to?: string
+              _branch_id?: string
+              _phone: string
+              _reason?: string
+            }
+            Returns: Json
+          }
       settle_payment: {
         Args: {
           p_amount: number

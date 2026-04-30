@@ -1,113 +1,118 @@
-## Audit Findings (what already exists)
-
-Good news — a large portion of this Epic is already shipped. We will **build on existing infra**, not duplicate it.
-
-| Feature | Status |
-|---|---|
-| Per-contact `bot_active` (in `whatsapp_chat_settings`) | Done |
-| Internal notes (`is_internal_note` column + yellow-style render) | Done |
-| Realtime channel + auto-scroll on new messages | Done |
-| "Pause AI" toggle in chat header | Done |
-| AI memory hydration from `whatsapp_messages` (last 10) | Done |
-| Context Panel scaffold (right rail, profile + stats) | Done |
-| `send-broadcast` edge function (provider-agnostic) | Done |
-
-**Real gaps** = AI Handoff tool-call, Campaigns UI/page/sidebar entry, Context Panel enrichment (membership / MIPS / quick-action insert), and adding `bot_active` to `leads`/`members` for cross-channel persistence.
+## Goal
+Consolidate Marketing & Campaigns under the existing **Communication Hub** (Announcements page), add **scheduled campaigns**, complete the **WhatsApp human-handoff workflow** (with staff routing aligned to Meta's Cloud API constraints), and **seed a real test campaign** sent to member **Ryan Lekhari** using a Meta-approved template.
 
 ---
 
-## Epic 1 — AI Handoff Tool & Memory Persistence
+## 1. Move "Marketing & Campaigns" into the Communication Hub
 
-**Schema**
-- Add `bot_active boolean DEFAULT true` to `public.leads` and `public.members` (separate from per-contact override in `whatsapp_chat_settings` — these become the entity-level source of truth).
-- Trigger: when `whatsapp_chat_settings.bot_active` flips, mirror into linked `members.bot_active` / `leads.bot_active` (best-effort by `phone_number`).
+The standalone `/campaigns` page becomes a tab inside `Announcements.tsx` (which already hosts Live Feed, Announcements, Retry Queue) — single source of truth for all outbound comms.
 
-**`supabase/functions/ai-auto-reply/index.ts`**
-- Memory: already pulls last 10 from `whatsapp_messages`. Extend to also resolve the linked member/lead and inject a **profile block** (name, status, membership end date, last attendance) into the system prompt.
-- Add `tools: [trigger_human_handoff]` and `tool_choice: 'auto'` on the gateway call.
-  - Tool params: `{ reason: string, urgency: 'low'|'medium'|'high' }`
-  - On tool call: service-role update `whatsapp_chat_settings.bot_active = false` for that phone, mirror to `leads/members`, insert into `notifications` for staff (role='manager','staff'), and return `{ handoff: true, reason }` to caller.
-- Prompt instructs the model to call the tool when user is frustrated, asks for human, asks pricing/refund/medical, or fails twice on the same intent.
+- Add a new **"Campaigns"** tab to `src/pages/Announcements.tsx` between "Announcements" and "Retry Queue".
+- Tab body renders the existing campaign list UI (extracted from `Campaigns.tsx` into a reusable `<CampaignsPanel />` component) plus the **"+ New Campaign"** CTA that opens `CampaignWizard`.
+- Update `src/config/menu.ts`: remove the standalone "Marketing & Campaigns" entries (lines 201, 276). The Communication Hub menu item stays and now covers campaigns.
+- Keep the `/campaigns` route working but redirect to `/announcements?tab=campaigns` so old links don't 404.
+- Read `?tab=` query param in Announcements to allow deep-linking.
 
-**Migrations**
-- `ALTER TABLE leads ADD COLUMN bot_active boolean NOT NULL DEFAULT true;`
-- `ALTER TABLE members ADD COLUMN bot_active boolean NOT NULL DEFAULT true;`
-- New SECURITY DEFINER function `set_handoff(_phone text, _reason text)` used by the edge function for atomic flip + notification insert.
+## 2. Campaign Scheduling
+
+Database + UI + worker for scheduled sends.
+
+**Schema (migration):**
+- `campaigns.scheduled_at` already exists — wire it up.
+- Add `campaigns.timezone text default 'Asia/Kolkata'` and `campaigns.last_run_error text`.
+- Allow `trigger_type = 'scheduled'` (already in CHECK constraint).
+
+**Wizard (Step 3 — Trigger):**
+- Add a third option **"Schedule for Later"** alongside "Send Now" and "Save as Automated Rule".
+- When selected, show a date+time picker (shadcn `Calendar` + time input). Persists to `scheduled_at` with `status='scheduled'`.
+
+**Cron worker (new edge function `process-scheduled-campaigns`):**
+- Runs every minute via `pg_cron` + `pg_net`.
+- Picks campaigns where `status='scheduled' AND scheduled_at <= now()`, marks them `sending`, resolves audience server-side (port `resolveAudienceMemberIds` logic into Deno), and invokes `send-broadcast`.
+- Updates `success_count`, `failure_count`, `sent_at`, `status='sent'` (or `'failed'` with `last_run_error`).
+
+**UI badges:** Campaign cards show countdown ("Sends in 2h 14m") for scheduled items.
+
+## 3. WhatsApp Human Handoff Workflow
+
+Currently `set_handoff` RPC pauses the bot and creates broadcast notifications, but staff can't be **assigned** an incoming WhatsApp chat. We'll complete the loop within Meta Cloud API limits.
+
+**Meta constraint reminder** *(per project memory `whatsapp-meta-cloud-api`)*: Meta Cloud API does **not** support transferring a conversation to another WhatsApp number. The conversation stays on the business number; "handoff" means **assigning a staff user inside our app** who will reply through the same shared inbox. Optional: notify that staffer on **their personal WhatsApp** with a deep link back to the in-app chat.
+
+**Schema additions:**
+- Reuse existing `whatsapp_chat_settings.assigned_to` (uuid → auth.users).
+- Add `whatsapp_chat_settings.handoff_reason text` and `handoff_requested_at timestamptz`.
+- New table `staff_whatsapp_routing` (branch_id, user_id, personal_phone, is_available bool, role_filter text[]) — lets managers register their own WhatsApp number for handoff alerts.
+
+**RPC `set_handoff` (extend existing):**
+- Accept optional `_assigned_to uuid`. If null, auto-pick the next available staff in `staff_whatsapp_routing` for that branch (round-robin on `last_assigned_at`).
+- Set `assigned_to`, `handoff_reason`, `handoff_requested_at`, `bot_active=false`.
+- Insert in-app notification AND fire `notify-staff-handoff` edge function.
+
+**New edge function `notify-staff-handoff`:**
+- Sends a WhatsApp template message ("handoff_alert_v1") to the staff's personal phone using the same Meta number, with deep-link button → `https://app/whatsapp-chat?phone=<member_phone>`.
+- Falls back to email + in-app notification if the staff hasn't registered a personal phone.
+
+**UI updates in `WhatsAppChat.tsx`:**
+- Header shows handoff banner with **"Assigned to: <staff name>"** and a **"Reassign"** dropdown listing available staff.
+- "Resume Bot" button clears `assigned_to` and sets `bot_active=true`.
+- New Settings tab **"WhatsApp Routing"** (under existing WhatsApp settings) for managers to register their personal phone & toggle availability.
+
+## 4. Seed Marketing & Campaigns + Test with Ryan
+
+**Seed templates** (insert via insert tool, not migration — these are data):
+- `welcome_offer_v1` (utility): "Hi {{1}}, welcome to {{2}}! Enjoy 10% off PT sessions this month."
+- `reengagement_v1` (marketing): "Hi {{1}}, we miss you at {{2}}. Come back this week for a free recovery session."
+- `event_invite_v1` (marketing): "Hi {{1}}, join us at {{2}} on {{3}} for community day."
+
+For each, call `manage-whatsapp-templates` edge function which submits to Meta's Graph API for approval (existing function — verify it handles the create flow). Status will move from `PENDING` → `APPROVED` automatically via Meta webhook (already wired in `whatsapp-webhook`).
+
+**Seed campaigns** (one per channel):
+- "Welcome Push — Active Members" (WhatsApp, sent_now)
+- "April Re-engagement" (WhatsApp, scheduled +1 day)
+- "May Newsletter" (Email, draft)
+
+**Live test with Ryan** *(member id `5cfda8f1-…`, phone `9928910901`, branch INCLINE)*:
+- Create campaign **"Test — Ryan"** with audience explicitly resolved to Ryan's id only (use a `member_ids` override in the wizard's preview step → debug-only "Send to specific member" field, hidden behind owner role).
+- Trigger send_now via `send-broadcast` once `welcome_offer_v1` is APPROVED by Meta.
+- Verify delivery in `campaign_runs` (status=`sent`), in `whatsapp_messages` log, and visually in WhatsApp Chat tab.
 
 ---
 
-## Epic 2 — Real-Time Inbox (verification + small additions)
-
-Most already implemented. Additions only:
-- Confirm realtime subscription also covers `whatsapp_chat_settings` UPDATE so the **Pause AI** switch in another tab/device reflects instantly.
-- Add a small **"AI paused — handoff reason"** banner in chat header sourced from the latest `notifications.metadata.reason` for that phone.
-- No duplicate work on internal notes / send button toggle (already present).
-
----
-
-## Epic 3 — Marketing & Campaigns Page
-
-**Sidebar**
-- `src/config/menu.ts`: add **Marketing & Campaigns** entry (icon: `Megaphone`) above existing CRM block, RBAC: owner/admin/manager.
-
-**New page** `src/pages/Campaigns.tsx` + route in `src/App.tsx` at `/campaigns`.
-- Vuexy card list of past campaigns + "New Campaign" button (opens right-side **Sheet** wizard — never a Dialog, per project rule).
-
-**Database (new tables)**
-- `campaigns (id, branch_id, name, channel, audience_filter jsonb, message text, subject text, trigger_type ['send_now'|'automated'], status, created_by, created_at, sent_at, recipients_count, success_count)`
-- `campaign_runs (id, campaign_id, recipient_id, recipient_type, channel, status, error, sent_at)`
-- RLS: staff/manager/admin/owner can manage within their branch; service role for edge function inserts.
-
-**Wizard (3 steps in a Sheet)**
-1. **Audience** — query builder filters: status (Active/Lead/Expired), `last_attendance` date range, `goal` (from `members.fitness_goal`), branch. Live count via `useQuery` re-running on filter change against members + leads.
-2. **Message** — channel chips (WhatsApp / Email / SMS), textarea with chip-insertable variables `{{first_name}}`, `{{membership_end}}`, `{{branch_name}}`. Email shows subject field.
-3. **Trigger** — radio: *Send Now* (calls `send-broadcast` with the resolved audience) or *Save as Automated Rule* (persists with `status='scheduled'`, future cron will pick up).
-
-**Reuses** existing `send-broadcast` function — just passes the resolved `audience` array. No new send pipeline.
-
----
-
-## Epic 4 — Omnichannel Context Panel Enrichment
-
-In `src/pages/WhatsAppChat.tsx` Context Panel block (line 1348+), add three new cards above the existing "Stats" card, gated on `selectedContact.member_id`:
-
-1. **Membership card** — fetch active row from `memberships` (plan name, end_date, days remaining, color-coded badge: green >30d, amber 7-30d, red <7d/expired).
-2. **Last Attendance card** — `member_attendance` MAX(checked_in_at) for the member; show relative time + "X days since last visit".
-3. **Quick Actions** (replaces nothing — adds two buttons):
-   - **Send Payment Link** → opens existing `create-razorpay-link` modal (or for leads, calls function and inserts `Pay here: <url>` into the message input).
-   - **Book PT Session** → inserts `Hi {{name}}, ready to book your next PT? Tap: <baseUrl>/pt-booking?member=<id>` into the input box (does not auto-send).
-
-Implementation: a small `useQuery` per card keyed on `member_id`; data flows into the input via existing `setMessageInput` setter.
-
----
-
-## Technical Details
+## Technical Section
 
 **Files to create**
-- `src/pages/Campaigns.tsx`
-- `src/components/campaigns/CampaignWizard.tsx` (3-step Sheet)
-- `src/components/campaigns/AudienceBuilder.tsx`
-- `src/services/campaignService.ts`
-- `src/components/communications/ContextMembershipCard.tsx`
-- `src/components/communications/ContextAttendanceCard.tsx`
-- 2 migrations (bot_active columns + handoff RPC; campaigns tables + RLS)
+- `src/components/campaigns/CampaignsPanel.tsx` — extracted list + CTA.
+- `src/components/campaigns/ScheduleStep.tsx` — date/time picker block for wizard step 3.
+- `src/components/settings/WhatsAppRoutingSettings.tsx` — staff routing registration UI.
+- `supabase/functions/process-scheduled-campaigns/index.ts` — cron worker.
+- `supabase/functions/notify-staff-handoff/index.ts` — staff alert sender.
 
 **Files to edit**
-- `supabase/functions/ai-auto-reply/index.ts` — add tool definition, profile injection, handoff dispatch
-- `src/pages/WhatsAppChat.tsx` — enrich Context Panel, add handoff-reason banner, ensure realtime covers `whatsapp_chat_settings`
-- `src/config/menu.ts` — Marketing entry
-- `src/App.tsx` — `/campaigns` route
+- `src/pages/Announcements.tsx` — add Campaigns tab, read `?tab=` param.
+- `src/pages/Campaigns.tsx` — convert to redirect (`<Navigate to="/announcements?tab=campaigns" />`).
+- `src/components/campaigns/CampaignWizard.tsx` — add Schedule trigger option, owner-only "specific member" debug field.
+- `src/services/campaignService.ts` — add `scheduled_at`, `timezone` to create/update; add `sendToSpecificMembers` helper.
+- `src/pages/WhatsAppChat.tsx` — handoff banner, reassign dropdown, resume bot.
+- `src/config/menu.ts` — remove duplicate "Marketing & Campaigns" entries.
+- `supabase/functions/send-broadcast/index.ts` — accept `template_name` + `template_params` for Meta-approved sends.
 
-**Out of scope (already done — will not redo)**
-- Internal note send toggle, yellow note rendering, realtime auto-scroll, Pause-AI switch UI, AI memory base hydration, broadcast sending pipeline.
+**Migrations**
+1. Add `timezone`, `last_run_error`, `handoff_reason`, `handoff_requested_at` columns.
+2. Create `staff_whatsapp_routing` table + RLS (owner/admin/manager manage own row; staff can read same branch).
+3. Replace `set_handoff` RPC with extended version (assignment + auto-routing).
+4. Schedule `process-scheduled-campaigns` cron (every 1 min) — via insert tool, not migration (contains anon key).
+
+**Data seeds** (insert tool)
+- 3 WhatsApp template rows.
+- 3 sample campaigns scoped to INCLINE branch.
+- 1 routing row for the current owner so handoff has a valid target.
+
+**Verification**
+- Submit `welcome_offer_v1` to Meta → poll until APPROVED.
+- Run "Test — Ryan" campaign → confirm row in `campaign_runs.status='sent'` and message visible in WhatsApp Chat thread for `9928910901`.
+- Trigger handoff manually from chat → confirm `whatsapp_chat_settings.assigned_to` populated and staff WhatsApp alert delivered.
 
 ---
 
-## Acceptance
-
-- AI auto-reply that detects "I want to talk to someone" automatically pauses bot and pings staff via notification bell.
-- Marketing page reachable from sidebar; wizard sends a real broadcast and persists campaign row.
-- Selecting a member chat shows their plan expiry + last MIPS check-in + working "Send Payment Link" / "Book PT" inserts.
-- `leads.bot_active` and `members.bot_active` exist and stay in sync with chat-level overrides.
-
-Approve to implement.
+**Approve to proceed.** I'll execute migrations → deploy edge functions → seed data → submit templates to Meta → run the live Ryan test → report back with `campaign_runs` row + screenshot of delivered message.

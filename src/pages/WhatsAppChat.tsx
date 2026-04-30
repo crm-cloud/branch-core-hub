@@ -1555,23 +1555,26 @@ export default function WhatsAppChatPage() {
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/80 transition-colors text-left"
                 onClick={async () => {
                   if (!selectedContact || !selectedBranch || selectedBranch === 'all') return;
-                  await supabase.from('whatsapp_chat_settings').upsert(
-                    {
-                      branch_id: selectedBranch,
-                      phone_number: selectedContact.phone_number,
-                      assigned_to: staff.id,
-                      bot_active: false,
-                    },
-                    { onConflict: 'branch_id,phone_number' }
-                  );
-                  await supabase.from('notifications').insert({
-                    user_id: staff.id,
-                    branch_id: selectedBranch,
-                    title: 'WhatsApp Chat Assigned',
-                    message: `A chat with ${selectedContact.contact_name || selectedContact.phone_number} has been assigned to you.`,
-                    type: 'info',
-                    category: 'communication',
+                  // Use atomic set_handoff RPC: pauses bot, assigns staff, mirrors lead/member, notifies in-app
+                  const { error: rpcErr } = await supabase.rpc('set_handoff', {
+                    _phone: selectedContact.phone_number,
+                    _reason: 'Manual assignment from chat',
+                    _branch_id: selectedBranch,
+                    _assigned_to: staff.id,
                   });
+                  if (rpcErr) {
+                    toast.error(rpcErr.message);
+                    return;
+                  }
+                  // Fire personal-WhatsApp ping (in-app notification is also queued by the function)
+                  supabase.functions.invoke('notify-staff-handoff', {
+                    body: {
+                      staff_user_id: staff.id,
+                      member_phone: selectedContact.phone_number,
+                      reason: 'Manual assignment from chat',
+                      branch_id: selectedBranch,
+                    },
+                  }).catch(() => {/* best-effort */});
                   setBotActive(false);
                   queryClient.invalidateQueries({ queryKey: ['whatsapp-chat-settings'] });
                   setTransferStaffOpen(false);
