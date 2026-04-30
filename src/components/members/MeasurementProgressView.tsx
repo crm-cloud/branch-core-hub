@@ -127,7 +127,7 @@ export function MeasurementProgressView({ memberId, memberGender }: MeasurementP
 
       {body3dEnabled && (
         <TabsContent value="body-3d" className="mt-0">
-          <BodyComparisonView latest={latest} previous={previous} memberGender={memberGender} />
+          <BodyComparisonView latest={latest} previous={previous} memberGender={memberGender} memberId={memberId} />
         </TabsContent>
       )}
     </Tabs>
