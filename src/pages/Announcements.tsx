@@ -167,6 +167,10 @@ export default function AnnouncementsPage() {
             )}
           </TabsContent>
 
+          <TabsContent value="campaigns" className="mt-0 animate-fade-in">
+            <CampaignsPanel />
+          </TabsContent>
+
           <TabsContent value="retry" className="mt-0 animate-fade-in">
             <RetryQueuePanel />
           </TabsContent>
