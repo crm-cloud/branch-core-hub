@@ -182,9 +182,24 @@ Deno.serve(async (req) => {
 
     await adminClient.from("notifications").insert({
       user_id: userId, branch_id, title: "Broadcast Sent",
-      message: `${channel.toUpperCase()} broadcast: ${sent} sent, ${failed} failed (${audience} audience)`,
+      message: `${channel.toUpperCase()} broadcast: ${sent} sent, ${failed} failed (${audience || 'custom'} audience)`,
       type: "info", category: "communication",
     });
+
+    // If invoked from a campaign, update its counters & status
+    if (campaign_id) {
+      try {
+        await adminClient.from("campaigns").update({
+          status: failed > 0 && sent === 0 ? "failed" : "sent",
+          recipients_count: members.length,
+          success_count: sent,
+          failure_count: failed,
+          sent_at: new Date().toISOString(),
+        }).eq("id", campaign_id);
+      } catch (e) {
+        console.warn("campaign update failed:", e);
+      }
+    }
 
     return json({ success: true, sent, failed, total: members.length });
   } catch (error: any) {
