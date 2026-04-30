@@ -46,8 +46,17 @@ const statusBadge = (s: string) => {
 };
 
 const normalizeStatus = (log: any): string => {
-  if (log.delivery_status) return log.delivery_status;
-  if (log.status) return log.status;
+  const status = (log.status || '').toLowerCase();
+  const delivery = (log.delivery_status || '').toLowerCase();
+  // Honour terminal statuses first — they are written by the dispatcher
+  if (status === 'failed' || status === 'bounced') return status;
+  // Honour delivery progressions (delivered/read/replied) when they exist
+  if (['delivered', 'read', 'replied'].includes(delivery)) return delivery;
+  // status='sent' wins over a stale delivery_status='scheduled'
+  if (status === 'sent') return 'sent';
+  // Otherwise fall back to whatever non-scheduled delivery info we have
+  if (delivery && delivery !== 'scheduled') return delivery;
+  if (status) return status;
   return 'pending';
 };
 
@@ -73,13 +82,17 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
     },
   });
 
+  const [livePulse, setLivePulse] = useState(0);
+
   useEffect(() => {
+    const invalidate = () => {
+      qc.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'comm-live-feed' });
+      setLivePulse((p) => p + 1);
+    };
     const ch = supabase
       .channel('comm-live-feed-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_logs' },
-        () => qc.invalidateQueries({ queryKey: ['comm-live-feed'] }))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'communication_delivery_events' },
-        () => qc.invalidateQueries({ queryKey: ['comm-live-feed'] }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_logs' }, invalidate)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'communication_delivery_events' }, invalidate)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);

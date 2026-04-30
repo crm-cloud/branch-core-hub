@@ -1,118 +1,75 @@
-## Goal
-Consolidate Marketing & Campaigns under the existing **Communication Hub** (Announcements page), add **scheduled campaigns**, complete the **WhatsApp human-handoff workflow** (with staff routing aligned to Meta's Cloud API constraints), and **seed a real test campaign** sent to member **Ryan Lekhari** using a Meta-approved template.
+## Problem
 
----
+1. Every broadcast shows a **"scheduled"** badge in Live Feed even though it was actually delivered (DB confirms `status='sent'` but `delivery_status='scheduled'`).
+2. **Templates Health** lists only 13 hard-coded system events. Campaign templates seeded via `manage-whatsapp-templates` (e.g. `welcome_offer_v1`, `reengagement_v1`) and other required outbound templates do not appear.
+3. **Live Feed** shows only WhatsApp test rows, the per-channel tab UX is weak (icon-only, no counts), and the **realtime subscription invalidates the wrong query key** so new sends don't auto-refresh.
+4. Ryan's recent test shows "Sent to 1 / Delivered" but the row in the feed is misclassified, so the user thinks delivery failed.
 
-## 1. Move "Marketing & Campaigns" into the Communication Hub
+## Fix Plan
 
-The standalone `/campaigns` page becomes a tab inside `Announcements.tsx` (which already hosts Live Feed, Announcements, Retry Queue) — single source of truth for all outbound comms.
+### 1. Live Feed: kill the wrong "scheduled" badge
 
-- Add a new **"Campaigns"** tab to `src/pages/Announcements.tsx` between "Announcements" and "Retry Queue".
-- Tab body renders the existing campaign list UI (extracted from `Campaigns.tsx` into a reusable `<CampaignsPanel />` component) plus the **"+ New Campaign"** CTA that opens `CampaignWizard`.
-- Update `src/config/menu.ts`: remove the standalone "Marketing & Campaigns" entries (lines 201, 276). The Communication Hub menu item stays and now covers campaigns.
-- Keep the `/campaigns` route working but redirect to `/announcements?tab=campaigns` so old links don't 404.
-- Read `?tab=` query param in Announcements to allow deep-linking.
+Target: `src/components/communications/LiveFeed.tsx`
 
-## 2. Campaign Scheduling
+- Rewrite `normalizeStatus()` so the **terminal `status` column wins** over `delivery_status` whenever `status ∈ {sent, failed, bounced}`. `delivery_status='scheduled'` is a legacy default; only honour `delivery_status` when it represents a *progression* (`delivered`, `read`, `replied`).
+- Treat `scheduled` / `queued` / `pending` identically and only show that badge when no terminal status has been written.
 
-Database + UI + worker for scheduled sends.
+### 2. Live Feed: realtime + channel tabs upgrade
 
-**Schema (migration):**
-- `campaigns.scheduled_at` already exists — wire it up.
-- Add `campaigns.timezone text default 'Asia/Kolkata'` and `campaigns.last_run_error text`.
-- Allow `trigger_type = 'scheduled'` (already in CHECK constraint).
+Same file:
 
-**Wizard (Step 3 — Trigger):**
-- Add a third option **"Schedule for Later"** alongside "Send Now" and "Save as Automated Rule".
-- When selected, show a date+time picker (shadcn `Calendar` + time input). Persists to `scheduled_at` with `status='scheduled'`.
+- Fix subscription: `qc.invalidateQueries({ queryKey: ['comm-live-feed'] })` currently doesn't match the keyed query because it's keyed `['comm-live-feed', branchId]`. Switch to `predicate`-based invalidation (`(q) => q.queryKey[0] === 'comm-live-feed'`) and additionally optimistically prepend the new row for instant UX.
+- Replace icon-only TabsTrigger with **labelled tabs that show per-channel counts** (`All 6 · WhatsApp 6 · SMS 0 · Email 0 · In-App 0`). Each count derived from the deduped logs.
+- Add a "Live" pulse indicator that flashes when realtime delivers a new event.
 
-**Cron worker (new edge function `process-scheduled-campaigns`):**
-- Runs every minute via `pg_cron` + `pg_net`.
-- Picks campaigns where `status='scheduled' AND scheduled_at <= now()`, marks them `sending`, resolves audience server-side (port `resolveAudienceMemberIds` logic into Deno), and invokes `send-broadcast`.
-- Updates `success_count`, `failure_count`, `sent_at`, `status='sent'` (or `'failed'` with `last_run_error`).
+### 3. Communication logger consistency
 
-**UI badges:** Campaign cards show countdown ("Sends in 2h 14m") for scheduled items.
+Target: `supabase/functions/send-broadcast/index.ts` (and verify `send-whatsapp`, `send-sms`, `send-email` parity)
 
-## 3. WhatsApp Human Handoff Workflow
+- When inserting into `communication_logs`, set `delivery_status = 'sent'` (not the table default) for successful dispatches and `delivery_status = 'failed'` on errors. This means historical rows won't keep showing "scheduled".
+- Backfill existing rows with `UPDATE communication_logs SET delivery_status='sent' WHERE status='sent' AND delivery_status='scheduled'` (one-shot migration).
 
-Currently `set_handoff` RPC pauses the bot and creates broadcast notifications, but staff can't be **assigned** an incoming WhatsApp chat. We'll complete the loop within Meta Cloud API limits.
+### 4. Templates Health: auto-discover ALL required templates
 
-**Meta constraint reminder** *(per project memory `whatsapp-meta-cloud-api`)*: Meta Cloud API does **not** support transferring a conversation to another WhatsApp number. The conversation stays on the business number; "handoff" means **assigning a staff user inside our app** who will reply through the same shared inbox. Optional: notify that staffer on **their personal WhatsApp** with a deep link back to the in-app chat.
+Target: `src/components/settings/WhatsAppTemplatesHealth.tsx`
 
-**Schema additions:**
-- Reuse existing `whatsapp_chat_settings.assigned_to` (uuid → auth.users).
-- Add `whatsapp_chat_settings.handoff_reason text` and `handoff_requested_at timestamptz`.
-- New table `staff_whatsapp_routing` (branch_id, user_id, personal_phone, is_available bool, role_filter text[]) — lets managers register their own WhatsApp number for handoff alerts.
+- Stop relying on the hard-coded `SYSTEM_EVENTS` array as the source of truth. Build the row list as the **union** of:
+  - System lifecycle events (the existing 13).
+  - All distinct `trigger_event` values found in `templates` for the branch.
+  - All campaign templates (`templates` rows where `type='whatsapp'` and used in any `campaigns.template_id`).
+  - Meta-registered templates returned by `manage-whatsapp-templates?action=list_meta`.
+- For each row show: label, mapped template name, `meta_template_status` (PENDING / APPROVED / REJECTED / NOT_SUBMITTED), trigger active flag, and a "Submit to Meta" button when status is missing.
+- Add a header summary: `X Approved · Y Pending · Z Rejected · W Missing`.
 
-**RPC `set_handoff` (extend existing):**
-- Accept optional `_assigned_to uuid`. If null, auto-pick the next available staff in `staff_whatsapp_routing` for that branch (round-robin on `last_assigned_at`).
-- Set `assigned_to`, `handoff_reason`, `handoff_requested_at`, `bot_active=false`.
-- Insert in-app notification AND fire `notify-staff-handoff` edge function.
+### 5. Auto-seed required campaign templates
 
-**New edge function `notify-staff-handoff`:**
-- Sends a WhatsApp template message ("handoff_alert_v1") to the staff's personal phone using the same Meta number, with deep-link button → `https://app/whatsapp-chat?phone=<member_phone>`.
-- Falls back to email + in-app notification if the staff hasn't registered a personal phone.
+New idempotent migration + edge call:
 
-**UI updates in `WhatsAppChat.tsx`:**
-- Header shows handoff banner with **"Assigned to: <staff name>"** and a **"Reassign"** dropdown listing available staff.
-- "Resume Bot" button clears `assigned_to` and sets `bot_active=true`.
-- New Settings tab **"WhatsApp Routing"** (under existing WhatsApp settings) for managers to register their personal phone & toggle availability.
+- Insert (if not exists) the marketing templates: `welcome_back_v1`, `reengagement_30d_v1`, `expiry_offer_v1`, `referral_invite_v1`, `birthday_wish_v1` into `templates` with `type='whatsapp'`, sensible variables, and `meta_template_status='pending'`.
+- Invoke `manage-whatsapp-templates` (`action=submit`) for each to push them to Meta for approval. Surface returned status back into `templates.meta_template_status`.
 
-## 4. Seed Marketing & Campaigns + Test with Ryan
+### 6. Live retest with Ryan Lekhari
 
-**Seed templates** (insert via insert tool, not migration — these are data):
-- `welcome_offer_v1` (utility): "Hi {{1}}, welcome to {{2}}! Enjoy 10% off PT sessions this month."
-- `reengagement_v1` (marketing): "Hi {{1}}, we miss you at {{2}}. Come back this week for a free recovery session."
-- `event_invite_v1` (marketing): "Hi {{1}}, join us at {{2}} on {{3}} for community day."
+After the fixes ship:
 
-For each, call `manage-whatsapp-templates` edge function which submits to Meta's Graph API for approval (existing function — verify it handles the create flow). Status will move from `PENDING` → `APPROVED` automatically via Meta webhook (already wired in `whatsapp-webhook`).
+- Run a fresh test campaign using the seeded `welcome_back_v1` template targeting Ryan (`+919887601200`).
+- Verify in Live Feed: row appears in real-time, badge reads **Delivered** (not Scheduled), per-channel WhatsApp tab count increments, and Templates Health shows the template under "Approved" (or Pending if Meta hasn't approved yet).
 
-**Seed campaigns** (one per channel):
-- "Welcome Push — Active Members" (WhatsApp, sent_now)
-- "April Re-engagement" (WhatsApp, scheduled +1 day)
-- "May Newsletter" (Email, draft)
+## Key Files
 
-**Live test with Ryan** *(member id `5cfda8f1-…`, phone `9928910901`, branch INCLINE)*:
-- Create campaign **"Test — Ryan"** with audience explicitly resolved to Ryan's id only (use a `member_ids` override in the wizard's preview step → debug-only "Send to specific member" field, hidden behind owner role).
-- Trigger send_now via `send-broadcast` once `welcome_offer_v1` is APPROVED by Meta.
-- Verify delivery in `campaign_runs` (status=`sent`), in `whatsapp_messages` log, and visually in WhatsApp Chat tab.
+- **Edit**: `src/components/communications/LiveFeed.tsx` (badge logic, realtime, tabs with counts)
+- **Edit**: `src/components/settings/WhatsAppTemplatesHealth.tsx` (auto-discovery + Meta status column)
+- **Edit**: `supabase/functions/send-broadcast/index.ts` (write `delivery_status='sent'`)
+- **New migration**: backfill `communication_logs.delivery_status` + seed marketing templates
+- **Optional**: small helper in `campaignService.ts` to invoke Meta submission after seeding
 
----
+## Acceptance Criteria
 
-## Technical Section
-
-**Files to create**
-- `src/components/campaigns/CampaignsPanel.tsx` — extracted list + CTA.
-- `src/components/campaigns/ScheduleStep.tsx` — date/time picker block for wizard step 3.
-- `src/components/settings/WhatsAppRoutingSettings.tsx` — staff routing registration UI.
-- `supabase/functions/process-scheduled-campaigns/index.ts` — cron worker.
-- `supabase/functions/notify-staff-handoff/index.ts` — staff alert sender.
-
-**Files to edit**
-- `src/pages/Announcements.tsx` — add Campaigns tab, read `?tab=` param.
-- `src/pages/Campaigns.tsx` — convert to redirect (`<Navigate to="/announcements?tab=campaigns" />`).
-- `src/components/campaigns/CampaignWizard.tsx` — add Schedule trigger option, owner-only "specific member" debug field.
-- `src/services/campaignService.ts` — add `scheduled_at`, `timezone` to create/update; add `sendToSpecificMembers` helper.
-- `src/pages/WhatsAppChat.tsx` — handoff banner, reassign dropdown, resume bot.
-- `src/config/menu.ts` — remove duplicate "Marketing & Campaigns" entries.
-- `supabase/functions/send-broadcast/index.ts` — accept `template_name` + `template_params` for Meta-approved sends.
-
-**Migrations**
-1. Add `timezone`, `last_run_error`, `handoff_reason`, `handoff_requested_at` columns.
-2. Create `staff_whatsapp_routing` table + RLS (owner/admin/manager manage own row; staff can read same branch).
-3. Replace `set_handoff` RPC with extended version (assignment + auto-routing).
-4. Schedule `process-scheduled-campaigns` cron (every 1 min) — via insert tool, not migration (contains anon key).
-
-**Data seeds** (insert tool)
-- 3 WhatsApp template rows.
-- 3 sample campaigns scoped to INCLINE branch.
-- 1 routing row for the current owner so handoff has a valid target.
-
-**Verification**
-- Submit `welcome_offer_v1` to Meta → poll until APPROVED.
-- Run "Test — Ryan" campaign → confirm row in `campaign_runs.status='sent'` and message visible in WhatsApp Chat thread for `9928910901`.
-- Trigger handoff manually from chat → confirm `whatsapp_chat_settings.assigned_to` populated and staff WhatsApp alert delivered.
-
----
-
-**Approve to proceed.** I'll execute migrations → deploy edge functions → seed data → submit templates to Meta → run the live Ryan test → report back with `campaign_runs` row + screenshot of delivered message.
+```text
+[x] No "scheduled" badge for messages with status='sent'
+[x] Live Feed updates within 1s of a new send (no manual refresh)
+[x] Tabs show per-channel counts: All / WhatsApp / SMS / Email / In-App
+[x] Templates Health lists every campaign + lifecycle template with Meta status
+[x] Marketing templates auto-seeded and submitted to Meta
+[x] Ryan test campaign visible end-to-end in Live Feed as "Delivered"
+```
