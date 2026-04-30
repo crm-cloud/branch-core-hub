@@ -255,7 +255,7 @@ async function processInstagramEvent(payload: any) {
       await ingestMessagingEvent(event, "instagram");
     }
 
-    // F3b: comments / mentions arrive under entry.changes[]
+    // F3b: Instagram Login + comments/mentions arrive under entry.changes[]
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     for (const change of changes) {
       const igAccountId = String(entry.id || "");
@@ -264,6 +264,30 @@ async function processInstagramEvent(payload: any) {
           await ingestInstagramComment(change.value, igAccountId);
         } else if (change.field === "mentions") {
           await ingestInstagramMention(change.value, igAccountId);
+        } else if (change.field === "messages" || change.field === "message_echoes") {
+          // Instagram Login API delivers DMs HERE, not in entry.messaging[]
+          const v = change.value || {};
+          const event = {
+            sender: v.sender,
+            recipient: v.recipient,
+            timestamp: v.timestamp,
+            message: v.message,
+          };
+          if (event.message && event.sender?.id && event.recipient?.id) {
+            console.log(`[IG] changes-style DM field=${change.field} sender=${event.sender.id} recipient=${event.recipient.id}`);
+            await ingestMessagingEvent(event, "instagram");
+          } else {
+            console.log(`[IG] changes-style ${change.field} missing fields, skipping`);
+          }
+        } else if (
+          change.field === "messaging_postbacks" ||
+          change.field === "messaging_seen" ||
+          change.field === "messaging_referral" ||
+          change.field === "message_reactions" ||
+          change.field === "message_edit"
+        ) {
+          // Acknowledge silently — not surfaced in CRM yet
+          console.log(`[IG] ack ${change.field} from=${change.value?.sender?.id || "?"}`);
         } else {
           console.log(`[IG] unhandled change field=${change.field}`);
         }
