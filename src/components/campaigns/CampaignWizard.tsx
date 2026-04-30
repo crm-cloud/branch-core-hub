@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, MessageSquare, Mail, Send, Save, Loader2, Megaphone } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare, Mail, Send, Save, Loader2, Megaphone, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { AudienceBuilder } from './AudienceBuilder';
 import {
@@ -40,12 +40,13 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
   const [trigger, setTrigger] = useState<CampaignTriggerType>('send_now');
+  const [scheduledAt, setScheduledAt] = useState<string>(''); // datetime-local value
   const [submitting, setSubmitting] = useState(false);
 
   const reset = () => {
     setStep(1); setName(''); setChannel('whatsapp');
     setFilter({ status: 'active' }); setResolvedMemberIds([]);
-    setMessage(''); setSubject(''); setTrigger('send_now');
+    setMessage(''); setSubject(''); setTrigger('send_now'); setScheduledAt('');
   };
 
   const close = () => { reset(); onOpenChange(false); };
@@ -56,6 +57,10 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
     if (!name.trim()) { toast.error('Campaign name required'); return; }
     if (!message.trim()) { toast.error('Message required'); return; }
     if (resolvedMemberIds.length === 0) { toast.error('Audience is empty'); return; }
+    if (trigger === 'scheduled' && !scheduledAt) { toast.error('Pick a date and time'); return; }
+    if (trigger === 'scheduled' && new Date(scheduledAt).getTime() <= Date.now()) {
+      toast.error('Scheduled time must be in the future'); return;
+    }
 
     setSubmitting(true);
     try {
@@ -67,13 +72,17 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
         message: message.trim(),
         subject: channel === 'email' ? subject.trim() || null : null,
         trigger_type: trigger,
-        scheduled_at: null,
-        status: trigger === 'send_now' ? 'sending' : 'scheduled',
+        scheduled_at: trigger === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
+        status:
+          trigger === 'send_now' ? 'sending' :
+          trigger === 'scheduled' ? 'scheduled' : 'draft',
       });
 
       if (trigger === 'send_now') {
         const result = await sendCampaignNow(campaign, resolvedMemberIds);
         toast.success(`Campaign sent — ${result.sent} delivered, ${result.failed} failed`);
+      } else if (trigger === 'scheduled') {
+        toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
       } else {
         toast.success('Campaign saved as automated rule');
       }
@@ -174,6 +183,7 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
           <div className="space-y-4">
             {([
               { id: 'send_now', label: 'Send Now', desc: 'Dispatch the message to all matched members immediately.', icon: Send, color: 'violet' },
+              { id: 'scheduled', label: 'Schedule for Later', desc: 'Pick a date and time. Sent automatically by our background worker.', icon: Clock, color: 'amber' },
               { id: 'automated', label: 'Save as Automated Rule', desc: 'Save the campaign so it runs on a schedule or trigger later.', icon: Save, color: 'blue' },
             ] as const).map((t) => (
               <button key={t.id} type="button" onClick={() => setTrigger(t.id as CampaignTriggerType)}
