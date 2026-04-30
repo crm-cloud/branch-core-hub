@@ -80,7 +80,8 @@ const WHATSAPP_PROVIDERS = [
 ];
 
 const INSTAGRAM_PROVIDERS = [
-  { id: 'instagram_meta', name: 'Instagram Direct (Meta)', description: 'Receive and reply to Instagram DMs' },
+  { id: 'instagram_meta', name: 'Instagram via Facebook (EAA)', description: 'Page Access Token, same Meta App as WhatsApp' },
+  { id: 'instagram_login', name: 'Instagram Business Login (IGAA)', description: 'Direct IG token, no Facebook Page required' },
 ];
 
 const MESSENGER_PROVIDERS = [
@@ -662,19 +663,38 @@ export function IntegrationSettings() {
                       <li>Required scopes: <code className="font-mono">instagram_business_basic</code>, <code className="font-mono">instagram_business_manage_messages</code>, <code className="font-mono">instagram_manage_comments</code></li>
                       <li>App Secret optional (not used on graph.instagram.com)</li>
                     </ul>
-                    <div className="mt-2 pt-2 border-t border-amber-100">
-                      <p className="text-[11px] text-amber-900 mb-1"><b>Redirect URL</b> for Business Login (paste in Meta Dashboard → Instagram → API setup → Set up Instagram business login):</p>
-                      <div className="flex items-center gap-1.5">
-                        <code className="flex-1 text-[10px] bg-muted px-2 py-1 rounded font-mono break-all">
-                          {`${SUPABASE_FUNCTION_BASE}/meta-webhook`}
-                        </code>
-                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => {
-                          navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
-                          toast.success('Redirect URL copied!');
-                        }}>
-                          <Copy className="h-3 w-3" />
-                        </Button>
+                    <div className="mt-2 pt-2 border-t border-amber-100 space-y-2">
+                      <div>
+                        <p className="text-[11px] text-amber-900 mb-1"><b>OAuth Redirect URL</b> — paste in Meta Dashboard → Instagram → "Set up Instagram business login":</p>
+                        <div className="flex items-center gap-1.5">
+                          <code className="flex-1 text-[10px] bg-muted px-2 py-1 rounded font-mono break-all">
+                            {`${SUPABASE_FUNCTION_BASE}/meta-oauth-callback`}
+                          </code>
+                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => {
+                            navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-oauth-callback`);
+                            toast.success('OAuth Redirect URL copied!');
+                          }}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
+                      <div>
+                        <p className="text-[11px] text-amber-900 mb-1"><b>Data Deletion URL</b> — paste in Meta Dashboard → Settings → Basic:</p>
+                        <div className="flex items-center gap-1.5">
+                          <code className="flex-1 text-[10px] bg-muted px-2 py-1 rounded font-mono break-all">
+                            {`${SUPABASE_FUNCTION_BASE}/meta-data-deletion`}
+                          </code>
+                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => {
+                            navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-data-deletion`);
+                            toast.success('Data Deletion URL copied!');
+                          }}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-amber-800/70">
+                        Pinned to Meta Graph <b>v25.0</b> on both hosts (auto-fallback to v23.0 on graph.instagram.com if Meta hasn't rolled v25 there yet).
+                      </p>
                     </div>
                   </div>
                 </div>

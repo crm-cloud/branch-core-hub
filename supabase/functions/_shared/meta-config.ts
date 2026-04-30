@@ -1,17 +1,28 @@
-// v1.0.0 — Single source of truth for Meta Graph API version.
+// v2.0.0 — Phase G: unified to v25.0 across BOTH Meta hosts.
+// Adds smart fallback for graph.instagram.com which historically lags graph.facebook.com.
+//
+// Single source of truth for Meta Graph API version.
 // Bump in ONE place when Meta releases a new stable version.
 //
 // Usage from any edge function:
-//   import { META_GRAPH_VERSION, META_API_BASE, metaUrl } from "../_shared/meta-config.ts";
-//   await fetch(metaUrl(`/${pageId}/messages`), { ... });
+//   import { META_GRAPH_VERSION, META_API_BASE, metaUrl, metaFetchWithFallback } from "../_shared/meta-config.ts";
 
 export const META_GRAPH_VERSION = "v25.0";
 export const META_API_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
-// Instagram Login API (token prefix `IGAA…`) uses a separate host:
+// Instagram Login API (token prefix `IGAA…`) lives on a separate host:
 // https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login
-export const IG_GRAPH_VERSION = "v23.0";
+//
+// We aim for v25.0 (latest) but Meta sometimes lags this host by 1-2 versions.
+// `metaFetchWithFallback` will transparently retry with IG_FALLBACK_VERSION
+// when Meta returns "Unsupported get/post request" on the IG host.
+export const IG_GRAPH_VERSION = "v25.0";
+export const IG_FALLBACK_VERSION = "v23.0"; // last known-good version on graph.instagram.com
 export const IG_API_BASE = `https://graph.instagram.com/${IG_GRAPH_VERSION}`;
+export const IG_API_BASE_FALLBACK = `https://graph.instagram.com/${IG_FALLBACK_VERSION}`;
+
+const FB_HOST = "graph.facebook.com";
+const IG_HOST = "graph.instagram.com";
 
 /**
  * Meta issues two visually-different access-token formats:
@@ -33,6 +44,43 @@ export function detectMetaHost(accessToken: string | null | undefined): {
 export function metaUrl(path: string): string {
   if (!path.startsWith("/")) path = "/" + path;
   return `${META_API_BASE}${path}`;
+}
+
+/**
+ * Fetch wrapper that auto-retries with IG_FALLBACK_VERSION when Meta returns
+ * "Unsupported get/post request" (error code 2635 or HTTP 400 mentioning "version")
+ * on the graph.instagram.com host. Pass-through for graph.facebook.com.
+ */
+export async function metaFetchWithFallback(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const resp = await fetch(url, init);
+  if (resp.ok) return resp;
+
+  // Only retry on the IG host; FB host is always on the latest version.
+  if (!url.includes(IG_HOST) || !url.includes(`/${IG_GRAPH_VERSION}/`)) return resp;
+
+  // Inspect error body without consuming it (clone first).
+  let body: any = {};
+  try {
+    body = await resp.clone().json();
+  } catch {
+    return resp;
+  }
+
+  const code = body?.error?.code;
+  const msg = String(body?.error?.message || "").toLowerCase();
+  const versionRelated =
+    code === 2635 || (resp.status === 400 && (msg.includes("version") || msg.includes("unsupported")));
+
+  if (!versionRelated) return resp;
+
+  const fallbackUrl = url.replace(`/${IG_GRAPH_VERSION}/`, `/${IG_FALLBACK_VERSION}/`);
+  console.warn(
+    `[meta-config] IG host rejected ${IG_GRAPH_VERSION}, retrying with ${IG_FALLBACK_VERSION}: ${fallbackUrl}`,
+  );
+  return fetch(fallbackUrl, init);
 }
 
 /**
