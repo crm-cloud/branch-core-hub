@@ -1,3 +1,8 @@
+// v4.5.0 — Three live-mode fixes: (1) AI history strips "(via X)" channel tags
+//          so the model never echoes them back to the user; (2) IG profile
+//          resolution now respects token host (graph.instagram.com for IGAA
+//          tokens) with cross-base fallback so sender names + usernames land
+//          in the CRM sidebar; (3) explicit logging when a profile resolves.
 // v4.4.0 — Robust IG `message_edit` recovery: resolve via /{mid} then via
 //          /{ig_user_id}/conversations fallback, store a placeholder when
 //          Meta refuses content, and log every outcome to webhook_processing_log.
