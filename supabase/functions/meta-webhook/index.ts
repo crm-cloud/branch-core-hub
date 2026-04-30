@@ -89,7 +89,7 @@ async function handleVerification(req: Request) {
   const { data: integration } = await supabase
     .from("integration_settings")
     .select("id, integration_type")
-    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .in("integration_type", ["whatsapp", "instagram", "instagram_login", "messenger"])
     .eq("is_active", true)
     .eq("config->>webhook_verify_token", verifyToken)
     .limit(1)
