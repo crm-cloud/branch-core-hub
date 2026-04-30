@@ -15,6 +15,8 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
+const ScannerHero3D = lazy(() => import('@/components/public/ScannerHero3D'));
+
 const FALLBACK_TRAINERS = [
   { name: 'Vikram Mehta', role: 'Head Strength Coach', bio: '12 years of elite powerlifting and strength training.', exp: '12 yrs', img: 'https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg?auto=compress&cs=tinysrgb&w=400' },
   { name: 'Neha Sharma', role: 'Yoga & Wellness Expert', bio: 'Certified yoga instructor focused on mind-body harmony.', exp: '8 yrs', img: 'https://images.pexels.com/photos/3823488/pexels-photo-3823488.jpeg?auto=compress&cs=tinysrgb&w=400' },
