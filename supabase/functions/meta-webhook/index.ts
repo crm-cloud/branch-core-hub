@@ -1,3 +1,5 @@
+// v4.2.0 — Rich one-line logging per POST, persist signature failures to
+//          `webhook_failures` table with diagnostic reason for the UI.
 // v4.1.0 — Recognize `instagram_login` provider alongside `instagram` and `messenger`
 //          for page-id detection, integration lookup, and app_secret resolution.
 // v4.0.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0), HMAC signature
@@ -108,17 +110,35 @@ async function handleVerification(req: Request) {
 async function handleIncomingEvent(req: Request) {
   const bodyText = await req.text();
 
-  // F2: HMAC-SHA256 signature verification
+  // HMAC-SHA256 signature verification
   const sigHeader = req.headers.get("x-hub-signature-256");
   const sigCheck = await verifyAgainstAnyAppSecret(bodyText, sigHeader);
+
+  // Pre-parse object type for logging even on signature failure
+  let objectTypeForLog = "unknown";
+  try { objectTypeForLog = JSON.parse(bodyText)?.object || "unknown"; } catch {}
+
   if (!sigCheck.accepted) {
-    console.error(`[meta-webhook] signature mismatch (header=${sigHeader ? "present" : "missing"})`);
+    const reason = !sigHeader
+      ? "missing_signature_header"
+      : "signature_mismatch_likely_wrong_app_secret";
+    console.error(
+      `[meta-webhook] REJECTED object=${objectTypeForLog} sig=${sigHeader ? "present" : "missing"} reason=${reason} secrets_tried=${sigCheck.secretsTried}`,
+    );
+    try {
+      await supabase.from("webhook_failures").insert({
+        source: "meta-webhook",
+        object_type: objectTypeForLog,
+        reason,
+        signature_present: !!sigHeader,
+        metadata: { secrets_tried: sigCheck.secretsTried },
+      });
+    } catch (e) {
+      console.error("[meta-webhook] failed to record webhook_failure:", e);
+    }
     return new Response(JSON.stringify({ error: "Invalid signature" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  }
-  if (sigCheck.skipped) {
-    console.warn("[meta-webhook] no integration has app_secret configured — accepting unsigned request (back-compat)");
   }
 
   let payload: any;
@@ -130,7 +150,9 @@ async function handleIncomingEvent(req: Request) {
   }
 
   const objectType = payload?.object;
-  console.log(`[meta-webhook] inbound object=${objectType} entries=${payload?.entry?.length || 0}`);
+  console.log(
+    `[meta-webhook] ACCEPTED object=${objectType} entries=${payload?.entry?.length || 0} sig=${sigHeader ? (sigCheck.skipped ? "unsigned-backcompat" : "verified") : "missing"} matched_secret_prefix=${sigCheck.matchedPrefix || "n/a"}`,
+  );
 
   if (objectType === "whatsapp_business_account") {
     console.log("[meta-webhook] routing → whatsapp-webhook");
@@ -149,7 +171,6 @@ async function handleIncomingEvent(req: Request) {
   } else if (objectType === "instagram") {
     await processInstagramEvent(payload);
   } else if (objectType === "page") {
-    // E1: page envelope can carry IG OR Messenger — detect by recipient/page id
     await processPageEnvelopeEvent(payload);
   } else {
     console.log("[meta-webhook] unknown object type:", objectType);
@@ -184,19 +205,18 @@ async function getActiveAppSecrets(): Promise<string[]> {
 async function verifyAgainstAnyAppSecret(
   rawBody: string,
   sigHeader: string | null,
-): Promise<{ accepted: boolean; skipped: boolean }> {
+): Promise<{ accepted: boolean; skipped: boolean; secretsTried: number; matchedPrefix?: string }> {
   const secrets = await getActiveAppSecrets();
   if (secrets.length === 0) {
-    // No app_secret configured anywhere — accept (back-compat); UI shows banner.
-    return { accepted: true, skipped: true };
+    return { accepted: true, skipped: true, secretsTried: 0 };
   }
-  if (!sigHeader) return { accepted: false, skipped: false };
+  if (!sigHeader) return { accepted: false, skipped: false, secretsTried: secrets.length };
   for (const s of secrets) {
     if (await verifyXHubSignature(rawBody, sigHeader, s)) {
-      return { accepted: true, skipped: false };
+      return { accepted: true, skipped: false, secretsTried: secrets.length, matchedPrefix: s.slice(0, 6) };
     }
   }
-  return { accepted: false, skipped: false };
+  return { accepted: false, skipped: false, secretsTried: secrets.length };
 }
 
 // ─── Page-envelope router (IG-via-Page OR pure Messenger) ─────────────────────

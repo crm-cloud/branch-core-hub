@@ -8466,6 +8466,39 @@ export type Database = {
           },
         ]
       }
+      webhook_failures: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          object_type: string | null
+          reason: string
+          signature_present: boolean
+          source: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          object_type?: string | null
+          reason: string
+          signature_present?: boolean
+          source: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          object_type?: string | null
+          reason?: string
+          signature_present?: boolean
+          source?: string
+        }
+        Relationships: []
+      }
       whatsapp_chat_settings: {
         Row: {
           assigned_to: string | null

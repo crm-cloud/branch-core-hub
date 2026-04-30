@@ -100,7 +100,35 @@ export function IntegrationSettings() {
     provider: string;
     existing?: any;
   }>({ open: false, type: 'payment_gateway', provider: '' });
+  const [diagnostics, setDiagnostics] = useState<{ ok: boolean; checks: any[] } | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const queryClient = useQueryClient();
+
+  const runMetaDiagnostics = async () => {
+    const igInteg = (integrations as any[]).find(
+      (i: any) => (i.integration_type === 'instagram' || i.integration_type === 'instagram_login') && i.is_active
+    );
+    if (!igInteg) {
+      toast.error('Save your Instagram integration first.');
+      return;
+    }
+    setDiagnosing(true);
+    setDiagnostics(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-diagnose', {
+        body: { integration_id: igInteg.id },
+      });
+      if (error) throw error;
+      setDiagnostics(data);
+      if (data?.ok) toast.success('All checks passed!');
+      else toast.warning('Diagnostics found issues — see details below.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Diagnostics failed');
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
 
   const { data: integrations = [] } = useQuery({
     queryKey: ['integrations', selectedBranch],
@@ -389,7 +417,7 @@ export function IntegrationSettings() {
 
           {(() => {
             const metaIntegrations = integrations.filter((i: any) =>
-              ['whatsapp', 'instagram', 'messenger'].includes(i.integration_type) && i.is_active
+              ['whatsapp', 'instagram', 'instagram_login', 'messenger'].includes(i.integration_type) && i.is_active
             );
             const missingSecret = metaIntegrations.filter((i: any) => !i.credentials?.app_secret);
             if (metaIntegrations.length === 0 || missingSecret.length === 0) return null;
@@ -403,9 +431,10 @@ export function IntegrationSettings() {
                     Webhook signature verification disabled for {missingSecret.length} integration(s)
                   </p>
                   <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                    Add the <strong>App Secret</strong> from Meta App Dashboard → Settings → Basic to{' '}
-                    {missingSecret.map((i: any) => i.provider).join(', ')}. Without it, anyone with the
-                    webhook URL could inject fake messages into your CRM.
+                    Add the App Secret to {missingSecret.map((i: any) => i.provider || i.integration_type).join(', ')}.
+                    <br />• <b>WhatsApp & Instagram via Facebook (EAA…):</b> use the <strong>Basic App Secret</strong> from Meta → Settings → Basic.
+                    <br />• <b>Instagram Business Login (IGAA…):</b> use the <strong>Instagram App Secret</strong> from Meta → Instagram product → API setup with Instagram login → Instagram app secret.
+                    <br />Without the correct one, every webhook from Meta is rejected as "Invalid signature" and inbound DMs never appear.
                   </p>
                 </div>
               </div>
@@ -648,10 +677,50 @@ export function IntegrationSettings() {
                     <Webhook className="h-3.5 w-3.5" />
                     Subscribe Page & IG to Webhook Events
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={diagnosing}
+                    onClick={runMetaDiagnostics}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${diagnosing ? 'animate-spin' : ''}`} />
+                    {diagnosing ? 'Running…' : 'Run Diagnostics'}
+                  </Button>
                   <p className="text-[11px] text-muted-foreground">
                     Required after first connection. Without this, Meta won't deliver DMs to our endpoint even if the URL is configured.
                   </p>
                 </div>
+
+                {diagnostics && (
+                  <div className="mt-3 rounded-lg border border-pink-200 bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      {diagnostics.ok ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-rose-600" />
+                      )}
+                      <h5 className="text-sm font-semibold">
+                        {diagnostics.ok ? 'All checks passed' : 'Issues detected'}
+                      </h5>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {diagnostics.checks.map((c: any) => (
+                        <li key={c.id} className="flex items-start gap-2 text-xs">
+                          {c.ok ? (
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-rose-600 mt-0.5 shrink-0" />
+                          )}
+                          <div>
+                            <div className="font-medium">{c.label}</div>
+                            <div className="text-muted-foreground">{c.detail}</div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               {/* Setup Path Guide — IG Login vs FB Login */}
@@ -693,7 +762,7 @@ export function IntegrationSettings() {
                       <li><b>Long-lived IG Access Token</b> from Business Login</li>
                       <li><b>Instagram Account ID</b> = <code className="font-mono">user_id</code> from /me</li>
                       <li>Required scopes: <code className="font-mono">instagram_business_basic</code>, <code className="font-mono">instagram_business_manage_messages</code>, <code className="font-mono">instagram_manage_comments</code></li>
-                      <li>App Secret optional (not used on graph.instagram.com)</li>
+                      <li><b className="text-rose-600">Instagram App Secret</b> (Meta → Instagram product → "API setup with Instagram login" → Instagram app secret) — REQUIRED for webhook signatures. This is a <u>different value</u> from the Basic App Secret used by WhatsApp.</li>
                     </ul>
                     <div className="mt-2 pt-2 border-t border-amber-100 space-y-2">
                       <div>
