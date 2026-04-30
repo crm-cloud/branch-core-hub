@@ -1413,6 +1413,121 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_runs: {
+        Row: {
+          campaign_id: string
+          channel: string
+          error: string | null
+          id: string
+          recipient_email: string | null
+          recipient_id: string | null
+          recipient_phone: string | null
+          recipient_type: string | null
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          channel: string
+          error?: string | null
+          id?: string
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          recipient_type?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          channel?: string
+          error?: string | null
+          id?: string
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          recipient_type?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_runs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          audience_filter: Json
+          branch_id: string
+          channel: string
+          created_at: string
+          created_by: string | null
+          failure_count: number
+          id: string
+          message: string
+          name: string
+          recipients_count: number
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string
+          subject: string | null
+          success_count: number
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          audience_filter?: Json
+          branch_id: string
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          failure_count?: number
+          id?: string
+          message: string
+          name: string
+          recipients_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          success_count?: number
+          trigger_type?: string
+          updated_at?: string
+        }
+        Update: {
+          audience_filter?: Json
+          branch_id?: string
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          failure_count?: number
+          id?: string
+          message?: string
+          name?: string
+          recipients_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          success_count?: number
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       class_bookings: {
         Row: {
           attended_at: string | null
@@ -4138,6 +4253,7 @@ export type Database = {
         Row: {
           ad_id: string | null
           assigned_to: string | null
+          bot_active: boolean
           branch_id: string
           budget: string | null
           campaign_name: string | null
@@ -4186,6 +4302,7 @@ export type Database = {
         Insert: {
           ad_id?: string | null
           assigned_to?: string | null
+          bot_active?: boolean
           branch_id: string
           budget?: string | null
           campaign_name?: string | null
@@ -4234,6 +4351,7 @@ export type Database = {
         Update: {
           ad_id?: string | null
           assigned_to?: string | null
+          bot_active?: boolean
           branch_id?: string
           budget?: string | null
           campaign_name?: string | null
@@ -5307,6 +5425,7 @@ export type Database = {
           biometric_enrolled: boolean | null
           biometric_photo_path: string | null
           biometric_photo_url: string | null
+          bot_active: boolean
           branch_id: string
           created_at: string
           created_by: string | null
@@ -5347,6 +5466,7 @@ export type Database = {
           biometric_enrolled?: boolean | null
           biometric_photo_path?: string | null
           biometric_photo_url?: string | null
+          bot_active?: boolean
           branch_id: string
           created_at?: string
           created_by?: string | null
@@ -5387,6 +5507,7 @@ export type Database = {
           biometric_enrolled?: boolean | null
           biometric_photo_path?: string | null
           biometric_photo_url?: string | null
+          bot_active?: boolean
           branch_id?: string
           created_at?: string
           created_by?: string | null
@@ -9295,6 +9416,10 @@ export type Database = {
           member_status: string
           phone: string
         }[]
+      }
+      set_handoff: {
+        Args: { _phone: string; _reason?: string; _urgency?: string }
+        Returns: undefined
       }
       settle_payment: {
         Args: {

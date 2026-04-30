@@ -52,6 +52,7 @@ const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: stri
   }
 };
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
+import { ContactMemberContext } from '@/components/communications/ContactMemberContext';
 import { useChatSound } from '@/hooks/useChatSound';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -1415,6 +1416,14 @@ export default function WhatsAppChatPage() {
                     Assign to Staff
                   </Button>
                 </div>
+
+                {/* Member context (membership + last attendance) */}
+                {selectedContact.member_id && (
+                  <ContactMemberContext
+                    memberId={selectedContact.member_id}
+                    onInsert={(text) => setNewMessage(prev => (prev ? prev + '\n' : '') + text)}
+                  />
+                )}
 
                 {/* Stats */}
                 {contactStats && (

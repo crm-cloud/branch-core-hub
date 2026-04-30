@@ -1,95 +1,113 @@
-## Context — what the vendor doc actually allows
+## Audit Findings (what already exists)
 
-After re-reading the HOWBODY API doc v2.4 against our current implementation, two hard vendor constraints reshape the design:
+Good news — a large portion of this Epic is already shipped. We will **build on existing infra**, not duplicate it.
 
-| Vendor flow | Doc § | URL behavior |
-|---|---|---|
-| **Pre-scan QR (login)** | 3.1 | Device **injects** `?equipmentNo=…&scanId=…` into our URL. Our `/scan-login` already handles this correctly. |
-| **Post-scan QR ("Send to Phone")** | 3.2 | URL is **fully static**. Device appends NOTHING. "Applicable only to logged-in users; guests are not permitted." |
-| **Body / Posture push** | 3.3, 3.4 | Already wired — webhooks save report + auto-fire `deliver-scan-report` (WhatsApp + Email + in-app). |
-
-Implication: the device's "Send to Phone" button cannot pass a scan token. We can only land the user on a generic page that resolves **their own latest report** from their authenticated session.
-
-Also: our existing `deliver-scan-report` already pushes WhatsApp + Email the instant a report arrives, so the device's "Send to Phone" QR is essentially a **fallback / re-view entry**, not the primary delivery channel. We should make this explicit in the UI.
-
----
-
-## Plan
-
-### 1. New static landing page — `/my-scan-report`
-
-Single static URL we hand to HOWBODY for the Section 3.2 redirect QR. No params, no tokens.
-
-- Behavior:
-  - If not logged in → redirect to `/auth?redirect=/my-scan-report`
-  - If logged in as a member → fetch the **latest** body + posture reports for `member_id = current user`, show summary cards + buttons "View Body Report" / "View Posture Report" linking into existing `MyProgress` / public report routes.
-  - If logged in as staff → show a small member-search to pick whose latest report to view (covers shared device kiosks).
-  - Shows a banner: *"We've already sent your report to your WhatsApp and email — this page is for re-viewing."*
-
-### 2. Communication policy alignment (audit + harden)
-
-Audit `deliver-scan-report` to confirm it follows project comms standards:
-- Uses universal dispatcher pattern (no hard-coded WhatsApp/SMS creds).
-- WhatsApp template falls back to deep link if Meta API unavailable.
-- Email uses transactional engine.
-- In-app realtime notification fires for the member.
-- Idempotent on `report_id` (no double-sends if webhook retries).
-- Logs delivery attempts to `howbody_webhook_logs` or a dedicated comm log.
-
-Add what's missing — most likely: idempotency guard + branded WhatsApp template variables matching the comms engine (`HOWBODY Triggers` memory).
-
-### 3. Settings UI — refactor into 3 tabs
-
-Convert `src/components/settings/HowbodySettings.tsx` from a vertical stack of 4 cards into a single Vuexy-styled `Tabs` component:
-
-```text
-┌─ Body Scanner ──────────────────────────────┐
-│  [Credentials]  [Webhooks]  [Devices]       │
-├─────────────────────────────────────────────┤
-│  (active tab content)                        │
-└─────────────────────────────────────────────┘
-```
-
-- **Tab a — HOWBODY Credentials**: existing creds card (Base URL, Username, App Key, Active toggle, Save) + Test Connection button moved here (logical grouping).
-- **Tab b — Body Scanner Webhooks**: the three URLs (Pre-scan QR Login, Body Webhook, Posture Webhook) **plus** the new static "Send-to-Phone Redirect URL" (`{origin}/my-scan-report`). Each URL gets a clear "what to paste into the device" hint + copy button. Add a callout explaining vendor's static-URL rule.
-- **Tab c — Body Scanner Devices**: existing `HowbodyDevicesCard` (admin/owner only — manager/staff get read-only as already implemented).
-
-Tabs use Vuexy aesthetic: rounded-2xl, soft indigo/teal shadows, icon badges in tab labels.
-
-### 4. Update vendor handoff doc (v3)
-
-Regenerate `incline_bodyscan_handoff_v3.pdf` with corrected URL semantics:
-- ✅ Pre-scan login URL (with param injection) → `/scan-login`
-- ✅ Post-scan static redirect URL (no params) → `/my-scan-report`
-- ❌ Remove the proposed `/howbody-send-to-phone` callback (vendor confirmed they cannot call custom callbacks; delivery is already automated server-side via webhooks).
-- Document that WhatsApp + Email auto-fire from the body/posture push — vendor doesn't need to do anything extra.
-
-### 5. Test with curl (using deployed edge functions)
-
-After implementation, run smoke tests through `curl_edge_functions`:
-1. `POST /howbody-bind-user` with sample `equipmentNo=HD0202501821 + scanId=test-123` → expect 200.
-2. `POST /howbody-body-webhook` with sample payload from doc §4.2 + valid `appkey` header → expect `code: 200`, row in `howbody_body_reports`, delivery fired.
-3. `POST /howbody-posture-webhook` with §4.4 sample → same checks.
-4. Confirm `/my-scan-report` resolves the just-written report for the test member.
-
----
-
-## Files touched
-
-| File | Change |
+| Feature | Status |
 |---|---|
-| `src/pages/MyScanReport.tsx` | **new** — static landing for §3.2 redirect |
-| `src/App.tsx` | add `/my-scan-report` route (lazy) |
-| `src/components/settings/HowbodySettings.tsx` | refactor to 3-tab layout |
-| `supabase/functions/deliver-scan-report/index.ts` | audit + add idempotency / template alignment if needed |
-| `/mnt/documents/incline_bodyscan_handoff_v3.pdf` | regenerate vendor doc |
+| Per-contact `bot_active` (in `whatsapp_chat_settings`) | Done |
+| Internal notes (`is_internal_note` column + yellow-style render) | Done |
+| Realtime channel + auto-scroll on new messages | Done |
+| "Pause AI" toggle in chat header | Done |
+| AI memory hydration from `whatsapp_messages` (last 10) | Done |
+| Context Panel scaffold (right rail, profile + stats) | Done |
+| `send-broadcast` edge function (provider-agnostic) | Done |
 
-No DB migrations required — schema already supports the flow. No new edge functions (the static-URL constraint removes the need for `/howbody-send-to-phone`).
+**Real gaps** = AI Handoff tool-call, Campaigns UI/page/sidebar entry, Context Panel enrichment (membership / MIPS / quick-action insert), and adding `bot_active` to `leads`/`members` for cross-channel persistence.
 
 ---
 
-## Out of scope / non-goals
+## Epic 1 — AI Handoff Tool & Memory Persistence
 
-- We will **not** build a `/howbody-send-to-phone` endpoint — vendor cannot call it (confirmed by their message).
-- We will **not** change the pre-scan QR flow — it works as designed.
-- No new tables or RLS changes.
+**Schema**
+- Add `bot_active boolean DEFAULT true` to `public.leads` and `public.members` (separate from per-contact override in `whatsapp_chat_settings` — these become the entity-level source of truth).
+- Trigger: when `whatsapp_chat_settings.bot_active` flips, mirror into linked `members.bot_active` / `leads.bot_active` (best-effort by `phone_number`).
+
+**`supabase/functions/ai-auto-reply/index.ts`**
+- Memory: already pulls last 10 from `whatsapp_messages`. Extend to also resolve the linked member/lead and inject a **profile block** (name, status, membership end date, last attendance) into the system prompt.
+- Add `tools: [trigger_human_handoff]` and `tool_choice: 'auto'` on the gateway call.
+  - Tool params: `{ reason: string, urgency: 'low'|'medium'|'high' }`
+  - On tool call: service-role update `whatsapp_chat_settings.bot_active = false` for that phone, mirror to `leads/members`, insert into `notifications` for staff (role='manager','staff'), and return `{ handoff: true, reason }` to caller.
+- Prompt instructs the model to call the tool when user is frustrated, asks for human, asks pricing/refund/medical, or fails twice on the same intent.
+
+**Migrations**
+- `ALTER TABLE leads ADD COLUMN bot_active boolean NOT NULL DEFAULT true;`
+- `ALTER TABLE members ADD COLUMN bot_active boolean NOT NULL DEFAULT true;`
+- New SECURITY DEFINER function `set_handoff(_phone text, _reason text)` used by the edge function for atomic flip + notification insert.
+
+---
+
+## Epic 2 — Real-Time Inbox (verification + small additions)
+
+Most already implemented. Additions only:
+- Confirm realtime subscription also covers `whatsapp_chat_settings` UPDATE so the **Pause AI** switch in another tab/device reflects instantly.
+- Add a small **"AI paused — handoff reason"** banner in chat header sourced from the latest `notifications.metadata.reason` for that phone.
+- No duplicate work on internal notes / send button toggle (already present).
+
+---
+
+## Epic 3 — Marketing & Campaigns Page
+
+**Sidebar**
+- `src/config/menu.ts`: add **Marketing & Campaigns** entry (icon: `Megaphone`) above existing CRM block, RBAC: owner/admin/manager.
+
+**New page** `src/pages/Campaigns.tsx` + route in `src/App.tsx` at `/campaigns`.
+- Vuexy card list of past campaigns + "New Campaign" button (opens right-side **Sheet** wizard — never a Dialog, per project rule).
+
+**Database (new tables)**
+- `campaigns (id, branch_id, name, channel, audience_filter jsonb, message text, subject text, trigger_type ['send_now'|'automated'], status, created_by, created_at, sent_at, recipients_count, success_count)`
+- `campaign_runs (id, campaign_id, recipient_id, recipient_type, channel, status, error, sent_at)`
+- RLS: staff/manager/admin/owner can manage within their branch; service role for edge function inserts.
+
+**Wizard (3 steps in a Sheet)**
+1. **Audience** — query builder filters: status (Active/Lead/Expired), `last_attendance` date range, `goal` (from `members.fitness_goal`), branch. Live count via `useQuery` re-running on filter change against members + leads.
+2. **Message** — channel chips (WhatsApp / Email / SMS), textarea with chip-insertable variables `{{first_name}}`, `{{membership_end}}`, `{{branch_name}}`. Email shows subject field.
+3. **Trigger** — radio: *Send Now* (calls `send-broadcast` with the resolved audience) or *Save as Automated Rule* (persists with `status='scheduled'`, future cron will pick up).
+
+**Reuses** existing `send-broadcast` function — just passes the resolved `audience` array. No new send pipeline.
+
+---
+
+## Epic 4 — Omnichannel Context Panel Enrichment
+
+In `src/pages/WhatsAppChat.tsx` Context Panel block (line 1348+), add three new cards above the existing "Stats" card, gated on `selectedContact.member_id`:
+
+1. **Membership card** — fetch active row from `memberships` (plan name, end_date, days remaining, color-coded badge: green >30d, amber 7-30d, red <7d/expired).
+2. **Last Attendance card** — `member_attendance` MAX(checked_in_at) for the member; show relative time + "X days since last visit".
+3. **Quick Actions** (replaces nothing — adds two buttons):
+   - **Send Payment Link** → opens existing `create-razorpay-link` modal (or for leads, calls function and inserts `Pay here: <url>` into the message input).
+   - **Book PT Session** → inserts `Hi {{name}}, ready to book your next PT? Tap: <baseUrl>/pt-booking?member=<id>` into the input box (does not auto-send).
+
+Implementation: a small `useQuery` per card keyed on `member_id`; data flows into the input via existing `setMessageInput` setter.
+
+---
+
+## Technical Details
+
+**Files to create**
+- `src/pages/Campaigns.tsx`
+- `src/components/campaigns/CampaignWizard.tsx` (3-step Sheet)
+- `src/components/campaigns/AudienceBuilder.tsx`
+- `src/services/campaignService.ts`
+- `src/components/communications/ContextMembershipCard.tsx`
+- `src/components/communications/ContextAttendanceCard.tsx`
+- 2 migrations (bot_active columns + handoff RPC; campaigns tables + RLS)
+
+**Files to edit**
+- `supabase/functions/ai-auto-reply/index.ts` — add tool definition, profile injection, handoff dispatch
+- `src/pages/WhatsAppChat.tsx` — enrich Context Panel, add handoff-reason banner, ensure realtime covers `whatsapp_chat_settings`
+- `src/config/menu.ts` — Marketing entry
+- `src/App.tsx` — `/campaigns` route
+
+**Out of scope (already done — will not redo)**
+- Internal note send toggle, yellow note rendering, realtime auto-scroll, Pause-AI switch UI, AI memory base hydration, broadcast sending pipeline.
+
+---
+
+## Acceptance
+
+- AI auto-reply that detects "I want to talk to someone" automatically pauses bot and pings staff via notification bell.
+- Marketing page reachable from sidebar; wizard sends a real broadcast and persists campaign row.
+- Selecting a member chat shows their plan expiry + last MIPS check-in + working "Send Payment Link" / "Book PT" inserts.
+- `leads.bot_active` and `members.bot_active` exist and stay in sync with chat-level overrides.
+
+Approve to implement.
