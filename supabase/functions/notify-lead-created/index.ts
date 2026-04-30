@@ -1,7 +1,8 @@
-// v1.0.0 — Unified lead notification dispatcher
+// v1.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
 // Called after lead creation from any source (manual, capture-lead, webhook-lead-capture)
 // Reads lead_notification_rules + integration_settings to send SMS/WhatsApp to lead + team
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { META_API_BASE } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

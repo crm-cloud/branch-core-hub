@@ -1,5 +1,6 @@
-// v2.0.0 — appsecret_proof support + error logging
+// v2.1.0 — Phase G: pinned to shared META_GRAPH_VERSION (v25.0).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { META_GRAPH_VERSION, META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
@@ -7,9 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const META_GRAPH_VERSION = "v25.0";
-const META_API_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
 async function computeAppSecretProof(accessToken: string, appSecret: string): Promise<string> {
   const key = await crypto.subtle.importKey(

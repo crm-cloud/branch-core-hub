@@ -1,5 +1,6 @@
-// v2.0.0 — appsecret_proof support + error logging
+// v2.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
@@ -23,7 +24,7 @@ async function computeAppSecretProof(accessToken: string, appSecret: string): Pr
 }
 
 function buildMetaUrl(phoneNumberId: string, accessToken: string, appSecret?: string | null, proof?: string | null): string {
-  let url = `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`;
+  let url = `${META_API_BASE}/${phoneNumberId}/messages`;
   if (appSecret && proof) {
     url += `?appsecret_proof=${proof}`;
   }
