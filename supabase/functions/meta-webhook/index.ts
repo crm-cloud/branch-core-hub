@@ -170,7 +170,7 @@ async function getActiveAppSecrets(): Promise<string[]> {
   const { data } = await supabase
     .from("integration_settings")
     .select("credentials")
-    .in("integration_type", ["whatsapp", "instagram", "messenger"])
+    .in("integration_type", ["whatsapp", "instagram", "instagram_login", "messenger"])
     .eq("is_active", true);
   const set = new Set<string>();
   for (const row of data || []) {
