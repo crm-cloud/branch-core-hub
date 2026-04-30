@@ -452,7 +452,10 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
 
 async function ingestInstagramMessageEdit(event: any, entryAccountId: string) {
   const mid = String(event.message_edit?.mid || "");
-  if (!mid) return;
+  if (!mid) {
+    await logProcessing({ object_type: "instagram", event_kind: "message_edit", status: "dropped", reason: "missing_mid", sample: event });
+    return;
+  }
   const { data: existing } = await supabase
     .from("whatsapp_messages")
     .select("id")
@@ -460,30 +463,107 @@ async function ingestInstagramMessageEdit(event: any, entryAccountId: string) {
     .maybeSingle();
   if (existing) {
     console.log(`[IG] message_edit dedup mid=${mid}`);
+    await logProcessing({ object_type: "instagram", event_kind: "message_edit", platform_message_id: mid, status: "deduped" });
     return;
   }
 
   const integration = await findIntegrationByPageId(String(event.recipient?.id || entryAccountId), "instagram")
     || await findIntegrationByPageId(entryAccountId, "instagram");
-  const resolved = integration ? await fetchInstagramMessageByMid(mid, integration) : null;
-  const fromId = String(resolved?.from?.id || event.sender?.id || "");
-  const toId = String(resolved?.to?.data?.[0]?.id || resolved?.to?.id || event.recipient?.id || entryAccountId || "");
   const businessId = String(integration?.config?.instagram_account_id || integration?.config?.page_id || entryAccountId || "");
-  const isOutbound = !!fromId && (fromId === businessId || fromId === toId && event.sender?.id === businessId);
-  const contactId = isOutbound ? toId : fromId;
-  const messageText = resolved?.message || resolved?.text || "[Instagram message edited]";
 
+  // 1. Try direct text from the webhook payload (some IG events do include it)
+  let messageText: string | null = event.message_edit?.text || null;
+  let fromId = String(event.sender?.id || "");
+  let toId = String(event.recipient?.id || entryAccountId || "");
+  let resolveError: any = null;
+
+  // 2. Try /{mid} lookup
+  if (!messageText || !fromId) {
+    const resolved = integration ? await fetchInstagramMessageByMid(mid, integration) : null;
+    if (resolved && !resolved.__error) {
+      messageText = messageText || resolved.message || resolved.text || null;
+      fromId = fromId || String(resolved.from?.id || "");
+      toId = toId || String(resolved.to?.data?.[0]?.id || resolved.to?.id || "");
+    } else if (resolved?.__error) {
+      resolveError = resolved.__error;
+    }
+  }
+
+  // 3. Conversation-API fallback: scan recent conversations for this mid
+  if ((!messageText || !fromId) && integration && businessId) {
+    const conv = await findInstagramMessageViaConversations(businessId, mid, integration);
+    if (conv) {
+      messageText = messageText || conv.message || null;
+      fromId = fromId || String(conv.from?.id || "");
+      toId = toId || String(conv.to?.data?.[0]?.id || conv.to?.id || "");
+    }
+  }
+
+  const isOutbound = !!fromId && (fromId === businessId);
+  const contactId = isOutbound ? toId : fromId;
+
+  // 4. Last resort placeholder so the conversation still appears in CRM
   if (!contactId) {
-    console.log(`[IG] message_edit unresolved contact mid=${mid}`);
+    // We have nothing to attach this to. Record diagnostically.
+    console.warn(`[IG] message_edit unresolved contact mid=${mid} resolveError=${resolveError?.message || "n/a"}`);
+    await logProcessing({
+      object_type: "instagram",
+      event_kind: "message_edit",
+      platform_message_id: mid,
+      status: "resolve_failed",
+      reason: "no_contact_after_mid_lookup_and_conversations_fallback",
+      meta_error_code: resolveError?.code ?? null,
+      meta_error_subcode: resolveError?.error_subcode ?? null,
+      meta_error_message: resolveError?.message ?? null,
+      sample: event,
+    });
     return;
   }
 
+  const finalText = messageText || "[Instagram message — content unavailable from Meta]";
   await ingestMessagingEvent({
     sender: { id: isOutbound ? businessId : contactId },
     recipient: { id: isOutbound ? contactId : businessId },
     timestamp: event.timestamp,
-    message: { mid, text: messageText, is_echo: isOutbound },
+    message: { mid, text: finalText, is_echo: isOutbound },
   }, "instagram");
+
+  await logProcessing({
+    object_type: "instagram",
+    event_kind: "message_edit",
+    platform_message_id: mid,
+    status: messageText ? "stored" : "placeholder_stored",
+    reason: messageText ? null : "meta_did_not_return_text",
+    meta_error_code: resolveError?.code ?? null,
+    meta_error_subcode: resolveError?.error_subcode ?? null,
+    meta_error_message: resolveError?.message ?? null,
+  });
+}
+
+async function findInstagramMessageViaConversations(igUserId: string, mid: string, integration: any): Promise<any | null> {
+  const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
+  if (!accessToken) return null;
+  const { isInstagramLogin } = detectMetaHost(accessToken);
+  const base = isInstagramLogin ? IG_API_BASE : META_API_BASE;
+  // List the most recent conversations and look for a message with this mid
+  try {
+    const convUrl = `${base}/${encodeURIComponent(igUserId)}/conversations?platform=instagram&fields=messages.limit(20){id,message,from,to,created_time}&limit=10&access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await metaFetchWithFallback(convUrl);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.warn(`[IG] conversations fallback failed: ${data?.error?.message || resp.status}`);
+      return null;
+    }
+    const conversations: any[] = Array.isArray(data?.data) ? data.data : [];
+    for (const c of conversations) {
+      const messages: any[] = Array.isArray(c?.messages?.data) ? c.messages.data : [];
+      const hit = messages.find((m: any) => String(m.id) === mid);
+      if (hit) return hit;
+    }
+  } catch (e) {
+    console.warn("[IG] conversations fallback error:", e instanceof Error ? e.message : e);
+  }
+  return null;
 }
 
 // ─── F3: Instagram comments + mentions ────────────────────────────────────────
