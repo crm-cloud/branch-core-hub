@@ -1,3 +1,5 @@
+// v4.3.1 — Some Instagram Login deliveries arrive as messaging[].message_edit
+//          without messaging[].message. Resolve the mid via Graph and ingest.
 // v4.3.0 — Instagram Login webhooks deliver DMs under entry.changes[] with
 //          field="messages" (not entry.messaging[]). Parse that shape and
 //          route through ingestMessagingEvent so inbound IG DMs reach the CRM.
@@ -15,7 +17,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
-import { META_API_BASE, verifyXHubSignature } from "../_shared/meta-config.ts";
+import { META_API_BASE, IG_API_BASE, detectMetaHost, metaFetchWithFallback, verifyXHubSignature } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -283,9 +285,13 @@ async function processInstagramEvent(payload: any) {
     // F3a: DMs (incl. story replies under messaging[].message.reply_to.story)
     const messaging = Array.isArray(entry.messaging) ? entry.messaging : [];
     for (const event of messaging) {
-      if (!event.message) continue;
-      console.log(`[IG] direct-object event sender=${event.sender?.id} recipient=${event.recipient?.id}`);
-      await ingestMessagingEvent(event, "instagram");
+      if (event.message) {
+        console.log(`[IG] direct-object event sender=${event.sender?.id} recipient=${event.recipient?.id}`);
+        await ingestMessagingEvent(event, "instagram");
+      } else if (event.message_edit?.mid) {
+        console.log(`[IG] message_edit mid=${event.message_edit.mid} sender=${event.sender?.id || "?"} recipient=${event.recipient?.id || entry.id || "?"}`);
+        await ingestInstagramMessageEdit(event, String(entry.id || ""));
+      }
     }
 
     // F3b: Instagram Login + comments/mentions arrive under entry.changes[]
