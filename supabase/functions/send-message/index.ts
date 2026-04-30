@@ -199,7 +199,8 @@ serve(async (req) => {
     for (const attempt of attempts) {
       const payload = buildMessagePayload(recipientId, content || caption, message_type, media_url, attempt.igProduct);
       console.log(`[send-message:${platform}] attempt=${attempt.label} url=${attempt.url}`);
-      const result = await postToMeta(attempt.url, accessToken, appsecretProof, payload);
+      const proofForAttempt = attempt.useProof ? appsecretProof : "";
+      const result = await postToMeta(attempt.url, accessToken, proofForAttempt, payload);
       if (result.ok && !result.data?.error) {
         success = { data: result.data, label: attempt.label };
         break;
