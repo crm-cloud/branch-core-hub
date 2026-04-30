@@ -418,6 +418,42 @@ async function ingestMessagingEvent(event: any, platform: Platform) {
   }
 }
 
+async function ingestInstagramMessageEdit(event: any, entryAccountId: string) {
+  const mid = String(event.message_edit?.mid || "");
+  if (!mid) return;
+  const { data: existing } = await supabase
+    .from("whatsapp_messages")
+    .select("id")
+    .eq("platform_message_id", mid)
+    .maybeSingle();
+  if (existing) {
+    console.log(`[IG] message_edit dedup mid=${mid}`);
+    return;
+  }
+
+  const integration = await findIntegrationByPageId(String(event.recipient?.id || entryAccountId), "instagram")
+    || await findIntegrationByPageId(entryAccountId, "instagram");
+  const resolved = integration ? await fetchInstagramMessageByMid(mid, integration) : null;
+  const fromId = String(resolved?.from?.id || event.sender?.id || "");
+  const toId = String(resolved?.to?.data?.[0]?.id || resolved?.to?.id || event.recipient?.id || entryAccountId || "");
+  const businessId = String(integration?.config?.instagram_account_id || integration?.config?.page_id || entryAccountId || "");
+  const isOutbound = !!fromId && (fromId === businessId || fromId === toId && event.sender?.id === businessId);
+  const contactId = isOutbound ? toId : fromId;
+  const messageText = resolved?.message || resolved?.text || "[Instagram message edited]";
+
+  if (!contactId) {
+    console.log(`[IG] message_edit unresolved contact mid=${mid}`);
+    return;
+  }
+
+  await ingestMessagingEvent({
+    sender: { id: isOutbound ? businessId : contactId },
+    recipient: { id: isOutbound ? contactId : businessId },
+    timestamp: event.timestamp,
+    message: { mid, text: messageText, is_echo: isOutbound },
+  }, "instagram");
+}
+
 // ─── F3: Instagram comments + mentions ────────────────────────────────────────
 
 async function ingestInstagramComment(value: any, igAccountId: string) {
