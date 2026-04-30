@@ -1,5 +1,6 @@
+// v1.2.0 — Instagram now auto-detects IGAA (Instagram Login) vs EAA (Facebook Login) tokens
+//          and routes to graph.instagram.com or graph.facebook.com respectively.
 // v1.1.0 — Test Connection for SMS / Email / WhatsApp / Instagram providers
-// Fixed: always return 200 with structured {ok, error} so supabase.functions.invoke doesn't throw
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -280,41 +281,119 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
 }
 
 // ── Instagram ───────────────────────────────────────
-
+// Two valid Meta flows are supported:
+//
+//   A) "API setup with Facebook login"  → token starts with `EAA…`
+//      - host:    graph.facebook.com/v25.0
+//      - probe:   /{page_id}?fields=id,name,instagram_business_account
+//      - account: config.page_id  (FB Page that owns the IG Business account)
+//
+//   B) "API setup with Instagram login" → token starts with `IGAA…`
+//      - host:    graph.instagram.com/v23.0
+//      - probe:   /me?fields=user_id,username,name,account_type
+//      - account: config.instagram_account_id (IG user_id from /me)
+//
+// We auto-detect from the token prefix and call the matching host.
 async function testInstagram(config: any, credentials: any) {
-  const accessToken = credentials?.access_token || credentials?.page_access_token;
+  const accessToken: string | undefined =
+    credentials?.access_token || credentials?.page_access_token;
   if (!accessToken) return { success: false, error: "Access Token is required" };
 
-  const pageId = config?.instagram_account_id || config?.page_id;
-  if (!pageId) return { success: false, error: "Instagram Account ID / Page ID is required" };
+  const isInstagramLogin = accessToken.trim().startsWith("IGAA");
 
-  // Round-trip check #1: verify the IG/page entity is accessible via this token
+  if (isInstagramLogin) {
+    // ── Instagram Login flow (graph.instagram.com) ──
+    // App Secret proof is NOT used here — Instagram Login tokens are scoped
+    // and Meta does not honour appsecret_proof on graph.instagram.com.
+    const meResp = await fetch(
+      `https://graph.instagram.com/v23.0/me?fields=user_id,username,name,account_type`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    const meData = await meResp.json().catch(() => ({}));
+    if (!meResp.ok || meData?.error) {
+      const msg = meData?.error?.message || `HTTP ${meResp.status}`;
+      return {
+        success: false,
+        error: `Instagram Login API: ${formatMetaError(msg, "instagram")}\n` +
+          `Token detected as Instagram Login (IGAA…). Make sure your Meta app has ` +
+          `permissions: instagram_business_basic, instagram_business_manage_messages, instagram_manage_comments. ` +
+          `If you used "API setup with Facebook login", regenerate as a Page Access Token (EAA…) instead.`,
+      };
+    }
+
+    const expectedAccount = config?.instagram_account_id;
+    const actualAccount = String(meData?.user_id || meData?.id || "");
+    if (expectedAccount && expectedAccount !== actualAccount) {
+      return {
+        success: false,
+        error: `Instagram Login token is for IG account ${actualAccount} (@${meData?.username || "?"}), ` +
+          `but Integration is configured for ${expectedAccount}. Update "Instagram Account ID" to ${actualAccount}.`,
+      };
+    }
+
+    const accountType = String(meData?.account_type || "").toUpperCase();
+    const isMessagingCapable = accountType === "BUSINESS";
+    return {
+      success: true,
+      message: `Instagram Login connected ✓ @${meData?.username || meData?.name || actualAccount}` +
+        (accountType ? ` · ${accountType}` : "") +
+        (!isMessagingCapable ? " ⚠ Convert IG account to BUSINESS to send DMs" : ""),
+      detected_flow: "instagram_login",
+      detected_account_id: actualAccount,
+      warning: !isMessagingCapable
+        ? `Your Instagram account is "${accountType}". The Instagram Messaging API only works for BUSINESS accounts. Convert in IG Settings → Account → Switch to Professional → Business.`
+        : undefined,
+    };
+  }
+
+  // ── Facebook Login flow (graph.facebook.com) ──
+  const pageId = config?.page_id || config?.instagram_account_id;
+  if (!pageId) {
+    return {
+      success: false,
+      error: "Facebook Page ID is required when using a Facebook Login token (EAA…). " +
+        "Paste the linked Page ID into the Page ID field.",
+    };
+  }
+
   const entity = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,username`,
+    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,instagram_business_account{id,username,name}`,
     accessToken,
     credentials?.app_secret,
   );
   if (!entity.ok) {
-    return { success: false, error: `Meta API: ${formatMetaError(entity.error || "Instagram test failed", "instagram")}` };
+    return {
+      success: false,
+      error: `Meta API: ${formatMetaError(entity.error || "Instagram test failed", "instagram")}\n` +
+        `Token detected as Facebook Login (EAA…). Verify the Page Access Token belongs to the Page that owns the IG Business account.`,
+    };
   }
 
-  // Round-trip check #2: verify the token can access /me/accounts (page→IG link sanity)
-  const me = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/me?fields=id,name`,
-    accessToken,
-    credentials?.app_secret,
-  );
+  const ig = entity.data?.instagram_business_account;
+  if (!ig?.id) {
+    return {
+      success: false,
+      error: `Page "${entity.data?.name || pageId}" has no linked Instagram Business account. ` +
+        `Link the IG account in Meta Business Suite → Settings → Instagram Accounts.`,
+    };
+  }
 
-  const label = entity.data?.username
-    ? `@${entity.data.username}`
-    : entity.data?.name || pageId;
+  if (config?.instagram_account_id && String(config.instagram_account_id) !== String(ig.id)) {
+    return {
+      success: false,
+      error: `Page is linked to IG account ${ig.id} (@${ig.username}), but Integration has ${config.instagram_account_id}. Update it.`,
+    };
+  }
 
   const usedFallback = entity.usedFallback && !!credentials?.app_secret;
   return {
     success: true,
-    message: `Instagram connected ✓ (${label}${me.ok && me.data?.name ? ` via ${me.data.name}` : ""})${usedFallback ? " — without appsecret_proof" : ""}`,
+    message: `Instagram (Facebook Login) connected ✓ @${ig.username || ig.name || ig.id} via Page "${entity.data?.name}"` +
+      (usedFallback ? " — without appsecret_proof" : ""),
+    detected_flow: "facebook_login",
+    detected_account_id: ig.id,
     warning: usedFallback
-      ? "App Secret was provided but Meta rejected the proof. Outbound DMs may fail later if your app requires appsecret_proof. Verify the app secret matches Meta Dashboard → App Settings → Basic."
+      ? "App Secret was provided but Meta rejected the proof. Outbound DMs may fail later. Verify the App Secret matches Meta App → Settings → Basic."
       : undefined,
   };
 }

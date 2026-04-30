@@ -620,6 +620,68 @@ export function IntegrationSettings() {
                   </Button>
                 </div>
               </div>
+
+              {/* Setup Path Guide — IG Login vs FB Login */}
+              <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/60 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Instagram className="h-4 w-4 text-amber-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-sm text-amber-900">Which Meta setup did you use?</h4>
+                    <p className="text-xs text-amber-800/80 mt-0.5">
+                      We auto-detect your token type and route to the correct Meta API host. Pick the path that matches your Meta App use-case.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg bg-white p-3 border border-amber-200/40">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Badge variant="default" className="bg-pink-500 hover:bg-pink-500 text-white text-[10px]">Recommended</Badge>
+                      <span className="text-xs font-semibold">API setup with Facebook login</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mb-2">
+                      Token starts with <code className="font-mono">EAA…</code>. Same Meta App as WhatsApp. Supports Messenger.
+                    </p>
+                    <ul className="text-[11px] text-slate-700 space-y-1 list-disc list-inside">
+                      <li><b>Page Access Token</b> from Graph API Explorer</li>
+                      <li><b>Page ID</b> (the FB Page linked to IG)</li>
+                      <li><b>Instagram Account ID</b> (auto from /me/accounts)</li>
+                      <li><b>App Secret</b> (Settings → Basic) for webhook verification</li>
+                    </ul>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 border border-amber-200/40">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Badge variant="secondary" className="text-[10px]">Alternative</Badge>
+                      <span className="text-xs font-semibold">API setup with Instagram login</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mb-2">
+                      Token starts with <code className="font-mono">IGAA…</code>. No Facebook Page required. IG-only.
+                    </p>
+                    <ul className="text-[11px] text-slate-700 space-y-1 list-disc list-inside">
+                      <li><b>Long-lived IG Access Token</b> from Business Login</li>
+                      <li><b>Instagram Account ID</b> = <code className="font-mono">user_id</code> from /me</li>
+                      <li>Required scopes: <code className="font-mono">instagram_business_basic</code>, <code className="font-mono">instagram_business_manage_messages</code>, <code className="font-mono">instagram_manage_comments</code></li>
+                      <li>App Secret optional (not used on graph.instagram.com)</li>
+                    </ul>
+                    <div className="mt-2 pt-2 border-t border-amber-100">
+                      <p className="text-[11px] text-amber-900 mb-1"><b>Redirect URL</b> for Business Login (paste in Meta Dashboard → Instagram → API setup → Set up Instagram business login):</p>
+                      <div className="flex items-center gap-1.5">
+                        <code className="flex-1 text-[10px] bg-muted px-2 py-1 rounded font-mono break-all">
+                          {`${SUPABASE_FUNCTION_BASE}/meta-webhook`}
+                        </code>
+                        <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => {
+                          navigator.clipboard.writeText(`${SUPABASE_FUNCTION_BASE}/meta-webhook`);
+                          toast.success('Redirect URL copied!');
+                        }}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-900/80">
+                  💡 Click <b>Test Connection</b> after saving — we'll tell you exactly which flow your token matches and whether the IG account ID is correct.
+                </p>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {INSTAGRAM_PROVIDERS.map((provider) => {
                   const config = getIntegrationsByType('instagram').find(

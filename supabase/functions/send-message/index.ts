@@ -1,7 +1,8 @@
+// v2.2.0 — Auto-detect IGAA (Instagram Login) tokens and route via graph.instagram.com.
 // v2.1.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0) via shared config.
 // v2.0.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { META_API_BASE } from "../_shared/meta-config.ts";
+import { META_API_BASE, IG_API_BASE, detectMetaHost } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
@@ -147,12 +148,30 @@ serve(async (req) => {
     const igAccountId = integration.config?.instagram_account_id;
 
     // Build send strategy: try Page endpoint first when available, then IG-account fallback
-    type Attempt = { url: string; igProduct: boolean; label: string };
+    type Attempt = { url: string; igProduct: boolean; label: string; useProof: boolean };
     const attempts: Attempt[] = [];
 
+    // Detect token flow (IGAA = Instagram Login → graph.instagram.com)
+    const { isInstagramLogin } = detectMetaHost(accessToken);
+
     if (platform === "instagram") {
-      if (pageId) attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
-      if (igAccountId) attempts.push({ url: `${META_API_BASE}/${igAccountId}/messages`, igProduct: true, label: "ig-account" });
+      if (isInstagramLogin) {
+        // Instagram Login API: ALWAYS POST to /{ig_user_id}/messages on graph.instagram.com.
+        // appsecret_proof is NOT supported on this host.
+        const igUserId = igAccountId || pageId;
+        if (!igUserId) {
+          await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
+          return new Response(
+            JSON.stringify({ error: "Missing instagram_account_id (IG user_id) for Instagram Login token" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        attempts.push({ url: `${IG_API_BASE}/${igUserId}/messages`, igProduct: true, label: "ig-login", useProof: false });
+      } else {
+        // Facebook Login flow — Page Access Token on graph.facebook.com
+        if (pageId) attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page", useProof: true });
+        if (igAccountId) attempts.push({ url: `${META_API_BASE}/${igAccountId}/messages`, igProduct: true, label: "ig-account", useProof: true });
+      }
     } else {
       // Messenger
       if (!pageId) {
@@ -162,7 +181,7 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
+      attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page", useProof: true });
     }
 
     if (attempts.length === 0) {
@@ -180,7 +199,8 @@ serve(async (req) => {
     for (const attempt of attempts) {
       const payload = buildMessagePayload(recipientId, content || caption, message_type, media_url, attempt.igProduct);
       console.log(`[send-message:${platform}] attempt=${attempt.label} url=${attempt.url}`);
-      const result = await postToMeta(attempt.url, accessToken, appsecretProof, payload);
+      const proofForAttempt = attempt.useProof ? appsecretProof : "";
+      const result = await postToMeta(attempt.url, accessToken, proofForAttempt, payload);
       if (result.ok && !result.data?.error) {
         success = { data: result.data, label: attempt.label };
         break;
