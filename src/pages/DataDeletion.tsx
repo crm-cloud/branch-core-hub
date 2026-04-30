@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Helmet } from "react-helmet-async";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +14,20 @@ export default function DataDeletion() {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = "Data Deletion Request — The Incline Life by Incline";
+    const meta = document.querySelector('meta[name="description"]') || (() => {
+      const m = document.createElement("meta");
+      m.setAttribute("name", "description");
+      document.head.appendChild(m);
+      return m;
+    })();
+    meta.setAttribute(
+      "content",
+      "Request deletion of your personal data from The Incline Life by Incline.",
+    );
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,16 +54,7 @@ export default function DataDeletion() {
   };
 
   return (
-    <>
-      <Helmet>
-        <title>Data Deletion Request — The Incline Life by Incline</title>
-        <meta
-          name="description"
-          content="Request deletion of your personal data from The Incline Life by Incline."
-        />
-        <link rel="canonical" href="https://www.theincline.in/data-deletion" />
-      </Helmet>
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
+    <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
         <Card className="w-full max-w-xl rounded-2xl shadow-lg shadow-slate-200/60 border-0">
           <CardHeader>
             <div className="flex items-center gap-3 mb-2">
