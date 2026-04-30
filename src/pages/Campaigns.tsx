@@ -49,14 +49,14 @@ export default function Campaigns() {
             <Button
               onClick={() => setWizardOpen(true)}
               className="rounded-xl bg-white text-violet-700 hover:bg-violet-50 font-semibold"
-              disabled={!selectedBranchId}
+              disabled={!branchId}
             >
               <Plus className="h-4 w-4" /> New Campaign
             </Button>
           </div>
         </div>
 
-        {!selectedBranchId && (
+        {!branchId && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-amber-800 text-sm">
             Select a specific branch from the top-bar selector to view and create campaigns.
           </div>
@@ -70,7 +70,7 @@ export default function Campaigns() {
             <Megaphone className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
             <h3 className="text-lg font-semibold text-foreground">No campaigns yet</h3>
             <p className="text-sm text-muted-foreground mt-1">Create your first marketing campaign to engage with members.</p>
-            <Button onClick={() => setWizardOpen(true)} className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white mt-4" disabled={!selectedBranchId}>
+            <Button onClick={() => setWizardOpen(true)} className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white mt-4" disabled={!branchId}>
               <Plus className="h-4 w-4" /> New Campaign
             </Button>
           </div>
@@ -121,8 +121,8 @@ export default function Campaigns() {
         )}
       </div>
 
-      {selectedBranchId && (
-        <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} branchId={selectedBranchId} />
+      {branchId && (
+        <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} branchId={branchId} />
       )}
     </AppLayout>
   );
