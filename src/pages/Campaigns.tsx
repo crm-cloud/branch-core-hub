@@ -23,6 +23,7 @@ const statusBadge = (s: string) => {
 export default function Campaigns() {
   const { selectedBranch } = useBranchContext();
   const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ['campaigns', branchId],
