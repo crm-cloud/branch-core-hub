@@ -33,6 +33,35 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 type Platform = "whatsapp" | "instagram" | "messenger";
 
+async function logProcessing(entry: {
+  object_type?: string | null;
+  event_kind: string;
+  platform_message_id?: string | null;
+  status: "stored" | "deduped" | "dropped" | "resolve_failed" | "placeholder_stored" | "ack" | "error";
+  reason?: string | null;
+  meta_error_code?: number | null;
+  meta_error_subcode?: number | null;
+  meta_error_message?: string | null;
+  sample?: any;
+}) {
+  try {
+    await supabase.from("webhook_processing_log").insert({
+      source: "meta-webhook",
+      object_type: entry.object_type ?? null,
+      event_kind: entry.event_kind,
+      platform_message_id: entry.platform_message_id ?? null,
+      status: entry.status,
+      reason: entry.reason ?? null,
+      meta_error_code: entry.meta_error_code ?? null,
+      meta_error_subcode: entry.meta_error_subcode ?? null,
+      meta_error_message: entry.meta_error_message ?? null,
+      sample: entry.sample ?? null,
+    });
+  } catch (e) {
+    console.warn("[meta-webhook] logProcessing failed:", e);
+  }
+}
+
 let _orgAiConfig: any = null;
 let _orgAiConfigFetchedAt = 0;
 
