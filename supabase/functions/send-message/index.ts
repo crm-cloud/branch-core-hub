@@ -148,12 +148,30 @@ serve(async (req) => {
     const igAccountId = integration.config?.instagram_account_id;
 
     // Build send strategy: try Page endpoint first when available, then IG-account fallback
-    type Attempt = { url: string; igProduct: boolean; label: string };
+    type Attempt = { url: string; igProduct: boolean; label: string; useProof: boolean };
     const attempts: Attempt[] = [];
 
+    // Detect token flow (IGAA = Instagram Login → graph.instagram.com)
+    const { isInstagramLogin } = detectMetaHost(accessToken);
+
     if (platform === "instagram") {
-      if (pageId) attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
-      if (igAccountId) attempts.push({ url: `${META_API_BASE}/${igAccountId}/messages`, igProduct: true, label: "ig-account" });
+      if (isInstagramLogin) {
+        // Instagram Login API: ALWAYS POST to /{ig_user_id}/messages on graph.instagram.com.
+        // appsecret_proof is NOT supported on this host.
+        const igUserId = igAccountId || pageId;
+        if (!igUserId) {
+          await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
+          return new Response(
+            JSON.stringify({ error: "Missing instagram_account_id (IG user_id) for Instagram Login token" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        attempts.push({ url: `${IG_API_BASE}/${igUserId}/messages`, igProduct: true, label: "ig-login", useProof: false });
+      } else {
+        // Facebook Login flow — Page Access Token on graph.facebook.com
+        if (pageId) attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page", useProof: true });
+        if (igAccountId) attempts.push({ url: `${META_API_BASE}/${igAccountId}/messages`, igProduct: true, label: "ig-account", useProof: true });
+      }
     } else {
       // Messenger
       if (!pageId) {
@@ -163,7 +181,7 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page" });
+      attempts.push({ url: `${META_API_BASE}/${pageId}/messages`, igProduct: false, label: "page", useProof: true });
     }
 
     if (attempts.length === 0) {
