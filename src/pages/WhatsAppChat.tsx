@@ -1416,6 +1416,14 @@ export default function WhatsAppChatPage() {
                   </Button>
                 </div>
 
+                {/* Member context (membership + last attendance) */}
+                {selectedContact.member_id && (
+                  <ContactMemberContext
+                    memberId={selectedContact.member_id}
+                    onInsert={(text) => setNewMessage(prev => (prev ? prev + '\n' : '') + text)}
+                  />
+                )}
+
                 {/* Stats */}
                 {contactStats && (
                   <div className="rounded-2xl bg-muted/40 p-4">
