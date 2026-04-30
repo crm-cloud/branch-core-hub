@@ -1,3 +1,6 @@
+// v4.4.0 — Robust IG `message_edit` recovery: resolve via /{mid} then via
+//          /{ig_user_id}/conversations fallback, store a placeholder when
+//          Meta refuses content, and log every outcome to webhook_processing_log.
 // v4.3.1 — Some Instagram Login deliveries arrive as messaging[].message_edit
 //          without messaging[].message. Resolve the mid via Graph and ingest.
 // v4.3.0 — Instagram Login webhooks deliver DMs under entry.changes[] with
