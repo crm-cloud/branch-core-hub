@@ -1,5 +1,5 @@
-// v1.0.0 — HOWBODY posture report push receiver (PUBLIC)
-import { corsHeaders, json, admin, logWebhook } from "../_shared/howbody.ts";
+// v1.1.0 — HOWBODY posture report push receiver (PUBLIC, DB-backed appkey check)
+import { corsHeaders, json, admin, logWebhook, getExpectedWebhookAppKey } from "../_shared/howbody.ts";
 
 const ENVELOPE_OK = { code: 200, message: "Push successful", data: null };
 const ENVELOPE_FAIL = { code: 500, message: "Push failed", data: null };
@@ -7,7 +7,7 @@ const ENVELOPE_FAIL = { code: 500, message: "Push failed", data: null };
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const expectedKey = Deno.env.get("HOWBODY_APPKEY");
+    const expectedKey = await getExpectedWebhookAppKey();
     const sentKey = req.headers.get("appkey") || req.headers.get("Appkey") || req.headers.get("APPKEY");
     if (!expectedKey || sentKey !== expectedKey) {
       await logWebhook("posture", null, null, 401, "appkey mismatch", null);

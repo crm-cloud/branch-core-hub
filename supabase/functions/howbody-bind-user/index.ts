@@ -1,6 +1,6 @@
 // v1.0.0 — Bind HOWBODY scanner session to a member (calls /openApi/setUserInfo)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, json, admin, howbodyCreds, howbodyAuthedHeaders } from "../_shared/howbody.ts";
+import { corsHeaders, json, admin, getHowbodyCreds, howbodyAuthedHeaders } from "../_shared/howbody.ts";
 
 interface BindBody {
   equipmentNo?: string;
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const height = Math.max(80, Math.min(250, Number(meas?.height_cm) || 170));
 
     // Call HOWBODY setUserInfo
-    const { baseUrl } = howbodyCreds();
+    const { baseUrl } = await getHowbodyCreds();
     const headers = await howbodyAuthedHeaders();
     const hbResp = await fetch(`${baseUrl}/openApi/setUserInfo`, {
       method: "POST",

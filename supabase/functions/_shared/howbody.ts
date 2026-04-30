@@ -1,4 +1,4 @@
-// v1.0.0 — HOWBODY shared helpers (token cache + signed headers)
+// v1.1.0 — HOWBODY shared helpers (DB-backed creds with env fallback, token cache, signed headers)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const corsHeaders = {
@@ -22,12 +22,71 @@ export function admin() {
   );
 }
 
+export interface HowbodyCreds {
+  baseUrl: string;
+  userName: string;
+  appKey: string;
+  source: "db" | "env";
+}
+
+let _credsCache: { value: HowbodyCreds; at: number } | null = null;
+const CRED_TTL_MS = 60_000;
+
+/**
+ * Resolve HOWBODY credentials.
+ * Priority: integration_settings (body_scanner / howbody, branch_id IS NULL) → env vars.
+ */
+export async function getHowbodyCreds(): Promise<HowbodyCreds> {
+  if (_credsCache && Date.now() - _credsCache.at < CRED_TTL_MS) {
+    return _credsCache.value;
+  }
+  let value: HowbodyCreds | null = null;
+  try {
+    const sb = admin();
+    const { data } = await sb
+      .from("integration_settings")
+      .select("config, credentials, is_active")
+      .eq("integration_type", "body_scanner")
+      .eq("provider", "howbody")
+      .is("branch_id", null)
+      .maybeSingle();
+
+    if (data && data.is_active) {
+      const cfg = (data.config || {}) as Record<string, string>;
+      const creds = (data.credentials || {}) as Record<string, string>;
+      const baseUrl = (cfg.base_url || "").replace(/\/+$/, "");
+      const userName = cfg.username || "";
+      const appKey = creds.app_key || "";
+      if (baseUrl && userName && appKey) {
+        value = { baseUrl, userName, appKey, source: "db" };
+      }
+    }
+  } catch (e) {
+    console.warn("HOWBODY DB cred lookup failed, falling back to env:", e);
+  }
+
+  if (!value) {
+    const baseUrl = (Deno.env.get("HOWBODY_BASE_URL") || "").replace(/\/+$/, "");
+    const userName = Deno.env.get("HOWBODY_USERNAME") || "";
+    const appKey = Deno.env.get("HOWBODY_APPKEY") || "";
+    if (!baseUrl || !userName || !appKey) {
+      throw new Error("HOWBODY credentials missing — configure them in Settings → Integrations → Body Scanner.");
+    }
+    value = { baseUrl, userName, appKey, source: "env" };
+  }
+
+  _credsCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Back-compat sync wrapper (deprecated). Prefer getHowbodyCreds(). */
 export function howbodyCreds() {
+  // Synchronous callers can no longer access DB; this only returns env if available.
   const baseUrl = (Deno.env.get("HOWBODY_BASE_URL") || "").replace(/\/+$/, "");
   const userName = Deno.env.get("HOWBODY_USERNAME") || "";
   const appKey = Deno.env.get("HOWBODY_APPKEY") || "";
   if (!baseUrl || !userName || !appKey) {
-    throw new Error("HOWBODY credentials missing — set HOWBODY_BASE_URL, HOWBODY_USERNAME, HOWBODY_APPKEY");
+    throw new Error("HOWBODY credentials missing — set via Settings UI or HOWBODY_* env vars");
   }
   return { baseUrl, userName, appKey };
 }
@@ -46,7 +105,7 @@ export async function getCachedToken(): Promise<{ token: string; expires_at: str
 
   if (existing?.token) return existing as { token: string; expires_at: string };
 
-  const { baseUrl, userName, appKey } = howbodyCreds();
+  const { baseUrl, userName, appKey } = await getHowbodyCreds();
   const ts = Date.now();
   const resp = await fetch(`${baseUrl}/openApi/getToken`, {
     method: "POST",
@@ -65,13 +124,23 @@ export async function getCachedToken(): Promise<{ token: string; expires_at: str
 
 export async function howbodyAuthedHeaders(): Promise<Record<string, string>> {
   const { token } = await getCachedToken();
-  const { appKey } = howbodyCreds();
+  const { appKey } = await getHowbodyCreds();
   return {
     "Content-Type": "application/json",
     token,
     timestamp: String(Date.now()),
     appkey: appKey,
   };
+}
+
+/** Webhook auth — returns the expected app_key (DB-first, env fallback). */
+export async function getExpectedWebhookAppKey(): Promise<string | null> {
+  try {
+    const { appKey } = await getHowbodyCreds();
+    return appKey || null;
+  } catch {
+    return Deno.env.get("HOWBODY_APPKEY") || null;
+  }
 }
 
 export async function logWebhook(

@@ -1,87 +1,147 @@
-# Fitness Templates, Common Plans, AI Insights & Edge Logs — Plan
+# Howbody 3D Scanner — Audit & Completion Plan
 
-## Diagnosis (root causes)
+## Audit: What already exists
 
-1. **"Templates present, no View/Edit/Delete UI"** — confirmed via DB: `fitness_plan_templates` has **0 rows**. The page only shows the 3 hardcoded `DEFAULT_TEMPLATES` (Built-in cards) which intentionally only have "Assign". Edit/Delete/View buttons live in the "Your Saved Templates" block, which never renders. Built-ins are also non-editable because they only exist in the React file.
-2. **No "Common Plan" concept** — there is no flag/category to mark a plan as "shared / no PT required". Trainers must individually re-assign the same plan to every walk-in member.
-3. **AI Insights goes blank on refresh** — `AIInsightsWidget` caches in `localStorage` with a 24h window, but the cache key requires the same `branchId` on next mount. When a user lands on Dashboard before `branchId` resolves (or switches branch context), state initializes empty and never re-hydrates.
-4. **System Health is missing live Edge errors** — `error_logs` only receives writes from `ErrorBoundary` (frontend) + a couple of edge functions that opportunistically insert. Most edge functions don't, and there is no central capture wrapper.
-5. **No AI generation for trainer/staff/member** — current "Create AI" route is exposed broadly. Needs role gating.
+Most of the "epic sprint" is already built. Here's the honest state:
 
-## Scope of changes
+| Module | Status | Notes |
+|---|---|---|
+| Epic 1 — QR receiver page | **Already exists** | `src/pages/HowbodyLogin.tsx` mounted at `/scan-login` and `/howbody-login`. Reads `?equipmentNo=` & `?scanId=`, prompts login, supports member auto-bind + staff search-and-bind, realtime "scan complete" navigation. No new page needed. |
+| Epic 2 — Bind / handshake edge function | **Already exists** | `supabase/functions/howbody-bind-user/index.ts` does token cache → `setUserInfo` with thirdUid/age/height/sex, enforces scan-quota, persists `howbody_scan_sessions`. |
+| Epic 3 — Webhook receivers | **Already exists, split into two** | `howbody-body-webhook` (composition) + `howbody-posture-webhook` (posture, including `murl` .obj + frontImg/leftImg/rightImg/backImg). Both validated via `appkey` header, idempotent on `data_key`, mark session completed, fire `deliver-scan-report`. **No need to merge into one** — split is cleaner and matches Howbody's two distinct push endpoints. |
+| Epic 4 — 3D avatar render | **Partially built** | `MemberBodyAvatarCanvas.tsx` currently renders an SVG silhouette. It does NOT yet load `model_url` from `howbody_posture_reports`, and metrics from body+posture are not overlaid. |
+| Credentials | **Env-only today** | `HOWBODY_BASE_URL`, `HOWBODY_USERNAME`, `HOWBODY_APPKEY` already set as Lovable Cloud secrets. No UI to edit. User wants this moved to the DB so admins can rotate keys without redeploying. |
 
-### A. Fitness Templates page (`/fitness/templates`)
+Conclusion: this is **not** a build-from-scratch sprint — it's an integration completion + UX upgrade.
 
-- **Seed real templates into the DB** so the "Saved Templates" block (with View/Edit/Delete/Download) renders for the 3 starter plans (Beginner Full Body, Weight Loss Circuit, Muscle Building Split) + 3 starter diet templates (Balanced 1800kcal, High-Protein 2400kcal, Vegetarian 1600kcal). Use a one-time migration with a stable `system_template = true` flag (new column) so they aren't duplicated.
-- **Make built-ins actionable**: Add `View` (opens `PlanViewerSheet`) on every card — both system and user-created. Hide `Delete` only on `system_template = true` (keep View/Edit/Assign/Download).
-- **Common Plan flag**: Add column `is_common boolean default false` to both `fitness_plan_templates` and `member_fitness_plans`. New "Common Plans" filter chip on the Templates page (All / Common / PT-only). When assigning, expose a "Mark as Common (no trainer needed)" toggle in `AssignPlanDrawer`.
-- **Bulk Assign for Common Plans**: New "Assign to many" button on common templates → opens a sheet with member multi-select (filter by tag, plan type, walk-ins) → creates one `member_fitness_plans` row per member referencing the same `template_id`.
-- **AI generation gating**: `/fitness/create/ai` becomes admin/manager-only. Trainer/Staff/Member roles see only Manual + Templates. Update `CreateModePicker` to hide AI tile based on `hasAnyRole(["owner","admin","manager"])`.
+## What the user actually needs
 
-### B. Member Plans page (`/fitness/member-plans`)
+1. **Dynamic credentials UI** (store in DB, edge functions read it, fall back to env).
+2. **Wire the .obj model + scan metrics into the avatar canvas**.
+3. **End-to-end test** the whole flow.
+4. Answer: do we need device id / serial number?
 
-- **Group by member with Workout/Diet tabs**: Replace the flat card grid with a member-grouped list. Each member becomes one expandable row containing a small `Tabs` (Workout · Diet). Inside each tab: the active assignment + history. Keeps KPI strip and search/filters.
-- Card actions stay (View / Share / Revoke) but move into each tab so workout actions don't bleed into diet.
+## Plan
 
-### C. AI Insights persistence
+### 1. Dynamic Howbody credentials (admin UI + DB-backed loader)
 
-- New table `ai_dashboard_insights`:
-  ```
-  id uuid pk
-  branch_id uuid null         -- null = "All branches"
-  user_id uuid                -- generated for this user
-  insights jsonb              -- array of {icon,title,description,severity}
-  generated_at timestamptz
-  expires_at timestamptz      -- generated_at + 24h
-  ```
-  RLS: user can read/insert/update own rows scoped to their branch access.
-- Widget loads from this table on mount (latest non-expired row for current `user_id` + `branch_id`), falls back to localStorage, then to empty state. On `Generate`, writes/upserts the row. This guarantees data survives refresh and branch switches.
+**DB migration**
 
-### D. System Health — live edge-function errors
+Reuse the existing `integration_settings` table (already used for WhatsApp/SMS/Payments per the universal dispatcher pattern). Add a single global row:
 
-- New edge function `log-edge-error` (HTTP POST, service role) that other edge functions call to insert into `error_logs` with `source = 'edge_function'`.
-- Add a tiny shared helper `supabase/functions/_shared/captureEdgeError.ts` exporting `captureEdgeError(fnName, err, ctx?)` — wraps the existing try/catch pattern already standardised in our edge functions.
-- Retrofit the high-traffic edge functions (`send-whatsapp`, `whatsapp-webhook`, `process-comm-retry-queue`, `record-payment`, `mips-*`, `ai-dashboard-insights`, `ai-fitness-plan`) to call `captureEdgeError` in their catch blocks.
-- System Health page: enable Supabase realtime on `error_logs` and subscribe for live updates; add a small "Live" pulse dot when subscribed. Already filters by source = `edge_function`, so the existing UI just lights up.
-- Add a one-click "Copy AI fix prompt" button next to each edge error (already exists for frontend errors — extend the prompt template to mention which edge function and link to its logs).
+```
+integration_type = 'body_scanner'
+provider         = 'howbody'
+branch_id        = NULL  (global)
+config = {
+  base_url: "https://prodapi.howbodyfit.com/howbody-admin",
+  username: "TechnicalSupport2026430"
+}
+secrets = { app_key: "key-tFnxrvi9..." }   -- jsonb, never returned to client
+is_active = true
+```
 
-## Out of scope / deferred
+If `integration_settings` already has a `secrets` jsonb column, use it; otherwise add it. Reads from the client UI return only `config` (never `secrets`); the edge functions read both via service role.
 
-- Dropping legacy `diet_templates` / `workout_templates` tables (per prior memo).
-- Importing historical Supabase edge logs into `error_logs` — only new errors will flow.
+**Shared loader change** — `supabase/functions/_shared/howbody.ts`
+
+Replace `howbodyCreds()` with an async `getHowbodyCreds()` that:
+1. Selects the active `body_scanner / howbody` row from `integration_settings`.
+2. Falls back to the existing env vars if the row is missing or inactive (zero-downtime migration).
+3. Caches per-invocation.
+
+Update `getCachedToken()` and `howbodyAuthedHeaders()` to `await` it. All 5 edge functions (`howbody-bind-user`, `howbody-body-webhook`, `howbody-posture-webhook`, `howbody-test-connection`, `howbody-report-pdf`) inherit the change automatically.
+
+**Webhook auth** — the inbound webhooks currently compare against `Deno.env.get("HOWBODY_APPKEY")`. Change to compare against the DB `secrets.app_key` (with env fallback) so rotating in the UI also rotates the inbound check.
+
+**Admin UI** — extend `src/components/settings/HowbodySettings.tsx`
+
+Add a new card above the "Test connection" card:
+
+- Inputs: **Base URL**, **Username**, **App Key** (masked, show/hide eye, paste support).
+- Save button → upserts via a new tiny edge function `howbody-save-credentials` (admin-only, role-checked) that writes `config` + `secrets` into `integration_settings`. We use an edge function so the `app_key` never round-trips through a client-readable query.
+- Status badge: "Configured (DB)" / "Using env fallback" / "Not configured".
+- "Run test" button continues to call `howbody-test-connection`, which now uses the DB creds.
+
+Role-gated to `owner` / `admin` only.
+
+### 2. 3D avatar — render the Howbody .obj + metrics
+
+**Hook** — new `src/hooks/useLatestHowbodyScan.ts`
+
+Returns the latest body report and latest posture report for `member_id`, joined into a single object: `{ body, posture, model_url, images, capturedAt }`.
+
+**Component** — rewrite `src/components/progress3d/MemberBodyAvatarCanvas.tsx`
+
+- If `model_url` exists → render with `@react-three/fiber` + `@react-three/drei`'s `useLoader(OBJLoader, model_url)` inside a `<Suspense>` with `<OrbitControls>`, `<Environment preset="studio">`, soft lighting.
+- Side panel overlay (absolute, right side, glass card per Vuexy aesthetic) showing a curated metric list:
+  - Body: Health Score, Weight, BMI, Body Fat %, Skeletal Muscle Mass, BMR, Visceral Fat, Metabolic Age.
+  - Posture: Posture Score, Head Forward, Shoulder L/R, Pelvis Forward.
+- "View photos" toggle → swaps the 3D canvas for the front/left/right/back images grid.
+- Loading + error states; if no `model_url`, falls back to current `MemberBodyAvatarSvg`.
+- Versions pinned per project rules: `@react-three/fiber@^8.18`, `@react-three/drei@^9.122.0`, `three@>=0.133`. (Need to verify they're already installed; if not, install.)
+
+**Where it's used** — `MyProgress.tsx` and the existing 3D card on the member profile already render `MemberBodyAvatarCanvas`, so they get the upgrade automatically.
+
+### 3. Device id / serial number — answered
+
+**No separate "device id" field is needed in our schema.** Howbody's `equipmentNo` (sent in the QR query string and echoed in webhook payloads) **is** the device serial. We already:
+- Capture it in `howbody_scan_sessions.equipment_no`.
+- Persist it in `howbody_body_reports.equipment_no` and `howbody_posture_reports.equipment_no`.
+- Pass it back to Howbody in `setUserInfo`.
+
+The only optional add (low priority, not in this plan) would be a `howbody_devices` reference table mapping `equipment_no → branch_id` so multi-branch gyms know which scanner produced a report. We can add that later when a second device is on-site.
+
+### 4. End-to-end testing
+
+After deploy, run this test matrix and record results. The user must perform the physical-scanner steps; Lovable runs the API steps.
+
+| # | Step | Tool / who | Pass criteria |
+|---|---|---|---|
+| 1 | Save creds via new UI | User in browser | Toast "Saved", status badge flips to "Configured (DB)" |
+| 2 | Run "Test connection" | User in browser | Green check, token expiry shown |
+| 3 | `curl howbody-test-connection` directly | `supabase--curl_edge_functions` | `{ ok: true }` |
+| 4 | Open `/scan-login?equipmentNo=TEST&scanId=FAKE` while logged out | Browser | Sign-in CTA renders, query params preserved |
+| 5 | Same URL while logged in as a member | Browser | Auto-binds, friendly error from Howbody (`406 invalid scan parameters` is expected for fake IDs — proves handshake works) |
+| 6 | Real scan from the physical S580 | Gym staff | Member sees "You're linked!", scanner accepts the session |
+| 7 | Body composition push | Howbody → webhook | Row in `howbody_body_reports`, `howbody_scan_sessions.status='completed'`, `deliver-scan-report` invoked |
+| 8 | Posture push | Howbody → webhook | Row in `howbody_posture_reports` with `model_url` populated |
+| 9 | Open member's MyProgress | Browser | 3D `.obj` model renders, metrics panel populated |
+| 10 | Edge logs sweep | `supabase--edge_function_logs` for each function | No 500s, only the expected 401 if appkey ever drifts |
+
+If any step fails I capture the log, fix, redeploy, and re-run.
 
 ## Technical details
 
+**New files**
+- `supabase/functions/howbody-save-credentials/index.ts` (admin-only, role-gated, writes config + secrets to `integration_settings`).
+- `src/hooks/useLatestHowbodyScan.ts`.
+
+**Modified files**
+- `supabase/functions/_shared/howbody.ts` — async `getHowbodyCreds()` with DB→env fallback, used by `getCachedToken()` and `howbodyAuthedHeaders()`.
+- `supabase/functions/howbody-body-webhook/index.ts` + `howbody-posture-webhook/index.ts` — appkey check uses DB secret with env fallback.
+- `src/components/settings/HowbodySettings.tsx` — adds credentials card (base URL, username, masked app key, save, status badge).
+- `src/components/progress3d/MemberBodyAvatarCanvas.tsx` — renders `.obj` via three-fiber + metrics overlay; falls back to SVG if no scan.
+
 **Migration**
-```sql
-ALTER TABLE public.fitness_plan_templates
-  ADD COLUMN IF NOT EXISTS is_common boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS system_template boolean NOT NULL DEFAULT false;
+- `add_body_scanner_integration_row.sql` — ensures `integration_settings.secrets jsonb` column exists, inserts/updates the singleton `body_scanner / howbody` row using the credentials the user pasted (Base URL, Username, App Key above), default `is_active = true`. Pre-seeds the system so day-one works without the user touching the UI.
 
-ALTER TABLE public.member_fitness_plans
-  ADD COLUMN IF NOT EXISTS is_common boolean NOT NULL DEFAULT false;
+**Design notes (Vuexy)**
+- Credentials card: rounded-2xl, white, soft shadow, teal icon badge, masked input with eye toggle.
+- 3D viewer: dark gradient backdrop for contrast, glass-morphism metric panel `bg-white/70 backdrop-blur rounded-2xl`, lucide icons inside soft colored badges.
 
-CREATE TABLE public.ai_dashboard_insights (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  branch_id uuid REFERENCES public.branches(id) ON DELETE CASCADE,
-  insights jsonb NOT NULL,
-  generated_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours'
-);
-ALTER TABLE public.ai_dashboard_insights ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "self read" ON public.ai_dashboard_insights FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "self write" ON public.ai_dashboard_insights FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "self update" ON public.ai_dashboard_insights FOR UPDATE USING (user_id = auth.uid());
+**RBAC**
+- Credentials UI + save edge function: `owner` / `admin` only.
+- Avatar viewer: any authenticated user who can already see the member.
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.error_logs;
-```
-Plus a `INSERT … ON CONFLICT DO NOTHING` seed for the 6 system templates.
+**Risk / rollback**
+- Edge loader keeps the env fallback, so if the DB row is deleted or misconfigured the system reverts to today's behavior.
+- Webhooks remain backward-compatible with the existing env appkey during cutover.
 
-**Files**
-- Migration: `supabase/migrations/<ts>_common_plans_and_insights.sql`
-- Edited: `src/pages/fitness/Templates.tsx`, `src/pages/fitness/MemberPlans.tsx`, `src/pages/fitness/CreateModePicker.tsx`, `src/components/fitness/AssignPlanDrawer.tsx`, `src/components/dashboard/AIInsightsWidget.tsx`, `src/pages/SystemHealth.tsx`, `src/services/fitnessService.ts`
-- New: `src/components/fitness/BulkAssignCommonDrawer.tsx`, `supabase/functions/_shared/captureEdgeError.ts`, `supabase/functions/log-edge-error/index.ts`
-- Touched edge functions: ~8 to wire `captureEdgeError`.
+## Out of scope (deferred, per your "lite & safe" preference)
 
-After approval I'll implement in this order: migration → templates UI fixes → common plan flow → member plans tabbed view → AI insights persistence → edge-error capture + realtime.
+- Multi-device branch mapping table.
+- Per-branch Howbody credentials (we keep one global row; easy to extend later).
+- Migrating the existing two split webhooks into one combined endpoint — split matches Howbody's spec and avoids regressions.
+
+Approve and I'll execute in this order: migration → shared loader → save-creds function → webhook appkey switch → settings UI → 3D viewer → end-to-end test sweep.

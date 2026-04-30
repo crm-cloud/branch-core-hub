@@ -119,3 +119,6 @@ verify_jwt = true
 
 [functions.log-edge-error]
 verify_jwt = false
+
+[functions.howbody-save-credentials]
+verify_jwt = true
