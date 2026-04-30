@@ -1,6 +1,7 @@
 import {
   ChevronDown, Instagram, Dumbbell, Snowflake, Flame, Target, Wind, Car, Clock, Award, Layers, Lock, Coffee
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import inclineLogo from "@/assets/incline-logo.png";
 
 const ScrollOverlay = () => {
