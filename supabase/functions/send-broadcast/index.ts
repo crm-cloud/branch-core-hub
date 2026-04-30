@@ -1,4 +1,4 @@
-// v2.0.0 — Provider-agnostic broadcast via send-email / send-sms / send-whatsapp
+// v2.1.0 — Provider-agnostic broadcast; sets delivery_status terminal value so Live Feed shows correct badge
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -172,7 +172,8 @@ Deno.serve(async (req) => {
       logs.push({
         branch_id, type: channel, recipient,
         subject: subject || null, content: personalizedMsg,
-        status, member_id: member.id, sent_at: new Date().toISOString(),
+        status, delivery_status: status === 'sent' ? 'sent' : 'failed',
+        member_id: member.id, sent_at: new Date().toISOString(),
       });
     }
 
