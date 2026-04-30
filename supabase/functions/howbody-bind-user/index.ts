@@ -1,6 +1,6 @@
 // v1.0.0 — Bind HOWBODY scanner session to a member (calls /openApi/setUserInfo)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, json, admin, howbodyCreds, howbodyAuthedHeaders } from "../_shared/howbody.ts";
+import { corsHeaders, json, admin, getHowbodyCreds, howbodyAuthedHeaders } from "../_shared/howbody.ts";
 
 interface BindBody {
   equipmentNo?: string;
