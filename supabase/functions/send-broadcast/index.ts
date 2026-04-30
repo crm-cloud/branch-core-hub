@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
     }
 
-    const { channel, message, audience, branch_id, subject } = await req.json();
+    const { channel, message, audience, branch_id, subject, member_ids, campaign_id } = await req.json();
 
     if (!channel || !message || !branch_id) {
       return new Response(JSON.stringify({ error: "Missing required fields: channel, message, branch_id" }), {
@@ -56,7 +56,10 @@ Deno.serve(async (req) => {
       .select("id, user_id, member_code, profiles:user_id (full_name, phone, email)")
       .eq("branch_id", branch_id);
 
-    if (audience === "active") {
+    // Explicit member id list (used by Campaign Builder) takes priority over audience preset
+    if (Array.isArray(member_ids) && member_ids.length > 0) {
+      membersQuery = membersQuery.in("id", member_ids);
+    } else if (audience === "active") {
       const { data: activeMemberIds } = await adminClient
         .from("memberships").select("member_id").eq("status", "active").eq("branch_id", branch_id)
         .gte("end_date", new Date().toISOString().split("T")[0]);
