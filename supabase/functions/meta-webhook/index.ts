@@ -715,13 +715,15 @@ async function fetchInstagramMessageByMid(mid: string, integration: any): Promis
     const resp = await metaFetchWithFallback(url);
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      console.warn(`[IG] fetch message failed mid=${mid}: ${data?.error?.message || resp.status}`);
-      return null;
+      const err = data?.error || { message: `HTTP ${resp.status}` };
+      console.warn(`[IG] fetch message failed mid=${mid}: ${err.message}`);
+      return { __error: err };
     }
     return data;
   } catch (e) {
-    console.warn(`[IG] fetch message error mid=${mid}:`, e instanceof Error ? e.message : e);
-    return null;
+    const message = e instanceof Error ? e.message : String(e);
+    console.warn(`[IG] fetch message error mid=${mid}:`, message);
+    return { __error: { message } };
   }
 }
 
