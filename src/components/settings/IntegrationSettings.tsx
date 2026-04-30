@@ -100,7 +100,35 @@ export function IntegrationSettings() {
     provider: string;
     existing?: any;
   }>({ open: false, type: 'payment_gateway', provider: '' });
+  const [diagnostics, setDiagnostics] = useState<{ ok: boolean; checks: any[] } | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const queryClient = useQueryClient();
+
+  const runMetaDiagnostics = async () => {
+    const igInteg = (integrations as any[]).find(
+      (i: any) => (i.integration_type === 'instagram' || i.integration_type === 'instagram_login') && i.is_active
+    );
+    if (!igInteg) {
+      toast.error('Save your Instagram integration first.');
+      return;
+    }
+    setDiagnosing(true);
+    setDiagnostics(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-diagnose', {
+        body: { integration_id: igInteg.id },
+      });
+      if (error) throw error;
+      setDiagnostics(data);
+      if (data?.ok) toast.success('All checks passed!');
+      else toast.warning('Diagnostics found issues — see details below.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Diagnostics failed');
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
 
   const { data: integrations = [] } = useQuery({
     queryKey: ['integrations', selectedBranch],
