@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase } from '@/integrations/supabase/client';
@@ -78,8 +78,23 @@ export default function AuthPage() {
           </CardContent>
         </Card>
 
-        {/* Branding */}
-        <p className="text-center text-xs text-primary-foreground/30">Powered by Incline</p>
+        {/* Branding + legal footer */}
+        <div className="text-center space-y-2">
+          <p className="text-xs text-primary-foreground/30">Powered by Incline</p>
+          <nav className="flex items-center justify-center gap-3 text-xs text-primary-foreground/50">
+            <Link to="/privacy-policy" className="hover:text-primary-foreground/80 transition-colors">
+              Privacy Policy
+            </Link>
+            <span aria-hidden className="text-primary-foreground/20">·</span>
+            <Link to="/terms" className="hover:text-primary-foreground/80 transition-colors">
+              Terms of Service
+            </Link>
+            <span aria-hidden className="text-primary-foreground/20">·</span>
+            <Link to="/data-deletion" className="hover:text-primary-foreground/80 transition-colors">
+              Data Deletion
+            </Link>
+          </nav>
+        </div>
       </div>
     </div>
   );

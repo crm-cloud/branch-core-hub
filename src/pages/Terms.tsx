@@ -60,38 +60,75 @@ export default function TermsPage() {
           </ul>
         </Section>
 
-        <Section title="2. Membership and Fitness Services">
+        <Section title="2. Membership, Facility Rules &amp; Code of Conduct">
           <ul className="list-disc pl-5 space-y-2">
             <li>Membership plans, durations, and benefits are defined by the selected branch and plan terms.</li>
             <li>Fees may be non-refundable and non-transferable unless explicitly stated otherwise.</li>
-            <li>Members must follow safety instructions, facility rules, and staff guidance.</li>
+            <li>Members must follow safety instructions, facility rules, hygiene protocols, and staff guidance at all times.</li>
+            <li>Appropriate gym attire and footwear are required; equipment must be returned to its designated place after use.</li>
+            <li>Aggressive, abusive, or disruptive behaviour toward staff or other members will result in immediate termination of membership without refund.</li>
+            <li>Photography or recording inside the facility (including locker rooms, sauna, and recovery areas) is strictly prohibited without prior written consent.</li>
             <li>
-              You confirm you are fit to participate in physical activity and must disclose relevant health risks
-              where required.
+              You confirm you are medically fit to participate in physical activity and must disclose relevant
+              health risks, injuries, or conditions to staff before training.
             </li>
           </ul>
         </Section>
 
-        <Section title="3. Payments, Invoices, and Billing">
+        <Section title="3. Payments, Invoices, GST &amp; Billing">
           <ul className="list-disc pl-5 space-y-2">
-            <li>Payments can be processed through configured gateways and/or approved manual methods.</li>
-            <li>You authorize processing of payment details for invoice settlement and verification.</li>
+            <li>Payments may be processed through Razorpay or other approved manual methods (cash / UPI / card swipe).</li>
+            <li>You authorise processing of payment details for invoice settlement and verification.</li>
+            <li>
+              All membership services, personal training packages, and ancillary services are subject to applicable
+              <strong> Goods and Services Tax (GST) at 5%</strong> as per Indian tax regulations, unless a different rate
+              is mandated by law for a specific service category.
+            </li>
+            <li>GST-compliant tax invoices are issued for every paid transaction and retained for the period required by Indian tax law.</li>
             <li>Payment failures, reversals, gateway downtime, or bank delays may impact confirmation timing.</li>
-            <li>Tax and billing records are maintained according to applicable legal and accounting requirements.</li>
           </ul>
         </Section>
 
-        <Section title="4. WhatsApp, Email, and SMS Communications">
+        <Section title="3a. Assumption of Risk &amp; Liability Waiver">
           <p>
-            By sharing contact details and opting in where required, you agree to receive service communication
-            through channels such as WhatsApp, email, and SMS.
+            You acknowledge that participation in physical exercise and use of facility amenities carries inherent risk
+            of injury, illness, or in rare cases serious harm.
           </p>
           <ul className="list-disc pl-5 space-y-2">
-            <li>WhatsApp messaging is powered by Meta WhatsApp Cloud API integrations.</li>
+            <li>You voluntarily assume all risk associated with use of free weights, machines, cardio equipment, and heavy strength-training apparatus.</li>
+            <li>
+              You acknowledge the specific risks of recovery facilities including <strong>infrared saunas</strong>
+              (heat stress, dehydration, cardiovascular strain) and <strong>ice baths / cold plunge</strong>
+              (cold shock response, blood pressure changes, hypothermia risk).
+            </li>
+            <li>
+              Group classes, personal training, HIIT sessions, and functional training carry risk of strain, sprain,
+              or musculoskeletal injury.
+            </li>
+            <li>
+              You confirm you have no medical condition (cardiac, pulmonary, neurological, pregnancy-related, or other)
+              that contraindicates use of these facilities, or that you have obtained medical clearance.
+            </li>
+            <li>
+              To the maximum extent permitted by law, you release {theme.gymName} and its staff from liability for injury,
+              loss, or damage arising from your voluntary use of the facility, except where caused by gross negligence.
+            </li>
+          </ul>
+        </Section>
+
+        <Section title="4. WhatsApp, Instagram, Email &amp; SMS Communications">
+          <p>
+            By sharing contact details and opting in where required, you agree to receive service communication
+            through channels such as WhatsApp, Instagram Direct, email, and SMS.
+          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>WhatsApp messaging is powered by Meta WhatsApp Cloud API.</li>
+            <li>Instagram Direct messaging is powered by the Meta Instagram Graph API and is used only to reply to conversations you initiate with our business profile.</li>
             <li>Service communications may include reminders, booking updates, payment notices, and support messages.</li>
             <li>Promotional messages are sent only where consent or lawful basis exists.</li>
             <li>
-              You can request opt-out from promotional communication by contacting your branch; transactional notices may still be sent when necessary.
+              You can request opt-out from promotional communication by replying STOP or by contacting your branch;
+              transactional notices may still be sent when necessary.
             </li>
           </ul>
         </Section>
@@ -133,8 +170,10 @@ export default function TermsPage() {
 
         <Section title="9. Governing Law and Disputes">
           <p>
-            These Terms are governed by applicable local law and regulatory guidelines. Unless mandatory law requires otherwise,
-            disputes will be subject to the competent courts having jurisdiction where the relevant branch operates.
+            These Terms are governed by and construed in accordance with the laws of <strong>India</strong>.
+            All disputes, claims, or proceedings arising out of or in connection with these Terms or the use of our services
+            shall be subject to the exclusive jurisdiction of the competent courts located in
+            <strong> Udaipur, Rajasthan, India</strong>.
           </p>
         </Section>
 

@@ -45,7 +45,8 @@ export default function PrivacyPolicyPage() {
           <p className="text-white/60">Last updated: {LAST_UPDATED}</p>
           <p className="text-white/70 text-sm sm:text-base leading-relaxed">
             This Privacy Policy explains how we collect, use, store, and share personal information when you use our public website,
-            gym management platform, member portals, and communication tools, including Meta WhatsApp messaging.
+            premium fitness CRM platform, member portals, recovery facilities, and communication tools, including
+            Meta WhatsApp Cloud API and Instagram Direct Messaging.
           </p>
           <p className="text-white/70 text-sm sm:text-base leading-relaxed">
             This Policy applies to {theme.gymName} and its authorized branch operations.
@@ -58,8 +59,15 @@ export default function PrivacyPolicyPage() {
             <li>Lead form data: full name, phone number, email (optional), source.</li>
             <li>Membership data: contact details, date of birth, gender, address, emergency contact, plan details.</li>
             <li>Fitness and health declarations: fitness goals, medical conditions, workout preferences.</li>
+            <li>
+              Biometric and body composition data: 3D body scans, body measurements, posture analysis,
+              progress photographs, and InBody / HOWBODY style health metrics captured at our facility.
+            </li>
             <li>Identity and compliance records: government ID details, digitally signed forms, uploaded documents.</li>
-            <li>Communication content: messages sent via email, SMS, and WhatsApp channels.</li>
+            <li>
+              Communication content: messages, attachments, and conversation history exchanged via email, SMS,
+              WhatsApp (Meta WhatsApp Cloud API), and Instagram Direct Messaging (Meta Graph API).
+            </li>
             <li>Payment and billing data: invoice details, transaction references, payment status, method, and amount paid.</li>
           </ul>
           <p>
@@ -68,26 +76,54 @@ export default function PrivacyPolicyPage() {
         </Section>
 
         <Section title="2. How We Use Your Information">
+          <p>
+            Your data is used strictly for internal facility management and member servicing.
+            We do <strong>not</strong> sell, rent, or share personal data with data brokers, advertising networks, or any third party
+            for their independent marketing purposes.
+          </p>
           <ul className="list-disc pl-5 space-y-2">
-            <li>To manage memberships, attendance, classes, sessions, invoices, and branch operations.</li>
-            <li>To communicate with leads and members about onboarding, reminders, services, and support.</li>
-            <li>To process and verify payments via configured payment gateways.</li>
+            <li>To manage memberships, attendance, classes, personal training, recovery sessions, invoices, and branch operations.</li>
+            <li>To generate AI-assisted personalised diet, workout, and recovery plans tailored to your goals and biometric data.</li>
+            <li>To communicate with leads and members about onboarding, reminders, services, and customer support.</li>
+            <li>To process and verify payments securely via Razorpay (PCI-DSS compliant gateway).</li>
             <li>To generate documents, maintain records, and improve platform performance and safety.</li>
             <li>To detect misuse, secure accounts, and comply with legal or regulatory requirements.</li>
           </ul>
         </Section>
 
-        <Section title="3. WhatsApp and Meta Messaging">
+        <Section title="3. WhatsApp and Instagram (Meta Platforms)">
           <p>
-            We use Meta WhatsApp Cloud API integrations to send and receive branch-level WhatsApp communications.
+            We use Meta WhatsApp Cloud API and Meta Instagram Graph API to send and receive branch-level
+            communications with leads and members who have initiated contact with us.
           </p>
           <ul className="list-disc pl-5 space-y-2">
-            <li>We process phone numbers, contact names, message content, status metadata, and timestamps.</li>
-            <li>Incoming webhook events are used to store message threads and delivery/read status updates.</li>
-            <li>Messages may include service updates, reminders, confirmations, and support replies.</li>
             <li>
-              You may opt out of WhatsApp promotional communication by contacting the branch directly and requesting removal from campaigns.
+              We process phone numbers, Instagram-scoped user IDs, profile names, message content, attachments,
+              status metadata, and timestamps received via Meta webhooks.
             </li>
+            <li>Incoming webhook events are used to store conversation threads and delivery/read status updates inside our CRM.</li>
+            <li>Messages may include service updates, reminders, booking confirmations, payment notices, and support replies.</li>
+            <li>
+              Message content received from Meta is used solely for conversation continuity and customer support.
+              It is never used to train external AI models, never sold, and never shared with third-party advertisers.
+            </li>
+            <li>
+              You may opt out of promotional WhatsApp / Instagram communication at any time by replying STOP or by contacting
+              the branch directly and requesting removal from campaigns.
+            </li>
+          </ul>
+        </Section>
+
+        <Section title="3a. Biometric Data &amp; 3D Body Scans">
+          <p>
+            With your explicit consent, our facility may capture 3D body scans, body composition reports,
+            posture analysis, and progress photographs using on-premise scanning equipment.
+          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Biometric data is used exclusively for personal progress tracking, trainer guidance, and AI-assisted plan generation for you.</li>
+            <li>This data is stored on our managed infrastructure with role-based access restricted to you and authorised staff.</li>
+            <li>Biometric data is never sold, never used for identification of unrelated individuals, and never shared with advertisers.</li>
+            <li>You may request deletion of your biometric records at any time, subject to applicable legal retention requirements.</li>
           </ul>
         </Section>
 
@@ -101,15 +137,24 @@ export default function PrivacyPolicyPage() {
           </ul>
         </Section>
 
-        <Section title="5. Data Sharing">
-          <p>We may share information with trusted processors and integrations as needed to run the service:</p>
+        <Section title="5. Data Sharing &amp; Third-Party Processors">
+          <p>We share information only with the following trusted processors strictly to operate the service:</p>
           <ul className="list-disc pl-5 space-y-2">
-            <li>Cloud database and authentication providers.</li>
-            <li>Payment gateway providers (for transaction processing and verification).</li>
-            <li>Meta/WhatsApp infrastructure for message transport and webhook events.</li>
-            <li>Document storage and communication providers.</li>
+            <li>Cloud database, storage, and authentication infrastructure providers.</li>
+            <li>
+              <strong>Razorpay</strong> — for secure processing and verification of online payments
+              (PCI-DSS Level 1 compliant payment gateway based in India).
+            </li>
+            <li>
+              <strong>Meta Platforms, Inc.</strong> — WhatsApp Cloud API and Instagram Graph API
+              for transporting messages and delivering webhook events.
+            </li>
+            <li>SMS, email, and document storage infrastructure providers used for transactional notifications.</li>
           </ul>
-          <p>We do not sell, rent, or trade personal data to third parties.</p>
+          <p>
+            We do <strong>not</strong> sell, rent, or trade personal data to third parties.
+            We do not share data with data brokers, ad networks, or any party for independent marketing.
+          </p>
         </Section>
 
         <Section title="6. Data Retention and Security">
