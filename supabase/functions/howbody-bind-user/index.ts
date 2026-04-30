@@ -100,11 +100,16 @@ Deno.serve(async (req) => {
     const hbBody = await hbResp.json().catch(() => ({}));
 
     if (hbBody?.code !== 200) {
+      // HOWBODY production API returns `msg`; older docs say `message`. Support both.
+      const rawMsg = (hbBody?.msg || hbBody?.message || "").toString();
+      const lower = rawMsg.toLowerCase();
+      const isSessionExpired = lower.includes("session") || rawMsg.includes("会话") || lower.includes("expired");
       const friendly =
-        hbBody?.code === 406 ? (hbBody?.message?.toLowerCase().includes("session") ? "QR session expired — please scan again" : "Invalid scan parameters")
+        hbBody?.code === 406 ? (isSessionExpired ? "QR session expired — please scan the device QR again" : (rawMsg || "Invalid scan parameters"))
+        : hbBody?.code === 401 ? "HOWBODY auth failed — check API credentials"
         : hbBody?.code === 500 ? "Device may be offline. Please ask staff."
-        : (hbBody?.message || "HOWBODY rejected the request");
-      return json({ ok: false, error: friendly, code: hbBody?.code }, 502);
+        : (rawMsg || "HOWBODY rejected the request");
+      return json({ ok: false, error: friendly, code: hbBody?.code, raw: rawMsg }, 502);
     }
 
     // Persist session
