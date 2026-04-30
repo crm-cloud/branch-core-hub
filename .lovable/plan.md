@@ -1,134 +1,88 @@
-## Audit Findings
+## TL;DR — which secret to use
 
-**Current state of Meta version pinning:**
-- `graph.facebook.com` → `v25.0` (correct, latest stable) — used by WhatsApp, Messenger, FB-login Instagram, webhook, templates.
-- `graph.instagram.com` → `v23.0` (in `_shared/meta-config.ts` + hardcoded in `test-integration`).
-- Two functions still hardcode `v25.0` instead of importing from shared config: `whatsapp-webhook`, `send-whatsapp`, `notify-lead-created`, `manage-whatsapp-templates`, `test-integration` (5 spots). Drift risk on next bump.
+You have **two different secrets** because the Meta dashboard splits them by product:
 
-**Important note on v25 + Instagram host:** Meta's `graph.instagram.com` (Instagram Business Login API) historically lags `graph.facebook.com` by 1-2 versions. v25.0 is being accepted on the IG host as of the Q1 2026 rollout, but if Meta returns "Unsupported version" we will auto-fallback to v23.0 for that host only (transparent retry, logged). This is the safest path — you get latest where supported, no breakage where not.
+| Secret | Value (prefix) | Where Meta uses it |
+|---|---|---|
+| **Basic App Secret** (Settings → Basic) | `4eb1bc06…` | Signs webhooks for **WhatsApp** + **Page (Messenger)** products. Used in `appsecret_proof` for `graph.facebook.com` calls (your `EAA…` WhatsApp token). |
+| **Instagram App Secret** (Instagram product → API setup with Instagram login) | `e40219c5…` | Signs webhooks for the **Instagram product** when you use **Instagram Login** (your `IGAA…` token, `graph.instagram.com` host). |
 
-**Dual-token reality:** Today `integration_settings` stores ONE row per `(branch_id, provider)`. If you have both an `EAA…` (Page Access Token, covers WhatsApp + IG-via-FB + Messenger) AND an `IGAA…` (IG Business Login token, IG-only), they currently overwrite each other for the `instagram` provider. We need to allow both to coexist and let the dispatcher pick the right one per channel.
+Right now the CRM has the **Basic** secret saved on the Instagram integration. That's wrong for the IGAA flow — Meta is signing IG webhooks with the **Instagram** app secret, so even when delivery starts, every payload would be rejected as "Invalid signature".
 
----
+**Rule for our app:**
+- Instagram integration with `IGAA…` token → save the **Instagram App Secret** (`e40219c5…`)
+- WhatsApp integration with `EAA…` token → save the **Basic App Secret** (`4eb1bc…`)
+- Messenger / Instagram-via-Facebook (EAA) → save the **Basic App Secret**
 
-## Plan
+## Why you see zero inbound messages
 
-### Part 1 — Unify everything to v25.0 (with smart IG fallback)
+Audit results:
+- `meta-webhook` edge function logs: **empty** (Meta has never called it).
+- `whatsapp-webhook` logs: **empty** for IG traffic.
+- IG integration row exists, is_active=true, IGAA token saved, verify token saved.
+- A stale empty `instagram` row exists (`421a4088…`) — harmless but confusing.
 
-1. Update `supabase/functions/_shared/meta-config.ts`:
-   - Bump `IG_GRAPH_VERSION` from `"v23.0"` → `"v25.0"`.
-   - Add `IG_FALLBACK_VERSION = "v23.0"` constant.
-   - Add helper `metaFetchWithFallback(url, init)` that retries on the IG host with v23.0 if Meta returns `error.code === 2635` ("Unsupported get/post request") or HTTP 400 with "version" in the message.
-2. Refactor the 5 hardcoded call-sites to import from shared config:
-   - `whatsapp-webhook/index.ts:1590`
-   - `send-whatsapp/index.ts:26`
-   - `notify-lead-created/index.ts:336,359`
-   - `manage-whatsapp-templates/index.ts:11-12` (drop local consts, import shared)
-   - `test-integration/index.ts:236,309,360,409,419` (use `META_API_BASE` / `IG_API_BASE`)
-3. Update the UI hint text in `IntegrationSettings.tsx` (line ~663) to say "v25.0 on both hosts (auto-fallback to v23.0 if IG host rejects)".
-4. Bump version comments at top of each touched edge function (e.g., `// v2.3.0 — Phase G: unified to v25.0 across both Meta hosts`).
+So the problem is **upstream of our code**: Meta is not delivering Instagram events to our URL. Three things must all be true at Meta's end and only one is currently confirmed:
 
-### Part 2 — Dual-token support (FB + IG simultaneously)
+1. **Instagram product → Webhooks → Callback URL** = `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/meta-webhook` with verify token `4fe45162-9f13-415d-989b-e77c1b1f1d1c` — and **Verify and Save** must show green.
+2. **Subscribed fields** on the Instagram product must include at minimum `messages`, `messaging_postbacks`, `comments`, `mentions`. The previous `meta-subscribe` call subscribed the IG **account** to the app, but the **app** itself must also be subscribed to those **fields** at the product level.
+3. The IG account must be in **Live mode** OR added as a **Tester / Instagram Tester** under App Roles. In Dev mode, only roles/testers trigger webhooks. Your personal IG account that sent "hi" most likely is not a tester → Meta silently drops the event.
 
-You can absolutely paste BOTH a Facebook Page Access Token AND an Instagram Business Login token for the same branch. Recommended split:
+This third point is almost certainly the root cause given zero deliveries.
 
-```text
-   Capability matrix
-   ┌──────────────────┬──────────────┬──────────────┐
-   │ Channel          │ EAA (FB)     │ IGAA (IG)    │
-   ├──────────────────┼──────────────┼──────────────┤
-   │ WhatsApp         │ ✓ (required) │ ✗            │
-   │ Messenger DMs    │ ✓ (required) │ ✗            │
-   │ Instagram DMs    │ ✓ via Page   │ ✓ direct     │
-   │ IG Comments      │ ✓ via Page   │ ✓ direct     │
-   │ Webhook signing  │ ✓ App Secret │ ✓ App Secret │
-   └──────────────────┴──────────────┴──────────────┘
-```
+## Plan — what I will change in code
 
-1. Database (no schema change needed — uses existing `integration_settings` JSONB):
-   - Allow TWO rows for the same `(branch_id)` with different `provider` values:
-     - `provider = 'instagram'` → stores `EAA…` token (FB-login flow).
-     - `provider = 'instagram_login'` → stores `IGAA…` token (IG-Business-Login flow).
-   - `INSTAGRAM_PROVIDERS` constant in `IntegrationSettings.tsx` already supports a list — add the second entry.
-2. `send-message/index.ts` dispatcher:
-   - When channel = `instagram`, prefer `instagram_login` row (direct API, lower latency, no Page hop) and fall back to `instagram` row (FB-login) if not present.
-   - Already auto-detects token prefix per the existing `detectMetaHost` — keep that logic.
-3. `meta-webhook/index.ts`:
-   - On inbound IG event, look up matching integration by `recipient.id` (IG user_id) checking BOTH provider rows. Whichever matches signs the reply.
-4. UI in `IntegrationSettings.tsx`:
-   - Render two cards under Instagram: "Instagram via Facebook (EAA)" and "Instagram Business Login (IGAA)". Each can be configured independently. Show a green "Both connected — using IG Business Login as primary" status when both are active.
-5. Test Connection button: tests whichever provider row was clicked, with clear "primary/fallback" labelling in the result toast.
+### A. Fix the secret model in the UI
+1. In `IntegrationSettings.tsx`, when the integration is the **Instagram Business Login (IGAA)** card, relabel the App Secret field to "**Instagram App Secret** (Meta → Instagram product → API setup with Instagram login)" with help text explaining it is a *different* value from the Basic App Secret.
+2. For the **Instagram via Facebook (EAA)** card and WhatsApp card, keep the label "**App Secret** (Settings → Basic)".
+3. Add an inline warning if the saved IGAA secret does **not** match a `^[a-f0-9]{32}$` shape, or if the same secret is reused across both Instagram cards (likely wrong).
 
-### Part 3 — Wire the Instagram Business Login Redirect URL
+### B. Auto-overwrite the wrong secret
+Provide a one-click "Use Instagram App Secret" prompt on the IGAA card. After you paste `e40219c54f7d918123bdbdacc3a4ce64` and Save, the webhook signature check will start passing.
 
-The Meta dialog (image-303) requires a Redirect URL for OAuth completion. We currently expose only the webhook URL, which is wrong for the OAuth callback.
+### C. Add a diagnostics endpoint
+New edge function `meta-diagnose` that:
+- Calls `GET /me?fields=id,username,account_type` on `graph.instagram.com` with the IGAA token → confirms token validity + scopes.
+- Calls `GET /{ig-id}/subscribed_apps` → confirms the app is subscribed to the IG account.
+- Returns a checklist: token OK / subscribed OK / verify token saved / app secret format OK.
 
-1. Create new edge function `supabase/functions/meta-oauth-callback/index.ts`:
-   - Accepts `?code=…&state=…` from Meta's redirect.
-   - Exchanges `code` → short-lived token via `https://api.instagram.com/oauth/access_token`.
-   - Exchanges short-lived → long-lived (60 days) via `https://graph.instagram.com/access_token?grant_type=ig_exchange_token`.
-   - Stores the long-lived token in `integration_settings` for `provider='instagram_login'` on the branch encoded in `state`.
-   - Redirects browser back to `/settings?tab=integrations&meta_oauth=success`.
-2. Update `IntegrationSettings.tsx`:
-   - Show the **Redirect URL** field as: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/meta-oauth-callback` with copy button (this is what gets pasted into the "Set up Instagram business login" dialog).
-   - Keep the existing **Webhook URL** field as: `…/functions/v1/meta-webhook` (separate purpose — for inbound events).
-   - Add an "Authorize with Instagram" button that opens Meta's OAuth dialog with the right `client_id`, `redirect_uri`, `scope`, and a signed `state` carrying the branch_id. This eliminates manual token pasting entirely.
-3. Add 50-day expiry warning: cron job (existing `process-comm-retry-queue` or new lightweight job) that auto-refreshes any IG token within 10 days of expiry by calling `/refresh_access_token`, and posts a notification to admins if refresh fails.
+A "Run Diagnostics" button on the IGAA card surfaces the result inline.
 
-### Part 4 — App Review preparation (so tokens stop expiring as "test mode")
+### D. Webhook hardening
+- In `meta-webhook`, log a clear one-line summary on every POST: object type, entries count, signature header present, signature accepted/rejected, which secret matched. This makes future "no message arrived" debugging instant.
+- When signature is rejected, store one row in a new lightweight `webhook_failures` table (object, ts, reason, header present) so we can show "Meta tried X times but signatures failed — your saved app secret is wrong" in the UI.
 
-Why tokens "keep expiring": your Meta App is in **Development Mode**. In Dev Mode, IG/FB tokens are short-lived (1 hour user tokens, max 60-day Page tokens) AND only work for users explicitly added as App Testers. Going Live + getting permissions approved removes this restriction.
+### E. Clean up stale rows
+Delete the empty `instagram` integration row `421a4088-6426-4555-a96c-ecb43fd442e3` (no token, no config) so the lookup logic has only one IG candidate.
 
-**Required permissions to submit for review** (based on your image-301):
-- `instagram_business_basic`
-- `instagram_business_manage_messages`
-- `pages_messaging` (for Messenger DM replies via Page)
-- `pages_show_list` + `pages_read_engagement` (to enumerate Pages)
-- `business_management` (Business Manager API)
-- `whatsapp_business_messaging` + `whatsapp_business_management` (for WA broadcasts)
+## What you need to do at Meta Dashboard (cannot be automated)
 
-**Deliverables we'll prepare for you (in `/mnt/documents/meta-app-review/`):**
-1. **App Verification document (PDF)** describing:
-   - App name, purpose ("Incline Gym CRM — multi-branch fitness studio management").
-   - Per-permission justification with exact screen + button references in the Incline app.
-   - Data handling: where tokens are stored (encrypted in `integration_settings`), retention policy.
-2. **Screencast script (timestamped, ~3-4 min total)** covering, for each permission:
-   - User logs into Incline → Settings → Integrations → connects Instagram.
-   - Member sends a DM to the gym's IG → message appears in Incline Inbox.
-   - Staff replies from Incline → message arrives back in IG.
-   - Same loop for Messenger and WhatsApp.
-   - Bulk campaign send + delivery receipt in Live Feed.
-3. **Test-user credentials block** (a dedicated `meta-reviewer@theincline.in` account pre-seeded with one branch, one connected IG, sample members) — we'll script the seed migration.
-4. **Privacy Policy + Data Deletion URL** (image-306 fields):
-   - Privacy: `https://www.theincline.in/privacy` (already exists at `src/pages/PrivacyPolicy.tsx`).
-   - Add new public route `/data-deletion` with a form that triggers `meta-data-deletion` edge function (Meta requires a verified callback URL — we'll wire it).
-5. **Business Verification reminder**: only required for some advanced perms (e.g., `pages_manage_metadata`). For the perms above, App Review alone is sufficient if the App is owned by a verified Business in Meta Business Manager. If not verified, we'll add a checklist of documents needed (GST cert, address proof).
+1. **App Dashboard → Instagram product → API setup with Instagram login → 3. Configure webhooks**
+   - Callback URL: `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/meta-webhook`
+   - Verify token: `4fe45162-9f13-415d-989b-e77c1b1f1d1c`
+   - Click **Verify and save**.
+   - Subscribe to fields: `messages`, `messaging_postbacks`, `messaging_seen`, `comments`, `mentions`, `message_reactions`.
 
-You handle the actual screen recording and submission in Meta Dashboard; we provide the script, the seed data, and the in-app screens that match the script beat-for-beat so the reviewer's path is unambiguous.
+2. **App Dashboard → App Roles → Roles** (or → **Instagram Testers**)
+   - Add the personal IG handle you DM'd from (e.g. `@your_personal`) as an **Instagram Tester**.
+   - Open Instagram on that personal account → Settings → Apps and Websites → Tester Invites → **Accept**.
+   - Until this is done, Meta drops every webhook in dev mode and you will see **nothing** in our logs no matter what we change in code.
 
----
+3. **App Dashboard → Settings → Basic**
+   - Confirm the **App Secret** shown matches `4eb1bc06a72ff449bd0336e5dc8f979a` (this is what you save on the WhatsApp + Instagram-via-FB cards).
 
-## Files to create / modify
+4. After accepting the tester invite, send a fresh "hi" DM. Within 2 seconds the meta-webhook logs will show one POST and the message will land in the CRM inbox.
 
-| File | Action |
-|---|---|
-| `supabase/functions/_shared/meta-config.ts` | Bump IG to v25.0, add fallback helper |
-| `supabase/functions/{whatsapp-webhook,send-whatsapp,notify-lead-created,manage-whatsapp-templates,test-integration}/index.ts` | Replace hardcoded v25.0 with shared import |
-| `supabase/functions/send-message/index.ts` | Prefer `instagram_login` provider, fallback to `instagram` |
-| `supabase/functions/meta-webhook/index.ts` | Look up integration across both provider rows |
-| `supabase/functions/meta-oauth-callback/index.ts` | NEW — OAuth code→token exchange + long-lived swap |
-| `supabase/functions/meta-data-deletion/index.ts` | NEW — Meta-required deletion callback |
-| `src/components/settings/IntegrationSettings.tsx` | Two IG cards, Redirect URL field, "Authorize" button, updated hint copy |
-| `src/config/providerSchemas.ts` | Add `instagram_login` provider definition |
-| `src/pages/DataDeletion.tsx` + route in `App.tsx` | NEW — public deletion request form |
-| `supabase/migrations/<ts>_meta_review_seed.sql` | Seed reviewer test account + sample data |
-| `/mnt/documents/meta-app-review/` | Generate verification PDF + screencast script + checklist |
+## Acceptance criteria
 
-No destructive DB changes. No table schema changes (the `integration_settings` JSONB already accommodates both token rows).
+- IGAA card UI clearly distinguishes Instagram App Secret from Basic App Secret.
+- After you paste the IG secret, "Run Diagnostics" returns all green.
+- After you accept the IG tester invite, sending a DM produces a row in `whatsapp_messages` within 5 seconds and is visible in the chat UI.
+- meta-webhook logs show: `signature accepted, secret=instagram, object=instagram, entries=1`.
 
-## What I need from you to start
+## Files to change
 
-Approve this plan, then on the next turn I'll need:
-- **Meta App ID** and **App Secret** (paste in Settings → Integrations → Instagram, no secret tool needed since it's stored per-branch in `integration_settings`).
-- Confirmation that `meta-reviewer@theincline.in` (or your preferred test email) can be auto-created.
-- Whether you want the screencast script in English only or English + Hindi captions for the reviewer.
+- `supabase/functions/meta-webhook/index.ts` — richer logging, failure recording.
+- `supabase/functions/meta-diagnose/index.ts` — **new**.
+- `src/components/settings/IntegrationSettings.tsx` — relabel field per integration type, add diagnostics button + warning banner.
+- Migration — create `webhook_failures` table; delete stale empty IG row.
