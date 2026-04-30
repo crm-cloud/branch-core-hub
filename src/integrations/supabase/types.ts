@@ -2243,6 +2243,45 @@ export type Database = {
           },
         ]
       }
+      data_deletion_requests: {
+        Row: {
+          completed_at: string | null
+          confirmation_code: string
+          created_at: string
+          email: string | null
+          external_user_id: string | null
+          id: string
+          notes: string | null
+          payload: Json | null
+          source: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          confirmation_code: string
+          created_at?: string
+          email?: string | null
+          external_user_id?: string | null
+          id?: string
+          notes?: string | null
+          payload?: Json | null
+          source: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          confirmation_code?: string
+          created_at?: string
+          email?: string | null
+          external_user_id?: string | null
+          id?: string
+          notes?: string | null
+          payload?: Json | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       device_access_events: {
         Row: {
           access_granted: boolean
