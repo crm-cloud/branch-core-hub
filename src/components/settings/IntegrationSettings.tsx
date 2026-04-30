@@ -389,7 +389,7 @@ export function IntegrationSettings() {
 
           {(() => {
             const metaIntegrations = integrations.filter((i: any) =>
-              ['whatsapp', 'instagram', 'messenger'].includes(i.integration_type) && i.is_active
+              ['whatsapp', 'instagram', 'instagram_login', 'messenger'].includes(i.integration_type) && i.is_active
             );
             const missingSecret = metaIntegrations.filter((i: any) => !i.credentials?.app_secret);
             if (metaIntegrations.length === 0 || missingSecret.length === 0) return null;
@@ -403,9 +403,10 @@ export function IntegrationSettings() {
                     Webhook signature verification disabled for {missingSecret.length} integration(s)
                   </p>
                   <p className="text-xs text-amber-800 dark:text-amber-300/90">
-                    Add the <strong>App Secret</strong> from Meta App Dashboard → Settings → Basic to{' '}
-                    {missingSecret.map((i: any) => i.provider).join(', ')}. Without it, anyone with the
-                    webhook URL could inject fake messages into your CRM.
+                    Add the App Secret to {missingSecret.map((i: any) => i.provider || i.integration_type).join(', ')}.
+                    <br />• <b>WhatsApp & Instagram via Facebook (EAA…):</b> use the <strong>Basic App Secret</strong> from Meta → Settings → Basic.
+                    <br />• <b>Instagram Business Login (IGAA…):</b> use the <strong>Instagram App Secret</strong> from Meta → Instagram product → API setup with Instagram login → Instagram app secret.
+                    <br />Without the correct one, every webhook from Meta is rejected as "Invalid signature" and inbound DMs never appear.
                   </p>
                 </div>
               </div>
@@ -693,7 +694,7 @@ export function IntegrationSettings() {
                       <li><b>Long-lived IG Access Token</b> from Business Login</li>
                       <li><b>Instagram Account ID</b> = <code className="font-mono">user_id</code> from /me</li>
                       <li>Required scopes: <code className="font-mono">instagram_business_basic</code>, <code className="font-mono">instagram_business_manage_messages</code>, <code className="font-mono">instagram_manage_comments</code></li>
-                      <li>App Secret optional (not used on graph.instagram.com)</li>
+                      <li><b className="text-rose-600">Instagram App Secret</b> (Meta → Instagram product → "API setup with Instagram login" → Instagram app secret) — REQUIRED for webhook signatures. This is a <u>different value</u> from the Basic App Secret used by WhatsApp.</li>
                     </ul>
                     <div className="mt-2 pt-2 border-t border-amber-100 space-y-2">
                       <div>
