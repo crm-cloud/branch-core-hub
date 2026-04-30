@@ -8499,6 +8499,42 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_ingress_log: {
+        Row: {
+          created_at: string
+          entry_count: number | null
+          fields: string[] | null
+          id: string
+          messaging_count: number | null
+          object_type: string | null
+          sample: Json | null
+          signature_verified: boolean | null
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          entry_count?: number | null
+          fields?: string[] | null
+          id?: string
+          messaging_count?: number | null
+          object_type?: string | null
+          sample?: Json | null
+          signature_verified?: boolean | null
+          source: string
+        }
+        Update: {
+          created_at?: string
+          entry_count?: number | null
+          fields?: string[] | null
+          id?: string
+          messaging_count?: number | null
+          object_type?: string | null
+          sample?: Json | null
+          signature_verified?: boolean | null
+          source?: string
+        }
+        Relationships: []
+      }
       whatsapp_chat_settings: {
         Row: {
           assigned_to: string | null

@@ -1,3 +1,8 @@
+// v4.3.0 — Instagram Login webhooks deliver DMs under entry.changes[] with
+//          field="messages" (not entry.messaging[]). Parse that shape and
+//          route through ingestMessagingEvent so inbound IG DMs reach the CRM.
+//          Also handle messaging_postbacks/seen/referral/reactions/echoes.
+//          Persist accepted ingress to webhook_ingress_log for audits.
 // v4.2.0 — Rich one-line logging per POST, persist signature failures to
 //          `webhook_failures` table with diagnostic reason for the UI.
 // v4.1.0 — Recognize `instagram_login` provider alongside `instagram` and `messenger`
@@ -150,9 +155,26 @@ async function handleIncomingEvent(req: Request) {
   }
 
   const objectType = payload?.object;
+  // Collect a quick fingerprint of fields/messaging shapes for diagnostics
+  const fingerprint = summarizePayload(payload);
   console.log(
-    `[meta-webhook] ACCEPTED object=${objectType} entries=${payload?.entry?.length || 0} sig=${sigHeader ? (sigCheck.skipped ? "unsigned-backcompat" : "verified") : "missing"} matched_secret_prefix=${sigCheck.matchedPrefix || "n/a"}`,
+    `[meta-webhook] ACCEPTED object=${objectType} entries=${payload?.entry?.length || 0} fields=${fingerprint.fields.join("|") || "-"} messaging_events=${fingerprint.messagingEvents} sig=${sigHeader ? (sigCheck.skipped ? "unsigned-backcompat" : "verified") : "missing"} matched_secret_prefix=${sigCheck.matchedPrefix || "n/a"}`,
   );
+
+  // Persist accepted ingress for forensic auditing (best-effort)
+  try {
+    await supabase.from("webhook_ingress_log").insert({
+      source: "meta-webhook",
+      object_type: objectType || "unknown",
+      fields: fingerprint.fields,
+      entry_count: payload?.entry?.length || 0,
+      messaging_count: fingerprint.messagingEvents,
+      signature_verified: sigCheck.accepted && !sigCheck.skipped,
+      sample: fingerprint.sample,
+    });
+  } catch (e) {
+    console.warn("[meta-webhook] ingress log insert failed:", e);
+  }
 
   if (objectType === "whatsapp_business_account") {
     console.log("[meta-webhook] routing → whatsapp-webhook");
@@ -179,6 +201,22 @@ async function handleIncomingEvent(req: Request) {
   return new Response(JSON.stringify({ success: true }), {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function summarizePayload(payload: any): { fields: string[]; messagingEvents: number; sample: any } {
+  const fields = new Set<string>();
+  let messagingEvents = 0;
+  const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+  for (const entry of entries) {
+    if (Array.isArray(entry.messaging)) messagingEvents += entry.messaging.length;
+    if (Array.isArray(entry.changes)) for (const c of entry.changes) if (c?.field) fields.add(String(c.field));
+  }
+  // Tiny sample (first entry, truncated) for forensic context
+  let sample: any = null;
+  try {
+    sample = JSON.parse(JSON.stringify(entries[0] || {}));
+  } catch { sample = null; }
+  return { fields: Array.from(fields), messagingEvents, sample };
 }
 
 // ─── F2: signature verification helper ─────────────────────────────────────────
@@ -250,7 +288,7 @@ async function processInstagramEvent(payload: any) {
       await ingestMessagingEvent(event, "instagram");
     }
 
-    // F3b: comments / mentions arrive under entry.changes[]
+    // F3b: Instagram Login + comments/mentions arrive under entry.changes[]
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     for (const change of changes) {
       const igAccountId = String(entry.id || "");
@@ -259,6 +297,30 @@ async function processInstagramEvent(payload: any) {
           await ingestInstagramComment(change.value, igAccountId);
         } else if (change.field === "mentions") {
           await ingestInstagramMention(change.value, igAccountId);
+        } else if (change.field === "messages" || change.field === "message_echoes") {
+          // Instagram Login API delivers DMs HERE, not in entry.messaging[]
+          const v = change.value || {};
+          const event = {
+            sender: v.sender,
+            recipient: v.recipient,
+            timestamp: v.timestamp,
+            message: v.message,
+          };
+          if (event.message && event.sender?.id && event.recipient?.id) {
+            console.log(`[IG] changes-style DM field=${change.field} sender=${event.sender.id} recipient=${event.recipient.id}`);
+            await ingestMessagingEvent(event, "instagram");
+          } else {
+            console.log(`[IG] changes-style ${change.field} missing fields, skipping`);
+          }
+        } else if (
+          change.field === "messaging_postbacks" ||
+          change.field === "messaging_seen" ||
+          change.field === "messaging_referral" ||
+          change.field === "message_reactions" ||
+          change.field === "message_edit"
+        ) {
+          // Acknowledge silently — not surfaced in CRM yet
+          console.log(`[IG] ack ${change.field} from=${change.value?.sender?.id || "?"}`);
         } else {
           console.log(`[IG] unhandled change field=${change.field}`);
         }
