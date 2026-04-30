@@ -8,6 +8,28 @@
 export const META_GRAPH_VERSION = "v25.0";
 export const META_API_BASE = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
+// Instagram Login API (token prefix `IGAA…`) uses a separate host:
+// https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login
+export const IG_GRAPH_VERSION = "v23.0";
+export const IG_API_BASE = `https://graph.instagram.com/${IG_GRAPH_VERSION}`;
+
+/**
+ * Meta issues two visually-different access-token formats:
+ *   - `EAA…`  → Facebook Login / Page Access Token → host graph.facebook.com
+ *   - `IGAA…` → Instagram Login (Instagram Business Login) → host graph.instagram.com
+ * This helper returns the matching base URL + a flag so callers can adapt.
+ */
+export function detectMetaHost(accessToken: string | null | undefined): {
+  base: string;
+  isInstagramLogin: boolean;
+} {
+  const tok = (accessToken || "").trim();
+  if (tok.startsWith("IGAA")) {
+    return { base: IG_API_BASE, isInstagramLogin: true };
+  }
+  return { base: META_API_BASE, isInstagramLogin: false };
+}
+
 export function metaUrl(path: string): string {
   if (!path.startsWith("/")) path = "/" + path;
   return `${META_API_BASE}${path}`;
