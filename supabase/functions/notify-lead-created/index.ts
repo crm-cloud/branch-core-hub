@@ -334,7 +334,7 @@ async function sendWhatsApp(integration: any, phone: string, message: string): P
       case "custom": {
         if (!phoneNumberId) return { success: false, error: "No phone_number_id configured" };
         const cleanPhone = phone.replace(/[\s\-\+]/g, "");
-        const resp = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+        const resp = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({ messaging_product: "whatsapp", to: cleanPhone, type: "text", text: { body: message } }),
@@ -357,7 +357,7 @@ async function sendWhatsApp(integration: any, phone: string, message: string): P
         // For gupshup, interakt, aisensy — attempt Meta-style as fallback
         if (phoneNumberId) {
           const cleanPhone = phone.replace(/[\s\-\+]/g, "");
-          const resp = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+          const resp = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
             method: "POST",
             headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
             body: JSON.stringify({ messaging_product: "whatsapp", to: cleanPhone, type: "text", text: { body: message } }),
