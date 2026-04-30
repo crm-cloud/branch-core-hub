@@ -202,6 +202,20 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               </button>
             ))}
 
+            {trigger === 'scheduled' && (
+              <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/50 p-4 space-y-2">
+                <Label className="text-xs uppercase tracking-wider text-amber-800 font-semibold">Send at (Asia/Kolkata)</Label>
+                <Input
+                  type="datetime-local"
+                  className="rounded-xl bg-white"
+                  value={scheduledAt}
+                  min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                />
+                <p className="text-[11px] text-amber-700">A background worker checks every minute and sends the campaign at the chosen time.</p>
+              </div>
+            )}
+
             <div className="rounded-2xl bg-muted/40 p-4 mt-4">
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2 font-medium">Summary</p>
               <div className="text-sm space-y-1">
@@ -226,7 +240,10 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={submitting} className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : trigger === 'send_now' ? <><Send className="h-4 w-4" /> Send Campaign</> : <><Save className="h-4 w-4" /> Save Rule</>}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> :
+                trigger === 'send_now' ? <><Send className="h-4 w-4" /> Send Campaign</> :
+                trigger === 'scheduled' ? <><Clock className="h-4 w-4" /> Schedule Campaign</> :
+                <><Save className="h-4 w-4" /> Save Rule</>}
             </Button>
           )}
         </div>
