@@ -8535,6 +8535,51 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_processing_log: {
+        Row: {
+          created_at: string
+          event_kind: string | null
+          id: string
+          meta_error_code: number | null
+          meta_error_message: string | null
+          meta_error_subcode: number | null
+          object_type: string | null
+          platform_message_id: string | null
+          reason: string | null
+          sample: Json | null
+          source: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          event_kind?: string | null
+          id?: string
+          meta_error_code?: number | null
+          meta_error_message?: string | null
+          meta_error_subcode?: number | null
+          object_type?: string | null
+          platform_message_id?: string | null
+          reason?: string | null
+          sample?: Json | null
+          source: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          event_kind?: string | null
+          id?: string
+          meta_error_code?: number | null
+          meta_error_message?: string | null
+          meta_error_subcode?: number | null
+          object_type?: string | null
+          platform_message_id?: string | null
+          reason?: string | null
+          sample?: Json | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       whatsapp_chat_settings: {
         Row: {
           assigned_to: string | null

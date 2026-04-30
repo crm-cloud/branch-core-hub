@@ -1,59 +1,60 @@
-I audited the live backend, webhook logs, integration row, and the CRM chat query path.
+Audit result: Meta is delivering to our webhook successfully. This is not a tester-role or app-secret delivery failure anymore.
 
-Root cause found: Meta is now delivering the webhook successfully, but our webhook parser is ignoring it.
+What I found:
+- Live webhook payloads are arriving as `object=instagram`, signature verified with the Instagram App Secret prefix `e40219`.
+- The latest ingress rows show Meta sends only `messaging[].message_edit.mid` with no `sender`, no `recipient`, and no `text`.
+- Our current fallback tries to fetch message details by MID, but the code only logs `unresolved contact` and then drops it, so no CRM message row is created.
+- Your integration row is active, token is valid, and `/subscribed_apps` reports the correct fields: `messages`, `messaging_postbacks`, `messaging_seen`, `comments`, `mentions`, `story_insights`, `messaging_referral`.
+- Official Meta docs say Business Login messaging payloads should normally include `sender`, `recipient`, and `message.text`; `message_edit` should include `text`. Your live payload is a stripped/minimal `message_edit` shape, so we need a more robust recovery path instead of dropping it.
+- One configuration mismatch also exists: the row is stored as `integration_type='instagram'` + `provider='instagram_meta'`, but it contains an IGAA Instagram Login token. The code mostly auto-detects IGAA now, but some UI/diagnostic paths still classify it as the Facebook-login provider, which is risky.
 
-Evidence:
-- `meta-webhook` received a signed POST and signature verification passed.
-- Log shows: `ACCEPTED object=instagram entries=1 sig=verified matched_secret_prefix=e40219`
-- Immediately after, log shows: `[IG] unhandled change field=messages`
-- No Instagram message was inserted into `whatsapp_messages`.
+Plan to fix:
 
-So this is no longer a tester-role / app-secret / webhook-not-delivered problem. The current bug is in our handler: Instagram Login webhooks can send DMs under `entry.changes[]` with `field: "messages"` and the actual DM in `change.value`. Our code only ingests DMs when they are in `entry.messaging[]`, so it drops the real payload as “unhandled”.
+1. Harden the webhook for stripped `message_edit` payloads
+- Update `meta-webhook` so `messaging[].message_edit` is never silently dropped.
+- If Meta includes `message_edit.text`, ingest that directly.
+- If text/sender is missing, fetch the MID from the Graph conversations/message endpoint using the IGAA token and log the exact Meta API response shape when resolution fails.
+- Support both response shapes from Meta:
+  - `{ from, to, message }`
+  - conversation-style nested message arrays if Meta requires conversation lookup first.
+- If Meta still refuses to expose the message body, store a forensic placeholder inbound row like `[Instagram message received — content unavailable from Meta]` instead of dropping it, so the CRM shows the conversation and contact trail.
 
-Plan to fix completely:
+2. Add an explicit webhook processing audit table
+- Add a `webhook_processing_log` table with fields such as:
+  - source/object_type
+  - platform_message_id
+  - processing_status: `stored`, `deduped`, `dropped`, `resolve_failed`, `placeholder_stored`
+  - reason
+  - meta_error_code/subcode/message
+  - sample payload
+- This is different from the existing ingress log: ingress confirms Meta delivered; processing log confirms whether our parser stored or dropped the message.
 
-1. Update `meta-webhook` Instagram parser
-   - Add support for Instagram Login `changes[]` payloads where:
-     - `change.field === "messages"`
-     - `change.value.sender`
-     - `change.value.recipient`
-     - `change.value.message`
-   - Route that value into the existing `ingestMessagingEvent(...)` function so the message is inserted into `whatsapp_messages` exactly like the older `entry.messaging[]` format.
-   - Also handle related Instagram Login fields safely:
-     - `message_reactions`
-     - `messaging_postbacks`
-     - `messaging_seen`
-     - `messaging_referral`
-     - `message_edit`
-     - `message_echoes`
-   - Unknown fields will still be logged, but `messages` will no longer be dropped.
+3. Improve `meta-diagnose` to show the real failure
+- Add checks for:
+  - last Meta delivery time
+  - last payload shape (`message`, `message_edit`, `changes[]`, etc.)
+  - last processing result
+  - last resolved/stored message
+- The diagnosis should no longer say “all checks passed” when traffic arrives but messages are being dropped.
 
-2. Add webhook ingress logging for future audits
-   - Create `webhook_ingress_log` table to record accepted webhook arrivals, object type, fields received, entry count, signature status, and a sanitized payload sample.
-   - This solves the current blind spot: today only failures are persisted, but successful-but-ignored payloads are visible only in short-lived function logs.
-   - RLS will be enabled and admin/manager read policies will be added.
+4. Fix Instagram Login classification
+- Normalize the integration lookup so IGAA tokens are treated as Instagram Login regardless of the saved `provider` label.
+- Update diagnostics/help text to show that this integration is actually using Instagram Business Login (`graph.instagram.com`) even if the older row says `instagram_meta`.
+- Avoid relying on the stored provider string for host selection; use token prefix and account ID.
 
-3. Harden diagnostics
-   - Update `meta-diagnose` to check the new ingress log and report:
-     - “Meta delivered webhook”
-     - “Payload field received: messages”
-     - “CRM inserted message” or “handler dropped message”
-   - Improve the existing `recent_traffic` message so it no longer incorrectly says “Meta has not delivered ANY webhook” when accepted webhook logs exist.
+5. Add live curl/synthetic tests after implementation
+- Run a signed webhook test with:
+  - standard `messaging[].message` payload
+  - `changes[].field='messages'` payload
+  - stripped `messaging[].message_edit.mid` payload
+  - `message_edit` with `text` included
+- Verify each case produces either a real inbound CRM message or a visible placeholder plus processing log.
+- Re-run `meta-diagnose` and read latest function/database logs to confirm the pipeline is no longer silently dropping live Meta deliveries.
 
-4. Add a synthetic signed webhook test path
-   - Create a diagnostic-only backend function or internal test mode to send a signed Instagram Login-style webhook payload into `meta-webhook`.
-   - Verify the full pipeline:
-     - signature validation
-     - `changes[].field=messages` parsing
-     - database insert
-     - CRM contact list visibility
-   - This lets us prove the CRM ingestion path without waiting for Meta.
+6. Manual Meta setting to verify in parallel
+- In Meta’s Instagram API setup with Instagram Login, ensure the webhook subscription has “Include Values” enabled. Meta docs state payloads can be sent as reduced changed-field notifications when values are not included. Your payload looks stripped, so this is a likely dashboard-side contributor.
+- Also verify the Instagram account has “Allow access to messages / connected tools” enabled in Instagram message controls. Official docs call this out for professional accounts using messaging APIs.
 
-5. Verify the CRM chat query path
-   - Confirm the inserted Instagram message appears in `src/pages/WhatsAppChat.tsx`, which already reads from `whatsapp_messages` and filters by `platform: instagram` correctly.
-   - If needed, adjust branch/global filtering so a globally configured Instagram integration still appears for the selected branch.
-
-Expected result after implementation:
-- When a tester profile sends a DM to `theinclinelife`, the webhook will be accepted and inserted as an inbound Instagram message.
-- The chat will appear in CRM under the Instagram filter / unified chat list.
-- Diagnostics will show whether Meta delivered, whether the handler parsed it, and whether the database insert succeeded.
+Expected result:
+- Fresh Instagram DMs from tester accounts should appear in the CRM chat.
+- If Meta sends only MID and refuses detail fetch, the CRM will still show an inbound placeholder instead of nothing, and diagnostics will show the exact Meta reason so we can escalate/fix settings precisely.
