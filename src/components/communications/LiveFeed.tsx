@@ -113,6 +113,15 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
     return c;
   }, [logs]);
 
+  const channelCounts = useMemo(() => {
+    const c = { all: 0, whatsapp: 0, sms: 0, email: 0, in_app: 0 } as Record<string, number>;
+    for (const l of logs as any[]) {
+      c.all++;
+      if (l.type && c[l.type] !== undefined) c[l.type]++;
+    }
+    return c;
+  }, [logs]);
+
   const filtered = useMemo(() => {
     return (logs as any[]).filter((l) => {
       if (channel !== 'all' && l.type !== channel) return false;
