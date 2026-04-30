@@ -3364,6 +3364,59 @@ export type Database = {
           },
         ]
       }
+      howbody_devices: {
+        Row: {
+          auto_registered: boolean
+          branch_id: string | null
+          created_at: string
+          equipment_no: string
+          id: string
+          is_active: boolean
+          label: string | null
+          last_seen_at: string | null
+          location: string | null
+          notes: string | null
+          total_scans: number
+          updated_at: string
+        }
+        Insert: {
+          auto_registered?: boolean
+          branch_id?: string | null
+          created_at?: string
+          equipment_no: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_seen_at?: string | null
+          location?: string | null
+          notes?: string | null
+          total_scans?: number
+          updated_at?: string
+        }
+        Update: {
+          auto_registered?: boolean
+          branch_id?: string | null
+          created_at?: string
+          equipment_no?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_seen_at?: string | null
+          location?: string | null
+          notes?: string | null
+          total_scans?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "howbody_devices_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       howbody_posture_reports: {
         Row: {
           back_img: string | null
@@ -9011,6 +9064,10 @@ export type Database = {
       howbody_scan_quota: {
         Args: { _kind: string; _member_id: string }
         Returns: Json
+      }
+      howbody_touch_device: {
+        Args: { _equipment_no: string }
+        Returns: undefined
       }
       issue_referral_reward: {
         Args: {

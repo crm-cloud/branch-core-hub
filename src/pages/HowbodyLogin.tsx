@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getHowbodyDeviceLabel } from "@/services/howbodyDeviceService";
 import { Loader2, ScanLine, CheckCircle2, AlertTriangle, Search, ShieldCheck } from "lucide-react";
 
 type Status = "idle" | "binding" | "bound" | "error";
@@ -33,6 +34,13 @@ export default function HowbodyLogin() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const [deviceLabel, setDeviceLabel] = useState<string | null>(null);
+
+  // Resolve friendly device label from inventory (falls back to raw equipmentNo)
+  useEffect(() => {
+    if (!equipmentNo) return;
+    getHowbodyDeviceLabel(equipmentNo).then(setDeviceLabel).catch(() => {});
+  }, [equipmentNo]);
 
   // Staff search state
   const isStaff = useMemo(
@@ -220,7 +228,8 @@ export default function HowbodyLogin() {
           <div className="flex-1">
             <h2 className="text-xl font-bold">Body Scanner Login</h2>
             <p className="text-sm text-muted-foreground">
-              Device <span className="font-mono">{equipmentNo}</span>
+              {deviceLabel ? <span className="font-medium text-slate-700">{deviceLabel}</span> : "Device"}
+              {" · "}<span className="font-mono text-xs">{equipmentNo}</span>
             </p>
           </div>
           <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-700">
