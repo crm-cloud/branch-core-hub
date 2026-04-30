@@ -128,6 +128,7 @@ const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/l
 
 const HowbodyLogin = lazy(() => import("./pages/HowbodyLogin"));
 const HowbodyPublicReport = lazy(() => import("./pages/HowbodyPublicReport"));
+const MyScanReport = lazy(() => import("./pages/MyScanReport"));
 
 function PublicWhatsAppWidget() {
   const location = useLocation();
@@ -179,6 +180,7 @@ function RoutedContent() {
           {/* Body scanner public flows (alias /scan-login is preferred; /howbody-login kept for legacy QR codes) */}
           <Route path="/scan-login" element={<HowbodyLogin />} />
           <Route path="/howbody-login" element={<HowbodyLogin />} />
+          <Route path="/my-scan-report" element={<MyScanReport />} />
           <Route path="/reports/body/:token" element={<HowbodyPublicReport reportType="body" />} />
           <Route path="/reports/posture/:token" element={<HowbodyPublicReport reportType="posture" />} />
 
