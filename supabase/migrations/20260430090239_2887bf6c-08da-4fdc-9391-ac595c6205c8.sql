@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.set_handoff(text, text, text) FROM PUBLIC, anon;
