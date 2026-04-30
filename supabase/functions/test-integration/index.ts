@@ -331,12 +331,18 @@ async function testInstagram(config: any, credentials: any) {
       };
     }
 
+    const accountType = String(meData?.account_type || "").toUpperCase();
+    const isMessagingCapable = accountType === "BUSINESS";
     return {
       success: true,
       message: `Instagram Login connected ✓ @${meData?.username || meData?.name || actualAccount}` +
-        (meData?.account_type ? ` · ${meData.account_type}` : ""),
+        (accountType ? ` · ${accountType}` : "") +
+        (!isMessagingCapable ? " ⚠ Convert IG account to BUSINESS to send DMs" : ""),
       detected_flow: "instagram_login",
       detected_account_id: actualAccount,
+      warning: !isMessagingCapable
+        ? `Your Instagram account is "${accountType}". The Instagram Messaging API only works for BUSINESS accounts. Convert in IG Settings → Account → Switch to Professional → Business.`
+        : undefined,
     };
   }
 
