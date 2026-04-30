@@ -828,9 +828,13 @@ async function triggerAiReply(
     .order("created_at", { ascending: false })
     .limit(15);
 
+  // E3: cross-platform history fed to the model. Do NOT prepend "(via X)" tags —
+  // some models echo system-style annotations back into outbound replies, which
+  // then get sent to the end user verbatim. Platform context is already conveyed
+  // by the system prompt below; per-turn channel labels are not needed.
   const history = (recentMessages || []).reverse().map((m: any) => ({
     role: (m.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
-    content: `(via ${m.platform || "whatsapp"}) ${m.content || ""}`,
+    content: String(m.content || ""),
   }));
 
   const platformLabel = platform === "instagram" ? "Instagram DM" : platform === "messenger" ? "Facebook Messenger" : "WhatsApp";
