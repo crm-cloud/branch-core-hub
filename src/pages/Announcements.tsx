@@ -83,7 +83,7 @@ export default function AnnouncementsPage() {
         </div>
 
         {/* Main Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList className="bg-muted/50 rounded-xl p-1 h-auto flex-wrap">
             <TabsTrigger value="live" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <Activity className="h-3.5 w-3.5" />Live Feed
@@ -91,6 +91,9 @@ export default function AnnouncementsPage() {
             <TabsTrigger value="announcements" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <Megaphone className="h-3.5 w-3.5" />Announcements
               <Badge variant="secondary" className="rounded-full text-[10px] h-4 px-1.5">{announcements.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" className="rounded-lg gap-2 data-[state=active]:shadow-md">
+              <Rocket className="h-3.5 w-3.5" />Campaigns
             </TabsTrigger>
             <TabsTrigger value="retry" className="rounded-lg gap-2 data-[state=active]:shadow-md">
               <AlertCircle className="h-3.5 w-3.5" />Retry Queue
