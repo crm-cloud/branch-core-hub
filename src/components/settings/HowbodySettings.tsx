@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, Loader2, ScanLine, CheckCircle2, XCircle, Eye, EyeOff, KeyRound, Save, Database, Server } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { HowbodyDevicesCard } from "./HowbodyDevicesCard";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 
@@ -221,6 +222,9 @@ export function HowbodySettings() {
           ))}
         </div>
       </Card>
+
+      {/* === Devices Inventory === */}
+      <HowbodyDevicesCard />
 
       {/* === Test === */}
       <Card className="rounded-2xl p-6 shadow-lg shadow-slate-200/50">
