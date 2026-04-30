@@ -155,9 +155,26 @@ async function handleIncomingEvent(req: Request) {
   }
 
   const objectType = payload?.object;
+  // Collect a quick fingerprint of fields/messaging shapes for diagnostics
+  const fingerprint = summarizePayload(payload);
   console.log(
-    `[meta-webhook] ACCEPTED object=${objectType} entries=${payload?.entry?.length || 0} sig=${sigHeader ? (sigCheck.skipped ? "unsigned-backcompat" : "verified") : "missing"} matched_secret_prefix=${sigCheck.matchedPrefix || "n/a"}`,
+    `[meta-webhook] ACCEPTED object=${objectType} entries=${payload?.entry?.length || 0} fields=${fingerprint.fields.join("|") || "-"} messaging_events=${fingerprint.messagingEvents} sig=${sigHeader ? (sigCheck.skipped ? "unsigned-backcompat" : "verified") : "missing"} matched_secret_prefix=${sigCheck.matchedPrefix || "n/a"}`,
   );
+
+  // Persist accepted ingress for forensic auditing (best-effort)
+  try {
+    await supabase.from("webhook_ingress_log").insert({
+      source: "meta-webhook",
+      object_type: objectType || "unknown",
+      fields: fingerprint.fields,
+      entry_count: payload?.entry?.length || 0,
+      messaging_count: fingerprint.messagingEvents,
+      signature_verified: sigCheck.accepted && !sigCheck.skipped,
+      sample: fingerprint.sample,
+    });
+  } catch (e) {
+    console.warn("[meta-webhook] ingress log insert failed:", e);
+  }
 
   if (objectType === "whatsapp_business_account") {
     console.log("[meta-webhook] routing → whatsapp-webhook");
@@ -184,6 +201,22 @@ async function handleIncomingEvent(req: Request) {
   return new Response(JSON.stringify({ success: true }), {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function summarizePayload(payload: any): { fields: string[]; messagingEvents: number; sample: any } {
+  const fields = new Set<string>();
+  let messagingEvents = 0;
+  const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+  for (const entry of entries) {
+    if (Array.isArray(entry.messaging)) messagingEvents += entry.messaging.length;
+    if (Array.isArray(entry.changes)) for (const c of entry.changes) if (c?.field) fields.add(String(c.field));
+  }
+  // Tiny sample (first entry, truncated) for forensic context
+  let sample: any = null;
+  try {
+    sample = JSON.parse(JSON.stringify(entries[0] || {}));
+  } catch { sample = null; }
+  return { fields: Array.from(fields), messagingEvents, sample };
 }
 
 // ─── F2: signature verification helper ─────────────────────────────────────────
