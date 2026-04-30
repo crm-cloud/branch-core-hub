@@ -21,13 +21,13 @@ const statusBadge = (s: string) => {
 };
 
 export default function Campaigns() {
-  const { selectedBranchId } = useBranchContext();
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const { selectedBranch } = useBranchContext();
+  const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
 
   const { data: campaigns = [], isLoading } = useQuery({
-    queryKey: ['campaigns', selectedBranchId],
-    queryFn: () => listCampaigns(selectedBranchId!),
-    enabled: !!selectedBranchId,
+    queryKey: ['campaigns', branchId],
+    queryFn: () => listCampaigns(branchId!),
+    enabled: !!branchId,
   });
 
   return (
