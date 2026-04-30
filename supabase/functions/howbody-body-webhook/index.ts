@@ -1,4 +1,4 @@
-// v1.1.0 — HOWBODY body composition push receiver (PUBLIC, DB-backed appkey check)
+// v1.2.0 — HOWBODY body composition push receiver (auto-registers devices in inventory)
 import { corsHeaders, json, admin, logWebhook, getExpectedWebhookAppKey } from "../_shared/howbody.ts";
 
 const ENVELOPE_OK = { code: 200, message: "Push successful", data: null };
@@ -66,6 +66,11 @@ Deno.serve(async (req) => {
       ecf: num(payload.ecf),
       full_payload: payload,
     }, { onConflict: "data_key" }).select("id").maybeSingle();
+
+    // Touch device inventory (auto-registers unknown devices, bumps counters)
+    if (payload.equipmentNo) {
+      await sb.rpc("howbody_touch_device", { _equipment_no: payload.equipmentNo }).catch(() => {});
+    }
 
     if (payload.scanId) {
       await sb.from("howbody_scan_sessions")
