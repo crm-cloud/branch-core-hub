@@ -1,7 +1,8 @@
+// v2.2.0 — Auto-detect IGAA (Instagram Login) tokens and route via graph.instagram.com.
 // v2.1.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0) via shared config.
 // v2.0.0 — Unified Send Message: WhatsApp, Instagram DM, Facebook Messenger.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { META_API_BASE } from "../_shared/meta-config.ts";
+import { META_API_BASE, IG_API_BASE, detectMetaHost } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
 
 const corsHeaders = {
