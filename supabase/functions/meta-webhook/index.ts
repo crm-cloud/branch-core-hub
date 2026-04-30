@@ -1,3 +1,8 @@
+// v4.3.0 — Instagram Login webhooks deliver DMs under entry.changes[] with
+//          field="messages" (not entry.messaging[]). Parse that shape and
+//          route through ingestMessagingEvent so inbound IG DMs reach the CRM.
+//          Also handle messaging_postbacks/seen/referral/reactions/echoes.
+//          Persist accepted ingress to webhook_ingress_log for audits.
 // v4.2.0 — Rich one-line logging per POST, persist signature failures to
 //          `webhook_failures` table with diagnostic reason for the UI.
 // v4.1.0 — Recognize `instagram_login` provider alongside `instagram` and `messenger`
