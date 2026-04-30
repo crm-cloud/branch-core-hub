@@ -1,7 +1,8 @@
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Phone } from 'lucide-react';
+import { WhatsAppRoutingSettings } from '@/components/settings/WhatsAppRoutingSettings';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
 import { BackupRestore } from '@/components/settings/BackupRestore';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
@@ -37,6 +38,7 @@ const SETTINGS_MENU = [
   { value: 'security', label: 'Security', icon: Shield },
   { value: 'tax-gst', label: 'Tax & GST', icon: IndianRupee },
   { value: 'templates', label: 'Templates Manager', icon: MessageSquare },
+  { value: 'whatsapp-routing', label: 'WhatsApp Routing', icon: Phone },
   { value: 'website', label: 'Website', icon: Globe },
 ];
 
@@ -58,6 +60,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   website: <WebsiteSettings />,
   backup: <BackupRestore />,
   howbody: <HowbodySettings />,
+  'whatsapp-routing': <WhatsAppRoutingSettings />,
 };
 
 export default function SettingsPage() {
