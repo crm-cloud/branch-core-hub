@@ -110,7 +110,7 @@ export default function TermsPage() {
               that contraindicates use of these facilities, or that you have obtained medical clearance.
             </li>
             <li>
-              To the maximum extent permitted by law, you release {`{theme.gymName}`.replace(/[{}]/g,'')} and its staff from liability for injury,
+              To the maximum extent permitted by law, you release {theme.gymName} and its staff from liability for injury,
               loss, or damage arising from your voluntary use of the facility, except where caused by gross negligence.
             </li>
           </ul>
