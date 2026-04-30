@@ -1,5 +1,6 @@
+// v1.2.0 — Instagram now auto-detects IGAA (Instagram Login) vs EAA (Facebook Login) tokens
+//          and routes to graph.instagram.com or graph.facebook.com respectively.
 // v1.1.0 — Test Connection for SMS / Email / WhatsApp / Instagram providers
-// Fixed: always return 200 with structured {ok, error} so supabase.functions.invoke doesn't throw
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
