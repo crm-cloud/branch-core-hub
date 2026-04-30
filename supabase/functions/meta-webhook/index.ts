@@ -683,20 +683,42 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
   const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
   if (!accessToken) return null;
 
+  // F4 fix: IGAA Instagram-Login tokens are NOT valid against graph.facebook.com.
+  // Detect host from token shape and fall back across both bases when ambiguous.
+  const { isInstagramLogin } = detectMetaHost(accessToken);
+  const primaryBase = isInstagramLogin ? IG_API_BASE : META_API_BASE;
+  const fallbackBase = isInstagramLogin ? META_API_BASE : IG_API_BASE;
+  // profile_pic requires extra perms on Instagram Login — request it but tolerate
+  // a partial response. Username is the most reliable field across both APIs.
+  const fields = "name,username,profile_pic_url";
+
+  async function attempt(base: string): Promise<{ ok: boolean; data: any; status: number }> {
+    const url = `${base}/${encodeURIComponent(igUserId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
+    try {
+      const resp = await metaFetchWithFallback(url);
+      const data = await resp.json().catch(() => ({}));
+      return { ok: resp.ok, data, status: resp.status };
+    } catch (e) {
+      console.warn(`[IG profile] fetch threw on ${base}:`, e instanceof Error ? e.message : e);
+      return { ok: false, data: {}, status: 0 };
+    }
+  }
+
   try {
-    const url = `${META_API_BASE}/${igUserId}?fields=name,username,profile_pic`;
-    const resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      console.warn(`[IG profile] resolve failed for ${igUserId}: ${data?.error?.message || resp.status}`);
+    let result = await attempt(primaryBase);
+    if (!result.ok) {
+      console.warn(`[IG profile] primary (${primaryBase}) failed for ${igUserId}: ${result.data?.error?.message || result.status} — trying fallback`);
+      result = await attempt(fallbackBase);
+    }
+    if (!result.ok) {
+      console.warn(`[IG profile] both bases failed for ${igUserId}: ${result.data?.error?.message || result.status}`);
       _igProfileCache.set(igUserId, { name: null, ts: Date.now() });
       return null;
     }
-    const username = data.username ? `@${data.username}` : null;
-    const display = data.name || username || null;
+    const username = result.data.username ? `@${result.data.username}` : null;
+    const display = result.data.name || username || null;
     _igProfileCache.set(igUserId, { name: display, ts: Date.now() });
+    if (display) console.log(`[IG profile] resolved ${igUserId} → ${display}`);
     return display;
   } catch (e) {
     console.warn(`[IG profile] error for ${igUserId}:`, e instanceof Error ? e.message : e);
