@@ -26,6 +26,7 @@ const InclineAscent = lazy(() => import("./pages/InclineAscent"));
 import EmbedLeadForm from "./pages/EmbedLeadForm";
 import PrivacyPolicyPage from "./pages/PrivacyPolicy";
 import TermsPage from "./pages/Terms";
+const DataDeletionPage = lazy(() => import("./pages/DataDeletion"));
 import ContractSignPage from "./pages/ContractSign";
 const MemberCheckout = lazy(() => import("./pages/MemberCheckout"));
 
@@ -125,7 +126,7 @@ function PageLoader() {
   );
 }
 
-const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/embed/lead-form", "/member/pay"];
+const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/data-deletion", "/embed/lead-form", "/member/pay"];
 
 const HowbodyLogin = lazy(() => import("./pages/HowbodyLogin"));
 const HowbodyPublicReport = lazy(() => import("./pages/HowbodyPublicReport"));
@@ -166,6 +167,7 @@ function RoutedContent() {
           <Route path="/website-v1" element={<PublicWebsiteV1 />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/data-deletion" element={<DataDeletionPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/auth/set-password" element={<SetPasswordPage />} />
