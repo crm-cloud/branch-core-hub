@@ -592,6 +592,27 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
   }
 }
 
+async function fetchInstagramMessageByMid(mid: string, integration: any): Promise<any | null> {
+  const accessToken = integration?.credentials?.access_token || integration?.credentials?.page_access_token;
+  if (!accessToken) return null;
+  const { isInstagramLogin } = detectMetaHost(accessToken);
+  const base = isInstagramLogin ? IG_API_BASE : META_API_BASE;
+  const fields = "id,message,from,to,created_time,attachments";
+  try {
+    const url = `${base}/${encodeURIComponent(mid)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(accessToken)}`;
+    const resp = await metaFetchWithFallback(url);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.warn(`[IG] fetch message failed mid=${mid}: ${data?.error?.message || resp.status}`);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.warn(`[IG] fetch message error mid=${mid}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function findIntegrationByPageId(pageId: string, integrationType: string) {
