@@ -46,8 +46,17 @@ const statusBadge = (s: string) => {
 };
 
 const normalizeStatus = (log: any): string => {
-  if (log.delivery_status) return log.delivery_status;
-  if (log.status) return log.status;
+  const status = (log.status || '').toLowerCase();
+  const delivery = (log.delivery_status || '').toLowerCase();
+  // Honour terminal statuses first — they are written by the dispatcher
+  if (status === 'failed' || status === 'bounced') return status;
+  // Honour delivery progressions (delivered/read/replied) when they exist
+  if (['delivered', 'read', 'replied'].includes(delivery)) return delivery;
+  // status='sent' wins over a stale delivery_status='scheduled'
+  if (status === 'sent') return 'sent';
+  // Otherwise fall back to whatever non-scheduled delivery info we have
+  if (delivery && delivery !== 'scheduled') return delivery;
+  if (status) return status;
   return 'pending';
 };
 
@@ -73,13 +82,17 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
     },
   });
 
+  const [livePulse, setLivePulse] = useState(0);
+
   useEffect(() => {
+    const invalidate = () => {
+      qc.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'comm-live-feed' });
+      setLivePulse((p) => p + 1);
+    };
     const ch = supabase
       .channel('comm-live-feed-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_logs' },
-        () => qc.invalidateQueries({ queryKey: ['comm-live-feed'] }))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'communication_delivery_events' },
-        () => qc.invalidateQueries({ queryKey: ['comm-live-feed'] }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_logs' }, invalidate)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'communication_delivery_events' }, invalidate)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
@@ -97,6 +110,15 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
     }
     // Sent should be cumulative of all that left the queue
     c.sent = c.sent + c.delivered + c.read + c.replied;
+    return c;
+  }, [logs]);
+
+  const channelCounts = useMemo(() => {
+    const c = { all: 0, whatsapp: 0, sms: 0, email: 0, in_app: 0 } as Record<string, number>;
+    for (const l of logs as any[]) {
+      c.all++;
+      if (l.type && c[l.type] !== undefined) c[l.type]++;
+    }
     return c;
   }, [logs]);
 
@@ -144,11 +166,21 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
               </div>
               <Tabs value={channel} onValueChange={(v) => setChannel(v as ChannelKey)}>
                 <TabsList className="rounded-xl bg-muted/50 h-9">
-                  <TabsTrigger value="all" className="rounded-lg text-xs h-7">All</TabsTrigger>
-                  <TabsTrigger value="whatsapp" className="rounded-lg text-xs h-7 gap-1"><MessageSquare className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="sms" className="rounded-lg text-xs h-7 gap-1"><Phone className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="email" className="rounded-lg text-xs h-7 gap-1"><Mail className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="in_app" className="rounded-lg text-xs h-7 gap-1"><Bell className="h-3 w-3" /></TabsTrigger>
+                  <TabsTrigger value="all" className="rounded-lg text-xs h-7 gap-1.5">
+                    All <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.all}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="whatsapp" className="rounded-lg text-xs h-7 gap-1.5">
+                    <MessageSquare className="h-3 w-3" /> WA <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.whatsapp}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="sms" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Phone className="h-3 w-3" /> SMS <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.sms}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="email" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Mail className="h-3 w-3" /> Email <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.email}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="in_app" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Bell className="h-3 w-3" /> In-App <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.in_app}</Badge>
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
