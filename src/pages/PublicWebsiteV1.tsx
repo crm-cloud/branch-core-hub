@@ -819,6 +819,62 @@ export default function PublicWebsite() {
         </div>
       </section>
 
+      {/* 3D BODY SCANNER USP */}
+      <section id="scanner" className="relative py-24 overflow-hidden noise-overlay" style={{ background: 'radial-gradient(ellipse at 70% 30%, rgba(249,115,22,0.12) 0%, transparent 60%), #0a0a0f' }}>
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <RevealSection>
+              <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium mb-6">
+                <Sparkles className="h-4 w-4" /> Industry First in Udaipur
+              </span>
+              <h2 className="text-4xl sm:text-5xl font-black text-white mb-4 leading-tight">
+                3D Body Intelligence.<br />
+                <span className="bg-gradient-to-r from-orange-400 to-red-500 bg-clip-text text-transparent">See Yourself in Real Time.</span>
+              </h2>
+              <p className="text-lg text-white/60 mb-8 leading-relaxed">
+                Step on. Stand still. Get scanned. Our HOWBODY 3D scanner captures your posture,
+                body composition, and silhouette in a true three-dimensional model — every transformation
+                tracked, every millimetre measured. Only at Incline.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-4 mb-8">
+                {[
+                  { icon: BarChart3, label: 'Body composition', desc: 'Fat, muscle, water — precise to the gram.' },
+                  { icon: Activity, label: 'Posture analysis', desc: 'Spinal alignment & imbalance detection.' },
+                  { icon: TrendingUp, label: 'Progress timeline', desc: 'Side-by-side 3D snapshots over months.' },
+                  { icon: Shield, label: 'Private & secure', desc: 'Your scans, your data — encrypted.' },
+                ].map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+                    <div className="shrink-0 p-2 rounded-xl bg-orange-500/10 text-orange-400">
+                      <f.icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-white text-sm font-semibold">{f.label}</p>
+                      <p className="text-white/50 text-xs mt-0.5">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                size="lg"
+                className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white font-bold rounded-2xl px-8"
+                onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                Book Your First Scan <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </RevealSection>
+            <RevealSection>
+              <Suspense fallback={
+                <div className="w-full h-[420px] sm:h-[520px] rounded-3xl bg-white/[0.03] border border-white/5 flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 text-orange-400 animate-spin" />
+                </div>
+              }>
+                <ScannerHero3D />
+              </Suspense>
+            </RevealSection>
+          </div>
+        </div>
+      </section>
+
       {/* GALLERY */}
       <section className="py-8 overflow-hidden">
         <div className="flex gap-4 overflow-hidden">
