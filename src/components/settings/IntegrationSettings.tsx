@@ -677,10 +677,50 @@ export function IntegrationSettings() {
                     <Webhook className="h-3.5 w-3.5" />
                     Subscribe Page & IG to Webhook Events
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={diagnosing}
+                    onClick={runMetaDiagnostics}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${diagnosing ? 'animate-spin' : ''}`} />
+                    {diagnosing ? 'Running…' : 'Run Diagnostics'}
+                  </Button>
                   <p className="text-[11px] text-muted-foreground">
                     Required after first connection. Without this, Meta won't deliver DMs to our endpoint even if the URL is configured.
                   </p>
                 </div>
+
+                {diagnostics && (
+                  <div className="mt-3 rounded-lg border border-pink-200 bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      {diagnostics.ok ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-rose-600" />
+                      )}
+                      <h5 className="text-sm font-semibold">
+                        {diagnostics.ok ? 'All checks passed' : 'Issues detected'}
+                      </h5>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {diagnostics.checks.map((c: any) => (
+                        <li key={c.id} className="flex items-start gap-2 text-xs">
+                          {c.ok ? (
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-rose-600 mt-0.5 shrink-0" />
+                          )}
+                          <div>
+                            <div className="font-medium">{c.label}</div>
+                            <div className="text-muted-foreground">{c.detail}</div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               {/* Setup Path Guide — IG Login vs FB Login */}
