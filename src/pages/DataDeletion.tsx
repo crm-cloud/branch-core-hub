@@ -130,6 +130,5 @@ export default function DataDeletion() {
           </CardContent>
         </Card>
       </main>
-    </>
   );
 }
