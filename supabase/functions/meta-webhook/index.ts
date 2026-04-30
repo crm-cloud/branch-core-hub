@@ -1,3 +1,5 @@
+// v4.1.0 — Recognize `instagram_login` provider alongside `instagram` and `messenger`
+//          for page-id detection, integration lookup, and app_secret resolution.
 // v4.0.0 — Phase F: pinned to META_GRAPH_VERSION (v25.0), HMAC signature
 //                   verification, IG comments + mentions + story replies,
 //                   Instagram sender profile resolution.
