@@ -158,18 +158,66 @@ serve(async (req: Request) => {
       .select("id", { count: "exact", head: true })
       .eq("source", "meta-webhook")
       .gte("created_at", since);
+    const { data: recentIngress } = await supabase
+      .from("webhook_ingress_log")
+      .select("object_type, fields, messaging_count, signature_verified, sample, created_at")
+      .eq("source", "meta-webhook")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const { data: recentProcessing } = await supabase
+      .from("webhook_processing_log")
+      .select("event_kind, status, reason, meta_error_message, platform_message_id, created_at")
+      .eq("source", "meta-webhook")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const ingressCount = recentIngress?.length || 0;
+    const droppedCount = (recentProcessing || []).filter(
+      (r: any) => r.status === "dropped" || r.status === "resolve_failed"
+    ).length;
+    const placeholderCount = (recentProcessing || []).filter((r: any) => r.status === "placeholder_stored").length;
+    const storedCount = (recentProcessing || []).filter((r: any) => r.status === "stored").length;
 
     checks.push({
       id: "recent_traffic",
       label: "Webhook traffic in the last 24h",
-      ok: (msgCount || 0) > 0,
+      ok: (msgCount || 0) > 0 && droppedCount === 0,
       detail:
-        (msgCount || 0) > 0
-          ? `${msgCount} Instagram message(s) received. ${failCount || 0} failure(s).`
+        (msgCount || 0) > 0 && droppedCount === 0
+          ? `${msgCount} Instagram message(s) stored. ${ingressCount} webhook delivery(ies). ${failCount || 0} signature failure(s).`
           : (failCount || 0) > 0
           ? `0 messages but ${failCount} failures recorded — likely WRONG APP SECRET. Use the ${expectedSecret}.`
-          : "0 messages and 0 failures — Meta has not delivered ANY webhook. Most common cause: your personal IG account is not added as an Instagram Tester in Meta App Roles (required while app is in Dev mode).",
+          : ingressCount > 0
+          ? `Meta IS delivering (${ingressCount} payload(s) accepted). But processing summary: stored=${storedCount}, placeholder=${placeholderCount}, dropped=${droppedCount}. Check 'meta_error_message' in webhook_processing_log for the exact reason.`
+          : "0 messages and 0 deliveries — Meta has not delivered ANY webhook. Most common cause: your personal IG account is not added as an Instagram Tester in Meta App Roles (required while app is in Dev mode), or 'Include Values' is OFF in the webhook subscription configuration.",
     });
+
+    if (recentIngress && recentIngress.length > 0) {
+      const last = recentIngress[0] as any;
+      const lastEvent = last?.sample?.messaging?.[0] || last?.sample?.changes?.[0] || null;
+      const eventKind = lastEvent?.message ? "message" :
+                        lastEvent?.message_edit ? "message_edit (no text)" :
+                        lastEvent?.field ? `changes:${lastEvent.field}` :
+                        "unknown";
+      checks.push({
+        id: "last_payload_shape",
+        label: "Most recent Meta payload shape",
+        ok: true,
+        detail: `${eventKind} at ${last.created_at} (signature_verified=${last.signature_verified}). Fields=${(last.fields || []).join(",") || "-"}, messaging_count=${last.messaging_count}.`,
+      });
+    }
+
+    if (recentProcessing && recentProcessing.length > 0) {
+      const last = recentProcessing[0] as any;
+      checks.push({
+        id: "last_processing_result",
+        label: "Most recent processing result",
+        ok: last.status === "stored" || last.status === "deduped",
+        detail: `${last.event_kind} → ${last.status}${last.reason ? " (" + last.reason + ")" : ""}${last.meta_error_message ? " · Meta: " + last.meta_error_message : ""} at ${last.created_at}`,
+      });
+    }
 
     const allOk = checks.every((c) => c.ok);
     return json({ ok: allOk, checks });
