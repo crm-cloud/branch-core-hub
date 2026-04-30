@@ -166,11 +166,21 @@ export function LiveFeed({ branchId }: { branchId?: string }) {
               </div>
               <Tabs value={channel} onValueChange={(v) => setChannel(v as ChannelKey)}>
                 <TabsList className="rounded-xl bg-muted/50 h-9">
-                  <TabsTrigger value="all" className="rounded-lg text-xs h-7">All</TabsTrigger>
-                  <TabsTrigger value="whatsapp" className="rounded-lg text-xs h-7 gap-1"><MessageSquare className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="sms" className="rounded-lg text-xs h-7 gap-1"><Phone className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="email" className="rounded-lg text-xs h-7 gap-1"><Mail className="h-3 w-3" /></TabsTrigger>
-                  <TabsTrigger value="in_app" className="rounded-lg text-xs h-7 gap-1"><Bell className="h-3 w-3" /></TabsTrigger>
+                  <TabsTrigger value="all" className="rounded-lg text-xs h-7 gap-1.5">
+                    All <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.all}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="whatsapp" className="rounded-lg text-xs h-7 gap-1.5">
+                    <MessageSquare className="h-3 w-3" /> WA <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.whatsapp}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="sms" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Phone className="h-3 w-3" /> SMS <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.sms}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="email" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Mail className="h-3 w-3" /> Email <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.email}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="in_app" className="rounded-lg text-xs h-7 gap-1.5">
+                    <Bell className="h-3 w-3" /> In-App <Badge variant="secondary" className="rounded-full px-1.5 h-4 text-[10px] tabular-nums">{channelCounts.in_app}</Badge>
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
