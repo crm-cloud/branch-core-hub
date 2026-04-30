@@ -45,7 +45,7 @@ async function getActiveIgPageIds(): Promise<Set<string>> {
   const { data } = await supabase
     .from("integration_settings")
     .select("config")
-    .eq("integration_type", "instagram")
+    .in("integration_type", ["instagram", "instagram_login"])
     .eq("is_active", true);
   const set = new Set<string>();
   for (const row of data || []) {
