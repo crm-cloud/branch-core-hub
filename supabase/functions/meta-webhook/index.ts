@@ -471,17 +471,22 @@ async function resolveInstagramSenderName(igUserId: string, integration: any): P
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function findIntegrationByPageId(pageId: string, integrationType: string) {
+  // For Instagram, check both `instagram` (FB Page flow) and `instagram_login` providers.
+  const types = integrationType === "instagram"
+    ? ["instagram_login", "instagram"]
+    : [integrationType];
   const { data } = await supabase
     .from("integration_settings")
-    .select("id, branch_id, config, credentials")
-    .eq("integration_type", integrationType)
+    .select("id, branch_id, config, credentials, integration_type")
+    .in("integration_type", types)
     .eq("is_active", true)
-    .limit(20);
+    .limit(50);
   if (!data) return null;
-  return data.find((i: any) =>
+  const exact = data.find((i: any) =>
     String(i.config?.page_id) === pageId ||
     String(i.config?.instagram_account_id) === pageId
-  ) || data[0] || null;
+  );
+  return exact || data[0] || null;
 }
 
 let _fallbackBranchId: string | null = null;
