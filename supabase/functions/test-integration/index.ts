@@ -1,7 +1,9 @@
+// v1.3.0 — Phase G: pinned to shared META_API_BASE / IG_API_BASE (v25.0) with IG fallback.
 // v1.2.0 — Instagram now auto-detects IGAA (Instagram Login) vs EAA (Facebook Login) tokens
 //          and routes to graph.instagram.com or graph.facebook.com respectively.
 // v1.1.0 — Test Connection for SMS / Email / WhatsApp / Instagram providers
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { META_API_BASE, IG_API_BASE, IG_FALLBACK_VERSION, IG_GRAPH_VERSION, metaFetchWithFallback } from "../_shared/meta-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -233,7 +235,7 @@ async function testWhatsApp(provider: string, config: any, credentials: any) {
       }
 
       const result = await fetchMetaGraph(
-        `https://graph.facebook.com/v25.0/${config.business_account_id}/message_templates?limit=1`,
+        `${META_API_BASE}/${config.business_account_id}/message_templates?limit=1`,
         credentials.access_token,
         credentials.app_secret,
       );
@@ -305,8 +307,8 @@ async function testInstagram(config: any, credentials: any) {
     // ── Instagram Login flow (graph.instagram.com) ──
     // App Secret proof is NOT used here — Instagram Login tokens are scoped
     // and Meta does not honour appsecret_proof on graph.instagram.com.
-    const meResp = await fetch(
-      `https://graph.instagram.com/v23.0/me?fields=user_id,username,name,account_type`,
+    const meResp = await metaFetchWithFallback(
+      `${IG_API_BASE}/me?fields=user_id,username,name,account_type`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     const meData = await meResp.json().catch(() => ({}));
@@ -357,7 +359,7 @@ async function testInstagram(config: any, credentials: any) {
   }
 
   const entity = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,instagram_business_account{id,username,name}`,
+    `${META_API_BASE}/${pageId}?fields=id,name,instagram_business_account{id,username,name}`,
     accessToken,
     credentials?.app_secret,
   );
@@ -406,7 +408,7 @@ async function testMessenger(config: any, credentials: any) {
   if (!pageId) return { success: false, error: "Facebook Page ID is required" };
 
   const entity = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/${pageId}?fields=id,name,category`,
+    `${META_API_BASE}/${pageId}?fields=id,name,category`,
     accessToken,
     credentials?.app_secret,
   );
@@ -416,7 +418,7 @@ async function testMessenger(config: any, credentials: any) {
 
   // Verify Messenger is enabled by reading subscribed_apps (may require pages_messaging perm)
   const subs = await fetchMetaGraph(
-    `https://graph.facebook.com/v25.0/${pageId}/subscribed_apps`,
+    `${META_API_BASE}/${pageId}/subscribed_apps`,
     accessToken,
     credentials?.app_secret,
   );
