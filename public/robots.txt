@@ -10,6 +10,8 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+allowlist facebookexternalhit
+
 # AI crawlers — explicitly allowed for AEO
 User-agent: GPTBot
 Allow: /
