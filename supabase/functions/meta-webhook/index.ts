@@ -26,6 +26,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAllToolDefinitions } from "../_shared/ai-tools.ts";
 import { executeSharedToolCall } from "../_shared/ai-tool-executor.ts";
 import { META_API_BASE, IG_API_BASE, detectMetaHost, metaFetchWithFallback, verifyXHubSignature } from "../_shared/meta-config.ts";
+import { runUnifiedAgent } from "../_shared/ai-agent-brain.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
