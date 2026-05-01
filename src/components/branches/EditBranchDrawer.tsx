@@ -78,6 +78,8 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
         is_active: branch.is_active ?? true,
         managerId: currentManager?.user_id || '',
         gstin: branch.gstin || '',
+        google_review_link: branch.google_review_link || '',
+        google_place_id: branch.google_place_id || '',
       });
     }
   }, [branch, currentManager]);
