@@ -1,5 +1,5 @@
 // Shared AI tool executor — used by whatsapp-webhook + meta-webhook
-// v1.0.0 — Supports 25+ self-service tools across membership, payments, bookings, loyalty
+// v1.1.0 — added classes booking, renewal, addon intent, branch services, request status
 import type { MemberContext } from "./ai-tools.ts";
 
 type SB = any; // SupabaseClient (kept loose to avoid duplicate imports)
@@ -397,6 +397,247 @@ export async function executeSharedToolCall(
           .lt("scheduled_at", `${date}T23:59:59`)
           .order("scheduled_at", { ascending: true }).limit(20);
         return { date, classes: data || [] };
+      }
+
+      // ─── Group Class Bookings ─────────────────────────────
+      case "book_class": {
+        if (!ctx.memberId) return { error: "Not a registered member." };
+        if (!args.class_id) return { error: "class_id required." };
+        // Capacity check via existing booked count
+        const { data: cls } = await supabase
+          .from("classes")
+          .select("id, name, capacity, scheduled_at, branch_id")
+          .eq("id", args.class_id)
+          .maybeSingle();
+        if (!cls) return { error: "Class not found." };
+        if (cls.branch_id !== branchId) return { error: "Class is at a different branch." };
+        const { count: booked } = await supabase
+          .from("class_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("class_id", args.class_id)
+          .in("status", ["booked", "confirmed", "attended"]);
+        if ((booked || 0) >= (cls.capacity || 0)) {
+          return { error: "Class is full." };
+        }
+        // Prevent duplicate booking
+        const { data: existing } = await supabase
+          .from("class_bookings")
+          .select("id")
+          .eq("class_id", args.class_id)
+          .eq("member_id", ctx.memberId)
+          .in("status", ["booked", "confirmed"])
+          .maybeSingle();
+        if (existing) return { error: "You're already booked for this class.", booking_id: existing.id };
+        const { data: booking, error } = await supabase
+          .from("class_bookings")
+          .insert({ class_id: args.class_id, member_id: ctx.memberId, status: "booked" })
+          .select("id")
+          .single();
+        if (error) return { error: "Booking failed." };
+        return { success: true, booking_id: booking.id, message: `Booked into ${cls.name}. ✅` };
+      }
+
+      case "cancel_class_booking": {
+        if (!args.booking_id) return { error: "booking_id required." };
+        const { error } = await supabase
+          .from("class_bookings")
+          .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancellation_reason: `Cancelled via ${platform}` })
+          .eq("id", args.booking_id)
+          .eq("member_id", ctx.memberId)
+          .in("status", ["booked", "confirmed"]);
+        if (error) return { error: "Cancel failed." };
+        return { success: true, message: "Class booking cancelled." };
+      }
+
+      // ─── Renewal & Add-On Intents ─────────────────────────
+      // Never charges directly — generates an invoice + Razorpay link.
+      case "initiate_membership_renewal": {
+        if (!ctx.memberId || !ctx.membershipId) {
+          return { error: "No active membership to renew." };
+        }
+        // Resolve plan: explicit arg or current membership's plan
+        let planId = args.plan_id || null;
+        if (!planId) {
+          const { data: ms } = await supabase
+            .from("memberships")
+            .select("plan_id")
+            .eq("id", ctx.membershipId)
+            .maybeSingle();
+          planId = (ms as any)?.plan_id || null;
+        }
+        if (!planId) return { error: "Could not determine plan to renew." };
+        const { data: plan } = await supabase
+          .from("plans")
+          .select("id, name, price, duration_days")
+          .eq("id", planId)
+          .maybeSingle();
+        if (!plan) return { error: "Plan not found." };
+
+        // Create a pending renewal invoice
+        const { data: inv, error: invErr } = await supabase
+          .from("invoices")
+          .insert({
+            branch_id: branchId,
+            member_id: ctx.memberId,
+            total_amount: plan.price,
+            amount_paid: 0,
+            status: "pending",
+            invoice_type: "membership_renewal",
+            notes: `Renewal for ${plan.name} (via ${platform} bot)`,
+          })
+          .select("id, invoice_number, total_amount")
+          .single();
+        if (invErr || !inv) return { error: "Failed to create renewal invoice." };
+
+        // Try to attach a Razorpay payment link
+        try {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/create-razorpay-link`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+            body: JSON.stringify({ invoice_id: inv.id, branch_id: branchId }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data?.short_url) {
+            return {
+              success: true,
+              invoice_id: inv.id,
+              invoice_number: inv.invoice_number,
+              amount: `₹${plan.price}`,
+              plan: plan.name,
+              payment_link: data.short_url,
+              message: `Renewal invoice for ${plan.name} (₹${plan.price}) ready. Pay securely: ${data.short_url}`,
+            };
+          }
+        } catch (_) { /* fall through */ }
+        return {
+          success: true,
+          invoice_id: inv.id,
+          invoice_number: inv.invoice_number,
+          amount: `₹${plan.price}`,
+          plan: plan.name,
+          message: `Renewal invoice ${inv.invoice_number} created for ₹${plan.price}. Staff will share a payment link shortly.`,
+        };
+      }
+
+      case "purchase_addon_intent": {
+        if (!ctx.memberId) return { error: "Not a registered member." };
+        if (!args.package_id || !args.kind) return { error: "package_id and kind required." };
+        const kind = String(args.kind).toLowerCase();
+        const tableName = kind === "pt" ? "pt_packages" : "benefit_packages";
+        const { data: pkg } = await supabase
+          .from(tableName)
+          .select("id, name, price")
+          .eq("id", args.package_id)
+          .maybeSingle();
+        if (!pkg) return { error: "Package not found." };
+        const checkoutUrl = `https://incline.lovable.app/member-dashboard?addon=${pkg.id}&kind=${kind}`;
+        return {
+          success: true,
+          package: pkg.name,
+          amount: `₹${pkg.price}`,
+          checkout_link: checkoutUrl,
+          message: `${pkg.name} (₹${pkg.price}) — open the app to confirm: ${checkoutUrl}`,
+        };
+      }
+
+      case "list_branch_services": {
+        const today = new Date().toISOString().split("T")[0];
+        const [facilitiesRes, classesRes, benefitsRes, ptRes] = await Promise.all([
+          supabase
+            .from("facilities")
+            .select("id, name, description, capacity")
+            .eq("branch_id", branchId)
+            .eq("is_active", true)
+            .eq("under_maintenance", false)
+            .limit(15),
+          supabase
+            .from("classes")
+            .select("id, name, scheduled_at, capacity")
+            .eq("branch_id", branchId)
+            .eq("is_active", true)
+            .gte("scheduled_at", `${today}T00:00:00`)
+            .lt("scheduled_at", `${today}T23:59:59`)
+            .order("scheduled_at", { ascending: true })
+            .limit(10),
+          supabase
+            .from("benefit_packages")
+            .select("id, name, benefit_type, quantity, price, validity_days")
+            .eq("is_active", true)
+            .or(`branch_id.eq.${branchId},branch_id.is.null`)
+            .order("display_order", { ascending: true })
+            .limit(10),
+          supabase
+            .from("pt_packages")
+            .select("id, name, total_sessions, price, validity_days")
+            .eq("is_active", true)
+            .or(`branch_id.eq.${branchId},branch_id.is.null`)
+            .order("price", { ascending: true })
+            .limit(8),
+        ]);
+        return {
+          facilities: facilitiesRes.data || [],
+          classes_today: classesRes.data || [],
+          benefit_addons: benefitsRes.data || [],
+          pt_packages: ptRes.data || [],
+        };
+      }
+
+      // ─── Request Status & Escalation ──────────────────────
+      case "escalate_request": {
+        if (!ctx.memberId) return { error: "Not a registered member." };
+        if (!args.reason) return { error: "reason required." };
+        const { data, error } = await supabase
+          .from("approval_requests")
+          .insert({
+            branch_id: branchId,
+            approval_type: "manual_escalation",
+            reference_type: "member",
+            reference_id: ctx.memberId,
+            status: "pending",
+            request_data: {
+              member_id: ctx.memberId,
+              category: args.category || "general",
+              reason: args.reason,
+              channel: platform,
+            },
+          })
+          .select("id")
+          .single();
+        if (error) return { error: "Failed to escalate." };
+        // Also flip bot off so a human can take over.
+        await supabase
+          .from("whatsapp_chat_settings")
+          .upsert(
+            { branch_id: branchId, phone_number: phoneNumber, bot_active: false },
+            { onConflict: "branch_id,phone_number" },
+          );
+        return {
+          success: true,
+          request_id: data.id,
+          message: "Flagged for staff review — a team member will be in touch shortly. 🙋",
+        };
+      }
+
+      case "get_request_status": {
+        if (!ctx.memberId) return { error: "Not a registered member." };
+        const { data } = await supabase
+          .from("approval_requests")
+          .select("id, approval_type, status, created_at, reviewed_at, review_notes")
+          .or(`reference_id.eq.${ctx.memberId},request_data->>member_id.eq.${ctx.memberId}`)
+          .eq("branch_id", branchId)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        return {
+          count: (data || []).length,
+          requests: (data || []).map((r: any) => ({
+            request_id: r.id,
+            type: r.approval_type,
+            status: r.status,
+            submitted: r.created_at,
+            reviewed: r.reviewed_at,
+            notes: r.review_notes,
+          })),
+        };
       }
 
       default:
