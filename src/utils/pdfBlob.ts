@@ -354,15 +354,22 @@ export interface PlanPdfInput {
   validUntil?: string | null;
   data: any;
   member_name?: string | null;
+  member_code?: string | null;
+  trainer_name?: string | null;
+  goal?: string | null;
+  notes?: string | null;
   branch_name?: string | null;
 }
 
-export function buildPlanPdf(input: PlanPdfInput): Blob {
+export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const title = input.type === 'workout' ? 'WORKOUT PLAN' : 'DIET PLAN';
-  header(doc, title, input.branch_name || undefined);
+  const resolvedBrand: BrandContext = brand || fallbackBrand(input.branch_name || undefined);
+  header(doc, title, resolvedBrand, {
+    issueDate: new Date().toLocaleDateString('en-IN'),
+  });
 
-  let y = 40;
+  let y = 58;
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   setColor(doc, BRAND.text);
@@ -371,7 +378,11 @@ export function buildPlanPdf(input: PlanPdfInput): Blob {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   setColor(doc, BRAND.muted);
-  if (input.member_name) { doc.text(`Prepared for: ${input.member_name}`, 14, y); y += 5; }
+  const headerLines: string[] = [];
+  if (input.member_name) headerLines.push(`Member: ${input.member_name}${input.member_code ? ` (${input.member_code})` : ''}`);
+  if (input.trainer_name) headerLines.push(`Trainer: ${input.trainer_name}`);
+  if (input.goal) headerLines.push(`Goal: ${input.goal}`);
+  headerLines.forEach(line => { doc.text(line, 14, y); y += 4; });
   if (input.description) {
     const lines = doc.splitTextToSize(input.description, 180);
     doc.text(lines, 14, y);
