@@ -289,15 +289,19 @@ export interface PaymentReceiptInput {
   invoice_paid?: number | null;
 }
 
-export function buildPaymentReceiptPdf(data: PaymentReceiptInput): Blob {
+export function buildPaymentReceiptPdf(data: PaymentReceiptInput, brand?: BrandContext): Blob {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  header(doc, 'PAYMENT RECEIPT', data.branch_name);
+  const resolvedBrand: BrandContext = brand || {
+    ...DEFAULT_BRAND,
+    branch: { name: data.branch_name, address: data.branch_address ?? null },
+  };
+  header(doc, 'PAYMENT RECEIPT', resolvedBrand, {
+    docNumber: data.receipt_number,
+    issueDate: new Date(data.payment_date).toLocaleString('en-IN'),
+  });
 
-  let y = 40;
-  doc.setFontSize(10);
+  let y = 56;
   setColor(doc, BRAND.muted);
-  doc.text(`Receipt #: ${data.receipt_number}`, 14, y);
-  doc.text(`Date: ${new Date(data.payment_date).toLocaleString('en-IN')}`, 196, y, { align: 'right' });
 
   y += 12;
   doc.setFillColor(240, 253, 244);
@@ -336,7 +340,7 @@ export function buildPaymentReceiptPdf(data: PaymentReceiptInput): Blob {
     margin: { left: 14, right: 14 },
   });
 
-  footer(doc);
+  footer(doc, resolvedBrand);
   return doc.output('blob');
 }
 
