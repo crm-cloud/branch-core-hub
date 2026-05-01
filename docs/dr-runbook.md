@@ -172,3 +172,31 @@ Performer signs off in `dr_drill_log.notes`. Failback (§7) is part of the same 
 - Logical replication / CDC to B.
 - Cloudflare WAF write blocking against `*.supabase.co` (writes are blocked via the in-database `dr_block_writes` trigger instead).
 - Edge-function-driven `pg_dump` (the legacy `backup-export` JSON exporter remains for ad-hoc developer exports only — it is **not** the DR source of truth).
+
+---
+
+## 10. Operational sign-off
+
+DR is **not operational** until every box on the in-app checklist
+(`/dr-readiness`, table `public.dr_readiness_checklist`) is ticked with
+evidence. The function `public.dr_is_operational()` returns `true` only
+when all 10 rows are `completed = true`. The frontend uses this to flip
+the DR Readiness badge from amber ("Not Yet Operational") to green
+("DR Operational").
+
+The 10 steps mirror the operational checklist exactly:
+
+1. Provision Supabase Project B
+2. Apply all migrations to Project B
+3. Add GitHub Actions secrets
+4. Run manual backup from primary
+5. Restore into Project B
+6. Run verify.sh and smoke-login.sh
+7. Confirm PITR enabled (or accept 24h RPO)
+8. Test dr_mode=true on critical write paths
+9. Confirm app-config.json switch works
+10. Complete one quarterly DR drill (record drill_log id as evidence)
+
+Do not declare DR operational, do not announce it to staff, and do not
+rely on the standby for incident response until the in-app checklist
+shows the green "DR Operational" badge.

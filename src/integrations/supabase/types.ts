@@ -2820,6 +2820,39 @@ export type Database = {
         }
         Relationships: []
       }
+      dr_readiness_checklist: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          completed_by: string | null
+          description: string | null
+          evidence: string | null
+          label: string
+          step_no: number
+          updated_at: string
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          description?: string | null
+          evidence?: string | null
+          label: string
+          step_no: number
+          updated_at?: string
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+          description?: string | null
+          evidence?: string | null
+          label?: string
+          step_no?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ecommerce_orders: {
         Row: {
           branch_id: string
@@ -10364,6 +10397,7 @@ export type Database = {
         }
         Returns: Json
       }
+      dr_is_operational: { Args: never; Returns: boolean }
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined

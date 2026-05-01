@@ -110,6 +110,7 @@ const DeviceManagement = lazy(() => import("./pages/DeviceManagement"));
 const ApprovalQueue = lazy(() => import("./pages/ApprovalQueue"));
 const DiscountCouponsPage = lazy(() => import("./pages/DiscountCoupons"));
 const SystemHealthPage = lazy(() => import("./pages/SystemHealth"));
+const DRReadinessPage = lazy(() => import("./pages/DRReadiness"));
 
 // Profile
 const ProfilePage = lazy(() => import("./pages/Profile"));
@@ -279,6 +280,7 @@ function RoutedContent() {
           {/* Admin user/role management */}
           <Route path="/admin-roles" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><AdminRoles /></ProtectedRoute>} />
           <Route path="/system-health" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><SystemHealthPage /></ProtectedRoute>} />
+          <Route path="/dr-readiness" element={<ProtectedRoute requiredRoles={['owner', 'admin']}><DRReadinessPage /></ProtectedRoute>} />
 
           {/* Redirects for old routes */}
           <Route path="/admin/users" element={<Navigate to="/settings?tab=users" replace />} />
