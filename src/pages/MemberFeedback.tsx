@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Star, MessageSquare, Send, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Star, MessageSquare, Send, CheckCircle, Clock, AlertCircle, Globe, HeartHandshake } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
@@ -32,6 +33,22 @@ export default function MemberFeedback() {
   const [hoverRating, setHoverRating] = useState(0);
   const [category, setCategory] = useState('general');
   const [feedbackText, setFeedbackText] = useState('');
+  const [consentTestimonial, setConsentTestimonial] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState<{ id: string; rating: number } | null>(null);
+
+  // Branch Google review link (for the post-submit CTA)
+  const { data: branchInfo } = useQuery({
+    queryKey: ['branch-google-link', member?.branch_id],
+    enabled: !!member?.branch_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('branches')
+        .select('name, google_review_link')
+        .eq('id', member!.branch_id)
+        .maybeSingle();
+      return data;
+    },
+  });
 
   // Fetch member's previous feedback
   const { data: myFeedback = [], isLoading: feedbackLoading } = useQuery({
@@ -53,8 +70,8 @@ export default function MemberFeedback() {
   const submitFeedback = useMutation({
     mutationFn: async () => {
       if (!member) throw new Error('Member not found');
-      
-      const { error } = await supabase
+
+      const { data, error } = await supabase
         .from('feedback')
         .insert({
           member_id: member.id,
@@ -63,16 +80,31 @@ export default function MemberFeedback() {
           category,
           feedback_text: feedbackText || null,
           status: 'pending',
-        });
-      
+          consent_for_testimonial: consentTestimonial,
+          consent_for_testimonial_at: consentTestimonial ? new Date().toISOString() : null,
+        })
+        .select('id, rating')
+        .single();
+
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('Thank you for your feedback!');
+      setLastSubmission({ id: data!.id, rating: data!.rating });
       setRating(5);
       setCategory('general');
       setFeedbackText('');
+      setConsentTestimonial(false);
       queryClient.invalidateQueries({ queryKey: ['my-feedback'] });
+
+      // Fire-and-forget: server-side request for ratings >= 4 so a Google
+      // review ask goes out via the member's preferred channel too.
+      if (data && data.rating >= 4) {
+        supabase.functions.invoke('request-google-review', {
+          body: { feedback_id: data.id },
+        }).catch(() => { /* silent — UI CTA still available */ });
+      }
     },
     onError: (error) => {
       console.error('Error submitting feedback:', error);
@@ -213,6 +245,20 @@ export default function MemberFeedback() {
                   />
                 </div>
 
+                {/* Testimonial consent */}
+                <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
+                  <Checkbox
+                    id="consent-testimonial"
+                    checked={consentTestimonial}
+                    onCheckedChange={(v) => setConsentTestimonial(Boolean(v))}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="consent-testimonial" className="text-sm leading-snug font-normal cursor-pointer">
+                    I agree my feedback can be used as a public testimonial (with my first name only).
+                    You can withdraw consent anytime by contacting the front desk.
+                  </Label>
+                </div>
+
                 <Button 
                   type="submit" 
                   className="w-full"
@@ -231,6 +277,41 @@ export default function MemberFeedback() {
                   )}
                 </Button>
               </form>
+
+              {lastSubmission && lastSubmission.rating >= 4 && branchInfo?.google_review_link && (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Globe className="h-5 w-5 text-emerald-700 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-emerald-900">Loved it? Help others find us</p>
+                      <p className="text-sm text-emerald-800/80 mt-0.5">
+                        A quick Google review takes 30 seconds and means the world to {branchInfo.name}.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-3 bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => window.open(branchInfo.google_review_link!, '_blank', 'noopener')}
+                      >
+                        Leave a Google review
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {lastSubmission && lastSubmission.rating <= 3 && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <HeartHandshake className="h-5 w-5 text-amber-700 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-900">Thank you — we hear you</p>
+                      <p className="text-sm text-amber-800/80 mt-0.5">
+                        A manager will reach out shortly to make this right.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

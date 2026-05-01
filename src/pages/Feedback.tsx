@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,25 +7,40 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { Switch } from '@/components/ui/switch';
-import { Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download } from 'lucide-react';
+import {
+  Star, MessageSquare, CheckCircle, Clock, Eye, Globe, Download,
+  Send, AlertTriangle, MailQuestion, ThumbsUp, Reply,
+} from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
+
+type RequestStatus = 'not_sent' | 'queued' | 'sent' | 'delivered' | 'failed';
+
+const REQUEST_STATUS_BADGE: Record<RequestStatus, { label: string; cls: string }> = {
+  not_sent: { label: 'Not sent', cls: 'bg-slate-100 text-slate-600' },
+  queued:   { label: 'Queued',   cls: 'bg-amber-100 text-amber-700' },
+  sent:     { label: 'Sent',     cls: 'bg-blue-100 text-blue-700' },
+  delivered:{ label: 'Delivered',cls: 'bg-emerald-100 text-emerald-700' },
+  failed:   { label: 'Failed',   cls: 'bg-red-100 text-red-700' },
+};
 
 export default function FeedbackPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [ratingFilter, setRatingFilter] = useState<string>('all');
+  const [requestFilter, setRequestFilter] = useState<string>('all'); // all | sent | not_sent
+  const [reviewFilter, setReviewFilter] = useState<string>('all');   // all | received | none
+  const [unresolvedLow, setUnresolvedLow] = useState<boolean>(false);
   const queryClient = useQueryClient();
   const { effectiveBranchId: branchId = '' } = useBranchContext();
 
   const { data: feedbackList = [], isLoading } = useQuery({
-    queryKey: ['feedback', branchId, statusFilter],
+    queryKey: ['feedback', branchId, statusFilter, ratingFilter, requestFilter, reviewFilter, unresolvedLow],
     queryFn: async () => {
       if (!branchId) return [];
-      
-      // First get feedback with basic relations
       let query = supabase
         .from('feedback')
         .select(`
@@ -37,33 +52,35 @@ export default function FeedbackPage() {
         .eq('branch_id', branchId)
         .order('created_at', { ascending: false });
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+      if (ratingFilter !== 'all') query = query.eq('rating', Number(ratingFilter));
+      if (requestFilter === 'sent') query = query.in('google_review_request_status', ['sent', 'delivered']);
+      if (requestFilter === 'not_sent') query = query.in('google_review_request_status', ['not_sent', 'queued', 'failed']);
+      if (reviewFilter === 'received') query = query.not('google_review_id', 'is', null);
+      if (reviewFilter === 'none') query = query.is('google_review_id', null);
+      if (unresolvedLow) query = query.lte('rating', 3).neq('status', 'resolved');
 
       const { data, error } = await query;
       if (error) throw error;
-      
-      // Get all unique user_ids and fetch profiles
+
       const userIds = new Set<string>();
       (data || []).forEach((f: any) => {
         if (f.members?.user_id) userIds.add(f.members.user_id);
         if (f.employees?.user_id) userIds.add(f.employees.user_id);
         if (f.trainers?.user_id) userIds.add(f.trainers.user_id);
       });
-      
+
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name')
         .in('id', Array.from(userIds));
-      
+
       const profileMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
-      
-      // Enrich feedback with profile names
+
       return (data || []).map((f: any) => ({
         ...f,
-        member_name: f.members?.user_id ? profileMap.get(f.members.user_id) : null,
-        trainer_name: f.trainers?.user_id ? profileMap.get(f.trainers.user_id) : null,
+        member_name:   f.members?.user_id   ? profileMap.get(f.members.user_id)   : null,
+        trainer_name:  f.trainers?.user_id  ? profileMap.get(f.trainers.user_id)  : null,
         employee_name: f.employees?.user_id ? profileMap.get(f.employees.user_id) : null,
       }));
     },
@@ -71,78 +88,68 @@ export default function FeedbackPage() {
   });
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status, notes, isApprovedForGoogle }: { id: string; status?: string; notes?: string; isApprovedForGoogle?: boolean }) => {
+    mutationFn: async ({ id, status, isApprovedForGoogle }: { id: string; status?: string; isApprovedForGoogle?: boolean }) => {
       const updates: any = {};
       if (status !== undefined) updates.status = status;
-      if (notes !== undefined) updates.admin_notes = notes;
       if (isApprovedForGoogle !== undefined) updates.is_approved_for_google = isApprovedForGoogle;
-      
-      const { error } = await supabase
-        .from('feedback')
-        .update(updates)
-        .eq('id', id);
+      const { error } = await supabase.from('feedback').update(updates).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success('Feedback updated');
       queryClient.invalidateQueries({ queryKey: ['feedback'] });
     },
-    onError: () => {
-      toast.error('Failed to update feedback');
-    },
+    onError: () => toast.error('Failed to update feedback'),
   });
 
-  // Mock function to prepare review data for Google Business Profile API
-  const syncToGoogleMyBusiness = async (reviewId: string, feedback: any) => {
-    const reviewData = {
-      reviewId,
-      starRating: feedback.rating,
-      comment: feedback.feedback_text,
-      reviewerName: feedback.member_name || 'Anonymous',
-      createTime: feedback.created_at,
-      // Google Business Profile API endpoint would be:
-      // POST https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews/{reviewId}/reply
-    };
-    
-    console.log('Prepared for Google Business sync:', reviewData);
-    toast.success('Review prepared for Google Business sync');
-    
-    // Update the database to mark as published
-    await supabase
-      .from('feedback')
-      .update({ published_to_google_at: new Date().toISOString() })
-      .eq('id', reviewId);
-    
-    queryClient.invalidateQueries({ queryKey: ['feedback'] });
-    return reviewData;
-  };
+  const requestReview = useMutation({
+    mutationFn: async (feedbackId: string) => {
+      const { data, error } = await supabase.functions.invoke('request-google-review', {
+        body: { feedback_id: feedbackId },
+      });
+      if (error) throw error;
+      if (!(data as any)?.ok) throw new Error((data as any)?.error || 'Request failed');
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Google review request sent');
+      queryClient.invalidateQueries({ queryKey: ['feedback'] });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to send review request'),
+  });
 
-  const stats = {
-    total: feedbackList.length,
-    avgRating: feedbackList.length
-      ? (feedbackList.reduce((sum: number, f: any) => sum + (f.rating || 0), 0) / feedbackList.length).toFixed(1)
-      : '0',
-    pending: feedbackList.filter((f: any) => f.status === 'pending').length,
-    resolved: feedbackList.filter((f: any) => f.status === 'resolved').length,
-  };
+  // Dashboard stats — last 30d window for "trend" cards, all-time for cases
+  const stats = useMemo(() => {
+    const cutoff = subDays(new Date(), 30).getTime();
+    const recent = feedbackList.filter((f: any) => new Date(f.created_at).getTime() >= cutoff);
 
-  const getRatingColor = (rating: number) => {
-    if (rating >= 4) return 'text-green-500';
-    if (rating >= 3) return 'text-yellow-500';
-    return 'text-red-500';
-  };
+    const avgRating = recent.length
+      ? (recent.reduce((s: number, f: any) => s + (f.rating || 0), 0) / recent.length).toFixed(1)
+      : '0';
 
-  const getStatusBadge = (status: string) => {
+    const lowOpen = feedbackList.filter((f: any) => (f.rating ?? 5) <= 3 && f.status !== 'resolved').length;
+
+    const requestsSent = recent.filter((f: any) => ['sent', 'delivered'].includes(f.google_review_request_status)).length;
+    const reviewsReceived = recent.filter((f: any) => !!f.google_review_id).length;
+    const conversion = requestsSent > 0 ? Math.round((reviewsReceived / requestsSent) * 100) : 0;
+
+    return { avgRating, lowOpen, requestsSent, reviewsReceived, conversion };
+  }, [feedbackList]);
+
+  const ratingColor = (r: number) => r >= 4 ? 'text-emerald-500' : r >= 3 ? 'text-amber-500' : 'text-red-500';
+
+  const statusBadge = (status: string) => {
     switch (status) {
-      case 'pending':
-        return <Badge className="bg-yellow-500/10 text-yellow-500"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
-      case 'reviewed':
-        return <Badge className="bg-blue-500/10 text-blue-500"><Eye className="w-3 h-3 mr-1" />Reviewed</Badge>;
-      case 'resolved':
-        return <Badge className="bg-green-500/10 text-green-500"><CheckCircle className="w-3 h-3 mr-1" />Resolved</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
+      case 'pending':  return <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
+      case 'reviewed': return <Badge className="bg-blue-100 text-blue-700"><Eye className="w-3 h-3 mr-1" />Reviewed</Badge>;
+      case 'resolved': return <Badge className="bg-emerald-100 text-emerald-700"><CheckCircle className="w-3 h-3 mr-1" />Resolved</Badge>;
+      default:         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  const requestBadge = (s: string | null | undefined) => {
+    const meta = REQUEST_STATUS_BADGE[(s as RequestStatus) || 'not_sent'];
+    return <Badge className={meta.cls}>{meta.label}</Badge>;
   };
 
   return (
@@ -151,7 +158,7 @@ export default function FeedbackPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Member Feedback</h1>
-            <p className="text-muted-foreground">Review and manage feedback submitted by members</p>
+            <p className="text-muted-foreground">Review feedback, request Google reviews from happy members, and recover unhappy ones.</p>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5 self-start" onClick={() => {
             const rows = feedbackList.map((f: any) => ({
@@ -160,6 +167,8 @@ export default function FeedbackPage() {
               Feedback: f.feedback_text || '',
               Category: f.category || '',
               Status: f.status || '',
+              ReviewRequest: f.google_review_request_status || 'not_sent',
+              GoogleReviewId: f.google_review_id || '',
               Date: f.created_at ? format(new Date(f.created_at), 'yyyy-MM-dd') : '',
             }));
             exportToCSV(rows, 'feedback');
@@ -168,39 +177,21 @@ export default function FeedbackPage() {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard
-            title="Total Feedback"
-            value={stats.total}
-            icon={MessageSquare}
-          />
-          <StatCard
-            title="Average Rating"
-            value={stats.avgRating}
-            icon={Star}
-            variant={Number(stats.avgRating) >= 4 ? 'success' : Number(stats.avgRating) >= 3 ? 'warning' : 'destructive'}
-          />
-          <StatCard
-            title="Pending Review"
-            value={stats.pending}
-            icon={Clock}
-            variant={stats.pending > 0 ? 'warning' : 'default'}
-          />
-          <StatCard
-            title="Resolved"
-            value={stats.resolved}
-            icon={CheckCircle}
-            variant="success"
-          />
+        {/* Dashboard cards */}
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
+          <StatCard title="Avg Rating (30d)" value={stats.avgRating} icon={Star}
+            variant={Number(stats.avgRating) >= 4 ? 'success' : Number(stats.avgRating) >= 3 ? 'warning' : 'destructive'} />
+          <StatCard title="Low-rating open cases" value={stats.lowOpen} icon={AlertTriangle}
+            variant={stats.lowOpen > 0 ? 'destructive' : 'default'} />
+          <StatCard title="Review requests (30d)" value={stats.requestsSent} icon={Send} />
+          <StatCard title="Google reviews (30d)" value={stats.reviewsReceived} icon={ThumbsUp} variant="success" />
+          <StatCard title="Request → Review %" value={`${stats.conversion}%`} icon={MailQuestion} />
         </div>
 
         {/* Filters */}
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
@@ -208,111 +199,157 @@ export default function FeedbackPage() {
               <SelectItem value="resolved">Resolved</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={ratingFilter} onValueChange={setRatingFilter}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Rating" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Ratings</SelectItem>
+              {[5,4,3,2,1].map(n => <SelectItem key={n} value={String(n)}>{n} ★</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={requestFilter} onValueChange={setRequestFilter}>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Google request" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All requests</SelectItem>
+              <SelectItem value="sent">Request sent</SelectItem>
+              <SelectItem value="not_sent">Not sent / failed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={reviewFilter} onValueChange={setReviewFilter}>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Google review" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="received">Review received</SelectItem>
+              <SelectItem value="none">No review yet</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant={unresolvedLow ? 'default' : 'outline'} size="sm" onClick={() => setUnresolvedLow(v => !v)}>
+            <AlertTriangle className="h-4 w-4 mr-1.5" />
+            Unresolved low ratings
+          </Button>
         </div>
 
         {/* Feedback Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>All Feedback</CardTitle>
-          </CardHeader>
+        <Card className="rounded-2xl shadow-lg shadow-slate-200/50">
+          <CardHeader><CardTitle>All Feedback</CardTitle></CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Member</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Feedback</TableHead>
-                    <TableHead>Related To</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Google</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {feedbackList.map((feedback: any) => (
-                    <TableRow key={feedback.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{feedback.member_name || 'Unknown'}</p>
-                          <p className="text-xs text-muted-foreground">{feedback.members?.member_code}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className={`flex items-center gap-1 ${getRatingColor(feedback.rating)}`}>
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${i < feedback.rating ? 'fill-current' : 'text-muted'}`}
-                            />
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">{feedback.category}</Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[200px]">
-                        <p className="text-sm truncate">{feedback.feedback_text || '-'}</p>
-                      </TableCell>
-                      <TableCell>
-                        {feedback.trainer_name && (
-                          <p className="text-xs">Trainer: {feedback.trainer_name}</p>
-                        )}
-                        {feedback.employee_name && (
-                          <p className="text-xs">Staff: {feedback.employee_name}</p>
-                        )}
-                        {!feedback.trainer_name && !feedback.employee_name && '-'}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(feedback.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={feedback.is_approved_for_google || false}
-                            onCheckedChange={(checked) => 
-                              updateStatus.mutate({ id: feedback.id, isApprovedForGoogle: checked })
-                            }
-                          />
-                          {feedback.is_approved_for_google && (
-                            <Globe className="h-4 w-4 text-green-600" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(feedback.created_at), 'dd MMM yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={feedback.status}
-                          onValueChange={(status) => updateStatus.mutate({ id: feedback.id, status })}
-                        >
-                          <SelectTrigger className="w-[120px] h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="reviewed">Reviewed</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {feedbackList.length === 0 && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                        <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        No feedback recorded yet
-                      </TableCell>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Feedback</TableHead>
+                      <TableHead>Related To</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Review Request</TableHead>
+                      <TableHead>Google Review</TableHead>
+                      <TableHead>Testimonial</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {feedbackList.map((f: any) => (
+                      <TableRow key={f.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{f.member_name || 'Unknown'}</p>
+                            <p className="text-xs text-muted-foreground">{f.members?.member_code}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className={`flex items-center gap-1 ${ratingColor(f.rating)}`}>
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className={`h-4 w-4 ${i < f.rating ? 'fill-current' : 'text-muted'}`} />
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize">{f.category}</Badge></TableCell>
+                        <TableCell className="max-w-[220px]">
+                          <p className="text-sm truncate">{f.feedback_text || '-'}</p>
+                        </TableCell>
+                        <TableCell>
+                          {f.trainer_name && <p className="text-xs">Trainer: {f.trainer_name}</p>}
+                          {f.employee_name && <p className="text-xs">Staff: {f.employee_name}</p>}
+                          {!f.trainer_name && !f.employee_name && '-'}
+                          {f.recovery_task_id && (
+                            <Badge className="mt-1 bg-red-50 text-red-700 text-[10px]">Recovery task</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>{statusBadge(f.status)}</TableCell>
+                        <TableCell>
+                          {f.rating >= 4 ? (
+                            <div className="flex items-center gap-2">
+                              {requestBadge(f.google_review_request_status)}
+                              <Button
+                                size="sm" variant="outline" className="h-7 px-2"
+                                onClick={() => requestReview.mutate(f.id)}
+                                disabled={requestReview.isPending}
+                              >
+                                <Send className="h-3 w-3 mr-1" />
+                                {f.google_review_request_status === 'sent' || f.google_review_request_status === 'delivered'
+                                  ? 'Resend' : 'Send'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A (low rating)</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {f.google_review_id ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 gap-1">
+                              <Globe className="h-3 w-3" />Received
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={f.is_approved_for_google || false}
+                              disabled={!f.consent_for_testimonial}
+                              onCheckedChange={(checked) =>
+                                updateStatus.mutate({ id: f.id, isApprovedForGoogle: checked })
+                              }
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {f.consent_for_testimonial ? 'Use' : 'No consent'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(f.created_at), 'dd MMM yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          <Select value={f.status} onValueChange={(s) => updateStatus.mutate({ id: f.id, status: s })}>
+                            <SelectTrigger className="w-[120px] h-8"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="reviewed">Reviewed</SelectItem>
+                              <SelectItem value="resolved">Resolved</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {feedbackList.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                          <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          No feedback matches your filters
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

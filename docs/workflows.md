@@ -15,6 +15,7 @@ client toasts.
 | Benefits   | `benefit.granted`, `benefit.consumed`, `benefit.expired`                         | `benefit_ledger` writes via grant/consume RPCs    |
 | Bookings   | `booking.created`, `booking.cancelled`, `booking.attended`                       | `book_facility_slot` RPC + class booking inserts  |
 | Campaigns  | `campaign.sent`, `campaign.delivery_updated`, `campaign.converted`               | `marketing_campaigns` + delivery webhook ingest   |
+| Feedback   | `feedback.created`, `feedback.review_requested`, `feedback.review_link_clicked`, `feedback.recovery_opened`, `feedback.google_review_matched`, `feedback.google_review_replied` | `feedback` table + `request-google-review` / `google-review-redirect` / `fetch-google-reviews` / `reply-google-review` edge functions |
 
 ## Rules
 
@@ -36,3 +37,15 @@ client toasts.
   recipient) emits `campaign.converted` exactly once for attribution.
 - Verify the public site never imports the Supabase client (enforced by
   Phase 3 — InclineAscent and legal pages have zero backend reads).
+
+## Feedback / Google Reviews — boundaries
+
+- The app **never** writes a customer review to Google. Customers must post
+  reviews on Google themselves; we only send them the branch's review link.
+- The Google Business Profile integration is used only to **fetch** existing
+  reviews and **reply** to them. If it is not configured, request flows still
+  work — only fetch/reply are disabled.
+- Low-rating feedback (≤ 3★) never triggers a Google review request; it
+  always opens a recovery task assigned to a branch manager.
+- Public testimonials require explicit `consent_for_testimonial = true`
+  captured at submission or via the consent-request flow.

@@ -212,10 +212,12 @@ const PROVIDER_SCHEMAS: Record<string, ProviderFieldDef[]> = {
   ],
 
   // ── Google Business ──
+  // Used ONLY to fetch Google reviews and post replies. Customer reviews can
+  // never be created via API — members must post them on Google themselves.
   google_business_google_business: [
     { key: 'account_id', label: 'Account ID', placeholder: 'Google Business Account ID', type: 'text', section: 'config' },
     { key: 'location_id', label: 'Location ID', placeholder: 'Google Business Location ID', type: 'text', section: 'config' },
-    { key: 'auto_sync_approved', label: 'Auto Sync Approved Reviews', placeholder: '', type: 'select', section: 'config', options: [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] },
+    { key: 'auto_fetch_reviews', label: 'Auto-fetch new Google reviews', placeholder: '', type: 'select', section: 'config', options: [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] },
     { key: 'client_id', label: 'OAuth Client ID', placeholder: 'Enter Google OAuth Client ID', type: 'text', section: 'credentials' },
     { key: 'client_secret', label: 'OAuth Client Secret', placeholder: 'Enter Client Secret', type: 'password', section: 'credentials' },
     { key: 'api_key', label: 'API Key', placeholder: 'Enter Google API key', type: 'password', section: 'credentials' },

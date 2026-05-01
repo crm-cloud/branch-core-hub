@@ -1,113 +1,142 @@
-# Phase 3 — Public Site SEO, Performance & Polish
+# Feedback + Google Reviews — Honest Workflow Rebuild
 
-**Guiding rule (locked in):** the public website (`/`, `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion`) makes **zero backend calls**. All marketing content (branches, facilities, classes, add-ons) is hardcoded in a typed config file. Backend-driven views remain only inside the authenticated app.
+## Why
 
----
-
-## 3.1 SEO essentials
-
-### Per-route SEO component
-- Add `react-helmet-async` and wrap `App` in `HelmetProvider`.
-- Create `src/components/seo/SEO.tsx`:
-  - Props: `title`, `description`, `path`, `image?`, `type?` (`website` | `article`), `noindex?`, `jsonLd?`.
-  - Emits `<title>`, `<meta name="description">`, canonical (`https://www.theincline.in${path}`), full OG + Twitter set, optional `<script type="application/ld+json">`, and `<meta name="robots" content="noindex,nofollow">` when `noindex`.
-- Apply on each public route with route-specific copy:
-  - `/` — keep current hero copy.
-  - `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion` — short tailored title + description, `noindex={false}` but lower priority.
-  - `/auth`, `/contract-sign/:token`, `/member/pay`, `/member-dashboard`, `/staff/*`, `/admin/*`, `/pos`, `/setup`, `/unauthorized` — `noindex` via SEO component (defense in depth alongside robots.txt).
-
-### Structured data
-- Keep existing `Organization`, `HealthClub`, `WebSite` JSON-LD in `index.html`.
-- Add a `BreadcrumbList` JSON-LD via SEO component on legal pages.
-- Add an `FAQPage` JSON-LD block on the landing page populated from a small static FAQ section (membership, hours, location, trial).
-
-### robots.txt and sitemap.xml
-- `robots.txt` is already comprehensive — only tweak: add `Disallow: /member-dashboard`, `Disallow: /member/`, `Disallow: /contract-sign/`, `Disallow: /pos`, `Disallow: /trainer-dashboard` to the `User-agent: *` block; remove duplicates.
-- `sitemap.xml` — drop `/auth` and `/member/pay` (these are app entry points, not marketing). Final list:
-  - `/` (priority 1.0, weekly)
-  - `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion` (priority 0.5, monthly)
-  - Add `<lastmod>` set to today.
+Today the app implies internal feedback can be "synced" to Google Maps. That is not how Google Business Profile works — only the customer can post a review on Google, and the API only allows fetching/replying to reviews that already exist there. The current `syncToGoogleMyBusiness` is a mock that flips `published_to_google_at` without any API call. We are removing that fiction and replacing it with the real, correct flow: request → track → reply.
 
 ---
 
-## 3.2 Performance on the public landing
+## 1. Database changes (single migration)
 
-Public landing only — no DB calls, no auth bootstrapping until the user navigates to `/auth`.
+**`branches`** — add Google review presence per branch:
+- `google_review_link TEXT` — short link members will be sent (e.g. `https://g.page/r/...`).
+- `google_place_id TEXT` — used to fetch reviews via API later.
+- `google_review_qr_url TEXT` — generated from the link (storage URL or null; can be derived client-side).
 
-- **3D scene defer:** `Scene3D` is already `React.lazy`. Wrap mount in an `IntersectionObserver` + `requestIdleCallback` gate so it only mounts after the hero is painted and visible. Show the existing static SEO hero as the LCP element.
-- **HDR / lighting:** replace `Environment` HDR with cheap `<ambientLight>` + `<directionalLight>` (already noted in earlier reflow analysis). Saves a multi-MB asset on first paint.
-- **Image hygiene:**
-  - Audit `public/assets/` — ensure hero/logo are WebP, sized to actual render dimensions, and `<img>` tags use `loading="lazy"` + `decoding="async"` on everything below the fold; the LCP hero image gets `fetchpriority="high"` + `loading="eager"`.
-  - Add `<link rel="preload" as="image" href="<lcp-hero>" fetchpriority="high">` in `index.html` for the LCP image only.
-- **Network hints in `index.html`:**
-  - Keep Supabase preconnect (only used after navigating into the app, so consider downgrading to `dns-prefetch` only and dropping preconnect on the public landing — minor TLS savings).
-  - Add `<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>` and `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` if Inter is loaded from Google Fonts; otherwise self-host.
-- **Code splitting:** verify Vite chunks isolate `three`, `@react-three/fiber`, `@react-three/drei` into a single async chunk that only loads with `Scene3D`. Add `manualChunks` in `vite.config.ts` if needed.
-- **No backend on public route:** confirm `InclineAscent.tsx` and its children make **no** Supabase calls; if any analytics/page-view tracking exists, route it through a tiny fire-and-forget that runs after `requestIdleCallback`.
+**`feedback`** — replace mock publish with real request/tracking model:
+- Drop usage of `published_to_google_at` (keep column for backwards compat, mark deprecated in code; never written).
+- Add:
+  - `google_review_requested_at TIMESTAMPTZ`
+  - `google_review_request_channel TEXT` — `whatsapp | sms | email | in_app`
+  - `google_review_request_status TEXT` — `not_sent | queued | sent | delivered | failed`
+  - `google_review_request_message_id UUID` — FK to `communication_logs.id` for delivery tracking
+  - `google_review_link_clicked_at TIMESTAMPTZ`
+  - `google_review_id TEXT` — populated only when a real Google review is matched (existing column kept)
+  - `google_review_matched_at TIMESTAMPTZ`
+  - `google_review_reply_status TEXT` — `none | drafted | replied | failed`
+  - `google_review_reply_at TIMESTAMPTZ`
+  - `consent_for_testimonial BOOLEAN DEFAULT false`
+  - `consent_for_testimonial_at TIMESTAMPTZ`
+  - `recovery_task_id UUID` — FK to `tasks.id` for low-rating cases
+  - Rename intent: `is_approved_for_google` → keep column, repurpose as "approved as internal testimonial" (UI label updated). No DB rename to avoid breakage.
 
----
+**`feedback_google_link_clicks`** (new, optional but useful):
+- `id`, `feedback_id`, `clicked_at`, `ip_hash`, `user_agent` — populated by a tiny public edge function the short link redirects through.
 
-## 3.3 Branch & services clarity (static config, no DB)
-
-- Create `src/config/publicSite.ts` with a typed schema:
-  ```ts
-  type Branch = {
-    slug: string; name: string; city: string; address: string;
-    facilities: string[]; classes: string[]; pt: boolean; addOns: string[];
-    hours: string; mapUrl?: string;
-  };
-  ```
-- Author one entry for the active Udaipur branch; the array allows adding more without code changes.
-- Add a "Branches & Services" section to `InclineAscent.tsx` that renders cards from this config (facilities, classes, PT, premium add-ons).
-- Generate a `LocalBusiness` JSON-LD per branch from the same config inside the SEO component (looped).
-
----
-
-## 3.4 Workflow & trigger consistency pass (in-app, not public)
-
-This is documentation + small in-app cleanups; no public-site impact.
-
-- Produce `docs/workflows.md` listing canonical events per domain:
-  - Leads → `lead.created`, `lead.status_changed`, `lead.contacted`
-  - Payments → `payment.recorded` (via `record_payment` RPC — already canonical per memory)
-  - Invoices → `invoice.created`, `invoice.paid`, `invoice.void`
-  - Reminders → `reminder.scheduled`, `reminder.sent`
-  - Approvals → `approval.requested`, `approval.decided`
-  - Benefits → `benefit.granted`, `benefit.consumed`
-  - Bookings → `booking.created`, `booking.cancelled`, `booking.attended`
-  - Campaigns → `campaign.sent`, `campaign.delivery_updated`, `campaign.converted`
-- Sweep client code for "fake success" toasts that fire before the mutation resolves; convert to TanStack Query `onSuccess` toasts with `onError` rollback (optimistic where safe).
-- Confirm every server-side mutation path writes to `audit_log` via the existing trigger engine (per memory `audit-log-engine`); list any gaps for a follow-up.
+**Trigger** on `feedback` insert:
+- If `rating >= 4`: enqueue Google review request via existing communications dispatcher (preferred channel = member's preferred channel; fallback order WhatsApp → SMS → email). Set `google_review_request_status = 'queued'`.
+- If `rating <= 3`: insert a high-priority `tasks` row assigned to branch manager (title: "Recovery: low feedback from {member}"), notify via in-app notification + WhatsApp to manager, write `recovery_task_id` back. Do NOT request a Google review.
 
 ---
 
-## 3.5 UX polish (in-app)
+## 2. Edge functions
 
-- Empty states with an actionable CTA on every list page (Members, Leads, Invoices, Bookings, Campaigns, Templates, Approvals).
-- One unmistakable primary CTA per page (top-right action button or hero card action).
-- Replace any plain-text status with the standard colored badge palette from project knowledge.
+- **`request-google-review`** (new): given `feedback_id`, resolves branch `google_review_link`, member contact, chosen channel → calls existing universal communications dispatcher → writes `communication_logs` row → updates `google_review_request_*` fields. Idempotent on `feedback_id`.
+- **`google-review-redirect`** (new, public): public route `/r/:token` records click into `feedback_google_link_clicks`, updates `google_review_link_clicked_at`, then 302s to the branch's `google_review_link`. This is what we actually send members.
+- **`fetch-google-reviews`** (new, optional, only runs if Google Business integration is configured): polls Google Business Profile API for the branch's location, upserts reviews into a new `google_reviews` table (`id, branch_id, google_review_id, reviewer_name, rating, comment, created_at, reply_text, reply_at`). Best-effort attempt to match a `feedback` row by member name + recent request window → set `google_review_id` + `google_review_matched_at`.
+- **`reply-google-review`** (new): posts a reply via Google API; updates `google_review_reply_*`. Strictly server-side.
+
+If integration is not configured, the fetch/reply functions short-circuit with a 412 — the request flow still works without the integration.
+
+---
+
+## 3. UI — Admin Feedback page (`src/pages/Feedback.tsx`)
+
+Remove `syncToGoogleMyBusiness`. Replace the "Google" column with two columns:
+
+1. **Review Request** — badge: `Not sent | Queued | Sent | Delivered | Failed`, with channel icon, plus "Send" / "Resend" button (calls `request-google-review`). Shown only when `rating >= 4`.
+2. **Google Review** — if `google_review_id` set, show "Received ★N", linkable; reply button → opens reply Sheet (writes via `reply-google-review`).
+
+Add a **Recovery** column for `rating <= 3` showing the linked task with status badge.
+
+**Filters** (chip row):
+- Rating (1–5, multi-select)
+- Category (existing)
+- Trainer / Staff
+- Unresolved low rating (`rating<=3 AND status<>'resolved'`)
+- Google request sent / not sent
+- Google review received / not received
+
+**Dashboard cards** (replace current 4 stat cards):
+- Average rating (last 30d)
+- Low-rating open cases
+- Review requests sent (last 30d)
+- Google reviews received (last 30d)
+- Conversion: requests → matched Google reviews (%)
+
+**Testimonial approval**: rename the `Globe` switch to "Use as testimonial". Disable unless `consent_for_testimonial = true`. Add a "Request consent" button that sends a templated WhatsApp/SMS asking the member to opt in via a signed link (separate edge function `request-testimonial-consent`).
+
+---
+
+## 4. UI — Member feedback (`src/pages/MemberFeedback.tsx`)
+
+After submission:
+- If rating ≥ 4: show inline card "Loved it? Help others find us — leave a Google review" with a button that opens the branch `google_review_link` in a new tab and records the click. This is the in-app channel.
+- If rating ≤ 3: show "Thanks — a manager will reach out shortly" (no Google ask).
+- Add an explicit checkbox "I agree my feedback can be used as a public testimonial" → writes `consent_for_testimonial`.
+
+---
+
+## 5. UI — Branch settings
+
+In `EditBranchDrawer` add a "Google Reviews" section:
+- Google review link (paste from Google Business "Get more reviews")
+- Google Place ID (optional, needed for API matching)
+- Auto-generated QR preview (client-side via `qrcode` lib) with download button for printing at the front desk.
+
+---
+
+## 6. Integrations panel
+
+In `IntegrationSettings.tsx` and `providerSchemas.ts`:
+- Rename description "Sync reviews to Google Maps" → **"Track Google Reviews & Reply"**.
+- Remove `auto_sync_approved` field.
+- Update labels to make clear this integration only **fetches and replies** to reviews; sending review requests works without it (uses the branch link).
+
+---
+
+## 7. Templates & triggers
+
+Add three event templates to `src/lib/templates/eventRegistry.ts`:
+- `feedback.google_review_requested` (member-facing, with `{{branch.google_review_link}}` short token)
+- `feedback.low_rating_alert` (manager-facing)
+- `feedback.testimonial_consent_requested` (member-facing)
+
+These plug into the existing canonical `whatsapp-automation-trigger-system` so admins can edit copy without touching code.
+
+---
+
+## 8. Workflows doc
+
+Update `docs/workflows.md` Feedback section:
+- `feedback.created` → branches into `feedback.review_requested` (rating≥4) or `feedback.recovery_opened` (rating≤3).
+- `feedback.review_link_clicked`, `feedback.google_review_matched`, `feedback.google_review_replied`.
+- Note: app **never** writes a customer review to Google; only replies.
 
 ---
 
 ## Files touched
 
-- `index.html` — preload LCP image, prune unused preconnect, sitemap/robots tweaks remain in `public/`.
-- `public/robots.txt` — add private app paths to `User-agent: *` Disallow list.
-- `public/sitemap.xml` — drop `/auth` and `/member/pay`, add `<lastmod>`.
-- `src/components/seo/SEO.tsx` (new), `src/main.tsx` (wrap with `HelmetProvider`).
-- `src/pages/InclineAscent.tsx` — mount SEO, add static Branches & FAQ sections, gate Scene3D behind viewport + idle.
-- `src/pages/PrivacyPolicy.tsx`, `src/pages/Terms.tsx`, `src/pages/TermsOfService.tsx`, `src/pages/DataDeletion.tsx` — SEO tags.
-- `src/pages/Auth.tsx`, contract-sign, member/staff/admin shells — SEO with `noindex`.
-- `src/components/3d/Scene3D.tsx` — swap `Environment` HDR for ambient + directional lights; export remains lazy-friendly.
-- `src/config/publicSite.ts` (new) — branches/services source of truth for the public site.
-- `vite.config.ts` — `manualChunks` for `three`/`drei` if not already isolated.
-- `docs/workflows.md` (new) — canonical events.
-- Targeted polish in member/staff list pages (empty states, CTAs, status badges).
+- New migration: feedback + branches columns, `feedback_google_link_clicks`, `google_reviews`.
+- New edge functions: `request-google-review`, `google-review-redirect`, `fetch-google-reviews`, `reply-google-review`, `request-testimonial-consent`.
+- Edited: `src/pages/Feedback.tsx`, `src/pages/MemberFeedback.tsx`, `src/components/branches/EditBranchDrawer.tsx`, `src/components/settings/IntegrationSettings.tsx`, `src/config/providerSchemas.ts`, `src/lib/templates/eventRegistry.ts`, `src/components/dashboard/MemberVoiceWidget.tsx`, `docs/workflows.md`.
+- New small components: `FeedbackFiltersBar.tsx`, `GoogleReviewReplyDrawer.tsx`, `RequestTestimonialConsentDialog.tsx`, `BranchGoogleReviewSection.tsx`.
 
-## Out of scope (per your call)
+---
 
-- Per-branch landing routes (`/branches/:slug`) — deferred until a second branch exists.
-- Any backend reads from the public site — explicitly excluded.
-- Aggressive image regeneration pipeline — only the existing assets are tuned.
+## Out of scope
 
-Approve to switch to build mode and execute 3.1 → 3.5 in that order.
+- Real Google OAuth flow UI (still uses existing integration credential pattern).
+- Importing historical Google reviews older than 30 days (API limitation).
+
+Approve to proceed.

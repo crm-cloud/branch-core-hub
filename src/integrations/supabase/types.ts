@@ -1360,6 +1360,9 @@ export type Database = {
           country: string | null
           created_at: string
           email: string | null
+          google_place_id: string | null
+          google_review_link: string | null
+          google_review_qr_url: string | null
           gstin: string | null
           id: string
           is_active: boolean | null
@@ -1380,6 +1383,9 @@ export type Database = {
           country?: string | null
           created_at?: string
           email?: string | null
+          google_place_id?: string | null
+          google_review_link?: string | null
+          google_review_qr_url?: string | null
           gstin?: string | null
           id?: string
           is_active?: boolean | null
@@ -1400,6 +1406,9 @@ export type Database = {
           country?: string | null
           created_at?: string
           email?: string | null
+          google_place_id?: string | null
+          google_review_link?: string | null
+          google_review_qr_url?: string | null
           gstin?: string | null
           id?: string
           is_active?: boolean | null
@@ -3155,15 +3164,26 @@ export type Database = {
           admin_notes: string | null
           branch_id: string
           category: string | null
+          consent_for_testimonial: boolean | null
+          consent_for_testimonial_at: string | null
           created_at: string | null
           employee_id: string | null
           feedback_text: string | null
           google_review_id: string | null
+          google_review_link_clicked_at: string | null
+          google_review_matched_at: string | null
+          google_review_reply_at: string | null
+          google_review_reply_status: string | null
+          google_review_request_channel: string | null
+          google_review_request_message_id: string | null
+          google_review_request_status: string | null
+          google_review_requested_at: string | null
           id: string
           is_approved_for_google: boolean | null
           member_id: string
           published_to_google_at: string | null
           rating: number
+          recovery_task_id: string | null
           status: string | null
           trainer_id: string | null
           updated_at: string | null
@@ -3172,15 +3192,26 @@ export type Database = {
           admin_notes?: string | null
           branch_id: string
           category?: string | null
+          consent_for_testimonial?: boolean | null
+          consent_for_testimonial_at?: string | null
           created_at?: string | null
           employee_id?: string | null
           feedback_text?: string | null
           google_review_id?: string | null
+          google_review_link_clicked_at?: string | null
+          google_review_matched_at?: string | null
+          google_review_reply_at?: string | null
+          google_review_reply_status?: string | null
+          google_review_request_channel?: string | null
+          google_review_request_message_id?: string | null
+          google_review_request_status?: string | null
+          google_review_requested_at?: string | null
           id?: string
           is_approved_for_google?: boolean | null
           member_id: string
           published_to_google_at?: string | null
           rating: number
+          recovery_task_id?: string | null
           status?: string | null
           trainer_id?: string | null
           updated_at?: string | null
@@ -3189,15 +3220,26 @@ export type Database = {
           admin_notes?: string | null
           branch_id?: string
           category?: string | null
+          consent_for_testimonial?: boolean | null
+          consent_for_testimonial_at?: string | null
           created_at?: string | null
           employee_id?: string | null
           feedback_text?: string | null
           google_review_id?: string | null
+          google_review_link_clicked_at?: string | null
+          google_review_matched_at?: string | null
+          google_review_reply_at?: string | null
+          google_review_reply_status?: string | null
+          google_review_request_channel?: string | null
+          google_review_request_message_id?: string | null
+          google_review_request_status?: string | null
+          google_review_requested_at?: string | null
           id?: string
           is_approved_for_google?: boolean | null
           member_id?: string
           published_to_google_at?: string | null
           rating?: number
+          recovery_task_id?: string | null
           status?: string | null
           trainer_id?: string | null
           updated_at?: string | null
@@ -3218,10 +3260,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "feedback_google_review_request_message_id_fkey"
+            columns: ["google_review_request_message_id"]
+            isOneToOne: false
+            referencedRelation: "communication_logs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "feedback_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_recovery_task_id_fkey"
+            columns: ["recovery_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
           {
@@ -3236,6 +3292,48 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feedback_google_link_clicks: {
+        Row: {
+          branch_id: string | null
+          clicked_at: string
+          feedback_id: string
+          id: string
+          ip_hash: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          clicked_at?: string
+          feedback_id: string
+          id?: string
+          ip_hash?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          clicked_at?: string
+          feedback_id?: string
+          id?: string
+          ip_hash?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_google_link_clicks_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_google_link_clicks_feedback_id_fkey"
+            columns: ["feedback_id"]
+            isOneToOne: false
+            referencedRelation: "feedback"
             referencedColumns: ["id"]
           },
         ]
@@ -3342,6 +3440,72 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_reviews: {
+        Row: {
+          branch_id: string
+          comment: string | null
+          created_at: string
+          fetched_at: string
+          google_created_at: string | null
+          google_review_id: string
+          id: string
+          matched_feedback_id: string | null
+          rating: number | null
+          replied_at: string | null
+          reply_text: string | null
+          reviewer_name: string | null
+          reviewer_photo_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          comment?: string | null
+          created_at?: string
+          fetched_at?: string
+          google_created_at?: string | null
+          google_review_id: string
+          id?: string
+          matched_feedback_id?: string | null
+          rating?: number | null
+          replied_at?: string | null
+          reply_text?: string | null
+          reviewer_name?: string | null
+          reviewer_photo_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          comment?: string | null
+          created_at?: string
+          fetched_at?: string
+          google_created_at?: string | null
+          google_review_id?: string
+          id?: string
+          matched_feedback_id?: string | null
+          rating?: number | null
+          replied_at?: string | null
+          reply_text?: string | null
+          reviewer_name?: string | null
+          reviewer_photo_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_reviews_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_reviews_matched_feedback_id_fkey"
+            columns: ["matched_feedback_id"]
+            isOneToOne: false
+            referencedRelation: "feedback"
             referencedColumns: ["id"]
           },
         ]

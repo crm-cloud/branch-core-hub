@@ -63,7 +63,7 @@ const MESSENGER_PROVIDERS = [
 ];
 
 const GOOGLE_PROVIDERS = [
-  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+  { id: 'google_business', name: 'Google Business Profile', description: 'Track Google Reviews & reply (review requests use the per-branch link)' },
 ];
 
 const IntegrationCard = ({ title, description, icon: Icon, activeCount, children }: { title: string; description: string; icon: any; activeCount: number; children: React.ReactNode }) => (
