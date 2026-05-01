@@ -217,6 +217,11 @@ export default function MyBenefits() {
                           {daysLeft} days left
                         </Badge>
                       </div>
+                      <div className="mt-1">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {credit.package_id ? 'Add-on' : 'Plan'}
+                        </Badge>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
