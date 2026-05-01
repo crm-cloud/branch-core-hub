@@ -1,4 +1,5 @@
 // send-reminders v2.0
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 // Honest-delivery for ALL reminder types: payment, membership_expiry, class,
 // PT, benefit. Each reminder honors the per-branch reminder_configurations
 // channel (whatsapp / sms / email / notification), attempts the real provider

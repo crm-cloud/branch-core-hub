@@ -1,4 +1,5 @@
 // v2.0.0 — Universal Email Dispatcher with Branded Template Support
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {

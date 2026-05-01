@@ -1,4 +1,5 @@
 // v2.0.0 — Multi-provider SMS Edge Function with RoundSMS full API
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
