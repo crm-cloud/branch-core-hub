@@ -1,84 +1,112 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
+  CommandDialog, CommandEmpty, CommandGroup, CommandInput,
+  CommandItem, CommandList, CommandSeparator,
 } from '@/components/ui/command';
-import { supabase } from '@/integrations/supabase/client';
-import { 
-  Users, 
-  UserCheck, 
-  Dumbbell, 
-  Calendar,
-  Search,
-  FileText,
-  Building2,
-  LayoutDashboard,
-  Settings,
-  CreditCard,
-  Lock,
-  ShoppingCart,
-  BarChart3,
-  UserPlus,
-  Receipt,
-  Megaphone,
-  ClipboardList,
-  Package,
-  Star,
-  Zap,
-} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import {
+  Search, Users, Dumbbell, FileText, Building2, Wallet, Calendar, CheckSquare,
+  ArrowRight, Clock, Zap, History,
+} from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePageShortcuts } from './usePageShortcuts';
+import { COMMAND_ACTIONS, filterActionsForRoles } from './commandActions';
+import { useRecentCommands, type RecentCommand } from './useRecentCommands';
+import {
+  useMembersSearch, useInvoicesSearch, useLeadsSearch, useTrainersSearch,
+  usePaymentsSearch, useBookingsSearch, useTasksSearch,
+} from './useCommandSearch';
 
-interface SearchResult {
-  id: string;
-  type: 'member' | 'trainer' | 'employee' | 'invoice' | 'class' | 'lead';
+interface GlobalSearchProps { className?: string }
+
+function statusBadgeClass(s?: string) {
+  if (!s) return 'bg-slate-100 text-slate-600';
+  const v = s.toLowerCase();
+  if (['active','paid','completed','confirmed','converted','booked','attended'].includes(v)) return 'bg-emerald-100 text-emerald-700';
+  if (['frozen','paused','draft','pending'].includes(v)) return 'bg-blue-100 text-blue-700';
+  if (['overdue','expired','cancelled','no_show','failed','lost'].includes(v)) return 'bg-red-100 text-red-700';
+  if (['partial','negotiation','warm','contacted'].includes(v)) return 'bg-amber-100 text-amber-700';
+  if (['hot'].includes(v)) return 'bg-red-100 text-red-700';
+  if (['cold','new'].includes(v)) return 'bg-slate-100 text-slate-600';
+  return 'bg-slate-100 text-slate-600';
+}
+
+function ResultRow({
+  icon: Icon, title, subtitle, branchName, status, onSelect, color = 'indigo',
+}: {
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle?: string;
-  badge?: string;
+  branchName?: string | null;
+  status?: string;
+  onSelect: () => void;
+  color?: 'indigo'|'amber'|'emerald'|'rose'|'sky'|'violet';
+}) {
+  const tone: Record<string,string> = {
+    indigo: 'bg-indigo-50 text-indigo-600',
+    amber:  'bg-amber-50 text-amber-600',
+    emerald:'bg-emerald-50 text-emerald-600',
+    rose:   'bg-rose-50 text-rose-600',
+    sky:    'bg-sky-50 text-sky-600',
+    violet: 'bg-violet-50 text-violet-600',
+  };
+  return (
+    <CommandItem onSelect={onSelect} className="flex items-center gap-3 cursor-pointer rounded-lg" value={`${title} ${subtitle ?? ''} ${branchName ?? ''}`}>
+      <div className={cn('flex items-center justify-center w-8 h-8 rounded-lg', tone[color])}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate text-sm">{title}</div>
+        {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
+      </div>
+      {branchName && (
+        <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0 shrink-0 hidden sm:inline-flex">
+          {branchName}
+        </Badge>
+      )}
+      {status && (
+        <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium capitalize shrink-0', statusBadgeClass(status))}>
+          {status.replace(/_/g,' ')}
+        </span>
+      )}
+      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+    </CommandItem>
+  );
 }
 
-interface GlobalSearchProps {
-  className?: string;
+function SectionSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="px-2 py-1 space-y-1">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-2 py-1.5">
+          <Skeleton className="w-8 h-8 rounded-lg" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-2.5 w-1/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
-
-const POPULAR_SEARCHES = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Analytics', icon: BarChart3, href: '/analytics' },
-  { label: 'Members', icon: Users, href: '/members' },
-  { label: 'Plans', icon: CreditCard, href: '/plans' },
-];
-
-const APPS_PAGES = [
-  { label: 'Invoices', icon: Receipt, href: '/invoices' },
-  { label: 'Trainers', icon: Dumbbell, href: '/trainers' },
-  { label: 'Classes', icon: Calendar, href: '/classes' },
-  { label: 'Settings', icon: Settings, href: '/settings' },
-  { label: 'Leads', icon: UserPlus, href: '/leads' },
-  { label: 'PT Sessions', icon: Package, href: '/pt-sessions' },
-  { label: 'Attendance', icon: ClipboardList, href: '/attendance' },
-  { label: 'Lockers', icon: Lock, href: '/lockers' },
-  { label: 'POS', icon: ShoppingCart, href: '/pos' },
-  { label: 'Announcements', icon: Megaphone, href: '/announcements' },
-  { label: 'Feedback', icon: Star, href: '/feedback' },
-  { label: 'Equipment', icon: Zap, href: '/equipment' },
-];
-
-const ALL_PAGES = [...POPULAR_SEARCHES, ...APPS_PAGES];
 
 export function GlobalSearch({ className }: GlobalSearchProps) {
+  const navigate = useNavigate();
+  const { roles, hasAnyRole } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const navigate = useNavigate();
+  const [debounced, setDebounced] = useState('');
 
-  // Keyboard shortcut
+  // Debounce 250ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Hotkey ⌘K / Ctrl+K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -90,337 +118,308 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
-  // Search function
-  const performSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery || searchQuery.length < 2) {
-      setResults([]);
-      return;
-    }
+  const rolesSet = useMemo(() => new Set(roles.map((r) => r.role)), [roles]);
+  const isMember = hasAnyRole(['member']) && !hasAnyRole(['owner','admin','manager','staff','trainer']);
 
-    setIsSearching(true);
-    const searchResults: SearchResult[] = [];
+  const pages = usePageShortcuts(query);
+  const actions = useMemo(() => isMember ? [] : filterActionsForRoles(rolesSet, query), [rolesSet, query, isMember]);
+  const recent = useRecentCommands();
 
-    try {
-      // Search members
-      const { data: members } = await supabase
-        .from('members')
-        .select('id, member_code, status, profiles:user_id(full_name, email, phone)')
-        .or(`member_code.ilike.%${searchQuery}%`)
-        .limit(5);
+  const term = debounced;
+  const term2plus = term.length >= 2;
 
-      const { data: membersByProfile } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, phone, members!members_user_id_profiles_fkey(id, member_code, status)')
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
-        .limit(10);
+  // Searches (each gated by role inside hook)
+  const members  = useMembersSearch({ term });
+  const invoices = useInvoicesSearch({ term });
+  const leads    = useLeadsSearch({ term });
+  const trainers = useTrainersSearch({ term });
+  const payments = usePaymentsSearch({ term });
+  const bookings = useBookingsSearch({ term });
+  const tasks    = useTasksSearch({ term });
 
-      const memberIds = new Set<string>();
-      members?.forEach((m: any) => {
-        if (!memberIds.has(m.id)) {
-          memberIds.add(m.id);
-          searchResults.push({
-            id: m.id, type: 'member',
-            title: m.profiles?.full_name || m.member_code,
-            subtitle: m.profiles?.email || m.profiles?.phone,
-            badge: m.status,
-          });
-        }
-      });
+  const anyLoading = term2plus && (members.isLoading || invoices.isLoading || leads.isLoading || trainers.isLoading || payments.isLoading || bookings.isLoading || tasks.isLoading);
+  const anyResults = (members.data?.length || invoices.data?.length || leads.data?.length || trainers.data?.length || payments.data?.length || bookings.data?.length || tasks.data?.length) || 0;
 
-      membersByProfile?.forEach((p: any) => {
-        if (p.members && p.members.length > 0) {
-          p.members.forEach((m: any) => {
-            if (!memberIds.has(m.id)) {
-              memberIds.add(m.id);
-              searchResults.push({
-                id: m.id, type: 'member',
-                title: p.full_name || m.member_code,
-                subtitle: p.email || p.phone,
-                badge: m.status,
-              });
-            }
-          });
-        }
-      });
+  const close = () => { setOpen(false); setQuery(''); setDebounced(''); };
 
-      // Search trainers
-      const { data: trainersByProfile } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, phone, trainers!trainers_user_id_profiles_fkey(id, trainer_code, is_active)')
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
-        .limit(10);
-
-      trainersByProfile?.forEach((p: any) => {
-        if (p.trainers && p.trainers.length > 0) {
-          p.trainers.forEach((t: any) => {
-            searchResults.push({
-              id: t.id, type: 'trainer',
-              title: p.full_name || t.trainer_code,
-              subtitle: p.email || p.phone,
-              badge: t.is_active ? 'active' : 'inactive',
-            });
-          });
-        }
-      });
-
-      // Search invoices
-      const { data: invoices } = await supabase
-        .from('invoices')
-        .select('id, invoice_number, status, total_amount')
-        .ilike('invoice_number', `%${searchQuery}%`)
-        .limit(5);
-
-      invoices?.forEach((inv: any) => {
-        searchResults.push({
-          id: inv.id, type: 'invoice',
-          title: inv.invoice_number,
-          subtitle: `₹${inv.total_amount}`,
-          badge: inv.status,
-        });
-      });
-
-      // Search leads
-      const { data: leads } = await supabase
-        .from('leads')
-        .select('id, full_name, phone, email, status')
-        .or(`full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)
-        .limit(5);
-
-      leads?.forEach((lead: any) => {
-        searchResults.push({
-          id: lead.id, type: 'lead',
-          title: lead.full_name,
-          subtitle: lead.email || lead.phone,
-          badge: lead.status,
-        });
-      });
-
-    } catch (error) {
-      console.error('Search error:', error);
-    }
-
-    setResults(searchResults);
-    setIsSearching(false);
-  }, []);
-
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      performSearch(query);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query, performSearch]);
-
-  const handleSelect = (result: SearchResult) => {
-    setOpen(false);
-    setQuery('');
-    
-    switch (result.type) {
-      case 'member': navigate(`/members?highlight=${result.id}`); break;
-      case 'trainer': navigate(`/trainers?highlight=${result.id}`); break;
-      case 'employee': navigate(`/employees?highlight=${result.id}`); break;
-      case 'invoice': navigate(`/invoices?highlight=${result.id}`); break;
-      case 'class': navigate(`/classes?highlight=${result.id}`); break;
-      case 'lead': navigate(`/leads?highlight=${result.id}`); break;
-    }
+  const go = (route: string, recentEntry?: Omit<RecentCommand,'ts'>) => {
+    if (recentEntry) recent.push(recentEntry);
+    navigate(route);
+    close();
   };
 
-  const handlePageNav = (href: string) => {
-    setOpen(false);
-    setQuery('');
-    navigate(href);
-  };
-
-  const getIcon = (type: SearchResult['type']) => {
-    switch (type) {
-      case 'member': return Users;
-      case 'trainer': return Dumbbell;
-      case 'employee': return UserCheck;
-      case 'invoice': return FileText;
-      case 'class': return Calendar;
-      case 'lead': return Building2;
-    }
-  };
-
-  const groupedResults = {
-    member: results.filter(r => r.type === 'member'),
-    trainer: results.filter(r => r.type === 'trainer'),
-    invoice: results.filter(r => r.type === 'invoice'),
-    lead: results.filter(r => r.type === 'lead'),
-  };
-
-  const hasResults = results.length > 0;
-  const hasQuery = query.length >= 2;
-
-  // Filter pages by query
-  const filteredPages = query.length > 0
-    ? ALL_PAGES.filter(a => a.label.toLowerCase().includes(query.toLowerCase()))
-    : [];
+  const showDefaults = !term2plus;
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "flex items-center gap-2 h-9 w-full max-w-sm rounded-lg border border-input bg-background px-3 py-1 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          'flex items-center gap-2 h-9 w-full max-w-sm rounded-lg border border-input bg-background px-3 py-1 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           className
         )}
+        aria-label="Open command palette"
       >
         <Search className="h-4 w-4" />
-        <span className="flex-1 text-left">Search...</span>
+        <span className="flex-1 text-left">Search or jump to…</span>
         <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
           <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
-      <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput 
-          placeholder="Search members, trainers, invoices..." 
+      <CommandDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setQuery(''); }}>
+        <CommandInput
+          placeholder={isMember ? 'Search pages…' : 'Search members, leads, invoices, bookings, tasks…'}
           value={query}
           onValueChange={setQuery}
         />
-        <CommandList className="max-h-[400px]">
-          {hasQuery && !hasResults && filteredPages.length === 0 && (
-            <CommandEmpty>
-              {isSearching ? 'Searching...' : 'No results found.'}
-            </CommandEmpty>
-          )}
-
-          {/* Default view: Two-column categories when no query */}
-          {!hasQuery && (
-            <div className="grid grid-cols-2 gap-0">
-              <div className="border-r border-border">
-                <div className="px-3 py-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Popular Searches</p>
-                </div>
-                {POPULAR_SEARCHES.map((item) => (
-                  <button
-                    key={item.href}
-                    onClick={() => handlePageNav(item.href)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-                      <item.icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div>
-                <div className="px-3 py-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Apps & Pages</p>
-                </div>
-                {APPS_PAGES.slice(0, 6).map((item) => (
-                  <button
-                    key={item.href}
-                    onClick={() => handlePageNav(item.href)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 text-sm hover:bg-accent transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
-                      <item.icon className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Filtered page results when typing */}
-          {hasQuery && filteredPages.length > 0 && !hasResults && (
-            <CommandGroup heading="Pages">
-              {filteredPages.map((item) => (
-                <CommandItem
-                  key={item.href}
-                  onSelect={() => handlePageNav(item.href)}
-                  className="flex items-center gap-3 cursor-pointer"
-                >
-                  <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-muted">
-                    <item.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <span>{item.label}</span>
-                </CommandItem>
+        <CommandList className="max-h-[460px]">
+          {showDefaults && recent.items.length > 0 && (
+            <CommandGroup heading="Recent">
+              {recent.items.map((r) => (
+                <ResultRow
+                  key={`recent-${r.kind}-${r.id}`}
+                  icon={History}
+                  title={r.label}
+                  subtitle={r.sublabel}
+                  color="violet"
+                  onSelect={() => go(r.route)}
+                />
               ))}
             </CommandGroup>
           )}
 
-          {/* DB Search Results */}
-          {groupedResults.member.length > 0 && (
-            <CommandGroup heading="Members">
-              {groupedResults.member.map((result) => {
-                const Icon = getIcon(result.type);
-                return (
-                  <CommandItem
-                    key={`${result.type}-${result.id}`}
-                    onSelect={() => handleSelect(result)}
-                    className="flex items-center gap-3 cursor-pointer"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{result.title}</div>
-                      {result.subtitle && <div className="text-sm text-muted-foreground truncate">{result.subtitle}</div>}
-                    </div>
-                    {result.badge && <Badge variant="outline" className="text-xs capitalize shrink-0">{result.badge}</Badge>}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          )}
-
-          {groupedResults.trainer.length > 0 && (
+          {showDefaults && actions.length > 0 && (
             <>
-              <CommandSeparator />
-              <CommandGroup heading="Trainers">
-                {groupedResults.trainer.map((result) => (
-                  <CommandItem key={`trainer-${result.id}`} onSelect={() => handleSelect(result)} className="flex items-center gap-3 cursor-pointer">
-                    <Dumbbell className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{result.title}</div>
-                      {result.subtitle && <div className="text-sm text-muted-foreground truncate">{result.subtitle}</div>}
-                    </div>
-                    {result.badge && <Badge variant="outline" className="text-xs capitalize shrink-0">{result.badge}</Badge>}
-                  </CommandItem>
+              {recent.items.length > 0 && <CommandSeparator />}
+              <CommandGroup heading="Actions">
+                {actions.map((a) => (
+                  <ResultRow
+                    key={a.id}
+                    icon={a.icon}
+                    title={a.label}
+                    color="indigo"
+                    onSelect={() => go(a.route, { kind: 'action', id: a.id, label: a.label, route: a.route })}
+                  />
                 ))}
               </CommandGroup>
             </>
           )}
 
-          {groupedResults.invoice.length > 0 && (
+          {pages.length > 0 && (
             <>
-              <CommandSeparator />
-              <CommandGroup heading="Invoices">
-                {groupedResults.invoice.map((result) => (
-                  <CommandItem key={`invoice-${result.id}`} onSelect={() => handleSelect(result)} className="flex items-center gap-3 cursor-pointer">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{result.title}</div>
-                      {result.subtitle && <div className="text-sm text-muted-foreground truncate">{result.subtitle}</div>}
-                    </div>
-                    {result.badge && <Badge variant="outline" className="text-xs capitalize shrink-0">{result.badge}</Badge>}
-                  </CommandItem>
+              {(showDefaults && (recent.items.length > 0 || actions.length > 0)) && <CommandSeparator />}
+              <CommandGroup heading="Pages">
+                {pages.map((p) => (
+                  <ResultRow
+                    key={p.href}
+                    icon={p.icon}
+                    title={p.label}
+                    color="sky"
+                    onSelect={() => go(p.href, { kind: 'page', id: p.href, label: p.label, route: p.href })}
+                  />
                 ))}
               </CommandGroup>
             </>
           )}
 
-          {groupedResults.lead.length > 0 && (
+          {/* When typing — show searched entities */}
+          {term2plus && !isMember && (
             <>
+              {!!actions.length && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Actions">
+                    {actions.map((a) => (
+                      <ResultRow key={a.id} icon={a.icon} title={a.label} color="indigo" onSelect={() => go(a.route, { kind: 'action', id: a.id, label: a.label, route: a.route })} />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Members */}
               <CommandSeparator />
-              <CommandGroup heading="Leads">
-                {groupedResults.lead.map((result) => (
-                  <CommandItem key={`lead-${result.id}`} onSelect={() => handleSelect(result)} className="flex items-center gap-3 cursor-pointer">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{result.title}</div>
-                      {result.subtitle && <div className="text-sm text-muted-foreground truncate">{result.subtitle}</div>}
-                    </div>
-                    {result.badge && <Badge variant="outline" className="text-xs capitalize shrink-0">{result.badge}</Badge>}
-                  </CommandItem>
+              <CommandGroup heading="Members">
+                {members.isLoading && <SectionSkeleton />}
+                {!members.isLoading && members.data?.length === 0 && (
+                  <div className="px-3 py-1.5 text-xs text-muted-foreground">No members</div>
+                )}
+                {members.data?.map((m: any) => (
+                  <ResultRow
+                    key={`mem-${m.id}`}
+                    icon={Users}
+                    title={m.full_name || m.member_code}
+                    subtitle={[m.member_code, m.phone, m.email].filter(Boolean).join(' · ')}
+                    branchName={m.branch_name}
+                    status={m.status}
+                    color="indigo"
+                    onSelect={() => go(`/members?member=${m.id}`, { kind: 'member', id: m.id, label: m.full_name || m.member_code, sublabel: m.member_code, route: `/members?member=${m.id}` })}
+                  />
                 ))}
               </CommandGroup>
+
+              {/* Leads */}
+              {(leads.isLoading || (leads.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Leads">
+                    {leads.isLoading && <SectionSkeleton />}
+                    {leads.data?.map((l: any) => (
+                      <ResultRow
+                        key={`lead-${l.id}`}
+                        icon={Building2}
+                        title={l.full_name}
+                        subtitle={[l.phone, l.email].filter(Boolean).join(' · ')}
+                        branchName={l.branch_name}
+                        status={l.temperature || l.status}
+                        color="amber"
+                        onSelect={() => go(`/leads?lead=${l.id}`, { kind: 'lead', id: l.id, label: l.full_name, route: `/leads?lead=${l.id}` })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Invoices */}
+              {(invoices.isLoading || (invoices.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Finance · Invoices">
+                    {invoices.isLoading && <SectionSkeleton />}
+                    {invoices.data?.map((i: any) => (
+                      <ResultRow
+                        key={`inv-${i.id}`}
+                        icon={FileText}
+                        title={i.invoice_number || `Invoice`}
+                        subtitle={[i.member_name, `₹${Number(i.total_amount || 0).toLocaleString()}`].filter(Boolean).join(' · ')}
+                        branchName={i.branch_name}
+                        status={i.status}
+                        color="emerald"
+                        onSelect={() => go(`/invoices?invoice=${i.id}`, { kind: 'invoice', id: i.id, label: i.invoice_number || 'Invoice', sublabel: i.member_name, route: `/invoices?invoice=${i.id}` })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Payments */}
+              {(payments.isLoading || (payments.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Finance · Payments">
+                    {payments.isLoading && <SectionSkeleton />}
+                    {payments.data?.map((p: any) => (
+                      <ResultRow
+                        key={`pay-${p.id}`}
+                        icon={Wallet}
+                        title={`₹${Number(p.amount || 0).toLocaleString()} · ${p.payment_method}`}
+                        subtitle={[p.member_name, p.invoice_number].filter(Boolean).join(' · ')}
+                        branchName={p.branch_name}
+                        status={p.status}
+                        color="emerald"
+                        onSelect={() => p.invoice_id ? go(`/invoices?invoice=${p.invoice_id}`) : go(`/payments?focus=${p.id}`)}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Bookings */}
+              {(bookings.isLoading || (bookings.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Bookings">
+                    {bookings.isLoading && <SectionSkeleton />}
+                    {bookings.data?.map((b: any) => (
+                      <ResultRow
+                        key={`bk-${b.id}`}
+                        icon={Calendar}
+                        title={b.title}
+                        subtitle={[b.kind?.toUpperCase(), b.when_at ? new Date(b.when_at).toLocaleString() : ''].filter(Boolean).join(' · ')}
+                        branchName={b.branch_name}
+                        status={b.status}
+                        color="sky"
+                        onSelect={() => go(`/all-bookings?focus=${b.id}`, { kind: 'booking', id: b.id, label: b.title, route: `/all-bookings?focus=${b.id}` })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Trainers */}
+              {(trainers.isLoading || (trainers.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Trainers">
+                    {trainers.isLoading && <SectionSkeleton />}
+                    {trainers.data?.map((t: any) => (
+                      <ResultRow
+                        key={`tr-${t.id}`}
+                        icon={Dumbbell}
+                        title={t.full_name || 'Trainer'}
+                        subtitle={[t.phone, t.email].filter(Boolean).join(' · ')}
+                        branchName={t.branch_name}
+                        status={t.is_active ? 'active' : 'inactive'}
+                        color="violet"
+                        onSelect={() => go(`/trainers?trainer=${t.id}`, { kind: 'trainer', id: t.id, label: t.full_name || 'Trainer', route: `/trainers?trainer=${t.id}` })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Tasks */}
+              {(tasks.isLoading || (tasks.data?.length ?? 0) > 0) && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Tasks">
+                    {tasks.isLoading && <SectionSkeleton />}
+                    {tasks.data?.map((t: any) => {
+                      const overdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'completed';
+                      return (
+                        <ResultRow
+                          key={`tsk-${t.id}`}
+                          icon={CheckSquare}
+                          title={t.title}
+                          subtitle={[t.assignee_name, t.due_date ? `Due ${new Date(t.due_date).toLocaleDateString()}` : ''].filter(Boolean).join(' · ')}
+                          branchName={t.branch_name}
+                          status={overdue ? 'overdue' : t.status}
+                          color="rose"
+                          onSelect={() => go(`/tasks?task=${t.id}`, { kind: 'task', id: t.id, label: t.title, route: `/tasks?task=${t.id}` })}
+                        />
+                      );
+                    })}
+                  </CommandGroup>
+                </>
+              )}
+
+              {!anyLoading && anyResults === 0 && (
+                <CommandEmpty>
+                  <div className="text-center py-6 text-sm">
+                    <div className="font-medium text-foreground">No matches for “{term}”</div>
+                    <div className="text-xs text-muted-foreground mt-1">Try a member name, code, phone, invoice number, or task title.</div>
+                  </div>
+                </CommandEmpty>
+              )}
             </>
+          )}
+
+          {showDefaults && recent.items.length === 0 && actions.length === 0 && pages.length === 0 && (
+            <CommandEmpty>Type to search.</CommandEmpty>
           )}
         </CommandList>
+
+        {/* Footer hints */}
+        <div className="flex items-center justify-between px-3 py-2 border-t bg-muted/40 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1"><kbd className="rounded border bg-background px-1.5 font-mono">↵</kbd> Open</span>
+            <span className="flex items-center gap-1"><kbd className="rounded border bg-background px-1.5 font-mono">Esc</kbd> Close</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Zap className="h-3 w-3" />
+            <span>Command Center</span>
+          </div>
+        </div>
       </CommandDialog>
     </>
   );
