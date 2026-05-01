@@ -277,6 +277,41 @@ export default function MemberFeedback() {
                   )}
                 </Button>
               </form>
+
+              {lastSubmission && lastSubmission.rating >= 4 && branchInfo?.google_review_link && (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Globe className="h-5 w-5 text-emerald-700 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-emerald-900">Loved it? Help others find us</p>
+                      <p className="text-sm text-emerald-800/80 mt-0.5">
+                        A quick Google review takes 30 seconds and means the world to {branchInfo.name}.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-3 bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => window.open(branchInfo.google_review_link!, '_blank', 'noopener')}
+                      >
+                        Leave a Google review
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {lastSubmission && lastSubmission.rating <= 3 && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <HeartHandshake className="h-5 w-5 text-amber-700 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-900">Thank you — we hear you</p>
+                      <p className="text-sm text-amber-800/80 mt-0.5">
+                        A manager will reach out shortly to make this right.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
