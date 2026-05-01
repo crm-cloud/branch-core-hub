@@ -221,6 +221,54 @@ export default function SystemHealth() {
     onError: () => toast.error('Failed to resolve errors'),
   });
 
+  const reopenError = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from('error_logs') as any)
+        .update({ status: 'open', resolved_at: null, resolved_by: null })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('Error reopened');
+    },
+  });
+
+  const clearOldResolvedMutation = useMutation({
+    mutationFn: async () => {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await (supabase.from('error_logs') as any)
+        .delete()
+        .eq('status', 'resolved')
+        .lt('resolved_at', cutoff);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('Cleared resolved errors older than 90 days');
+    },
+  });
+
+  const handleExport = () => {
+    if (errors.length === 0) { toast.error('Nothing to export'); return; }
+    exportToCSV(
+      errors.map((e) => ({
+        time: e.created_at,
+        last_seen: e.last_seen || e.created_at,
+        occurrences: e.occurrence_count ?? 1,
+        severity: e.severity || 'error',
+        source: e.source || 'frontend',
+        function_name: e.function_name || '',
+        route: e.route || '',
+        message: e.error_message,
+        status: e.status,
+        fingerprint: e.fingerprint || '',
+      })),
+      `error-logs-${new Date().toISOString().split('T')[0]}.csv`,
+    );
+    toast.success('Exported error logs');
+  };
+
   const openErrors = errors.filter((e) => e.status === 'open');
   const resolvedErrors = errors.filter((e) => e.status === 'resolved');
   const todayErrors = errors.filter((e) => new Date(e.created_at).toDateString() === new Date().toDateString());
