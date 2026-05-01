@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
       return json({ error: result.error, provider }, 500);
     }
   } catch (error: any) {
+    await captureEdgeError('send-email', error);
     console.error("send-email error:", error);
     return json({ error: error.message }, 500);
   }

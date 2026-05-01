@@ -673,6 +673,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
+    await captureEdgeError('send-reminders', error);
     console.error("Reminders error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,

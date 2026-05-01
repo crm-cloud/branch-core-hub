@@ -110,6 +110,7 @@ serve(async (req: Request) => {
         return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (error) {
+    await captureEdgeError('send-sms', error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return json({ error: message }, 500);
   }
