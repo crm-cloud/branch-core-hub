@@ -86,6 +86,21 @@ export default function AttendanceDashboard() {
     searchInputRef.current?.focus();
   }, []);
 
+  // Cmd+K deep-links
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('force') === '1') {
+      setForceEntryOpen(true);
+      url.searchParams.delete('force');
+      window.history.replaceState({}, '', url.toString());
+    }
+    if (url.searchParams.get('checkin') === '1') {
+      searchInputRef.current?.focus();
+      url.searchParams.delete('checkin');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   // Staff search results for top bar
   const [staffSearchResults, setStaffSearchResults] = useState<any[]>([]);
 
