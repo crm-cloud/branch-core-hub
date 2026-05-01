@@ -23,12 +23,14 @@ const SceneContent = ({ isMobile, onScrollProgress }: SceneContentProps) => {
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} intensity={1.5} castShadow color="#ffffff" />
-      <spotLight position={[-10, 5, -5]} angle={0.4} penumbra={1} intensity={0.8} color="#3b82f6" />
-      <pointLight position={[0, 5, 5]} intensity={0.8} color="#ffffff" />
-      <pointLight position={[0, -5, 0]} intensity={0.3} color="#3b82f6" />
-      <Environment preset="city" />
+      {/* Cheap lighting rig — no HDR Environment so we don't ship a multi-MB
+          asset on first paint of the public landing. */}
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 10, 10]} intensity={1.2} color="#ffffff" castShadow />
+      <spotLight position={[10, 10, 10]} angle={0.3} penumbra={1} intensity={1.2} castShadow color="#ffffff" />
+      <spotLight position={[-10, 5, -5]} angle={0.4} penumbra={1} intensity={0.6} color="#3b82f6" />
+      <pointLight position={[0, 5, 5]} intensity={0.6} color="#ffffff" />
+      <pointLight position={[0, -5, 0]} intensity={0.25} color="#3b82f6" />
       <HeroDumbbell scrollProgress={scrollProgress} isMobile={isMobile} />
       <FloatingWords scrollProgress={scrollProgress} />
       <Scroll html style={{ width: '100%' }}>

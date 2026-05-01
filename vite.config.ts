@@ -10,6 +10,17 @@ export default defineConfig(() => ({
     allowedHosts: true as const,
   },
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Isolate heavy 3D libs so the public landing only loads them when
+        // Scene3D is actually mounted (lazy + IO-gated).
+        manualChunks: {
+          three: ['three', '@react-three/fiber', '@react-three/drei'],
+        },
+      },
+    },
+  },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
