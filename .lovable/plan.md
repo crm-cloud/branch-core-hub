@@ -1,142 +1,172 @@
-# Feedback + Google Reviews — Honest Workflow Rebuild
 
-## Why
+# Cmd+K Command Center — Plan
 
-Today the app implies internal feedback can be "synced" to Google Maps. That is not how Google Business Profile works — only the customer can post a review on Google, and the API only allows fetching/replying to reviews that already exist there. The current `syncToGoogleMyBusiness` is a mock that flips `published_to_google_at` without any API call. We are removing that fiction and replacing it with the real, correct flow: request → track → reply.
+Goal: turn the current search-only palette (which navigates to dead `?highlight=` URLs) into a fast, role/branch-aware command center that opens the actual record drawers and exposes daily actions.
 
----
+## 1. Backend — Secure search RPCs (new migration)
 
-## 1. Database changes (single migration)
+Add `SECURITY DEFINER` SQL functions, all enforcing role + branch scope server-side using `has_role`, `staff_branches`, `employees`, `trainers`, and `members`. Branch arg is optional; when null, the function returns rows for every branch the caller can see.
 
-**`branches`** — add Google review presence per branch:
-- `google_review_link TEXT` — short link members will be sent (e.g. `https://g.page/r/...`).
-- `google_place_id TEXT` — used to fetch reviews via API later.
-- `google_review_qr_url TEXT` — generated from the link (storage URL or null; can be derived client-side).
+Helper (private):
+- `user_visible_branches(_uid uuid) returns setof uuid` — returns:
+  - all branch IDs if owner/admin
+  - `staff_branches.branch_id` rows for managers
+  - `employees.branch_id` / `trainers.branch_id` for staff/trainer
+  - `members.branch_id` for members (limited use)
 
-**`feedback`** — replace mock publish with real request/tracking model:
-- Drop usage of `published_to_google_at` (keep column for backwards compat, mark deprecated in code; never written).
-- Add:
-  - `google_review_requested_at TIMESTAMPTZ`
-  - `google_review_request_channel TEXT` — `whatsapp | sms | email | in_app`
-  - `google_review_request_status TEXT` — `not_sent | queued | sent | delivered | failed`
-  - `google_review_request_message_id UUID` — FK to `communication_logs.id` for delivery tracking
-  - `google_review_link_clicked_at TIMESTAMPTZ`
-  - `google_review_id TEXT` — populated only when a real Google review is matched (existing column kept)
-  - `google_review_matched_at TIMESTAMPTZ`
-  - `google_review_reply_status TEXT` — `none | drafted | replied | failed`
-  - `google_review_reply_at TIMESTAMPTZ`
-  - `consent_for_testimonial BOOLEAN DEFAULT false`
-  - `consent_for_testimonial_at TIMESTAMPTZ`
-  - `recovery_task_id UUID` — FK to `tasks.id` for low-rating cases
-  - Rename intent: `is_approved_for_google` → keep column, repurpose as "approved as internal testimonial" (UI label updated). No DB rename to avoid breakage.
+New RPCs (each `LIMIT` capped at 10, accept `search_term text`, `p_branch_id uuid default null`, `p_limit int default 10`):
+- `search_command_members` — wraps existing `search_members` but strictly intersects with `user_visible_branches`. Returns id, name, member_code, phone, email, status, branch_id, branch_name.
+- `search_command_invoices` — by invoice_number, member name, member_code; returns id, invoice_number, status, total_amount, amount_paid, member_id, member_name, branch_id, branch_name.
+- `search_command_leads` — by name/phone/email; returns id, full_name, phone, email, status, branch_id, branch_name. Hidden from staff if lead not in their branches.
+- `search_command_trainers` — by name/phone/code; returns id, full_name, trainer_code, is_active, branch_id, branch_name. Trainer role: only self.
+- `search_command_payments` — by reference, member name, invoice number; returns id, reference, amount, payment_method, paid_at, invoice_id, member_id.
+- `search_command_bookings` — by member name, class/facility name; returns id, kind ('class'|'facility'|'pt'), title, when_at, status, branch_id, branch_name, related_id.
+- `search_command_tasks` — by title; returns id, title, status, priority, due_at, assignee_name, related_type, related_id.
 
-**`feedback_google_link_clicks`** (new, optional but useful):
-- `id`, `feedback_id`, `clicked_at`, `ip_hash`, `user_agent` — populated by a tiny public edge function the short link redirects through.
+All RPCs:
+- `EXECUTE ON FUNCTION ... TO authenticated`
+- Use `auth.uid()` server-side; never trust caller-supplied user.
+- Use `unaccent` + `ilike '%' || term || '%'` against an indexed expression where it already exists.
+- Skip silently (return zero rows) for `member` role on every command-center RPC except `search_command_invoices` filtered to own member_id (so we don't accidentally power admin Cmd+K for members).
 
-**Trigger** on `feedback` insert:
-- If `rating >= 4`: enqueue Google review request via existing communications dispatcher (preferred channel = member's preferred channel; fallback order WhatsApp → SMS → email). Set `google_review_request_status = 'queued'`.
-- If `rating <= 3`: insert a high-priority `tasks` row assigned to branch manager (title: "Recovery: low feedback from {member}"), notify via in-app notification + WhatsApp to manager, write `recovery_task_id` back. Do NOT request a Google review.
+## 2. Frontend rebuild — `src/components/search/GlobalSearch.tsx`
 
----
+Rewrite as composition of small pieces in `src/components/search/`:
 
-## 2. Edge functions
+```text
+search/
+  GlobalSearch.tsx            // entry, hotkey, dialog wrapper
+  useCommandCenter.ts         // state: query, debounced term, active section
+  useCommandSearch.ts         // useQuery hooks per RPC, role-gated
+  usePageShortcuts.ts         // builds page list from menu config + role
+  useRecentCommands.ts        // localStorage MRU per user id
+  sections/
+    PageResults.tsx
+    ActionResults.tsx
+    MemberResults.tsx
+    LeadResults.tsx
+    InvoiceResults.tsx
+    PaymentResults.tsx
+    BookingResults.tsx
+    TaskResults.tsx
+    TrainerResults.tsx
+    RecentResults.tsx
+    EmptyState.tsx
+    ResultRow.tsx             // shared row with branch badge + status badge
+```
 
-- **`request-google-review`** (new): given `feedback_id`, resolves branch `google_review_link`, member contact, chosen channel → calls existing universal communications dispatcher → writes `communication_logs` row → updates `google_review_request_*` fields. Idempotent on `feedback_id`.
-- **`google-review-redirect`** (new, public): public route `/r/:token` records click into `feedback_google_link_clicks`, updates `google_review_link_clicked_at`, then 302s to the branch's `google_review_link`. This is what we actually send members.
-- **`fetch-google-reviews`** (new, optional, only runs if Google Business integration is configured): polls Google Business Profile API for the branch's location, upserts reviews into a new `google_reviews` table (`id, branch_id, google_review_id, reviewer_name, rating, comment, created_at, reply_text, reply_at`). Best-effort attempt to match a `feedback` row by member name + recent request window → set `google_review_id` + `google_review_matched_at`.
-- **`reply-google-review`** (new): posts a reply via Google API; updates `google_review_reply_*`. Strictly server-side.
+Key behaviour:
+- Hotkey: `⌘K` / `Ctrl+K`. Footer shows `Enter`, `⌘+Enter`, `Esc` hints.
+- 250 ms debounce; queries gated `enabled: term.length >= 2`.
+- All RPC calls via TanStack Query with keys like `['cmdk', 'members', term, branchFilter]`.
+- Branch scoping: pass `branchFilter` from `useBranchContext()` (undefined when "All Branches" is selected and user is owner/admin).
+- Role gating uses `hasAnyRole` from `AuthContext`:
+  - `member` → palette only shows page shortcuts for member menu + their own invoices. No admin entities.
+  - `trainer` → trainers (self), my-clients (members in their branch limited by RPC), classes/PT bookings.
+  - `staff` → members, leads, invoices, payments, bookings, tasks within own branch.
+  - `manager` → same as staff but across assigned branches; can switch via BranchSelector.
+  - `owner`/`admin` → everything; respects current `selectedBranch`.
+- Page shortcuts built from `getMenuForRole(roles)` (already exists in `src/config/menu.ts`) — no hardcoded arrays. Filter by `query.toLowerCase()` on label.
+- Status badges reuse the existing badge classes (active/paid/overdue/hot/cold/overdue task) per Vuexy palette.
+- Branch badge shows `branch_name` from RPC payload on every entity row.
+- Loading: per-section shimmer skeleton (3 rows). Error: inline subtle text + retry. Empty + no query: shows Recent (top 8), then Actions, then Pages.
 
-If integration is not configured, the fetch/reply functions short-circuit with a 412 — the request flow still works without the integration.
+## 3. Result selection — open drawers, not dead links
 
----
+Use a small registry keyed by entity type. Where a drawer already exists in-place, route to the page with a query param the page already consumes (or add minimal support):
 
-## 3. UI — Admin Feedback page (`src/pages/Feedback.tsx`)
+| Entity | Action | Mechanism |
+|---|---|---|
+| Member | open profile drawer | navigate `/members?member=<id>` (already supported) |
+| Invoice | open invoice drawer | navigate `/invoices?invoice=<id>` (already supported) |
+| Lead | open lead profile drawer | extend `Leads.tsx` to read `?lead=<id>` and open `LeadProfileDrawer` |
+| Payment | open invoice drawer | navigate `/invoices?invoice=<invoice_id>` |
+| Booking | open booking detail | navigate `/all-bookings?booking=<id>` (add small effect to AllBookings to scroll/highlight row when no drawer exists) |
+| Trainer | open trainer profile drawer | extend `Trainers.tsx` to read `?trainer=<id>` and open `TrainerProfileDrawer` |
+| Task | open task detail drawer | extend `Tasks.tsx` to read `?task=<id>` and open `TaskDetailDrawer` |
 
-Remove `syncToGoogleMyBusiness`. Replace the "Google" column with two columns:
+For pages without a drawer, the row is scrolled into view and gets a 1.5 s `ring-2 ring-indigo-500` highlight via a tiny `useHighlightRow(id)` hook reading `?focus=<id>`.
 
-1. **Review Request** — badge: `Not sent | Queued | Sent | Delivered | Failed`, with channel icon, plus "Send" / "Resend" button (calls `request-google-review`). Shown only when `rating >= 4`.
-2. **Google Review** — if `google_review_id` set, show "Received ★N", linkable; reply button → opens reply Sheet (writes via `reply-google-review`).
+## 4. Actions — grouped under "Actions"
 
-Add a **Recovery** column for `rating <= 3` showing the linked task with status badge.
+A new `commandActions.ts` registry. Each entry: `{ id, label, icon, roles, run }`. `run` either:
+- navigates with a query string the destination page interprets to auto-open the right drawer (e.g. `/members?new=1`), or
+- triggers a global event via a tiny zustand store (`commandBus`) the relevant page subscribes to. We will use the navigate+query-param approach for simplicity and add the small `useEffect` consumers where missing.
 
-**Filters** (chip row):
-- Rating (1–5, multi-select)
-- Category (existing)
-- Trainer / Staff
-- Unresolved low rating (`rating<=3 AND status<>'resolved'`)
-- Google request sent / not sent
-- Google review received / not received
+Actions and their routes:
+- Add Member → `/members?new=1`
+- Create Lead → `/leads?new=1`
+- Sell Membership → `/members?sell=1`
+- Renew Membership → `/members?renew=1`
+- Collect Payment → `/payments?new=1`
+- Create Invoice → `/invoices?new=1`
+- Check In Member → `/attendance-dashboard?checkin=1`
+- Force Entry → `/attendance-dashboard?force=1`
+- Book Facility → `/all-bookings?facility=1`
+- Book Class → `/all-bookings?class=1`
+- Sell Benefit Add-on → `/pos?addon=1`
+- Sell PT Package → `/pt-sessions?new=1`
+- Assign Locker → `/lockers?assign=1`
+- Open WhatsApp Chat → `/whatsapp-chat`
+- Create Task → `/tasks?new=1`
+- Create Approval Request → `/approvals?new=1`
 
-**Dashboard cards** (replace current 4 stat cards):
-- Average rating (last 30d)
-- Low-rating open cases
-- Review requests sent (last 30d)
-- Google reviews received (last 30d)
-- Conversion: requests → matched Google reviews (%)
+Each action has a `roles` array. Members see no admin actions; trainers see only Create Task and Open WhatsApp Chat. The pages already render their drawers under state — we add a tiny `useEffect` that flips the corresponding `setOpen(true)` when the query flag is present and removes it from the URL.
 
-**Testimonial approval**: rename the `Globe` switch to "Use as testimonial". Disable unless `consent_for_testimonial = true`. Add a "Request consent" button that sends a templated WhatsApp/SMS asking the member to opt in via a signed link (separate edge function `request-testimonial-consent`).
+## 5. Recent commands
 
----
+`useRecentCommands.ts` stores last 8 selected entries in `localStorage` under key `cmdk:recent:<user_id>`. Stored shape: `{ kind, id, label, sublabel, route, ts }`. Recent shows when query is empty.
 
-## 4. UI — Member feedback (`src/pages/MemberFeedback.tsx`)
+## 6. Keyboard hints + UI polish
 
-After submission:
-- If rating ≥ 4: show inline card "Loved it? Help others find us — leave a Google review" with a button that opens the branch `google_review_link` in a new tab and records the click. This is the in-app channel.
-- If rating ≤ 3: show "Thanks — a manager will reach out shortly" (no Google ask).
-- Add an explicit checkbox "I agree my feedback can be used as a public testimonial" → writes `consent_for_testimonial`.
+- Footer bar inside `CommandDialog`: `↵ Open · ⌘↵ Primary action · Esc Close` with kbd badges.
+- Section headers use existing uppercase muted style.
+- Result row: 8-square icon tile (per entity colour), title, sublabel, branch badge (slate), status badge (color-coded).
+- Performance: per-RPC queries run in parallel via TanStack Query. `staleTime: 30s` to make repeat searches instant.
 
----
+## 7. Cleanup
 
-## 5. UI — Branch settings
+- Remove all `?highlight=` references in `GlobalSearch.tsx`.
+- Delete old direct `from('members')`/`from('profiles')` queries from the palette.
+- Keep `src/components/ui/command.tsx` untouched (shadcn primitive).
 
-In `EditBranchDrawer` add a "Google Reviews" section:
-- Google review link (paste from Google Business "Get more reviews")
-- Google Place ID (optional, needed for API matching)
-- Auto-generated QR preview (client-side via `qrcode` lib) with download button for printing at the front desk.
+## 8. Acceptance check (manual)
 
----
+- Owner switches branch via header → Cmd+K member results filter accordingly.
+- Manager assigned to one branch cannot find a member from another branch.
+- Staff cannot see leads from other branches.
+- Trainer sees only their clients and their classes/PT.
+- Member's Cmd+K shows only member-menu page shortcuts; no admin records.
+- Selecting a member opens `MemberProfileDrawer` with the right member.
+- Selecting a payment opens its invoice drawer.
+- Selecting an action ("Add Member") opens the right drawer on landing.
+- All operations succeed without page reload.
 
-## 6. Integrations panel
+## Files to create
 
-In `IntegrationSettings.tsx` and `providerSchemas.ts`:
-- Rename description "Sync reviews to Google Maps" → **"Track Google Reviews & Reply"**.
-- Remove `auto_sync_approved` field.
-- Update labels to make clear this integration only **fetches and replies** to reviews; sending review requests works without it (uses the branch link).
+- `supabase/migrations/<ts>_command_center_search_rpcs.sql`
+- `src/components/search/useCommandCenter.ts`
+- `src/components/search/useCommandSearch.ts`
+- `src/components/search/usePageShortcuts.ts`
+- `src/components/search/useRecentCommands.ts`
+- `src/components/search/commandActions.ts`
+- `src/components/search/sections/*` (one per section above)
+- `src/hooks/useHighlightRow.ts`
 
----
+## Files to modify
 
-## 7. Templates & triggers
+- `src/components/search/GlobalSearch.tsx` — full rewrite as composition root.
+- `src/pages/Leads.tsx` — read `?lead=<id>` and `?new=1`, open drawers.
+- `src/pages/Trainers.tsx` — read `?trainer=<id>` and `?new=1`.
+- `src/pages/Tasks.tsx` — read `?task=<id>` and `?new=1`.
+- `src/pages/AllBookings.tsx` — read `?booking=<id>` (highlight row) and `?facility=1` / `?class=1` (open booking drawer).
+- `src/pages/Payments.tsx` — read `?new=1` (open Record Payment).
+- `src/pages/AttendanceDashboard.tsx` — read `?checkin=1` and `?force=1`.
+- `src/pages/Lockers.tsx` — read `?assign=1`.
+- `src/pages/POS.tsx` — read `?addon=1`.
+- `src/pages/PTSessions.tsx` — read `?new=1`.
+- `src/pages/Approvals.tsx` — read `?new=1`.
+- `src/pages/Members.tsx` — already supports `?member=`; add `?new=1`, `?sell=1`, `?renew=1` (open existing drawers).
+- `src/pages/Invoices.tsx` — already supports `?invoice=`; add `?new=1`.
 
-Add three event templates to `src/lib/templates/eventRegistry.ts`:
-- `feedback.google_review_requested` (member-facing, with `{{branch.google_review_link}}` short token)
-- `feedback.low_rating_alert` (manager-facing)
-- `feedback.testimonial_consent_requested` (member-facing)
-
-These plug into the existing canonical `whatsapp-automation-trigger-system` so admins can edit copy without touching code.
-
----
-
-## 8. Workflows doc
-
-Update `docs/workflows.md` Feedback section:
-- `feedback.created` → branches into `feedback.review_requested` (rating≥4) or `feedback.recovery_opened` (rating≤3).
-- `feedback.review_link_clicked`, `feedback.google_review_matched`, `feedback.google_review_replied`.
-- Note: app **never** writes a customer review to Google; only replies.
-
----
-
-## Files touched
-
-- New migration: feedback + branches columns, `feedback_google_link_clicks`, `google_reviews`.
-- New edge functions: `request-google-review`, `google-review-redirect`, `fetch-google-reviews`, `reply-google-review`, `request-testimonial-consent`.
-- Edited: `src/pages/Feedback.tsx`, `src/pages/MemberFeedback.tsx`, `src/components/branches/EditBranchDrawer.tsx`, `src/components/settings/IntegrationSettings.tsx`, `src/config/providerSchemas.ts`, `src/lib/templates/eventRegistry.ts`, `src/components/dashboard/MemberVoiceWidget.tsx`, `docs/workflows.md`.
-- New small components: `FeedbackFiltersBar.tsx`, `GoogleReviewReplyDrawer.tsx`, `RequestTestimonialConsentDialog.tsx`, `BranchGoogleReviewSection.tsx`.
-
----
-
-## Out of scope
-
-- Real Google OAuth flow UI (still uses existing integration credential pattern).
-- Importing historical Google reviews older than 30 days (API limitation).
-
-Approve to proceed.
+No `?highlight=` consumers remain after this change.

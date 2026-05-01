@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,40 @@ export default function TrainersPage() {
     },
     enabled: true,
   });
+
+  // Cmd+K deep links
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setIsCreateOpen(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+    const trainerId = url.searchParams.get('trainer');
+    if (!trainerId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('trainers')
+        .select('*, profiles:user_id(full_name, email, phone, avatar_url)')
+        .eq('id', trainerId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const p: any = (data as any).profiles || {};
+      setSelectedTrainer({
+        ...data,
+        profile_name: p.full_name,
+        profile_email: p.email,
+        profile_phone: p.phone,
+        profile_avatar: p.avatar_url,
+      });
+      setProfileOpen(true);
+      const u2 = new URL(window.location.href);
+      u2.searchParams.delete('trainer');
+      window.history.replaceState({}, '', u2.toString());
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const openTrainerProfile = (trainer: any) => { setSelectedTrainer(trainer); setProfileOpen(true); };
   const openEditTrainer = (trainer: any, e: React.MouseEvent) => { e.stopPropagation(); setEditingTrainer(trainer); setEditOpen(true); };

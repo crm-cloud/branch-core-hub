@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useHighlightRow } from '@/hooks/useHighlightRow';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -31,6 +32,18 @@ export default function AllBookingsPage() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
   const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
+
+  // Cmd+K: ?facility=1 / ?class=1 open the concierge drawer; ?focus handled by useHighlightRow
+  useHighlightRow();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('facility') === '1' || url.searchParams.get('class') === '1') {
+      setConciergeOpen(true);
+      url.searchParams.delete('facility');
+      url.searchParams.delete('class');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
 
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({

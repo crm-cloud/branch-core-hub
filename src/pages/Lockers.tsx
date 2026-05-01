@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,16 @@ export default function LockersPage() {
   const [releaseReason, setReleaseReason] = useState('');
 
   const { lockers, createLocker, releaseLocker, isCreating } = useLockers(branchId);
+
+  // Cmd+K: ?assign=1 opens the create-locker drawer (closest to "assign")
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('assign') === '1') {
+      setIsCreateOpen(true);
+      url.searchParams.delete('assign');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
 
   const assignedMemberIds = lockers.data
     ?.flatMap(l => l.locker_assignments?.filter(a => a.is_active).map(a => a.member_id) || [])

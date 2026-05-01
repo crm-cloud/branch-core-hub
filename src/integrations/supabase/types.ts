@@ -9777,6 +9777,102 @@ export type Database = {
         Args: { p_document_id: string; p_expires_in?: number }
         Returns: string
       }
+      search_command_bookings: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          id: string
+          kind: string
+          member_id: string
+          member_name: string
+          related_id: string
+          status: string
+          title: string
+          when_at: string
+        }[]
+      }
+      search_command_invoices: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          amount_paid: number
+          branch_id: string
+          branch_name: string
+          id: string
+          invoice_number: string
+          member_id: string
+          member_name: string
+          status: string
+          total_amount: number
+        }[]
+      }
+      search_command_leads: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          email: string
+          full_name: string
+          id: string
+          phone: string
+          status: string
+          temperature: string
+        }[]
+      }
+      search_command_members: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          email: string
+          full_name: string
+          id: string
+          member_code: string
+          phone: string
+          status: string
+        }[]
+      }
+      search_command_payments: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          amount: number
+          branch_id: string
+          branch_name: string
+          id: string
+          invoice_id: string
+          invoice_number: string
+          member_id: string
+          member_name: string
+          payment_date: string
+          payment_method: string
+          status: string
+        }[]
+      }
+      search_command_tasks: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          assignee_name: string
+          branch_id: string
+          branch_name: string
+          due_date: string
+          id: string
+          priority: string
+          status: string
+          title: string
+        }[]
+      }
+      search_command_trainers: {
+        Args: { p_branch_id?: string; p_limit?: number; search_term: string }
+        Returns: {
+          branch_id: string
+          branch_name: string
+          email: string
+          full_name: string
+          id: string
+          is_active: boolean
+          phone: string
+        }[]
+      }
       search_members: {
         Args: { p_branch_id?: string; p_limit?: number; search_term: string }
         Returns: {
@@ -9831,6 +9927,12 @@ export type Database = {
       user_visible_branch_ids: {
         Args: { p_user_id: string }
         Returns: string[]
+      }
+      user_visible_branches: {
+        Args: { _uid: string }
+        Returns: {
+          branch_id: string
+        }[]
       }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
