@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X, Bot } from 'lucide-react';
+import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X, Bot, Clock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exportToCSV } from '@/lib/csvExport';
 import { leadService, type LeadFilters } from '@/services/leadService';
