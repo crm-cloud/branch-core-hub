@@ -171,9 +171,12 @@ export default function MemberReferrals() {
           </Card>
         )}
 
-        {/* Referral History */}
+        {/* Referral History — lifecycle timeline */}
         <Card className="border-border/50">
-          <CardHeader><CardTitle className="text-lg">Referral History</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-lg">Referral Lifecycle</CardTitle>
+            <CardDescription>Pending → Eligible → Reward Issued → Claimed → Wallet Credited</CardDescription>
+          </CardHeader>
           <CardContent>
             {referralsLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
@@ -183,17 +186,12 @@ export default function MemberReferrals() {
                 <p className="text-muted-foreground">No referrals yet. Share your code to get started!</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {referrals.map((ref: any) => (
-                  <div key={ref.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{ref.referred_name || ref.referred_email || 'Referred Member'}</p>
-                      <p className="text-sm text-muted-foreground">{format(new Date(ref.created_at), 'dd MMM yyyy')}</p>
-                    </div>
-                    {getStatusBadge(ref.status)}
-                  </div>
-                ))}
-              </div>
+              <ReferralLifecycleTimeline
+                referrals={(referrals as any[]).map((r) => ({
+                  ...r,
+                  reward: (rewards as any[]).find((w) => w.referral_id === r.id) || null,
+                }))}
+              />
             )}
           </CardContent>
         </Card>
