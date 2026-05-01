@@ -1,5 +1,5 @@
 // Shared AI tool registry — used by whatsapp-webhook + meta-webhook (IG/FB)
-// v1.0.0 — extended self-service & payment tools
+// v1.1.0 — added classes, renewal, addon intent, branch services, escalation status
 
 export type MemberContext = {
   isMember?: boolean;
@@ -109,6 +109,35 @@ export function getAllToolDefinitions() {
     tool("get_class_schedule",
       "Group class schedule.",
       { date: ["string", "YYYY-MM-DD, defaults to today"] }),
+    tool("book_class",
+      "Book a spot in a group class. Use class_id from get_class_schedule. Confirms capacity before booking.",
+      { class_id: ["string", "Class UUID from get_class_schedule"] }, ["class_id"]),
+    tool("cancel_class_booking",
+      "Cancel an existing group class booking.",
+      { booking_id: ["string", "Class booking UUID"] }, ["booking_id"]),
+
+    // Renewal & Add-On intents (return checkout / payment links — never charge directly)
+    tool("initiate_membership_renewal",
+      "Generate a renewal invoice + payment link for the member's current plan. Member pays via the returned link. Confirm with the member before calling.",
+      { plan_id: ["string", "Optional plan UUID. Defaults to current plan."] }),
+    tool("purchase_addon_intent",
+      "Return a checkout link for a benefit or PT add-on package the member can buy. Use list_branch_services to find package_id and kind.",
+      {
+        package_id: ["string", "Package UUID (benefit_packages.id or pt_packages.id)"],
+        kind: ["string", "'benefit' or 'pt'"],
+      }, ["package_id", "kind"]),
+    tool("list_branch_services",
+      "List facilities, group classes today, and available benefit/PT add-on packages at the member's home branch."),
+
+    // Request status & escalation
+    tool("escalate_request",
+      "Mark the conversation as needing manual staff review (handoff with optional category).",
+      {
+        category: ["string", "Brief category e.g. 'billing', 'membership', 'complaint'"],
+        reason: ["string", "Why escalation is needed"],
+      }, ["reason"]),
+    tool("get_request_status",
+      "Look up the latest status of a member's pending requests (freezes, transfers, escalations)."),
 
     // Escalation
     tool("transfer_to_human",

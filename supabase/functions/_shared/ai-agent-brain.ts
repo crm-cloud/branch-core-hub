@@ -434,14 +434,68 @@ async function resolveMemberContext(supabase: any, senderId: string, branchId: s
   const memberName = (memberMatch as any).profiles?.full_name || "Member";
   let membershipId: string | undefined;
   let planId: string | undefined;
+  let planName: string | undefined;
+  let endDate: string | undefined;
+  let daysRemaining: number | null = null;
   const { data: ms } = await supabase
     .from("memberships")
-    .select("id, plan_id")
+    .select("id, plan_id, end_date, status, plans(name)")
     .eq("member_id", memberMatch.id)
     .eq("status", "active")
     .order("end_date", { ascending: false })
     .limit(1).maybeSingle();
-  if (ms) { membershipId = ms.id; planId = ms.plan_id; }
+  if (ms) {
+    membershipId = (ms as any).id;
+    planId = (ms as any).plan_id;
+    planName = (ms as any).plans?.name;
+    endDate = (ms as any).end_date;
+    if (endDate) {
+      daysRemaining = Math.ceil((new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    }
+  }
+
+  // Enrich: outstanding dues + last reminders sent + lifecycle hints
+  let duesLine = "";
+  try {
+    const { data: dues } = await supabase
+      .from("invoices")
+      .select("total_amount, amount_paid")
+      .eq("member_id", memberMatch.id)
+      .in("status", ["pending", "partial", "overdue"]);
+    const totalDue = (dues || []).reduce(
+      (s: number, i: any) => s + (Number(i.total_amount || 0) - Number(i.amount_paid || 0)),
+      0,
+    );
+    if (totalDue > 0) duesLine = ` · Outstanding dues: ₹${totalDue.toFixed(0)} across ${(dues || []).length} invoice(s)`;
+  } catch (_) { /* non-fatal */ }
+
+  let recentReminderLine = "";
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rem } = await supabase
+      .from("whatsapp_messages")
+      .select("template_name, created_at")
+      .eq("phone_number", senderId)
+      .eq("direction", "outbound")
+      .gte("created_at", since)
+      .not("template_name", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    if ((rem || []).length > 0) {
+      const names = (rem as any[]).map((r) => r.template_name).filter(Boolean).slice(0, 3).join(", ");
+      if (names) recentReminderLine = ` · Recent reminders sent (7d): ${names}`;
+    }
+  } catch (_) { /* whatsapp_messages may not exist; ignore */ }
+
+  const lifecycle = daysRemaining === null
+    ? "no active membership"
+    : daysRemaining < 0
+      ? `EXPIRED ${Math.abs(daysRemaining)}d ago — renewal needed`
+      : daysRemaining <= 7
+        ? `expiring in ${daysRemaining}d — renewal opportunity`
+        : `${daysRemaining}d remaining`;
+
+  const contextPrompt = `Member: ${memberName}${planName ? ` · Plan: ${planName}` : ""} · ${lifecycle}${duesLine}${recentReminderLine}`;
 
   return {
     isMember: true,
@@ -449,7 +503,7 @@ async function resolveMemberContext(supabase: any, senderId: string, branchId: s
     memberName,
     membershipId,
     planId,
-    contextPrompt: `Member: ${memberName}`,
+    contextPrompt,
   };
 }
 
