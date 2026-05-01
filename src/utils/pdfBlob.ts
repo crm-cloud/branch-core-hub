@@ -174,7 +174,7 @@ export function buildInvoicePdf(data: InvoicePdfInput, brand?: BrandContext): Bl
   doc.text(`Status: ${(data.status || '').toUpperCase()}`, 196, y + 5, { align: 'right' });
 
   // Bill to
-  y = 62;
+  y = 70;
   doc.setFillColor(248, 250, 252);
   doc.rect(14, y, 90, 26, 'F');
   setColor(doc, BRAND.muted);
@@ -268,7 +268,7 @@ export function buildInvoicePdf(data: InvoicePdfInput, brand?: BrandContext): Bl
     doc.text(lines, 14, ty + 4);
   }
 
-  footer(doc);
+  footer(doc, resolvedBrand);
   return doc.output('blob');
 }
 
