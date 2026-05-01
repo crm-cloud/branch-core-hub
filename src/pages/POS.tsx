@@ -361,9 +361,10 @@ export default function POSPage() {
         subtotal: cartSubtotal,
       });
       if (!result.success) {
-        const label = couponReasonLabel(result.reason);
-        if (result.reason === 'min_purchase' && (result as any).min_purchase) {
-          toast.error(`Minimum purchase ₹${Number((result as any).min_purchase).toLocaleString()} required`);
+        const failure = result as { success: false; reason: string; min_purchase?: number };
+        const label = couponReasonLabel(failure.reason);
+        if (failure.reason === 'min_purchase' && failure.min_purchase) {
+          toast.error(`Minimum purchase ₹${Number(failure.min_purchase).toLocaleString()} required`);
         } else {
           toast.error(label);
         }
