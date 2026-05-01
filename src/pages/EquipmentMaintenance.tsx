@@ -343,6 +343,24 @@ export default function EquipmentMaintenancePage() {
                               >
                                 <Pencil className="h-3 w-3" />
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => showQR(item)}
+                                title="Show QR code"
+                                aria-label="Show QR code"
+                              >
+                                <QrCode className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => createMaintenanceTask(item)}
+                                title="Create maintenance task"
+                                aria-label="Create maintenance task"
+                              >
+                                <ListTodo className="h-3 w-3" />
+                              </Button>
                               <Sheet open={maintenanceDialogOpen && selectedEquipment === item.id} onOpenChange={(open) => {
                                 setMaintenanceDialogOpen(open);
                                 if (open) setSelectedEquipment(item.id);
