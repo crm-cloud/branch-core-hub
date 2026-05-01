@@ -106,8 +106,16 @@ export default function MyBenefits() {
     );
   }
 
-  const getBenefitIcon = (benefitType: string) => {
-    switch (benefitType?.toLowerCase()) {
+  // Resolve a display label + icon from either a string code or a {name, code} object
+  const resolveBenefitMeta = (bt: any): { label: string; code: string } => {
+    if (!bt) return { label: 'Benefit', code: '' };
+    if (typeof bt === 'string') return { label: bt, code: bt };
+    return { label: bt.name || bt.code || 'Benefit', code: bt.code || bt.name || '' };
+  };
+
+  const getBenefitIcon = (benefitType: any) => {
+    const { code } = resolveBenefitMeta(benefitType);
+    switch ((code || '').toLowerCase()) {
       case 'steam':
       case 'sauna':
         return <Droplets className="h-5 w-5" />;
