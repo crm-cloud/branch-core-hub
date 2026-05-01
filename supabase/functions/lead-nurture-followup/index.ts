@@ -47,7 +47,7 @@ serve(async (req) => {
     // Find chats where bot is active
     const { data: staleChats, error: chatErr } = await supabase
       .from("whatsapp_chat_settings")
-      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data, last_nurture_at")
+      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data, last_nurture_at, platform")
       .eq("bot_active", true);
 
     if (chatErr) {
@@ -179,6 +179,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
 
       const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
 
+      const chatPlatform = chat.platform || "whatsapp";
       const { data: msgData, error: msgErr } = await supabase
         .from("whatsapp_messages")
         .insert({
@@ -189,6 +190,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
           direction: "outbound",
           status: "pending",
           message_type: "text",
+          platform: chatPlatform,
         })
         .select()
         .single();
