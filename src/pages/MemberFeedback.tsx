@@ -70,8 +70,8 @@ export default function MemberFeedback() {
   const submitFeedback = useMutation({
     mutationFn: async () => {
       if (!member) throw new Error('Member not found');
-      
-      const { error } = await supabase
+
+      const { data, error } = await supabase
         .from('feedback')
         .insert({
           member_id: member.id,
@@ -80,16 +80,31 @@ export default function MemberFeedback() {
           category,
           feedback_text: feedbackText || null,
           status: 'pending',
-        });
-      
+          consent_for_testimonial: consentTestimonial,
+          consent_for_testimonial_at: consentTestimonial ? new Date().toISOString() : null,
+        })
+        .select('id, rating')
+        .single();
+
       if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('Thank you for your feedback!');
+      setLastSubmission({ id: data!.id, rating: data!.rating });
       setRating(5);
       setCategory('general');
       setFeedbackText('');
+      setConsentTestimonial(false);
       queryClient.invalidateQueries({ queryKey: ['my-feedback'] });
+
+      // Fire-and-forget: server-side request for ratings >= 4 so a Google
+      // review ask goes out via the member's preferred channel too.
+      if (data && data.rating >= 4) {
+        supabase.functions.invoke('request-google-review', {
+          body: { feedback_id: data.id },
+        }).catch(() => { /* silent — UI CTA still available */ });
+      }
     },
     onError: (error) => {
       console.error('Error submitting feedback:', error);
