@@ -1,8 +1,10 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import ScrollProgressBar from '@/components/ui/ScrollProgressBar';
 import RegisterModal from '@/components/ui/RegisterModal';
 import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
+import SEO from '@/components/seo/SEO';
+import { PUBLIC_BRANCHES, PUBLIC_FAQS } from '@/config/publicSite';
 
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
 // main thread during initial paint. This dramatically reduces Max Potential FID.
@@ -11,20 +13,47 @@ const Scene3D = lazy(() => import('@/components/3d/Scene3D'));
 const InclineAscent = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [mountScene, setMountScene] = useState(false);
+  const interactionRootRef = useRef<HTMLDivElement | null>(null);
   const { handleScrollProgress } = useSoundEffects({ enabled: true });
 
-  // Defer mounting the 3D scene until after first paint so input handlers
-  // are registered and the browser can respond to user input quickly.
+  // Defer mounting the 3D scene until (a) the browser is idle and (b) the
+  // hero section is on-screen. Both gates exist so we never block the LCP
+  // image / static H1 on a multi-MB GPU pipeline.
   useEffect(() => {
-    const idle = (window as any).requestIdleCallback as
-      | ((cb: () => void, opts?: { timeout?: number }) => number)
-      | undefined;
-    if (idle) {
-      const id = idle(() => setMountScene(true), { timeout: 800 });
-      return () => (window as any).cancelIdleCallback?.(id);
+    let cancelled = false;
+    const target = interactionRootRef.current;
+    if (!target) return;
+
+    const idleMount = () => {
+      if (cancelled) return;
+      const idle = (window as any).requestIdleCallback as
+        | ((cb: () => void, opts?: { timeout?: number }) => number)
+        | undefined;
+      if (idle) idle(() => !cancelled && setMountScene(true), { timeout: 1200 });
+      else window.setTimeout(() => !cancelled && setMountScene(true), 200);
+    };
+
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        entries => {
+          if (entries.some(e => e.isIntersecting)) {
+            io.disconnect();
+            idleMount();
+          }
+        },
+        { rootMargin: '0px', threshold: 0.05 },
+      );
+      io.observe(target);
+      return () => {
+        cancelled = true;
+        io.disconnect();
+      };
     }
-    const t = window.setTimeout(() => setMountScene(true), 0);
-    return () => window.clearTimeout(t);
+
+    idleMount();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onScrollProgress = (progress: number) => {
@@ -32,8 +61,42 @@ const InclineAscent = () => {
     handleScrollProgress(progress);
   };
 
+  const branchJsonLd = PUBLIC_BRANCHES.map(b => ({
+    '@context': 'https://schema.org',
+    '@type': 'HealthClub',
+    name: b.name,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: b.address,
+      addressLocality: b.city,
+      addressCountry: 'IN',
+    },
+    openingHours: b.hours,
+    amenityFeature: b.facilities.map(f => ({
+      '@type': 'LocationFeatureSpecification',
+      name: f,
+      value: true,
+    })),
+  }));
+
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: PUBLIC_FAQS.map(f => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  };
+
   return (
-    <div className="w-full min-h-[100dvh] bg-background">
+    <div ref={interactionRootRef} className="w-full min-h-[100dvh] bg-background">
+      <SEO
+        title="The Incline Life | Luxury Gym & Recovery Club in Udaipur"
+        description="Udaipur's most luxurious fitness destination. Panatta equipment, elite personal training, group classes, sauna, ice bath & recovery suite. Join Incline today."
+        path="/"
+        jsonLd={[...branchJsonLd, faqJsonLd]}
+      />
       <ScrollProgressBar progress={scrollProgress} />
 
       {/*
@@ -67,6 +130,38 @@ const InclineAscent = () => {
           <Scene3D onScrollProgress={onScrollProgress} />
         </Suspense>
       )}
+
+      {/* Crawlable, static branches & FAQ. Visually hidden from the 3D
+          experience but available to bots, screen readers, and AI crawlers. */}
+      <div className="sr-only" aria-hidden="false">
+        <section aria-labelledby="branches-heading">
+          <h2 id="branches-heading">Our Branches & Services</h2>
+          {PUBLIC_BRANCHES.map(b => (
+            <article key={b.slug}>
+              <h3>{b.name}</h3>
+              <p>{b.address}</p>
+              <p>Hours: {b.hours}</p>
+              <h4>Facilities</h4>
+              <ul>{b.facilities.map(f => <li key={f}>{f}</li>)}</ul>
+              <h4>Group Classes</h4>
+              <ul>{b.classes.map(c => <li key={c}>{c}</li>)}</ul>
+              {b.pt && <p>Personal training available.</p>}
+              <h4>Premium Add-ons</h4>
+              <ul>{b.addOns.map(a => <li key={a}>{a}</li>)}</ul>
+            </article>
+          ))}
+        </section>
+        <section aria-labelledby="faq-heading">
+          <h2 id="faq-heading">Frequently Asked Questions</h2>
+          {PUBLIC_FAQS.map(f => (
+            <div key={f.q}>
+              <h3>{f.q}</h3>
+              <p>{f.a}</p>
+            </div>
+          ))}
+        </section>
+      </div>
+
       <RegisterModal />
       <LegalModal />
     </div>
