@@ -29,17 +29,9 @@ export function useStaffAttendance(branchId: string | undefined) {
   const checkInMutation = useMutation({
     mutationFn: ({ userId }: { userId: string }) =>
       staffAttendanceService.checkIn(userId, branchId!),
-    onSuccess: (result) => {
-      if (result.success) {
-        toast({ title: 'Check-in Successful' });
-        queryClient.invalidateQueries({ queryKey: ['staff-attendance'] });
-      } else {
-        toast({
-          title: 'Check-in Failed',
-          description: result.message,
-          variant: 'destructive',
-        });
-      }
+    onSuccess: () => {
+      toast({ title: 'Check-in Successful' });
+      queryClient.invalidateQueries({ queryKey: ['staff-attendance'] });
     },
     onError: (error) => {
       toast({
@@ -52,21 +44,9 @@ export function useStaffAttendance(branchId: string | undefined) {
 
   const checkOutMutation = useMutation({
     mutationFn: (userId: string) => staffAttendanceService.checkOut(userId),
-    onSuccess: (result) => {
-      if (result.success) {
-        const duration = result.duration_minutes || 0;
-        toast({
-          title: 'Check-out Successful',
-          description: `Duration: ${Math.floor(duration / 60)}h ${duration % 60}m`,
-        });
-        queryClient.invalidateQueries({ queryKey: ['staff-attendance'] });
-      } else {
-        toast({
-          title: 'Check-out Failed',
-          description: result.message,
-          variant: 'destructive',
-        });
-      }
+    onSuccess: () => {
+      toast({ title: 'Check-out Successful' });
+      queryClient.invalidateQueries({ queryKey: ['staff-attendance'] });
     },
     onError: (error) => {
       toast({
