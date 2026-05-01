@@ -1,126 +1,113 @@
-# Platform Polish & Growth Systems Sprint
+# Phase 3 — Public Site SEO, Performance & Polish
 
-This is a large multi-phase sprint. Rather than try to land everything in one pass, I'll execute it in **3 phases**, each shippable on its own. Each phase ends in a working, regression-safe state so you can pause/redirect between phases.
-
----
-
-## Phase 1 — Accuracy & Self-Service Gaps (foundational)
-
-Goal: stop showing wrong numbers, surface what members already own, and close obvious self-service dead-ends. No new infra.
-
-### 1.1 Member Dashboard accuracy
-- **Benefit balances include purchased add-ons**: update `MemberDashboard.tsx` + `useBenefits` to merge plan-granted entitlements with `benefit_usage` purchased credits (single source of truth = `benefit_ledger`). Show "Included / Purchased / Used / Remaining" per benefit.
-- **Dues & Pay Now**: promote a single primary CTA card on dashboard when `pending_dues > 0` linking straight to `/member/pay`. Show invoice count + oldest due date.
-- **Request/status visibility**: add a compact "My Requests" widget (freeze, transfer, escalations) with state badges using existing `approval_requests`.
-- **Add-on CTAs**: surface eligible add-ons (facility passes, PT top-ups) for the member's active plan + branch.
-
-### 1.2 Trainer / Ops Dashboard KPI accuracy
-- **Branch filter correctness**: audit `TrainerDashboard.tsx` and `StaffDashboard.tsx` queries — every aggregate must respect `BranchContext` (or "All branches" for owners only).
-- **Revenue vs payout terminology**: rename misleading labels — trainers see "My Earnings / Commissions", ops sees "Branch Revenue". Add tooltips clarifying what each number includes.
-- **Trainer workflow widgets**: PT clients count, upcoming sessions (next 7d), plans assigned, pending actions (sign-offs, attendance gaps).
-
-### 1.3 Add-on / benefit discoverability
-- New `EligibleAddOns` component used in MemberDashboard + MyBenefits showing branch-available add-ons the member doesn't yet own, with "Add to plan" → existing checkout flow.
-- MyBenefits page: split into **Included**, **Purchased**, **Available to add**.
-- Branch services strip on dashboard: facilities + classes + PT availability scoped to the member's home branch.
-
-### 1.4 Self-service dead-end audit
-- Scan member-facing routes (`MemberDashboard`, `MyBenefits`, `MyInvoices`, `MemberStore`, `MemberCheckout`, `MemberRequests`, `MemberReferrals`) for buttons that show info but don't act.
-- Convert each to either: complete the action, route to the action, or hide it for the role.
-- Concrete fixes: freeze request from membership card, cancel booking from MyBenefits, pay-now from MyInvoices line item, redeem rewards inline on MemberReferrals.
-
-**Files touched (Phase 1, approx.):** `src/pages/MemberDashboard.tsx`, `src/pages/MyBenefits.tsx`, `src/pages/MyInvoices.tsx`, `src/pages/TrainerDashboard.tsx`, `src/pages/StaffDashboard.tsx`, `src/hooks/useBenefits.ts`, `src/hooks/useMemberData.ts`, plus 3–5 new small components. No DB migrations expected.
+**Guiding rule (locked in):** the public website (`/`, `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion`) makes **zero backend calls**. All marketing content (branches, facilities, classes, add-ons) is hardcoded in a typed config file. Backend-driven views remain only inside the authenticated app.
 
 ---
 
-## Phase 2 — Templates, Reminders, Campaigns, AI Brain
+## 3.1 SEO essentials
 
-Goal: make outbound communication and AI self-service structured, reusable, and auditable.
+### Per-route SEO component
+- Add `react-helmet-async` and wrap `App` in `HelmetProvider`.
+- Create `src/components/seo/SEO.tsx`:
+  - Props: `title`, `description`, `path`, `image?`, `type?` (`website` | `article`), `noindex?`, `jsonLd?`.
+  - Emits `<title>`, `<meta name="description">`, canonical (`https://www.theincline.in${path}`), full OG + Twitter set, optional `<script type="application/ld+json">`, and `<meta name="robots" content="noindex,nofollow">` when `noindex`.
+- Apply on each public route with route-specific copy:
+  - `/` — keep current hero copy.
+  - `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion` — short tailored title + description, `noindex={false}` but lower priority.
+  - `/auth`, `/contract-sign/:token`, `/member/pay`, `/member-dashboard`, `/staff/*`, `/admin/*`, `/pos`, `/setup`, `/unauthorized` — `noindex` via SEO component (defense in depth alongside robots.txt).
 
-### 2.1 Templates & reminders consolidation
-- Inventory all reminder triggers (lead capture, welcome, payment due, expiry, class/PT/benefit, follow-ups, campaign sends).
-- Ensure each has: a row in a templates registry (channel + locale + variables), honest delivery status (`sent / failed / queued / suppressed`), retry on transient failure, and a clear trigger source recorded in audit log.
-- Replace any hardcoded message strings with template lookups.
-- Add a Settings → Templates manager UI (list, edit, preview with sample variables, toggle active).
+### Structured data
+- Keep existing `Organization`, `HealthClub`, `WebSite` JSON-LD in `index.html`.
+- Add a `BreadcrumbList` JSON-LD via SEO component on legal pages.
+- Add an `FAQPage` JSON-LD block on the landing page populated from a small static FAQ section (membership, hours, location, trial).
 
-### 2.2 Campaign manager improvements
-- Reusable campaign templates (clone → edit → schedule).
-- Lead-source segmentation filters (UTM source/medium/campaign, branch, lifecycle stage).
-- Drip/nurture scheduler (sequence of N steps with delays).
-- Sales handoff: when a lead replies or hits a score threshold, auto-assign to the configured owner with SLA timer.
-- Conversion reporting: per-campaign sent / delivered / replied / converted / revenue, branch-scoped.
-
-### 2.3 Lead nurture & CRM
-- Nurture stages on `leads` (New → Contacted → Qualified → Trial → Won/Lost) with allowed transitions.
-- SLA reminders for owners on stale leads (configurable hours per stage).
-- UTM/source captured at lead creation, surfaced in lead detail and reports.
-
-### 2.4 AI brain expansion (WhatsApp transactional agent)
-Extend the existing AI tool registry (per `mem://integrations/whatsapp-ai-tool-registry`) with:
-- `book_class`, `cancel_class_booking`
-- `initiate_membership_renewal` (creates invoice + payment link, never charges directly)
-- `purchase_addon_intent` (returns checkout link)
-- `list_branch_services` (branch-aware)
-- `escalate_request` / `get_request_status`
-
-Context improvements per turn:
-- Active branch, member lifecycle stage, active membership + days remaining
-- Outstanding dues + last payment
-- Recent reminders sent (last 7d) to avoid duplicate nags
-- Eligible add-ons
-
-All write actions stay routed through existing authoritative RPCs (e.g. `record_payment`, `book_facility_slot`) — agent never mutates tables directly.
-
-**Files touched (Phase 2, approx.):** `supabase/functions/whatsapp-ai-agent/*` (or current name), template registry tables/UI, `src/pages/Announcements.tsx` (campaigns tab), `src/components/campaigns/*`, `src/pages/Leads.tsx`, plus 1–2 small migrations for nurture stage + SLA + template registry if not already present.
+### robots.txt and sitemap.xml
+- `robots.txt` is already comprehensive — only tweak: add `Disallow: /member-dashboard`, `Disallow: /member/`, `Disallow: /contract-sign/`, `Disallow: /pos`, `Disallow: /trainer-dashboard` to the `User-agent: *` block; remove duplicates.
+- `sitemap.xml` — drop `/auth` and `/member/pay` (these are app entry points, not marketing). Final list:
+  - `/` (priority 1.0, weekly)
+  - `/privacy-policy`, `/terms`, `/terms-of-service`, `/data-deletion` (priority 0.5, monthly)
+  - Add `<lastmod>` set to today.
 
 ---
 
-## Phase 3 — Public Website SEO/Performance + Polish
+## 3.2 Performance on the public landing
 
-Goal: make `incline.lovable.app` / `theincline.in` crawlable, fast, and discoverable; finish broader UX/branch-services polish.
+Public landing only — no DB calls, no auth bootstrapping until the user navigates to `/auth`.
 
-### 3.1 SEO essentials on `InclineAscent` + public routes
-- `<title>` and `<meta name="description">` per route via a small `SEO` component (react-helmet-async or direct DOM head injection — already partially in `index.html`).
-- Canonical tags pointing to `https://www.theincline.in/<path>`.
-- Open Graph + Twitter card metadata (title, description, image — reuse existing logo/hero asset).
-- JSON-LD structured data: `Organization`, `LocalBusiness` (per branch if available), `WebSite` with SearchAction.
-- Verify `public/robots.txt` allows crawling of public routes and disallows `/member/*`, `/auth`, `/staff/*`, etc.
-- Update `public/sitemap.xml` to actual public routes only (drop `/auth`, `/member/pay` — those should be `noindex`). Add per-branch landing pages if/when they exist.
-
-### 3.2 Performance on public landing
-- Continue the LCP/FID work already in flight: keep static SEO hero (already added), defer 3D scene mount, lazy-load `Environment` HDR or replace with cheap lighting (per the prior reflow analysis).
-- Image optimization: ensure hero/logo assets are appropriately sized, use `loading="lazy"` and `decoding="async"` on below-the-fold images, prefer modern formats.
-- Reduce JS payload: code-split heavy 3D chunk behind interaction or `requestIdleCallback`.
-- Add `<link rel="preconnect">` for Supabase + fonts, `<link rel="preload">` for the LCP image only.
-
-### 3.3 Branch services clarity
-- Public site: a "Branches" section listing each branch with its actual facilities, classes, PT availability, premium add-ons (driven by DB, not hardcoded).
-- Member experience: branch-aware service cards mirroring the same data so what a member sees matches what marketing promises.
-
-### 3.4 Workflow / trigger consistency pass
-- Audit triggers across leads, payments, invoices, reminders, approvals, benefits, bookings, campaigns.
-- Document the canonical event for each domain (one source of truth).
-- Remove any client-side "fake success" toasts that fire before the backend confirms — replace with optimistic UI + rollback on failure.
-- Ensure every side-effect writes to `audit_log` via the existing trigger engine.
-
-### 3.5 UX polish (practical only)
-- Empty states with a helpful action on every list page that can be empty.
-- Primary action prominence on every page (one obvious CTA).
-- Status badges everywhere status exists (no plain-text status).
-
-**Files touched (Phase 3, approx.):** `index.html`, `src/pages/InclineAscent.tsx`, new `src/components/seo/SEO.tsx`, `public/robots.txt`, `public/sitemap.xml`, `src/components/3d/Scene3D.tsx`, plus targeted polish in member/staff pages.
+- **3D scene defer:** `Scene3D` is already `React.lazy`. Wrap mount in an `IntersectionObserver` + `requestIdleCallback` gate so it only mounts after the hero is painted and visible. Show the existing static SEO hero as the LCP element.
+- **HDR / lighting:** replace `Environment` HDR with cheap `<ambientLight>` + `<directionalLight>` (already noted in earlier reflow analysis). Saves a multi-MB asset on first paint.
+- **Image hygiene:**
+  - Audit `public/assets/` — ensure hero/logo are WebP, sized to actual render dimensions, and `<img>` tags use `loading="lazy"` + `decoding="async"` on everything below the fold; the LCP hero image gets `fetchpriority="high"` + `loading="eager"`.
+  - Add `<link rel="preload" as="image" href="<lcp-hero>" fetchpriority="high">` in `index.html` for the LCP image only.
+- **Network hints in `index.html`:**
+  - Keep Supabase preconnect (only used after navigating into the app, so consider downgrading to `dns-prefetch` only and dropping preconnect on the public landing — minor TLS savings).
+  - Add `<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>` and `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` if Inter is loaded from Google Fonts; otherwise self-host.
+- **Code splitting:** verify Vite chunks isolate `three`, `@react-three/fiber`, `@react-three/drei` into a single async chunk that only loads with `Scene3D`. Add `manualChunks` in `vite.config.ts` if needed.
+- **No backend on public route:** confirm `InclineAscent.tsx` and its children make **no** Supabase calls; if any analytics/page-view tracking exists, route it through a tiny fire-and-forget that runs after `requestIdleCallback`.
 
 ---
 
-## Constraints respected throughout
-- No regressions to the recent backend hardening (atomic `record_payment`, RLS, audit log, MIPS, Cloud edge architecture).
-- Backend authority preserved: AI/self-service flows call existing RPCs/edge functions, never bypass them.
-- Branch scoping enforced on every new query and component.
-- SEO/performance changes don't alter routes or the dark/orange theme.
+## 3.3 Branch & services clarity (static config, no DB)
+
+- Create `src/config/publicSite.ts` with a typed schema:
+  ```ts
+  type Branch = {
+    slug: string; name: string; city: string; address: string;
+    facilities: string[]; classes: string[]; pt: boolean; addOns: string[];
+    hours: string; mapUrl?: string;
+  };
+  ```
+- Author one entry for the active Udaipur branch; the array allows adding more without code changes.
+- Add a "Branches & Services" section to `InclineAscent.tsx` that renders cards from this config (facilities, classes, PT, premium add-ons).
+- Generate a `LocalBusiness` JSON-LD per branch from the same config inside the SEO component (looped).
 
 ---
 
-## Recommended next step
-Approve this plan and I'll start with **Phase 1** (member dashboard accuracy → trainer KPIs → add-on discoverability → self-service dead-ends). It's the highest-trust, lowest-risk slice and unblocks everything else.
+## 3.4 Workflow & trigger consistency pass (in-app, not public)
 
-If you'd rather I start with a different phase first (e.g. SEO is more urgent given the recent Lighthouse issues), say the word and I'll reorder.
+This is documentation + small in-app cleanups; no public-site impact.
+
+- Produce `docs/workflows.md` listing canonical events per domain:
+  - Leads → `lead.created`, `lead.status_changed`, `lead.contacted`
+  - Payments → `payment.recorded` (via `record_payment` RPC — already canonical per memory)
+  - Invoices → `invoice.created`, `invoice.paid`, `invoice.void`
+  - Reminders → `reminder.scheduled`, `reminder.sent`
+  - Approvals → `approval.requested`, `approval.decided`
+  - Benefits → `benefit.granted`, `benefit.consumed`
+  - Bookings → `booking.created`, `booking.cancelled`, `booking.attended`
+  - Campaigns → `campaign.sent`, `campaign.delivery_updated`, `campaign.converted`
+- Sweep client code for "fake success" toasts that fire before the mutation resolves; convert to TanStack Query `onSuccess` toasts with `onError` rollback (optimistic where safe).
+- Confirm every server-side mutation path writes to `audit_log` via the existing trigger engine (per memory `audit-log-engine`); list any gaps for a follow-up.
+
+---
+
+## 3.5 UX polish (in-app)
+
+- Empty states with an actionable CTA on every list page (Members, Leads, Invoices, Bookings, Campaigns, Templates, Approvals).
+- One unmistakable primary CTA per page (top-right action button or hero card action).
+- Replace any plain-text status with the standard colored badge palette from project knowledge.
+
+---
+
+## Files touched
+
+- `index.html` — preload LCP image, prune unused preconnect, sitemap/robots tweaks remain in `public/`.
+- `public/robots.txt` — add private app paths to `User-agent: *` Disallow list.
+- `public/sitemap.xml` — drop `/auth` and `/member/pay`, add `<lastmod>`.
+- `src/components/seo/SEO.tsx` (new), `src/main.tsx` (wrap with `HelmetProvider`).
+- `src/pages/InclineAscent.tsx` — mount SEO, add static Branches & FAQ sections, gate Scene3D behind viewport + idle.
+- `src/pages/PrivacyPolicy.tsx`, `src/pages/Terms.tsx`, `src/pages/TermsOfService.tsx`, `src/pages/DataDeletion.tsx` — SEO tags.
+- `src/pages/Auth.tsx`, contract-sign, member/staff/admin shells — SEO with `noindex`.
+- `src/components/3d/Scene3D.tsx` — swap `Environment` HDR for ambient + directional lights; export remains lazy-friendly.
+- `src/config/publicSite.ts` (new) — branches/services source of truth for the public site.
+- `vite.config.ts` — `manualChunks` for `three`/`drei` if not already isolated.
+- `docs/workflows.md` (new) — canonical events.
+- Targeted polish in member/staff list pages (empty states, CTAs, status badges).
+
+## Out of scope (per your call)
+
+- Per-branch landing routes (`/branches/:slug`) — deferred until a second branch exists.
+- Any backend reads from the public site — explicitly excluded.
+- Aggressive image regeneration pipeline — only the existing assets are tuned.
+
+Approve to switch to build mode and execute 3.1 → 3.5 in that order.
