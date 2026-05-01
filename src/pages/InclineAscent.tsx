@@ -34,6 +34,33 @@ const InclineAscent = () => {
   return (
     <div className="w-full min-h-[100dvh] bg-background">
       <ScrollProgressBar progress={scrollProgress} />
+
+      {/*
+        Static SEO hero — paints instantly for LCP / crawlers.
+        The 3D Canvas mounts on top (z-0 + fixed) and visually covers this
+        layer once ready, so users see no change. The H1 text matches the
+        Scroll overlay exactly to avoid any visual mismatch during handoff.
+      */}
+      <section
+        aria-hidden={mountScene}
+        className="fixed inset-0 -z-10 flex items-center px-4 pointer-events-none"
+        style={{ height: '100dvh' }}
+      >
+        <div className="w-full max-w-7xl mx-auto flex justify-end">
+          <div className="max-w-md text-right mr-8 md:mr-32">
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-foreground leading-tight mb-6 tracking-tight">
+              WHERE <span className="text-primary">GLOBAL STRENGTH</span>
+              <br />
+              MEETS <span className="text-primary">CLINICAL SERENITY.</span>
+            </h1>
+            <p className="text-muted-foreground text-base leading-relaxed">
+              Rajasthan's new benchmark for excellence. An elevated sanctuary designed for the driven—delivering Italian
+              biomechanics in every rep, and advanced restoration in every recovery.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {mountScene && (
         <Suspense fallback={null}>
           <Scene3D onScrollProgress={onScrollProgress} />
