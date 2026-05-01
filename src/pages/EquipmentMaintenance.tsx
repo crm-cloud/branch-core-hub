@@ -156,15 +156,22 @@ export default function EquipmentMaintenancePage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
+            {branchInfo?.name && (
+              <Badge variant="outline" className="rounded-full">
+                Branch: {branchInfo.name}
+              </Badge>
+            )}
+          </div>
           <Button onClick={() => setAddDrawerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Equipment
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-7">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Equipment</CardTitle>
@@ -199,12 +206,38 @@ export default function EquipmentMaintenancePage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">YTD Maintenance Cost</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Due This Week</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">₹{totalMonthlyCost.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-amber-600 flex items-center gap-2">
+                <Calendar className="h-5 w-5" /> {dueThisWeek}
+              </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Overdue</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" /> {overdue}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Warranty Expiring (30d)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" /> {warrantyExpiring}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
         </div>
 
         <Tabs defaultValue="equipment">
