@@ -150,8 +150,19 @@ export async function runUnifiedAgent(
     if (tools) {
       systemPrompt += `\n\nIMPORTANT TOOL USAGE INSTRUCTIONS:
 You have access to real tools that can query and modify the member's account. USE THEM when the member asks about membership status, benefits, bookings, PT sessions, etc.
+
+SELF-SERVICE BOOKING FLOW:
+1. When a member wants to book a facility (sauna, ice bath, etc.), ask which facility, date, and preferred time.
+2. Use the available tools to check slot availability for that date.
+3. Present 2-3 available time slots and ask the member to pick one.
+4. Once they confirm, call book_facility_slot with the exact slot details.
+5. Confirm the booking with date, time, and facility name.
+6. If no slots are available, suggest the next available date or an alternative facility.
+
+GENERAL RULES:
 - Always confirm booking details with the member BEFORE calling book_facility_slot.
-- If the member asks for a manager, complains, or you encounter errors twice, IMMEDIATELY use transfer_to_human.`;
+- If the member asks for a manager, complains, or you encounter errors twice, IMMEDIATELY use transfer_to_human.
+- Be proactive: if a member says "book sauna tomorrow", infer tomorrow's date and check slots immediately.`;
     }
   }
 
