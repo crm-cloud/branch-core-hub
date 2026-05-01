@@ -6,6 +6,7 @@ import { Megaphone, Plus, MessageSquare, Mail, CheckCircle2, Clock, AlertTriangl
 import { useBranchContext } from '@/contexts/BranchContext';
 import { listCampaigns, type Campaign } from '@/services/campaignService';
 import { CampaignWizard } from '@/components/campaigns/CampaignWizard';
+import { CampaignDetailDrawer } from '@/components/campaigns/CampaignDetailDrawer';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const channelIcon = (c: string) => (c === 'email' ? Mail : MessageSquare);
