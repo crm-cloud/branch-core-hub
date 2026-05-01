@@ -342,7 +342,7 @@ export default function SystemHealth() {
         </div>
 
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {stats.map((s) => (
             <Card key={s.label} className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
               <CardContent className="p-4 flex items-center gap-3">
