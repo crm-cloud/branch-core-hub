@@ -87,9 +87,20 @@ export default function AdminRoles() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newRole, setNewRole] = useState<AppRole | ''>('');
+  const [newBranchId, setNewBranchId] = useState<string>('');
+  const [assignReason, setAssignReason] = useState('');
   const [removeConfirm, setRemoveConfirm] = useState<{ userId: string; role: AppRole } | null>(null);
+  const [removeReason, setRemoveReason] = useState('');
 
   const canManageRoles = hasAnyRole(['owner', 'admin']);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches-for-role-assign'],
+    queryFn: async () => {
+      const { data } = await supabase.from('branches').select('id, name').order('name');
+      return data || [];
+    },
+  });
 
   const { data: usersWithRoles = [], isLoading } = useQuery({
     queryKey: ['users-with-roles'],
@@ -117,32 +128,68 @@ export default function AdminRoles() {
     },
   });
 
-  const addRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const { error } = await supabase.from('user_roles').insert({ user_id: userId, role });
-      if (error) throw error;
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ['role-change-requests'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('role_change_requests' as any)
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      return (data as any[]) || [];
     },
-    onSuccess: () => {
+  });
+
+  const addRoleMutation = useMutation({
+    mutationFn: async ({ userId, role, branchId, reason }: { userId: string; role: AppRole; branchId: string | null; reason: string }) => {
+      const { data, error } = await supabase.rpc('assign_user_role', {
+        p_target_user_id: userId,
+        p_role: role,
+        p_branch_id: branchId,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as any;
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
-      toast.success('Role added successfully');
+      queryClient.invalidateQueries({ queryKey: ['role-change-requests'] });
+      if (data?.status === 'pending_approval') {
+        toast.info('Role change submitted for owner approval');
+      } else {
+        toast.success('Role assigned');
+      }
       setSheetOpen(false);
       setSelectedUserId(null);
       setNewRole('');
+      setNewBranchId('');
+      setAssignReason('');
     },
-    onError: (error: any) => toast.error('Failed to add role: ' + error.message),
+    onError: (error: any) => toast.error(error.message || 'Failed to assign role'),
   });
 
   const removeRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const { error } = await supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role);
+    mutationFn: async ({ userId, role, reason }: { userId: string; role: AppRole; reason: string }) => {
+      const { data, error } = await supabase.rpc('remove_user_role', {
+        p_target_user_id: userId,
+        p_role: role,
+        p_reason: reason,
+      });
       if (error) throw error;
+      return data as any;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
-      toast.success('Role removed');
+      queryClient.invalidateQueries({ queryKey: ['role-change-requests'] });
+      if (data?.status === 'pending_approval') {
+        toast.info('Removal submitted for owner approval');
+      } else {
+        toast.success('Role removed');
+      }
       setRemoveConfirm(null);
+      setRemoveReason('');
     },
-    onError: (error: any) => toast.error('Failed to remove role: ' + error.message),
+    onError: (error: any) => toast.error(error.message || 'Failed to remove role'),
   });
 
   const filteredUsers = usersWithRoles.filter(user => {
