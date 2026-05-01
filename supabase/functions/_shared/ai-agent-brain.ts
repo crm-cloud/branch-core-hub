@@ -1,0 +1,564 @@
+// v1.0.0 — Unified AI Agent Brain
+// Shared across meta-webhook (Instagram/Messenger) and whatsapp-webhook.
+// Provides consistent prompt construction, AI invocation, lead capture parsing,
+// partial lead storage, and lead creation logic.
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAllToolDefinitions } from "./ai-tools.ts";
+import { executeSharedToolCall } from "./ai-tool-executor.ts";
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+export type Platform = "whatsapp" | "instagram" | "messenger";
+
+export interface AgentContext {
+  senderId: string;           // phone number or IG/FB user ID
+  branchId: string;
+  platform: Platform;
+  messageId: string;          // DB ID of the inbound message
+  messageContent: string;
+  contactName: string | null;
+  messageType?: string;       // e.g. "story_reply", "text", "image"
+}
+
+export interface AgentResult {
+  replyText: string | null;
+  leadCaptured: boolean;
+  leadId: string | null;
+  handoffTriggered: boolean;
+  skipped: boolean;
+  skipReason?: string;
+}
+
+interface OrgAiConfig {
+  auto_reply_enabled?: boolean;
+  reply_delay_seconds?: number;
+  system_prompt?: string;
+  model?: string;
+  lead_capture?: {
+    enabled?: boolean;
+    target_fields?: string[];
+    handoff_message?: string;
+  };
+  instagram_story_reply_enabled?: boolean; // default false
+}
+
+// ─── Main entry point ──────────────────────────────────────────────────────────
+
+export async function runUnifiedAgent(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  serviceKey: string,
+  ctx: AgentContext,
+): Promise<AgentResult> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.log(`[AI:${ctx.platform}] LOVABLE_API_KEY missing`);
+    return skip("no_api_key");
+  }
+
+  // 1. Load org AI config
+  const orgConfig = await loadOrgConfig(supabase);
+  const aiConfig: OrgAiConfig = (orgConfig?.whatsapp_ai_config as any) || {};
+  if (!aiConfig.auto_reply_enabled) {
+    return skip("auto_reply_disabled");
+  }
+
+  // 2. Check bot_active
+  const { data: chatSettings } = await supabase
+    .from("whatsapp_chat_settings")
+    .select("bot_active, captured_lead_id, conversation_summary")
+    .eq("branch_id", ctx.branchId)
+    .eq("phone_number", ctx.senderId)
+    .maybeSingle();
+  if (chatSettings?.bot_active === false) {
+    return skip("bot_paused");
+  }
+
+  // 3. Story reply guard
+  if (ctx.messageType === "story_reply" || ctx.messageType === "story_mention") {
+    const storyEnabled = aiConfig.instagram_story_reply_enabled === true;
+    // Only skip if no text content or feature disabled
+    const hasTextContent = ctx.messageContent && !ctx.messageContent.startsWith("[Story reply") && !ctx.messageContent.startsWith("[Attachment]") && ctx.messageContent.trim().length > 5;
+    if (!storyEnabled && !hasTextContent) {
+      console.log(`[AI:${ctx.platform}] skipping story reply (no text / feature disabled)`);
+      return skip("story_reply_no_text");
+    }
+  }
+
+  // 4. Optional delay
+  const delaySeconds = aiConfig.reply_delay_seconds || 0;
+  if (delaySeconds > 0 && delaySeconds <= 30) {
+    await new Promise((r) => setTimeout(r, delaySeconds * 1000));
+  }
+
+  // 5. Resolve member/lead context
+  const memberCtx = await resolveMemberContext(supabase, ctx.senderId, ctx.branchId, ctx.platform);
+  const alreadyCaptured = chatSettings?.captured_lead_id ? await loadCapturedSnapshot(supabase, chatSettings.captured_lead_id) : "";
+  const summaryBlock = chatSettings?.conversation_summary ? `\n\n[PRIOR CONVERSATION SUMMARY]\n${chatSettings.conversation_summary}\n` : "";
+
+  // 6. Build conversation history (cross-platform, no channel tags)
+  const { data: recentMessages } = await supabase
+    .from("whatsapp_messages")
+    .select("content, direction, platform")
+    .eq("phone_number", ctx.senderId)
+    .eq("branch_id", ctx.branchId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const history = (recentMessages || []).reverse().map((m: any) => ({
+    role: (m.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
+    content: String(m.content || ""),
+  }));
+
+  // 7. Build system prompt
+  const gymName = orgConfig?.name || "Incline Fitness";
+  const platformLabel = ctx.platform === "instagram" ? "Instagram DM" : ctx.platform === "messenger" ? "Facebook Messenger" : "WhatsApp";
+  const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
+
+  let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
+  systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation. Keep replies short (1-3 sentences), warm, professional.`;
+
+  // Global behavioral rules
+  systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
+- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly first.
+- Do NOT gatekeep answers behind "registration" or "sign up first".
+- After answering their question, you may then naturally transition into collecting their details.
+- Never repeat the same question more than twice. If the user ignores a question, move on.
+- If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.`;
+
+  // Member tool instructions
+  let tools: any[] | undefined;
+  if (memberCtx.isMember && memberCtx.memberId) {
+    tools = getAllToolDefinitions();
+    try {
+      const { data: orgRow } = await supabase.from("organization_settings").select("ai_tool_config").limit(1).maybeSingle();
+      const cfg = (orgRow?.ai_tool_config as Record<string, boolean>) || {};
+      tools = tools.filter((t: any) => cfg[t.function.name] !== false);
+      if (tools.length === 0) tools = undefined;
+    } catch { /* keep all */ }
+
+    if (tools) {
+      systemPrompt += `\n\nIMPORTANT TOOL USAGE INSTRUCTIONS:
+You have access to real tools that can query and modify the member's account. USE THEM when the member asks about membership status, benefits, bookings, PT sessions, etc.
+- Always confirm booking details with the member BEFORE calling book_facility_slot.
+- If the member asks for a manager, complains, or you encounter errors twice, IMMEDIATELY use transfer_to_human.`;
+    }
+  }
+
+  // Lead capture for non-members
+  const leadCaptureConfig = aiConfig.lead_capture;
+  const shouldCaptureLead = !memberCtx.isMember && leadCaptureConfig?.enabled && (leadCaptureConfig.target_fields?.length ?? 0) > 0;
+  if (shouldCaptureLead) {
+    const fieldLabels: Record<string, string> = {
+      name: "Full Name", phone: "Phone Number", email: "Email Address",
+      goal: "Fitness Goal", budget: "Monthly Budget (in ₹)",
+      start_date: "When do you plan to start?",
+      experience: "Fitness Experience Level",
+      preferred_time: "Preferred workout time slot",
+    };
+    const fieldNames = (leadCaptureConfig!.target_fields || []).map((f: string) => fieldLabels[f] || f).join(", ");
+    systemPrompt += `\n\nIMPORTANT LEAD CAPTURE INSTRUCTIONS:
+Your secondary goal is to naturally collect: ${fieldNames}.
+- Ask for these naturally, one or two at a time.
+- You MUST collect full name + email + at least 1 other field before outputting lead_captured.
+- The ${ctx.platform === "whatsapp" ? "phone number" : "platform contact ID"} is already known: ${ctx.senderId}
+- When the user provides the LAST required field, respond with ONLY this JSON:
+{"status":"lead_captured","data":{${(leadCaptureConfig!.target_fields || []).map((f: string) => `"${f}":"<actual_value>"`).join(",")}}}
+- Use the exact field keys: ${(leadCaptureConfig!.target_fields || []).join(", ")}`;
+  }
+
+  // 8. Call Lovable AI
+  const aiMessages: any[] = [
+    { role: "system", content: systemPrompt },
+    ...history,
+  ];
+
+  const aiRequestBody: any = {
+    model: aiConfig.model || "google/gemini-3-flash-preview",
+    messages: aiMessages,
+  };
+  if (tools) {
+    aiRequestBody.tools = tools;
+    aiRequestBody.tool_choice = "auto";
+  }
+
+  let aiResult: any;
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(aiRequestBody),
+    });
+    if (!resp.ok) {
+      console.error(`[AI:${ctx.platform}] gateway error ${resp.status}`);
+      return skip("ai_gateway_error");
+    }
+    aiResult = await resp.json();
+  } catch (e) {
+    console.error(`[AI:${ctx.platform}] fetch failed:`, e);
+    return skip("ai_fetch_error");
+  }
+
+  const choice = aiResult?.choices?.[0];
+  const toolCalls = choice?.message?.tool_calls;
+  let replyText: string | null = choice?.message?.content || null;
+
+  // 9. Handle tool calls
+  if (toolCalls?.length && tools && memberCtx.memberId) {
+    const toolMessages: any[] = [];
+    for (const tc of toolCalls) {
+      let parsedArgs: any = {};
+      try { parsedArgs = JSON.parse(tc.function.arguments || "{}"); } catch { /* ignore */ }
+      const result = await executeSharedToolCall(
+        supabase, supabaseUrl, serviceKey,
+        tc.function.name, parsedArgs,
+        {
+          isMember: true,
+          memberId: memberCtx.memberId,
+          memberName: memberCtx.memberName || "Member",
+          branchId: ctx.branchId,
+          membershipId: memberCtx.membershipId ?? null,
+          planId: memberCtx.planId ?? null,
+          contextPrompt: memberCtx.contextPrompt,
+        },
+        ctx.senderId, ctx.branchId, ctx.platform,
+      );
+      toolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
+    }
+    try {
+      const followup = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: aiConfig.model || "google/gemini-3-flash-preview",
+          messages: [...aiMessages, choice.message, ...toolMessages],
+        }),
+      });
+      const followupData = await followup.json();
+      replyText = followupData?.choices?.[0]?.message?.content || replyText;
+    } catch (e) {
+      console.error(`[AI:${ctx.platform}] tool follow-up failed:`, e);
+    }
+  }
+
+  if (!replyText) return skip("no_reply_text");
+
+  // 10. Lead capture parsing
+  if (shouldCaptureLead) {
+    const leadResult = await tryParseAndCaptureLead(
+      supabase, replyText, ctx, leadCaptureConfig!, supabaseUrl, serviceKey,
+    );
+    if (leadResult.captured) {
+      // Send handoff message instead of AI's JSON
+      const handoffMsg = leadCaptureConfig!.handoff_message || "Thanks for sharing! Our team will reach out to you shortly. 💪";
+      return { replyText: handoffMsg, leadCaptured: true, leadId: leadResult.leadId, handoffTriggered: false, skipped: false };
+    }
+    // Store partial data even if not fully captured
+    if (leadResult.partialData && Object.keys(leadResult.partialData).length > 0) {
+      await supabase.from("whatsapp_chat_settings").upsert(
+        { branch_id: ctx.branchId, phone_number: ctx.senderId, partial_lead_data: leadResult.partialData },
+        { onConflict: "branch_id,phone_number" },
+      );
+    }
+  }
+
+  return { replyText, leadCaptured: false, leadId: null, handoffTriggered: false, skipped: false };
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function skip(reason: string): AgentResult {
+  return { replyText: null, leadCaptured: false, leadId: null, handoffTriggered: false, skipped: true, skipReason: reason };
+}
+
+let _orgConfigCache: any = null;
+let _orgConfigTs = 0;
+async function loadOrgConfig(supabase: any) {
+  if (_orgConfigCache && Date.now() - _orgConfigTs < 60_000) return _orgConfigCache;
+  const { data } = await supabase.from("organization_settings").select("whatsapp_ai_config, name, lead_nurture_config, ai_tool_config").limit(1).maybeSingle();
+  _orgConfigCache = data;
+  _orgConfigTs = Date.now();
+  return data;
+}
+
+async function loadCapturedSnapshot(supabase: any, leadId: string): Promise<string> {
+  const { data: existingLead } = await supabase
+    .from("leads")
+    .select("full_name, email, goals, budget, preferred_time, fitness_goal, fitness_experience, expected_start_date")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!existingLead) return "";
+  const known = Object.entries(existingLead)
+    .filter(([_, v]) => v !== null && v !== "" && v !== undefined)
+    .map(([k, v]) => `${k}=${v}`).join(", ");
+  return known ? `\n\n[KNOWN LEAD — DO NOT RE-ASK]\nThis person is already a captured lead. Known: ${known}. Do NOT ask for their name, email, goals, budget, or preferred time again.` : "";
+}
+
+interface MemberResolveResult {
+  isMember: boolean;
+  memberId?: string;
+  memberName?: string;
+  membershipId?: string;
+  planId?: string;
+  contextPrompt: string;
+}
+
+async function resolveMemberContext(supabase: any, senderId: string, branchId: string, platform: Platform): Promise<MemberResolveResult> {
+  // For WhatsApp: match by phone variants
+  // For IG/Messenger: match by whatsapp_id field (stores platform user ID) or phone
+  const cleanId = senderId.replace(/[\s\-\+]/g, "");
+  const phoneVariants = [cleanId, `+${cleanId}`, cleanId.replace(/^91/, "+91")];
+
+  // Try member match by phone
+  let memberMatch: any = null;
+  for (const variant of phoneVariants) {
+    const { data } = await supabase
+      .from("members")
+      .select("id, branch_id, profiles(full_name)")
+      .or(`phone_number.eq.${variant}`)
+      .maybeSingle();
+    if (data) { memberMatch = data; break; }
+  }
+
+  // Also check profiles.phone
+  if (!memberMatch) {
+    for (const variant of phoneVariants) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .eq("phone", variant)
+        .maybeSingle();
+      if (profile?.user_id) {
+        const { data: member } = await supabase
+          .from("members")
+          .select("id, branch_id, profiles(full_name)")
+          .eq("user_id", profile.user_id)
+          .maybeSingle();
+        if (member) { memberMatch = member; break; }
+      }
+    }
+  }
+
+  if (!memberMatch) {
+    // Check existing lead for context
+    let leadContext = "";
+    for (const variant of phoneVariants) {
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("full_name, status, fitness_goal")
+        .eq("phone", variant)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lead) {
+        leadContext = `[Lead] ${lead.full_name || "Unknown"}, Status: ${lead.status || "-"}, Goal: ${lead.fitness_goal || "-"}`;
+        break;
+      }
+    }
+    return { isMember: false, contextPrompt: leadContext || "Speaking to a guest/lead." };
+  }
+
+  const memberName = (memberMatch as any).profiles?.full_name || "Member";
+  let membershipId: string | undefined;
+  let planId: string | undefined;
+  const { data: ms } = await supabase
+    .from("memberships")
+    .select("id, plan_id")
+    .eq("member_id", memberMatch.id)
+    .eq("status", "active")
+    .order("end_date", { ascending: false })
+    .limit(1).maybeSingle();
+  if (ms) { membershipId = ms.id; planId = ms.plan_id; }
+
+  return {
+    isMember: true,
+    memberId: memberMatch.id,
+    memberName,
+    membershipId,
+    planId,
+    contextPrompt: `Member: ${memberName}`,
+  };
+}
+
+// ─── Lead capture parsing ──────────────────────────────────────────────────────
+
+interface LeadCaptureResult {
+  captured: boolean;
+  leadId: string | null;
+  partialData: Record<string, any>;
+}
+
+async function tryParseAndCaptureLead(
+  supabase: any,
+  replyText: string,
+  ctx: AgentContext,
+  config: { target_fields?: string[]; handoff_message?: string },
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<LeadCaptureResult> {
+  let parsedLeadData: Record<string, any> | null = null;
+
+  // Primary: JSON extraction
+  try {
+    const jsonMatch = replyText.match(/\{[\s\S]*"status"\s*:\s*"lead_captured"[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.status === "lead_captured" && parsed.data) {
+        parsedLeadData = parsed.data;
+      }
+    }
+  } catch { /* continue to fallback */ }
+
+  // Fallback: extract from natural language
+  const partialData: Record<string, any> = {};
+  if (!parsedLeadData && replyText.length > 20) {
+    const nameMatch = replyText.match(/(?:name|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+    const emailMatch = replyText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+    const goalMatch = replyText.match(/(?:goal|Goal)[:\s]+([^\n,]+)/);
+    const timeMatch = replyText.match(/(?:time|Time|prefer|Prefer)[:\s]+([^\n,]+)/);
+
+    if (nameMatch) partialData.name = nameMatch[1];
+    if (emailMatch) partialData.email = emailMatch[0];
+    if (goalMatch) partialData.goal = goalMatch[1]?.trim();
+    if (timeMatch) partialData.preferred_time = timeMatch[1]?.trim();
+    if (ctx.contactName) partialData.contact_name = ctx.contactName;
+
+    // Only capture with name + email + >=2 inbound messages
+    const { count: msgCount } = await supabase
+      .from("whatsapp_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("phone_number", ctx.senderId)
+      .eq("branch_id", ctx.branchId)
+      .eq("direction", "inbound");
+
+    if ((msgCount || 0) >= 2 && nameMatch && emailMatch) {
+      parsedLeadData = {
+        name: nameMatch[1],
+        email: emailMatch[0],
+        goal: goalMatch?.[1]?.trim() || null,
+        preferred_time: timeMatch?.[1]?.trim() || null,
+      };
+    }
+  }
+
+  if (!parsedLeadData) {
+    return { captured: false, leadId: null, partialData };
+  }
+
+  // Create lead
+  const sourceMap: Record<Platform, string> = {
+    whatsapp: "whatsapp_ai",
+    instagram: "instagram_ai",
+    messenger: "messenger_ai",
+  };
+
+  // For Instagram/Messenger, the senderId is a platform user ID, not a phone number
+  const isPhoneLike = /^\d{10,15}$/.test(ctx.senderId.replace(/\+/g, ""));
+  const phone = isPhoneLike ? ctx.senderId : `${ctx.platform}:${ctx.senderId}`;
+
+  const leadData: any = {
+    phone,
+    source: sourceMap[ctx.platform],
+    branch_id: ctx.branchId,
+    status: "new",
+    temperature: "warm",
+    score: 50,
+    full_name: parsedLeadData.name || parsedLeadData.full_name || ctx.contactName || `${ctx.platform} Lead`,
+    email: parsedLeadData.email || null,
+    goals: parsedLeadData.goal || parsedLeadData.fitness_goal || null,
+    budget: parsedLeadData.budget || null,
+    fitness_goal: parsedLeadData.fitness_goal || parsedLeadData.goal || null,
+    expected_start_date: parsedLeadData.expected_start_date || parsedLeadData.start_date || null,
+    fitness_experience: parsedLeadData.fitness_experience || parsedLeadData.experience || null,
+    preferred_time: parsedLeadData.preferred_time || null,
+    notes: `AI-captured via ${ctx.platform} conversation. Platform ID: ${ctx.senderId}`,
+  };
+
+  // Dedupe: check if lead with same email or phone exists
+  if (parsedLeadData.email) {
+    const { data: existingByEmail } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("email", parsedLeadData.email)
+      .eq("branch_id", ctx.branchId)
+      .limit(1)
+      .maybeSingle();
+    if (existingByEmail) {
+      console.log(`[AI:${ctx.platform}] lead already exists by email, skipping creation`);
+      await supabase.from("whatsapp_chat_settings").upsert(
+        { branch_id: ctx.branchId, phone_number: ctx.senderId, captured_lead_id: existingByEmail.id, bot_active: false, paused_at: new Date().toISOString() },
+        { onConflict: "branch_id,phone_number" },
+      );
+      return { captured: true, leadId: existingByEmail.id, partialData };
+    }
+  }
+
+  const { data: newLead, error: leadError } = await supabase
+    .from("leads")
+    .insert(leadData)
+    .select("id")
+    .single();
+
+  if (leadError) {
+    console.error(`[AI:${ctx.platform}] lead insert failed:`, leadError);
+    return { captured: false, leadId: null, partialData };
+  }
+
+  // Record capture marker
+  await supabase.from("whatsapp_messages").insert({
+    branch_id: ctx.branchId,
+    phone_number: ctx.senderId,
+    contact_name: ctx.contactName,
+    content: `[AI_LEAD_CAPTURED:${newLead.id}]`,
+    direction: "outbound",
+    status: "delivered",
+    message_type: "text",
+    platform: ctx.platform,
+  });
+
+  // Update chat settings
+  await supabase.from("whatsapp_chat_settings").upsert(
+    { branch_id: ctx.branchId, phone_number: ctx.senderId, captured_lead_id: newLead.id, bot_active: false, paused_at: new Date().toISOString() },
+    { onConflict: "branch_id,phone_number" },
+  );
+
+  // Notify staff
+  try {
+    const { data: staffRoles } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .in("role", ["owner", "admin", "manager"]);
+    const seen = new Set<string>();
+    const notifications = (staffRoles || [])
+      .filter((r: any) => r.user_id && !seen.has(r.user_id) && seen.add(r.user_id))
+      .map((r: any) => ({
+        user_id: r.user_id,
+        branch_id: ctx.branchId,
+        title: `New ${ctx.platform === "instagram" ? "Instagram" : ctx.platform === "messenger" ? "Messenger" : "WhatsApp"} Lead`,
+        message: `${leadData.full_name} was captured via ${ctx.platform} AI.`,
+        type: "info",
+        category: "lead",
+        action_url: "/leads",
+        metadata: { lead_id: newLead.id, source: sourceMap[ctx.platform] },
+        is_read: false,
+      }));
+    if (notifications.length > 0) {
+      await supabase.from("notifications").insert(notifications);
+    }
+  } catch (e) {
+    console.error(`[AI:${ctx.platform}] notification insert failed:`, e);
+  }
+
+  // Dispatch outbound notification
+  try {
+    fetch(`${supabaseUrl}/functions/v1/notify-lead-created`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ lead_id: newLead.id, branch_id: ctx.branchId }),
+    }).catch((e: any) => console.error("Lead notification dispatch failed:", e));
+  } catch { /* fire-and-forget */ }
+
+  console.log(`[AI:${ctx.platform}] lead captured: ${newLead.id}`);
+  return { captured: true, leadId: newLead.id, partialData };
+}
