@@ -892,21 +892,33 @@ export default function HRMPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => {
-                                  generatePayslipPDF({
-                                    employeeName: staff.name,
-                                    employeeCode: staff.code,
-                                    month: getPayrollMonthLabel(payrollMonth),
-                                    baseSalary: staff.salary || 0,
-                                    daysPresent: p.daysPresent || 0,
-                                    workingDays: p.workingDays || 26,
-                                    proRatedPay: p.proRatedPay || 0,
-                                    ptCommission: p.ptCommission || 0,
-                                    grossPay: p.grossPay || 0,
-                                    pfDeduction: p.pfDeduction || 0,
-                                    netPay: p.netPay || 0,
-                                    department: staff.department,
-                                    position: staff.position,
-                                  });
+                                  const blob = buildPayslipPdf({
+                                    employee_name: staff.name,
+                                    employee_code: staff.code,
+                                    designation: staff.position,
+                                    period_label: getPayrollMonthLabel(payrollMonth),
+                                    period_start: `${payrollMonth}-01`,
+                                    period_end: `${payrollMonth}-${String(p.workingDays || 28).padStart(2,'0')}`,
+                                    attendance: {
+                                      present: p.daysPresent ?? 0,
+                                      half_day: p.halfDays ?? 0,
+                                      late: p.lateDays ?? 0,
+                                      missing_checkout: p.missingCheckoutDays ?? 0,
+                                      leave: p.leaveDays ?? 0,
+                                      holiday: p.holidayDays ?? 0,
+                                      weekly_off: p.weeklyOffDays ?? 0,
+                                      absent: 0,
+                                      payable_days: p.payableDays ?? 0,
+                                      total_days: p.workingDays ?? 0,
+                                      monthly_salary: staff.salary || 0,
+                                    },
+                                    earnings: { base: p.proRatedPay || 0, pt_commission: p.ptCommission || 0, ot: 0, bonus: 0 },
+                                    deductions: { deductions: p.pfDeduction || 0, advance: 0, penalty: 0 },
+                                    gross: p.grossPay || 0,
+                                    net: p.netPay || 0,
+                                  }, brand);
+                                  downloadBlob(blob, `Payslip_${staff.code}_${payrollMonth}.pdf`);
+                                  toast.success('Payslip downloaded');
                                 }}
                                 title="Download Payslip"
                               >
