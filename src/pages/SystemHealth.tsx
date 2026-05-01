@@ -11,9 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck, Download, RotateCcw, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { exportToCsv } from '@/lib/csvExport';
 
 interface ErrorLog {
   id: string;
@@ -21,6 +22,8 @@ interface ErrorLog {
   error_message: string;
   stack_trace: string | null;
   component_name: string | null;
+  function_name: string | null;
+  table_name: string | null;
   route: string | null;
   browser_info: string | null;
   status: string;
@@ -28,6 +31,13 @@ interface ErrorLog {
   resolved_by: string | null;
   created_at: string;
   source?: string;
+  severity?: string;
+  fingerprint?: string | null;
+  occurrence_count?: number;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  branch_id?: string | null;
+  context?: any;
 }
 
 const SOURCE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
