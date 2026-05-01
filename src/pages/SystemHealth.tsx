@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck, Download, RotateCcw, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { exportToCsv } from '@/lib/csvExport';
+import { exportToCSV } from '@/lib/csvExport';
 
 interface ErrorLog {
   id: string;
