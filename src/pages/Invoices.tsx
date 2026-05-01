@@ -62,6 +62,16 @@ export default function InvoicesPage() {
     return () => { supabase.removeChannel(channel); };
   }, [branchFilter, queryClient]);
 
+  // Cmd+K: ?new=1 opens Create Invoice drawer
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setCreateOpen(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   // Deep-link: /invoices?invoice=<id> auto-opens that invoice's view drawer.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
