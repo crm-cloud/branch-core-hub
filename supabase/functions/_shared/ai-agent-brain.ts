@@ -1,4 +1,4 @@
-// v1.0.0 — Unified AI Agent Brain
+// v2.0.0 — Unified AI Agent Brain (enhanced gym context + self-booking)
 // Shared across meta-webhook (Instagram/Messenger) and whatsapp-webhook.
 // Provides consistent prompt construction, AI invocation, lead capture parsing,
 // partial lead storage, and lead creation logic.
@@ -111,7 +111,10 @@ export async function runUnifiedAgent(
     content: String(m.content || ""),
   }));
 
-  // 7. Build system prompt
+  // 7. Hydrate gym facts (plans, facilities, timings)
+  const gymFacts = await hydrateGymFacts(supabase, ctx.branchId);
+
+  // 8. Build system prompt
   const gymName = orgConfig?.name || "Incline Fitness";
   const platformLabel = ctx.platform === "instagram" ? "Instagram DM" : ctx.platform === "messenger" ? "Facebook Messenger" : "WhatsApp";
   const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
@@ -119,13 +122,19 @@ export async function runUnifiedAgent(
   let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
   systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation. Keep replies short (1-3 sentences), warm, professional.`;
 
+  // Inject gym knowledge so the AI can answer common questions directly
+  if (gymFacts) {
+    systemPrompt += `\n\n${gymFacts}`;
+  }
+
   // Global behavioral rules
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
-- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly first.
+- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly using the GYM KNOWLEDGE above.
 - Do NOT gatekeep answers behind "registration" or "sign up first".
 - After answering their question, you may then naturally transition into collecting their details.
 - Never repeat the same question more than twice. If the user ignores a question, move on.
-- If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.`;
+- If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.
+- For pricing, always mention the plan name, duration, and price. If the gym has a day pass, mention it first for casual inquirers.`;
 
   // Member tool instructions
   let tools: any[] | undefined;
