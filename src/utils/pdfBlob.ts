@@ -149,29 +149,29 @@ export interface InvoicePdfInput {
   gst_number?: string | null;
 }
 
-export function buildInvoicePdf(data: InvoicePdfInput): Blob {
+export function buildInvoicePdf(data: InvoicePdfInput, brand?: BrandContext): Blob {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const title = data.is_gst_invoice ? 'TAX INVOICE' : 'INVOICE';
-  header(doc, title, data.branch_name);
+  const resolvedBrand: BrandContext = brand || {
+    ...DEFAULT_BRAND,
+    branch: {
+      name: data.branch_name,
+      address: data.branch_address ?? null,
+      phone: data.branch_phone ?? null,
+      email: data.branch_email ?? null,
+      gstin: data.gst_number ?? null,
+    },
+  };
+  header(doc, title, resolvedBrand, {
+    docNumber: data.invoice_number,
+    issueDate: new Date(data.created_at).toLocaleDateString('en-IN'),
+  });
 
-  // Branch + invoice meta
-  let y = 38;
-  doc.setFontSize(9);
+  let y = 56;
   setColor(doc, BRAND.muted);
-  if (data.branch_address) doc.text(doc.splitTextToSize(data.branch_address, 90), 14, y);
-  if (data.branch_phone) doc.text(`Tel: ${data.branch_phone}`, 14, y + 8);
-  if (data.gst_number) doc.text(`GSTIN: ${data.gst_number}`, 14, y + 12);
-
-  setColor(doc, BRAND.text);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text(data.invoice_number, 196, y, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  setColor(doc, BRAND.muted);
-  doc.text(`Date: ${new Date(data.created_at).toLocaleDateString('en-IN')}`, 196, y + 5, { align: 'right' });
-  if (data.due_date) doc.text(`Due: ${new Date(data.due_date).toLocaleDateString('en-IN')}`, 196, y + 10, { align: 'right' });
-  doc.text(`Status: ${(data.status || '').toUpperCase()}`, 196, y + 15, { align: 'right' });
+  if (data.due_date) doc.text(`Due: ${new Date(data.due_date).toLocaleDateString('en-IN')}`, 196, y, { align: 'right' });
+  doc.text(`Status: ${(data.status || '').toUpperCase()}`, 196, y + 5, { align: 'right' });
 
   // Bill to
   y = 62;
