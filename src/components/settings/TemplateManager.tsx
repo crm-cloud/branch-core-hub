@@ -177,6 +177,31 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     },
   });
 
+  // 7-day delivery counts per template (sent / failed / queued)
+  const { data: deliveryStats = {} } = useQuery({
+    queryKey: ['template-delivery-stats-7d'],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('communication_logs')
+        .select('template_id, delivery_status, status')
+        .gte('created_at', since)
+        .not('template_id', 'is', null);
+      const map: Record<string, { sent: number; failed: number; queued: number }> = {};
+      for (const r of (data || []) as any[]) {
+        if (!r.template_id) continue;
+        const k = r.template_id as string;
+        if (!map[k]) map[k] = { sent: 0, failed: 0, queued: 0 };
+        const ds = (r.delivery_status || r.status || '').toString().toLowerCase();
+        if (['sent', 'delivered', 'read'].includes(ds)) map[k].sent++;
+        else if (['failed', 'error', 'bounced', 'rejected'].includes(ds)) map[k].failed++;
+        else map[k].queued++;
+      }
+      return map;
+    },
+    refetchInterval: 60_000,
+  });
+
   /** After saving a template, optionally wire it to a system event in
    *  whatsapp_triggers so Templates Health flips green for that event. */
   const wireWhatsAppTrigger = async (templateId: string, eventName: string) => {
@@ -595,6 +620,18 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                             <p className="text-xs text-muted-foreground truncate mt-1">
                               {template.content.slice(0, 80)}...
                             </p>
+                            {(() => {
+                              const ds = deliveryStats[template.id];
+                              if (!ds || (ds.sent + ds.failed + ds.queued) === 0) return null;
+                              return (
+                                <div className="flex items-center gap-2 mt-1.5 text-[10px]">
+                                  <span className="text-muted-foreground uppercase tracking-wider font-semibold">7d:</span>
+                                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">{ds.sent} sent</span>
+                                  {ds.failed > 0 && <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 font-medium">{ds.failed} failed</span>}
+                                  {ds.queued > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">{ds.queued} queued</span>}
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div className="flex items-center gap-1 ml-3 flex-shrink-0">
                             {value === 'whatsapp' && (

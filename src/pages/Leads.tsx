@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X, Bot } from 'lucide-react';
+import { Plus, LayoutGrid, List, Calendar, Download, Target, BarChart3, Save, BookmarkCheck, X, Bot, Clock } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exportToCSV } from '@/lib/csvExport';
 import { leadService, type LeadFilters } from '@/services/leadService';
@@ -169,6 +169,18 @@ export default function LeadsPage() {
     return Array.from(s) as string[];
   }, [leads]);
 
+  const STALE_DAYS = 3;
+  const ACTIVE_STAGES = ['new', 'contacted', 'qualified', 'negotiation'];
+  const isStale = (l: any) => {
+    if (!ACTIVE_STAGES.includes(l.status)) return false;
+    const ref = l.last_contacted_at || l.created_at;
+    if (!ref) return false;
+    const ageMs = Date.now() - new Date(ref).getTime();
+    return ageMs > STALE_DAYS * 24 * 60 * 60 * 1000;
+  };
+
+  const [showStaleOnly, setShowStaleOnly] = useState(false);
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead: any) => {
       const matchesSearch = !filters.search ||
@@ -180,9 +192,12 @@ export default function LeadsPage() {
       const matchesTemp = temperatureFilter.length === 0 || temperatureFilter.includes(lead.temperature);
       const matchesOwner = !filters.ownerId || (filters.ownerId === 'unassigned' ? !lead.owner_id : lead.owner_id === filters.ownerId);
       const matchesOverdue = !filters.overdueOnly || (lead.next_action_at && new Date(lead.next_action_at) < new Date());
-      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner && matchesOverdue;
+      const matchesStale = !showStaleOnly || isStale(lead);
+      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner && matchesOverdue && matchesStale;
     });
-  }, [leads, filters, statusFilter, temperatureFilter]);
+  }, [leads, filters, statusFilter, temperatureFilter, showStaleOnly]);
+
+  const staleCount = useMemo(() => leads.filter(isStale).length, [leads]);
 
   // Actions
   const openProfile = useCallback((lead: any) => { setSelectedLead(lead); setShowProfileDrawer(true); }, []);
@@ -291,6 +306,33 @@ export default function LeadsPage() {
 
         {/* Dashboard Stats */}
         {stats && <LeadDashboard stats={stats} />}
+
+        {/* Stale-leads SLA banner */}
+        {staleCount > 0 && viewMode !== 'analytics' && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Clock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-900">
+                  {staleCount} stale lead{staleCount === 1 ? '' : 's'} need attention
+                </p>
+                <p className="text-xs text-amber-700">
+                  Active leads with no contact in the last 3 days. Reach out to keep them warm.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={showStaleOnly ? 'default' : 'outline'}
+              className="rounded-xl shrink-0"
+              onClick={() => setShowStaleOnly((v) => !v)}
+            >
+              {showStaleOnly ? 'Show all' : 'Show stale only'}
+            </Button>
+          </div>
+        )}
 
         {/* Filters */}
         {viewMode !== 'analytics' && (

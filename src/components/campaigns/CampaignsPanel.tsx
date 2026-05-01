@@ -6,6 +6,7 @@ import { Megaphone, Plus, MessageSquare, Mail, CheckCircle2, Clock, AlertTriangl
 import { useBranchContext } from '@/contexts/BranchContext';
 import { listCampaigns, type Campaign } from '@/services/campaignService';
 import { CampaignWizard } from '@/components/campaigns/CampaignWizard';
+import { CampaignDetailDrawer } from '@/components/campaigns/CampaignDetailDrawer';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const channelIcon = (c: string) => (c === 'email' ? Mail : MessageSquare);
@@ -23,6 +24,7 @@ export function CampaignsPanel() {
   const { selectedBranch } = useBranchContext();
   const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [detailCampaign, setDetailCampaign] = useState<Campaign | null>(null);
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ['campaigns', branchId],
@@ -69,7 +71,7 @@ export function CampaignsPanel() {
             const Sicon = sb.icon;
             const isScheduled = c.status === 'scheduled' && c.scheduled_at;
             return (
-              <div key={c.id} className="rounded-2xl bg-card p-5 shadow-md shadow-slate-200/50 hover:shadow-lg transition-shadow">
+              <div key={c.id} role="button" tabIndex={0} onClick={() => setDetailCampaign(c)} onKeyDown={(e) => { if (e.key === 'Enter') setDetailCampaign(c); }} className="rounded-2xl bg-card p-5 shadow-md shadow-slate-200/50 hover:shadow-lg hover:ring-1 hover:ring-violet-200 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="h-9 w-9 rounded-xl bg-violet-100 dark:bg-violet-500/20 text-violet-600 flex items-center justify-center">
@@ -119,6 +121,7 @@ export function CampaignsPanel() {
       {branchId && (
         <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} branchId={branchId} />
       )}
+      <CampaignDetailDrawer open={!!detailCampaign} onOpenChange={(o) => !o && setDetailCampaign(null)} campaign={detailCampaign} />
     </div>
   );
 }

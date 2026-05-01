@@ -119,6 +119,10 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                       const TempIcon = lead.temperature === 'hot' ? Flame : lead.temperature === 'cold' ? Snowflake : Sun;
                       const tempColor = lead.temperature === 'hot' ? 'text-red-500' : lead.temperature === 'cold' ? 'text-blue-500' : 'text-amber-500';
                       const isOverdue = lead.next_action_at && new Date(lead.next_action_at) < new Date();
+                      const ACTIVE = ['new', 'contacted', 'qualified', 'negotiation'];
+                      const ref = lead.last_contacted_at || lead.created_at;
+                      const isStale = ACTIVE.includes(lead.status) && ref &&
+                        (Date.now() - new Date(ref).getTime()) > 3 * 24 * 60 * 60 * 1000;
                       const owner = getOwnerInfo(lead.owner_id);
 
                       return (
@@ -163,6 +167,11 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                                 {isOverdue && (
                                   <p className="text-[10px] text-destructive font-medium">
                                     Overdue: {format(new Date(lead.next_action_at), 'MMM dd')}
+                                  </p>
+                                )}
+                                {!isOverdue && isStale && (
+                                  <p className="text-[10px] text-amber-700 font-medium bg-amber-50 rounded px-1.5 py-0.5 inline-block">
+                                    Stale · no contact in 3+ days
                                   </p>
                                 )}
 
