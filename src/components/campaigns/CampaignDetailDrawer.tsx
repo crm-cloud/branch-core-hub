@@ -45,11 +45,12 @@ export function CampaignDetailDrawer({ open, onOpenChange, campaign }: CampaignD
         new Set(runs.map((r: any) => r.recipient_phone).filter(Boolean))
       );
       if (phones.length === 0) return 0;
-      const { count } = await supabase
+      const sb: any = supabase;
+      const { count } = await sb
         .from('members')
         .select('id', { count: 'exact', head: true })
-        .in('phone', phones as string[])
-        .gte('created_at', campaign.sent_at as string);
+        .in('phone', phones)
+        .gte('created_at', campaign.sent_at);
       return count || 0;
     },
     enabled: !!campaign?.sent_at && runs.length > 0 && open,
