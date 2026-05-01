@@ -245,7 +245,7 @@ export default function MyBenefits() {
                           <Calendar className="h-5 w-5 text-accent" />
                         </div>
                         <div>
-                          <p className="font-medium">{booking.slot?.benefit_type}</p>
+                          <p className="font-medium">{resolveBenefitMeta(booking.slot?.benefit_type).label}</p>
                           <p className="text-sm text-muted-foreground">
                             {booking.slot?.slot_date && format(new Date(booking.slot.slot_date), 'EEE, dd MMM')} • {booking.slot?.start_time} - {booking.slot?.end_time}
                           </p>
