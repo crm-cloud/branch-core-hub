@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +9,7 @@ import { useMemberData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Heart, AlertCircle, Calendar, Clock, Droplets, Sparkles, Gift, Plus } from 'lucide-react';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
@@ -106,8 +106,16 @@ export default function MyBenefits() {
     );
   }
 
-  const getBenefitIcon = (benefitType: string) => {
-    switch (benefitType?.toLowerCase()) {
+  // Resolve a display label + icon from either a string code or a {name, code} object
+  const resolveBenefitMeta = (bt: any): { label: string; code: string } => {
+    if (!bt) return { label: 'Benefit', code: '' };
+    if (typeof bt === 'string') return { label: bt, code: bt };
+    return { label: bt.name || bt.code || 'Benefit', code: bt.code || bt.name || '' };
+  };
+
+  const getBenefitIcon = (benefitType: any) => {
+    const { code } = resolveBenefitMeta(benefitType);
+    switch ((code || '').toLowerCase()) {
       case 'steam':
       case 'sauna':
         return <Droplets className="h-5 w-5" />;
@@ -192,7 +200,7 @@ export default function MyBenefits() {
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg flex items-center gap-2">
                           {getBenefitIcon(credit.benefit_type)}
-                          {(credit.benefit_type as any)?.name || credit.benefit_type}
+                          {resolveBenefitMeta(credit.benefit_type).label}
                         </CardTitle>
                         <Badge variant={daysLeft <= 7 ? "destructive" : "outline"}>
                           {daysLeft} days left
@@ -237,7 +245,7 @@ export default function MyBenefits() {
                           <Calendar className="h-5 w-5 text-accent" />
                         </div>
                         <div>
-                          <p className="font-medium">{booking.slot?.benefit_type}</p>
+                          <p className="font-medium">{resolveBenefitMeta(booking.slot?.benefit_type).label}</p>
                           <p className="text-sm text-muted-foreground">
                             {booking.slot?.slot_date && format(new Date(booking.slot.slot_date), 'EEE, dd MMM')} • {booking.slot?.start_time} - {booking.slot?.end_time}
                           </p>
@@ -267,7 +275,7 @@ export default function MyBenefits() {
                     <div className="flex items-center gap-3">
                       {getBenefitIcon(usage.benefit_type)}
                       <div>
-                        <p className="font-medium">{(usage.benefit_type as any)?.name || usage.benefit_type}</p>
+                        <p className="font-medium">{resolveBenefitMeta(usage.benefit_type).label}</p>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(usage.usage_date), 'EEE, dd MMM yyyy')}
                         </p>

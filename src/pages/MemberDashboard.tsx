@@ -371,8 +371,16 @@ export default function MemberDashboard() {
                 <div className="space-y-3">
                   {entitlements.map((ent: any) => {
                     const IconComponent = getBenefitIcon(ent.icon || ent.code);
-                    const remaining = ent.totalAllowed !== null ? Math.max(0, ent.totalAllowed - ent.used) : null;
-                    
+                    // Sum purchased add-on credits for this benefit type (matches by name OR code, case-insensitive)
+                    const matchingCredits = (benefitCredits as any[]).filter((c: any) => {
+                      const cName = (c.benefit_type?.name || c.benefit_type || '').toString().toLowerCase();
+                      const cCode = (c.benefit_type?.code || '').toString().toLowerCase();
+                      return cName === (ent.name || '').toLowerCase() || cCode === (ent.code || '').toLowerCase();
+                    });
+                    const addOnRemaining = matchingCredits.reduce((s: number, c: any) => s + (c.credits_remaining || 0), 0);
+                    const planRemaining = ent.totalAllowed !== null ? Math.max(0, ent.totalAllowed - ent.used) : null;
+                    const totalRemaining = planRemaining === null ? null : planRemaining + addOnRemaining;
+
                     return (
                       <div key={ent.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                         <div className="flex items-center gap-3">
@@ -384,14 +392,22 @@ export default function MemberDashboard() {
                             {ent.periodLabel && (
                               <p className="text-xs text-muted-foreground capitalize">{ent.periodLabel}</p>
                             )}
+                            {addOnRemaining > 0 && totalRemaining !== null && (
+                              <p className="text-[10px] text-rose-600 font-medium mt-0.5">
+                                Includes +{addOnRemaining} add-on credit{addOnRemaining !== 1 ? 's' : ''}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
-                          {ent.totalAllowed === null ? (
+                          {totalRemaining === null ? (
                             <Badge variant="outline" className="text-success border-success/30">Unlimited</Badge>
                           ) : (
                             <span className="text-sm font-semibold">
-                              {remaining} <span className="text-muted-foreground font-normal">/ {ent.totalAllowed}</span>
+                              {totalRemaining}{' '}
+                              <span className="text-muted-foreground font-normal">
+                                / {(ent.totalAllowed || 0) + addOnRemaining}
+                              </span>
                             </span>
                           )}
                         </div>
