@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useTrainerData } from '@/hooks/useMemberData';
-import { 
-  Calendar, Clock, Users, Dumbbell, TrendingUp, 
-  CheckCircle, AlertCircle, User
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  Calendar, Clock, Users, Dumbbell, TrendingUp,
+  CheckCircle, AlertCircle, User, Wallet
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
