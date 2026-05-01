@@ -126,7 +126,7 @@ function PageLoader() {
   );
 }
 
-const PUBLIC_PATHS = ["/", "/website-v1", "/privacy-policy", "/terms", "/data-deletion", "/embed/lead-form", "/member/pay"];
+const PUBLIC_PATHS = ["/", "/website-v1", "/ascent", "/privacy-policy", "/terms", "/terms-of-service", "/data-deletion", "/embed/lead-form", "/member/pay"];
 
 const HowbodyLogin = lazy(() => import("./pages/HowbodyLogin"));
 const HowbodyPublicReport = lazy(() => import("./pages/HowbodyPublicReport"));
@@ -163,10 +163,12 @@ function RoutedContent() {
       <Suspense fallback={null}>
         <Routes location={displayLocation}>
           {/* Public Website */}
-          <Route path="/" element={<InclineAscent />} />
+          <Route path="/" element={<PublicWebsiteV1 />} />
           <Route path="/website-v1" element={<PublicWebsiteV1 />} />
+          <Route path="/ascent" element={<InclineAscent />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/terms-of-service" element={<TermsPage />} />
           <Route path="/data-deletion" element={<DataDeletionPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/auth" element={<AuthPage />} />
