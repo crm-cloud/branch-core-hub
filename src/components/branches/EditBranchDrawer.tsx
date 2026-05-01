@@ -129,6 +129,8 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
           capacity: formData.capacity,
           is_active: formData.is_active,
           gstin: formData.gstin || null,
+          google_review_link: formData.google_review_link || null,
+          google_place_id: formData.google_place_id || null,
         })
         .eq('id', branch.id);
 
