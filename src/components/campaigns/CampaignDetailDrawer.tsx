@@ -48,8 +48,8 @@ export function CampaignDetailDrawer({ open, onOpenChange, campaign }: CampaignD
       const { count } = await supabase
         .from('members')
         .select('id', { count: 'exact', head: true })
-        .in('phone', phones)
-        .gte('created_at', campaign.sent_at);
+        .in('phone', phones as string[])
+        .gte('created_at', campaign.sent_at as string);
       return count || 0;
     },
     enabled: !!campaign?.sent_at && runs.length > 0 && open,
