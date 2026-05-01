@@ -1,7 +1,6 @@
 import {
   ChevronDown, Instagram, Dumbbell, Snowflake, Flame, Target, Wind, Car, Clock, Award, Layers, Lock, Coffee
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import inclineLogo from "@/assets/incline-logo.png";
 
 const ScrollOverlay = () => {
@@ -197,11 +196,11 @@ const ScrollOverlay = () => {
             <span className="text-sm tracking-wider font-medium">@theinclinelife</span>
           </a>
           <nav aria-label="Legal" className="flex items-center gap-3 text-xs text-muted-foreground/70">
-            <Link to="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link>
+            <a href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</a>
             <span aria-hidden="true">·</span>
-            <Link to="/terms" className="hover:text-primary transition-colors">Terms of Service</Link>
+            <a href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</a>
             <span aria-hidden="true">·</span>
-            <Link to="/data-deletion" className="hover:text-primary transition-colors">Data Deletion</Link>
+            <a href="/data-deletion" className="hover:text-primary transition-colors">Data Deletion</a>
           </nav>
           <p className="text-muted-foreground/50 text-xs tracking-wider">© 2026 The Incline Life by Incline. All rights reserved.</p>
         </footer>
