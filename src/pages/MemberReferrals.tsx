@@ -11,6 +11,7 @@ import { fetchMemberReferrals, fetchMemberRewards, claimReward } from '@/service
 import { Gift, Copy, Share2, Users, CheckCircle, Clock, AlertCircle, Loader2, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { ReferralLifecycleTimeline } from '@/components/referrals/ReferralLifecycleTimeline';
 
 export default function MemberReferrals() {
   const queryClient = useQueryClient();
