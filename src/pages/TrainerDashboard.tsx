@@ -108,41 +108,47 @@ export default function TrainerDashboard() {
             title="General Clients"
             value={generalClients.length}
             icon={Users}
-            description="General training"
+            description="Assigned to you"
             variant="default"
           />
           <StatCard
             title="PT Clients"
             value={ptClients.length}
             icon={Dumbbell}
-            description="Personal training"
+            description="Active packages"
             variant="warning"
           />
           <StatCard
             title="Today's Sessions"
             value={todaySessions.length}
             icon={Calendar}
-            description={`${completedToday} completed, ${pendingToday} pending`}
+            description={`${completedToday} done · ${pendingToday} pending`}
             variant="accent"
           />
           <StatCard
             title="My Classes"
             value={myClasses.length}
             icon={Dumbbell}
-            description="Upcoming classes"
+            description="Upcoming"
             variant="success"
           />
-          <StatCard
-            title="Completion Rate"
-            value={`${todaySessions.length > 0 ? Math.round((completedToday / todaySessions.length) * 100) : 0}%`}
-            icon={TrendingUp}
-            description="Today"
-            variant="info"
-          />
+          <Link to="/trainer-earnings" aria-label="View detailed earnings">
+            <StatCard
+              title="My Earnings (This Month)"
+              value={`₹${(monthEarnings?.estimated || 0).toLocaleString()}`}
+              icon={Wallet}
+              description={
+                monthEarnings
+                  ? `${monthEarnings.completedSessions} sessions${monthEarnings.commissionsTotal > 0 ? ` · ₹${monthEarnings.commissionsTotal.toLocaleString()} commission` : ''}`
+                  : 'View payslip'
+              }
+              variant="info"
+            />
+          </Link>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <Link to="/my-clients">
             <Card className="rounded-2xl hover:border-accent/50 transition-colors cursor-pointer h-full">
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
@@ -164,6 +170,14 @@ export default function TrainerDashboard() {
               <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
                 <Dumbbell className="h-8 w-8 text-warning" />
                 <span className="font-medium">Create Fitness Plan</span>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/trainer-earnings">
+            <Card className="rounded-2xl hover:border-accent/50 transition-colors cursor-pointer h-full">
+              <CardContent className="flex flex-col items-center justify-center py-6 gap-2">
+                <Wallet className="h-8 w-8 text-info" />
+                <span className="font-medium">My Earnings</span>
               </CardContent>
             </Card>
           </Link>
