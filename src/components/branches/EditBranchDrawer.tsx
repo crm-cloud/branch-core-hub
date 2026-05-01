@@ -37,6 +37,8 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
     is_active: true,
     managerId: '',
     gstin: '',
+    google_review_link: '',
+    google_place_id: '',
   });
 
   // Fetch the current primary manager for this branch
