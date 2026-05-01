@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2, ShieldX } from "lucide-react";
 import { toast } from "sonner";
+import SEO from "@/components/seo/SEO";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -55,6 +56,11 @@ export default function DataDeletion() {
 
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
+        <SEO
+          title="Data Deletion Request | The Incline Life by Incline"
+          description="Request deletion of your personal data from The Incline Life by Incline."
+          path="/data-deletion"
+        />
         <Card className="w-full max-w-xl rounded-2xl shadow-lg shadow-slate-200/60 border-0">
           <CardHeader>
             <div className="flex items-center gap-3 mb-2">

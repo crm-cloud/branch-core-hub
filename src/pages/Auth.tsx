@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { GymLoader } from '@/components/ui/gym-loader';
 import { Card, CardContent } from '@/components/ui/card';
 import { getHomePath } from '@/lib/roleRedirect';
+import SEO from '@/components/seo/SEO';
 
 export default function AuthPage() {
   const { user, isLoading, mustSetPassword, roles } = useAuth();
@@ -62,6 +63,12 @@ export default function AuthPage() {
       className="min-h-screen flex flex-col items-center justify-center p-4"
       style={{ background: 'var(--gradient-hero)' }}
     >
+      <SEO
+        title="Sign in | The Incline Life"
+        description="Sign in to your Incline account."
+        path="/auth"
+        noindex
+      />
       <div className="w-full max-w-[420px] space-y-6">
         {/* Logo */}
         <div className="text-center space-y-1">
