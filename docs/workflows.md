@@ -15,6 +15,7 @@ client toasts.
 | Benefits   | `benefit.granted`, `benefit.consumed`, `benefit.expired`                         | `benefit_ledger` writes via grant/consume RPCs    |
 | Bookings   | `booking.created`, `booking.cancelled`, `booking.attended`                       | `book_facility_slot` RPC + class booking inserts  |
 | Campaigns  | `campaign.sent`, `campaign.delivery_updated`, `campaign.converted`               | `marketing_campaigns` + delivery webhook ingest   |
+| Feedback   | `feedback.created`, `feedback.review_requested`, `feedback.review_link_clicked`, `feedback.recovery_opened`, `feedback.google_review_matched`, `feedback.google_review_replied` | `feedback` table + `request-google-review` / `google-review-redirect` / `fetch-google-reviews` / `reply-google-review` edge functions |
 
 ## Rules
 
