@@ -562,6 +562,7 @@ export type Database = {
           review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          side_effects_committed_at: string | null
           status: Database["public"]["Enums"]["approval_status"]
           updated_at: string
         }
@@ -577,6 +578,7 @@ export type Database = {
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          side_effects_committed_at?: string | null
           status?: Database["public"]["Enums"]["approval_status"]
           updated_at?: string
         }
@@ -592,6 +594,7 @@ export type Database = {
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          side_effects_committed_at?: string | null
           status?: Database["public"]["Enums"]["approval_status"]
           updated_at?: string
         }
@@ -2894,7 +2897,14 @@ export type Database = {
           context: Json | null
           created_at: string | null
           error_message: string
+          fingerprint: string | null
+          first_seen: string
+          function_name: string | null
           id: string
+          last_seen: string
+          occurrence_count: number
+          release_sha: string | null
+          request_id: string | null
           resolved_at: string | null
           resolved_by: string | null
           route: string | null
@@ -2902,6 +2912,7 @@ export type Database = {
           source: string | null
           stack_trace: string | null
           status: string
+          table_name: string | null
           user_id: string | null
         }
         Insert: {
@@ -2911,7 +2922,14 @@ export type Database = {
           context?: Json | null
           created_at?: string | null
           error_message: string
+          fingerprint?: string | null
+          first_seen?: string
+          function_name?: string | null
           id?: string
+          last_seen?: string
+          occurrence_count?: number
+          release_sha?: string | null
+          request_id?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
@@ -2919,6 +2937,7 @@ export type Database = {
           source?: string | null
           stack_trace?: string | null
           status?: string
+          table_name?: string | null
           user_id?: string | null
         }
         Update: {
@@ -2928,7 +2947,14 @@ export type Database = {
           context?: Json | null
           created_at?: string | null
           error_message?: string
+          fingerprint?: string | null
+          first_seen?: string
+          function_name?: string | null
           id?: string
+          last_seen?: string
+          occurrence_count?: number
+          release_sha?: string | null
+          request_id?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           route?: string | null
@@ -2936,6 +2962,7 @@ export type Database = {
           source?: string | null
           stack_trace?: string | null
           status?: string
+          table_name?: string | null
           user_id?: string | null
         }
         Relationships: []
@@ -6206,6 +6233,7 @@ export type Database = {
       organization_settings: {
         Row: {
           ai_tool_config: Json | null
+          alert_config: Json | null
           branch_id: string | null
           created_at: string
           currency: string | null
@@ -6225,6 +6253,7 @@ export type Database = {
         }
         Insert: {
           ai_tool_config?: Json | null
+          alert_config?: Json | null
           branch_id?: string | null
           created_at?: string
           currency?: string | null
@@ -6244,6 +6273,7 @@ export type Database = {
         }
         Update: {
           ai_tool_config?: Json | null
+          alert_config?: Json | null
           branch_id?: string | null
           created_at?: string
           currency?: string | null
@@ -6658,6 +6688,107 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payroll_run_lines: {
+        Row: {
+          created_at: string
+          hours_worked: number | null
+          id: string
+          is_early_out: boolean | null
+          is_half_day: boolean | null
+          is_holiday: boolean | null
+          is_late: boolean | null
+          is_missing_checkout: boolean | null
+          is_weekly_off: boolean | null
+          leave_type: string | null
+          notes: string | null
+          ot_hours: number | null
+          payable: boolean | null
+          run_id: string | null
+          status: string
+          user_id: string
+          work_date: string
+        }
+        Insert: {
+          created_at?: string
+          hours_worked?: number | null
+          id?: string
+          is_early_out?: boolean | null
+          is_half_day?: boolean | null
+          is_holiday?: boolean | null
+          is_late?: boolean | null
+          is_missing_checkout?: boolean | null
+          is_weekly_off?: boolean | null
+          leave_type?: string | null
+          notes?: string | null
+          ot_hours?: number | null
+          payable?: boolean | null
+          run_id?: string | null
+          status: string
+          user_id: string
+          work_date: string
+        }
+        Update: {
+          created_at?: string
+          hours_worked?: number | null
+          id?: string
+          is_early_out?: boolean | null
+          is_half_day?: boolean | null
+          is_holiday?: boolean | null
+          is_late?: boolean | null
+          is_missing_checkout?: boolean | null
+          is_weekly_off?: boolean | null
+          leave_type?: string | null
+          notes?: string | null
+          ot_hours?: number | null
+          payable?: boolean | null
+          run_id?: string | null
+          status?: string
+          user_id?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_run_lines_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_runs: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          created_by: string | null
+          finalized_at: string | null
+          id: string
+          period_end: string
+          period_start: string
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          finalized_at?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          finalized_at?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          status?: string
+        }
+        Relationships: []
       }
       permissions: {
         Row: {
@@ -9340,6 +9471,20 @@ export type Database = {
         Args: { _field: string; _max: number; _min: number; _value: number }
         Returns: number
       }
+      assign_locker_with_billing: {
+        Args: {
+          p_billing_months?: number
+          p_chargeable?: boolean
+          p_end_date: string
+          p_fee_amount: number
+          p_gst_rate?: number
+          p_locker_id: string
+          p_member_id: string
+          p_received_by?: string
+          p_start_date: string
+        }
+        Returns: Json
+      }
       assign_locker_with_invoice: {
         Args: {
           p_billing_months?: number
@@ -9368,6 +9513,21 @@ export type Database = {
           p_staff_id?: string
         }
         Returns: Json
+      }
+      calc_gst: {
+        Args: {
+          p_amount: number
+          p_inclusive?: boolean
+          p_intra_state?: boolean
+          p_rate: number
+        }
+        Returns: {
+          cgst: number
+          igst: number
+          sgst: number
+          taxable: number
+          total: number
+        }[]
       }
       can_access_biometric_photo: {
         Args: { _path: string; _user_id: string }
@@ -9422,6 +9582,7 @@ export type Database = {
         }
         Returns: Json
       }
+      check_critical_error_alerts: { Args: never; Returns: number }
       check_trainer_slot_available: {
         Args: {
           _duration_minutes?: number
@@ -9443,6 +9604,39 @@ export type Database = {
       complete_pt_session: {
         Args: { _notes?: string; _session_id: string }
         Returns: Json
+      }
+      compute_error_fingerprint: {
+        Args: {
+          p_function_name: string
+          p_message: string
+          p_route: string
+          p_severity: string
+          p_source: string
+        }
+        Returns: string
+      }
+      compute_payroll: {
+        Args: {
+          p_period_end: string
+          p_period_start: string
+          p_run_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          hours_worked: number
+          is_early_out: boolean
+          is_half_day: boolean
+          is_holiday: boolean
+          is_late: boolean
+          is_missing_checkout: boolean
+          is_weekly_off: boolean
+          leave_type: string
+          notes: string
+          ot_hours: number
+          payable: boolean
+          status: string
+          work_date: string
+        }[]
       }
       consume_coupon: {
         Args: {
@@ -9580,6 +9774,23 @@ export type Database = {
       leave_facility_waitlist: {
         Args: { p_waitlist_id: string }
         Returns: Json
+      }
+      log_error_event: {
+        Args: {
+          p_branch_id?: string
+          p_context?: Json
+          p_function_name?: string
+          p_message: string
+          p_release_sha?: string
+          p_request_id?: string
+          p_route?: string
+          p_severity: string
+          p_source: string
+          p_stack?: string
+          p_table_name?: string
+          p_user_id?: string
+        }
+        Returns: string
       }
       log_member_lifecycle_event: {
         Args: {
@@ -9773,9 +9984,21 @@ export type Database = {
         Args: { p_reason?: string; p_redemption_id: string }
         Returns: Json
       }
+      release_locker: {
+        Args: { p_assignment_id: string; p_release_date?: string }
+        Returns: Json
+      }
+      resolve_gst_rate: {
+        Args: { p_branch_id?: string; p_item_id?: string; p_item_type: string }
+        Returns: number
+      }
       resolve_member_document_url: {
         Args: { p_document_id: string; p_expires_in?: number }
         Returns: string
+      }
+      reverse_trainer_commission: {
+        Args: { p_payment_id: string; p_reason?: string }
+        Returns: number
       }
       search_command_bookings: {
         Args: { p_branch_id?: string; p_limit?: number; search_term: string }
@@ -9919,11 +10142,23 @@ export type Database = {
         }
         Returns: Json
       }
-      staff_check_in: {
-        Args: { p_branch_id: string; p_notes?: string; p_user_id: string }
-        Returns: Json
-      }
-      staff_check_out: { Args: { p_user_id: string }; Returns: Json }
+      staff_check_in:
+        | {
+            Args: { p_branch_id: string; p_notes?: string; p_user_id: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_branch_id: string
+              p_notes?: string
+              p_source?: string
+              p_user_id: string
+            }
+            Returns: string
+          }
+      staff_check_out:
+        | { Args: { p_user_id: string }; Returns: Json }
+        | { Args: { p_notes?: string; p_user_id: string }; Returns: string }
       user_visible_branch_ids: {
         Args: { p_user_id: string }
         Returns: string[]
