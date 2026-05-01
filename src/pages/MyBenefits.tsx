@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +9,7 @@ import { useMemberData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Heart, AlertCircle, Calendar, Clock, Droplets, Sparkles, Gift, Plus } from 'lucide-react';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
