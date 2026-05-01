@@ -63,6 +63,29 @@ export default function LeadsPage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Cmd+K deep-links: ?new=1 opens AddLead, ?lead=<id> opens profile drawer
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setShowAddDrawer(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+    const leadId = url.searchParams.get('lead');
+    if (!leadId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+      if (cancelled || !data) return;
+      setSelectedLead(data);
+      setShowProfileDrawer(true);
+      const u2 = new URL(window.location.href);
+      u2.searchParams.delete('lead');
+      window.history.replaceState({}, '', u2.toString());
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Data
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', branchFilter],
