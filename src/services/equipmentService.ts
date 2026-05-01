@@ -106,17 +106,20 @@ export async function updateEquipmentStatus(id: string, status: Equipment['statu
   return updateEquipment(id, { status });
 }
 
-export async function fetchMaintenanceRecords(equipmentId?: string) {
+export async function fetchMaintenanceRecords(equipmentId?: string, branchId?: string) {
   let query = supabase
     .from('equipment_maintenance')
     .select(`
       *,
-      equipment(name, brand, model)
+      equipment!inner(name, brand, model, branch_id)
     `)
     .order('created_at', { ascending: false });
 
   if (equipmentId) {
     query = query.eq('equipment_id', equipmentId);
+  }
+  if (branchId) {
+    query = query.eq('equipment.branch_id', branchId);
   }
 
   const { data, error } = await query;
