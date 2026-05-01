@@ -1,106 +1,181 @@
-## Deep Audit Findings
+## Goal
 
-### Critical (data integrity / security)
-1. **Benefit add-on flow is NOT atomic.** `purchase_benefit_credits` (RPC) creates the invoice → calls `settle_payment` → THEN inserts `member_benefit_credits`. If credit insert fails, member is billed with no credits. Needs all-or-nothing wrapper inside one transaction with explicit rollback on credit insert failure (or reorder so credits + invoice + payment commit together, and never leave a paid invoice without credits).
-2. **Coupon redemption is client-validated only.** `POS.tsx` and `MemberStore.tsx` read `discount_codes`, compute discount client-side, then pass `discount_code_id` to `record_sale`/`settle_payment`. There is no server RPC that validates active/expiry/min purchase/max uses AND increments `times_used` atomically. Race condition allows over-redemption past `max_uses`.
-3. **PersonnelSync uses public-URL fields.** `PersonnelSyncTab.tsx` reads `biometric_photo_url` (public-style) instead of the new `biometric_photo_path` + signed URL helper (`uploadBiometricPhoto` already exists and writes to private bucket `member-photos`). Photos may still be served via legacy public URLs.
-4. **MIPS callback URL hard-coded.** `DeviceManagement.tsx` lines 140/143/160/163 hard-code `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver` in the UI. Breaks when env/branch differs, and leaks the project ref in source.
-5. **EquipmentMaintenance ignores branch on records & costs.** `fetchMaintenanceRecords()` and `getMaintenanceCostsByMonth(currentBranchId)` — the maintenance records query takes no branch filter; equipment list passes branch but maintenance + (often) stats do not consistently filter via the join.
-6. **Referral claim paths are inconsistent.** `Referrals.tsx` and `MemberStore.tsx` partially bypass the service and call `supabase.rpc('claim_referral_reward', ...)` directly with their own argument shape; `MemberProfileDrawer.tsx` and `MemberReferrals.tsx` use `claimReward()` service. We need a single canonical path through `referralService.claimReward`.
-7. **HRM payroll is a stub.** `compute_payroll` exists but only handles longest attendance, no shift table integration, no late/early thresholds, no half-day rule from settings, no overtime cap, no duplicate-active-row collapse beyond MIN/MAX, no holiday-pay multiplier, no leave-type pay rules.
-
-### UX gaps (consistent with the request)
-- Equipment: no branch badge, no "due/overdue maintenance" callout, no warranty-expiring strip, no QR per machine, no "create maintenance task" CTA.
-- Devices: callbacks not env-aware, no last-heartbeat age, no failed-sync queue surface.
-- Benefits: plan credits and add-on credits shown in separate places; no combined view, no expiry/low-balance warning, no "Sell add-on" CTA.
-- Referrals: no lifecycle timeline (pending → eligible → issued → claimed → wallet credited).
-- Discounts: no redemption history view, no failed-attempt log, no remaining-uses surfaced clearly.
-- Classes: roster lacks quick attendance toggles, no-show reason capture, "waitlist promoted" badge, WhatsApp reminder action.
+Replace ad-hoc HTML/print-based PDFs, toast-only payroll, and direct `user_roles` mutations with a unified branded PDF system, a real multi-stage payroll workflow, and secure RPC-based role management with full audit.
 
 ---
 
-## Plan
+## Part 1 — Branded Document Generator
 
-### A. Database / RPC migration (single new migration)
+### 1.1 Brand resolver
 
-1. **`record_benefit_addon_purchase` (replaces logic in `purchase_benefit_credits`)**
-   - One BEGIN…END block: lock package, compute GST via `calc_gst`, insert invoice + items in `pending`, insert `member_benefit_credits` BEFORE `settle_payment`, then call `settle_payment`. If settle fails → RAISE → entire txn rolls back (no orphan credits, no orphan paid invoice). If credit insert fails → rollback before any payment.
-   - Returns `{ success, credit_id, invoice_id, amount, gst }`.
-   - Keep `purchase_benefit_credits` name as a thin wrapper for backward compatibility.
+Create `src/lib/brand/useBrandContext.ts`:
+- Hook returning `{ companyName, legalName, logoUrl, website, supportEmail, branch: { name, address, phone, email, gstin } }`.
+- Pulls from `branches` (logo_url, gstin, address, phone, email) + `app_settings` (company name fallback, website).
+- Cached via TanStack Query, keyed by `branch_id`.
+- Default legal name: `"The Incline Life by Incline"`.
 
-2. **`redeem_coupon(p_code, p_branch_id, p_member_id, p_subtotal, p_idempotency_key)`**
-   - `SELECT … FOR UPDATE` on `discount_codes` row.
-   - Validate: `is_active`, `valid_from <= now <= valid_until`, `times_used < max_uses`, `subtotal >= min_purchase`, branch match (or null).
-   - Increment `times_used`.
-   - Insert `discount_redemptions` row (new table) with `code_id, member_id, branch_id, order_ref, discount_amount, status='applied', created_at`.
-   - Returns `{ success, discount_amount, code_id, redemption_id }` or `{ success: false, error }`.
-   - Add `discount_redemption_attempts` table for failed attempts (audit + remaining uses display).
-   - `record_sale` and `settle_payment` call this RPC instead of trusting client-passed discount.
+### 1.2 Unified PDF builders (`src/utils/pdfBlob.ts`)
 
-3. **HRM payroll upgrade**
-   - New tables/columns (only if missing): `staff_shifts (user_id, weekday, start_time, end_time, late_grace_min, half_day_threshold_hours, ot_threshold_hours, ot_multiplier)`, `holidays(holiday_date, branch_id, name, is_paid, multiplier)`.
-   - Rewrite `compute_payroll`: per day, resolve shift; classify late (in > start + grace), early-out, missing checkout, half-day, OT (hours > shift + threshold capped by `ot_threshold`), holiday-pay multiplier, leave pay rule per `leave_type`. Collapse multiple attendance rows by summing intervals (cap at 24h).
-   - Add `payroll_summarize(run_id)` returning per-employee payable_days, ot_hours, deductions.
+Refactor existing file into a single shared module returning `Blob`s using jsPDF + autoTable. All builders accept a `BrandContext` parameter and share:
+- `drawHeader(doc, brand, docTitle, docNumber, issueDate)` — logo (loaded as base64 if `logoUrl` present), company name, branch address block, GSTIN, doc title + number on right.
+- `drawFooter(doc, brand)` — legal name, website, support email, page X/Y, "Computer-generated".
+- `drawMetaBlock(doc, { recipient, code, branch, preparedBy, qr? })` — uses `qrcode` lib (already common; add if missing) for reference QR.
 
-4. **Coupon-related schema**
-   - `discount_redemptions` and `discount_redemption_attempts` tables with RLS (admin/owner/manager all access; staff insert via RPC; member: own redemptions read).
+Builders to implement/refactor:
+1. `buildInvoicePdf(data, brand)` — line items, GST split (CGST/SGST/IGST when `is_gst_invoice`), totals, status watermark for `paid/void/refunded`.
+2. `buildReceiptPdf(data, brand)` — Receipt #, payment method, transaction id, paid date, amount paid, balance due, GST breakdown, signature block.
+3. `buildPayslipPdf(data, brand)` — uses **finalized** payroll item only; earnings vs deductions table, attendance summary, net pay in words.
+4. `buildWorkoutPlanPdf(data, brand)` — member name/code, trainer, goal, validity, day-by-day exercises table, notes.
+5. `buildDietPlanPdf(data, brand)` — member, trainer, goal, validity, meals table with macros/calories, notes.
+6. `buildContractPdf(data, brand)` — replaces existing HTML contract with branded PDF including signature placeholders.
 
-### B. Frontend services & shared hooks
+`src/utils/pdfGenerator.ts` (current HTML-window approach for payslip/invoice) is removed; all callers switched to the Blob API + `downloadBlob(blob, filename)` helper.
 
-5. **`couponService.ts` (new)** — `validateAndPreviewCoupon(code, branchId, memberId, subtotal)` calls a read-only RPC that validates without incrementing (for live preview), and `redeemCoupon(...)` for the final commit. `POS.tsx` and `MemberStore.tsx` switch to this service. No client-side discount math is trusted on the server side; server returns the authoritative `discount_amount`.
+### 1.3 Document actions component
 
-6. **`referralService.ts` is the only path**
-   - Update `Referrals.tsx` and `MemberStore.tsx` to import and use `claimReward` from the service.
-   - Remove inline `supabase.rpc('claim_referral_reward', …)` calls.
-   - Verify `MemberProfileDrawer.tsx` and `MemberReferrals.tsx` are already correct.
+`src/components/documents/DocumentActions.tsx`:
+Buttons: **Download Invoice**, **Download Receipt** (only when paid), **Print** (opens blob in new tab), **Share WhatsApp**, **Share Email**. Share actions upload the blob to the existing `documents` storage bucket (signed URL) and call `send-whatsapp` / `send-email` edge functions with the link.
 
-7. **`equipmentService.ts`** — accept `branchId` in `fetchMaintenanceRecords`, `getMaintenanceCostsByMonth`, `getEquipmentStats` (already partial). Filter via `equipment.branch_id` join. `EquipmentMaintenance.tsx` passes `currentBranchId` to all four queries and includes branch in query keys.
+Used by: `InvoiceViewDrawer`, `Invoices`, `MyInvoices`, `MemberProfileDrawer`, `Payments`, `MyWorkout`, `MyDiet`, `HRM` payslip, `ContractSign`, `TrainerEarnings`.
 
-8. **PersonnelSync biometric** — `PersonnelSyncTab.tsx` reads `biometric_photo_path` (storage path). Use `resolveBiometricPhotoUrl` to get signed URLs for the avatar previews. Upload through `uploadBiometricPhoto` (already private). Migration: add `biometric_photo_path text` columns on `members`, `employees`, `trainers` if missing; backfill from any legacy public URL by parsing the path; deprecate writes to `biometric_photo_url`.
+### 1.4 Workout / Diet pages
 
-9. **MIPS callback URL** — Add `mips_webhook_receiver_url` to `integration_settings` (resolved per env). UI reads it from a tiny `useMipsCallbackUrls()` hook that falls back to `${VITE_SUPABASE_URL}/functions/v1/mips-webhook-receiver`. Remove all hard-coded `iyqqpbvnszyrrgerniog` strings from `DeviceManagement.tsx`.
+- `MyWorkout.tsx` and `MyDiet.tsx`: add `Download PDF` button (top-right of plan card) wired to `buildWorkoutPlanPdf` / `buildDietPlanPdf` with the resolved trainer name + member/code from auth profile.
 
-### C. UI/UX work
+---
 
-10. **Equipment & EquipmentMaintenance**
-    - Header: branch filter badge (active branch name + clear button).
-    - KPI cards: add "Due this week", "Overdue maintenance", "Warranty expiring (30d)".
-    - Row: QR code button (renders QR encoding `{branch}/{equipment_id}` for scan-to-log-maintenance flow) + "Create Maintenance Task" CTA that opens an existing TaskDrawer prefilled.
+## Part 2 — Real Payroll Workflow
 
-11. **DeviceManagement**
-    - Replace hard-coded URL block with env-aware `<CopyableUrl label="Webhook URL" value={callbackUrl} />`.
-    - Add per-device row: connection status pill, last heartbeat age (`formatDistanceToNow`), "Failed sync queue" tab listing rows from `mips_sync_log` where `status='failed'` with retry button.
+### 2.1 Schema (migration)
 
-12. **Benefits (`MyBenefits.tsx`, `MemberProfileDrawer` Benefits tab, BenefitTracking)**
-    - Combined "Available credits" card: rows = plan-included credits + purchased add-on credits, with `expires_at`, type icon, low-balance pill (≤2 left), and a "Sell add-on" CTA (opens `PurchaseAddOnDrawer`).
+Extend existing `payroll_runs` and add `payroll_items`:
 
-13. **Referrals/rewards**
-    - Lifecycle timeline component on each reward card: pending (referral created) → eligible (referee converted) → issued (reward generated) → claimed (member claimed) → wallet credited (wallet txn id). Uses `referrals.status` + `referral_rewards.status` + linked `wallet_transactions.id`.
+```sql
+ALTER TABLE payroll_runs ADD COLUMN IF NOT EXISTS
+  -- stages: draft | calculated | review | adjusted | approved | processed | paid
+  reviewed_by uuid, reviewed_at timestamptz,
+  approved_by uuid, approved_at timestamptz,
+  processed_by uuid, processed_at timestamptz,
+  paid_at timestamptz, notes text;
 
-14. **Discounts (`DiscountCoupons.tsx` + `CouponDetailDrawer.tsx`)**
-    - Detail drawer adds tabs: "Redemptions" (list from `discount_redemptions` with order/invoice link), "Failed attempts" (list from `discount_redemption_attempts`), "Remaining uses" badge `times_used / max_uses`.
+CREATE TABLE payroll_items (
+  id uuid PK,
+  run_id uuid REFERENCES payroll_runs ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  -- snapshot of original calculation
+  calc_base numeric, calc_pt_commission numeric, calc_ot numeric,
+  calc_deductions numeric, calc_gross numeric, calc_net numeric,
+  calc_attendance jsonb, -- present/half/late/missing/leave counts
+  -- final adjusted values
+  final_base numeric, final_pt_commission numeric, final_ot numeric,
+  final_bonus numeric DEFAULT 0, final_deductions numeric DEFAULT 0,
+  final_advance numeric DEFAULT 0, final_penalty numeric DEFAULT 0,
+  final_gross numeric, final_net numeric,
+  adjustment_reason text,
+  status text DEFAULT 'draft', -- draft | reviewed | approved | processed | paid
+  payslip_url text,
+  UNIQUE (run_id, user_id)
+);
 
-15. **Classes roster (`Classes.tsx` Attendance tab)**
-    - Inline quick-mark buttons (Present / No-show / Late) per booking using existing RPC `mark_class_attendance`.
-    - "No-show reason" select (sick / no-call / late-cancel / other).
-    - Badge "Promoted from waitlist" when `booking.was_waitlisted = true`.
-    - "Send WhatsApp reminder" button (single + bulk) using existing `send-whatsapp` edge function with class reminder template.
+CREATE TABLE payroll_audit (
+  id uuid PK, run_id uuid, item_id uuid, actor_id uuid,
+  action text, before jsonb, after jsonb, reason text,
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### D. Memory & docs
-- Update `mem://architecture/atomic-rpcs-locker-pt-approval` to add benefit add-on and coupon redemption contracts.
-- Add `mem://features/coupon-redemption-engine` with the new RPC contract and tables.
-- Update `mem://features/membership-lifecycle-system` reference to point to combined credits view.
+### 2.2 RPCs
 
-### Out of scope (explicitly)
-- Full HRM UI for the new payroll engine — the migration ships the engine; UI surfacing is a follow-up.
-- Backfilling existing `biometric_photo_url` rows from external public sources beyond simple path parsing (will require an admin tool if needed).
+- `payroll_create_run(branch, period_start, period_end)` → calls `compute_payroll` per active staff, inserts `payroll_items` with `calc_*` and matching `final_*` defaults, status `draft`.
+- `payroll_adjust_item(item_id, patch jsonb, reason)` → updates `final_*`, recomputes `final_gross/net`, logs to `payroll_audit`, status `adjusted`.
+- `payroll_review_item(item_id)` / `payroll_approve_run(run_id)` / `payroll_process_items(item_ids[])` / `payroll_mark_paid(item_ids[], method, ref)` — each transitions status, logs audit, requires role.
+- Stage gating enforced server-side; payslip generation blocked until `approved`.
 
-### Acceptance criteria
-- Buying a benefit add-on either creates `(invoice, payment, credits)` together or none of them.
-- Coupon validation/redemption goes through one RPC; cannot exceed `max_uses` under concurrent redemptions; failed attempts are logged.
-- All four EquipmentMaintenance queries filter by selected branch.
-- `DeviceManagement.tsx` contains no `iyqqpbvnszyrrgerniog` literal.
-- `PersonnelSyncTab.tsx` resolves photos via signed URLs from `biometric_photo_path`.
-- All 4 referral-claim entry points call `referralService.claimReward`.
-- `compute_payroll` returns per-day classification including late, OT, half-day, holiday, leave, missing checkout, with shift table support.
-- New UI surfaces (combined credits, reward lifecycle, redemption history, equipment QR/branch badge, device callback URL, classes quick-attendance) are visible and functional.
+### 2.3 UI — `src/pages/HRM.tsx` Payroll tab
+
+Replace toast-only `processPayroll` with a real flow:
+1. **Create Run** drawer — pick period + branch.
+2. **Run Detail** page (`/hrm/payroll/:runId`) showing items table:
+   - Columns: staff, attendance summary badges, calculated net, adjustments, final net, status.
+   - Inline drawer per row: edit bonus / deductions / advance / penalty / OT hours / commission / attendance override, with **reason** required.
+   - Show original calculated values side-by-side with final values + audit timeline.
+3. Action bar: `Review Selected` → `Approve` → `Process Selected` / `Process All` (only enabled per stage). `Download Payslip` only after `approved`, uses `final_*` values via `buildPayslipPdf`.
+
+Service: `src/services/payrollService.ts` wrapping all RPCs + queries.
+
+---
+
+## Part 3 — Secure Admin Role Management
+
+### 3.1 RPCs (migration)
+
+```sql
+CREATE TABLE role_change_audit (
+  id uuid PK, target_user_id uuid, actor_id uuid,
+  action text, -- 'assigned' | 'removed' | 'requested' | 'approved' | 'rejected'
+  role app_role, branch_id uuid,
+  reason text, before jsonb, after jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE role_change_requests (
+  id uuid PK, target_user_id uuid, requested_by uuid,
+  role app_role, branch_id uuid, action text, reason text,
+  status text DEFAULT 'pending', -- pending | approved | rejected
+  decided_by uuid, decided_at timestamptz, decision_reason text,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+RPCs (all `SECURITY DEFINER`, role-gated):
+- `assign_user_role(target, role, branch_id, reason)`:
+  - Validates caller is owner/admin.
+  - For `manager/staff/trainer`: requires `branch_id`, upserts into `staff_branches`.
+  - For `owner/admin`: if caller is admin (not owner), creates pending `role_change_request` instead of direct insert.
+  - Inserts into `user_roles` (idempotent), logs `role_change_audit`.
+- `remove_user_role(target, role, reason)`:
+  - Blocks if removing the **last owner or last admin** (`SELECT count(*) FROM user_roles WHERE role=...`).
+  - Same approval gate for owner/admin removal.
+- `decide_role_change_request(request_id, approve bool, reason)` — owner-only.
+- `get_role_permission_impact(target, role, action)` — returns JSON of pages/permissions gained or lost (computed from a static mapping table) for the impact preview.
+
+### 3.2 Service + UI (`src/pages/AdminRoles.tsx`)
+
+- Replace direct supabase inserts/deletes with `roleService.assign / remove`.
+- **Assign drawer** additions:
+  - Branch selector (required for manager/staff/trainer).
+  - Reason textarea (required).
+  - **Permission impact preview** panel populated from `get_role_permission_impact` showing pages/actions the user will gain.
+  - Banner if action requires owner approval ("This change will be sent for approval").
+- Last-owner/admin guard surfaces server error toast — additionally do client-side warning when count would drop to 0.
+- New tab **Approval Queue** (owner only) listing pending `role_change_requests` with Approve/Reject + reason.
+- New tab **Audit Log** showing `role_change_audit` (actor, target, action, role, branch, reason, time).
+
+---
+
+## Files
+
+**New**
+- `src/lib/brand/useBrandContext.ts`
+- `src/components/documents/DocumentActions.tsx`
+- `src/services/payrollService.ts`
+- `src/services/roleService.ts`
+- `src/pages/PayrollRunDetail.tsx`
+- `supabase/migrations/<ts>_branded_payroll_roles.sql`
+
+**Modified**
+- `src/utils/pdfBlob.ts` (expanded; becomes the single PDF entry point)
+- Delete usage of `src/utils/pdfGenerator.ts` (file kept only as thin re-export shim or removed)
+- `src/pages/Invoices.tsx`, `src/pages/MyInvoices.tsx`, `src/components/invoices/InvoiceViewDrawer.tsx`, `src/pages/Payments.tsx`
+- `src/pages/MyWorkout.tsx`, `src/pages/MyDiet.tsx`
+- `src/pages/HRM.tsx`, `src/pages/TrainerEarnings.tsx`
+- `src/pages/AdminRoles.tsx`
+- `src/App.tsx` (route for payroll run detail)
+
+---
+
+## Out of scope
+
+- Payment gateway integration for actual salary disbursal (only marks status `paid` with method + reference).
+- Multi-currency PDFs (INR only).
+- Bulk re-issuing historical invoices in new branded format (new downloads only).
