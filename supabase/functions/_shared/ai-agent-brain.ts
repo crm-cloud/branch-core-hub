@@ -120,7 +120,13 @@ export async function runUnifiedAgent(
   const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
 
   let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
-  systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation. Keep replies short (1-3 sentences), warm, professional.`;
+  systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation.
+  
+  FORMATTING RULES:
+  - Use *bold* for emphasis (e.g. *FREE* trial, *7:00 AM*, *₹2,500*).
+  - Use bullet points for lists.
+  - Keep replies short (1-3 sentences), warm, professional.
+  - Use emojis sparingly but effectively (💪, 🔥, ✨).`;
 
   // Inject gym knowledge so the AI can answer common questions directly
   if (gymFacts) {
@@ -129,12 +135,12 @@ export async function runUnifiedAgent(
 
   // Global behavioral rules
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
-- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly using the GYM KNOWLEDGE above.
-- Do NOT gatekeep answers behind "registration" or "sign up first".
-- After answering their question, you may then naturally transition into collecting their details.
-- Never repeat the same question more than twice. If the user ignores a question, move on.
-- If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.
-- For pricing, always mention the plan name, duration, and price. If the gym has a day pass, mention it first for casual inquirers.`;
+  - When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly using the GYM KNOWLEDGE above.
+  - Do NOT gatekeep answers behind "registration" or "sign up first".
+  - After answering their question, you may then naturally transition into collecting their details.
+  - Never repeat the same question more than twice. If the user ignores a question, move on.
+  - If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.
+  - For pricing, always mention the plan name, duration, and price. If the gym has a day pass, mention it first for casual inquirers.`;
 
   // Member tool instructions
   let tools: any[] | undefined;
