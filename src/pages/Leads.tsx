@@ -169,6 +169,18 @@ export default function LeadsPage() {
     return Array.from(s) as string[];
   }, [leads]);
 
+  const STALE_DAYS = 3;
+  const ACTIVE_STAGES = ['new', 'contacted', 'qualified', 'negotiation'];
+  const isStale = (l: any) => {
+    if (!ACTIVE_STAGES.includes(l.status)) return false;
+    const ref = l.last_contacted_at || l.created_at;
+    if (!ref) return false;
+    const ageMs = Date.now() - new Date(ref).getTime();
+    return ageMs > STALE_DAYS * 24 * 60 * 60 * 1000;
+  };
+
+  const [showStaleOnly, setShowStaleOnly] = useState(false);
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead: any) => {
       const matchesSearch = !filters.search ||
@@ -180,9 +192,12 @@ export default function LeadsPage() {
       const matchesTemp = temperatureFilter.length === 0 || temperatureFilter.includes(lead.temperature);
       const matchesOwner = !filters.ownerId || (filters.ownerId === 'unassigned' ? !lead.owner_id : lead.owner_id === filters.ownerId);
       const matchesOverdue = !filters.overdueOnly || (lead.next_action_at && new Date(lead.next_action_at) < new Date());
-      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner && matchesOverdue;
+      const matchesStale = !showStaleOnly || isStale(lead);
+      return matchesSearch && matchesSource && matchesStatus && matchesTemp && matchesOwner && matchesOverdue && matchesStale;
     });
-  }, [leads, filters, statusFilter, temperatureFilter]);
+  }, [leads, filters, statusFilter, temperatureFilter, showStaleOnly]);
+
+  const staleCount = useMemo(() => leads.filter(isStale).length, [leads]);
 
   // Actions
   const openProfile = useCallback((lead: any) => { setSelectedLead(lead); setShowProfileDrawer(true); }, []);
