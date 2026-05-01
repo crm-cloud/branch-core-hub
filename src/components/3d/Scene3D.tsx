@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { Environment, ScrollControls, useScroll, Scroll } from '@react-three/drei';
+import { ScrollControls, useScroll, Scroll } from '@react-three/drei';
 import { Suspense, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import HeroDumbbell from './HeroDumbbell';
