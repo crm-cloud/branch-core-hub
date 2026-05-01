@@ -27,7 +27,7 @@ const ScrollOverlay = () => {
         </div>
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
           <span className="text-sm tracking-widest uppercase font-bold text-primary animate-pulse text-center">
-            BEGIN YOUR ASCENT • MARCH 2026
+            BEGIN YOUR ASCENT • 2026
           </span>
           <ChevronDown className="w-6 h-6 scroll-indicator text-primary animate-bounce" />
         </div>
