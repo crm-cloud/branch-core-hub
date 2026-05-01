@@ -121,6 +121,7 @@ export function CampaignsPanel() {
       {branchId && (
         <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} branchId={branchId} />
       )}
+      <CampaignDetailDrawer open={!!detailCampaign} onOpenChange={(o) => !o && setDetailCampaign(null)} campaign={detailCampaign} />
     </div>
   );
 }
