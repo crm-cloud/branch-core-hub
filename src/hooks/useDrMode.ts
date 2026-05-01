@@ -27,10 +27,19 @@ async function fetchDrMode(): Promise<DrModeRow> {
   };
 }
 
+async function fetchDrOperational(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("dr_is_operational");
+  if (error) return false;
+  return Boolean(data);
+}
+
 /**
  * Read DR mode flag from public.settings.
  * Combines the database flag (server enforces it via dr_block_writes trigger)
  * with the build-time host flag (VITE_APP_ENV=dr).
+ *
+ * Also exposes `isOperational` from the dr_readiness_checklist — the system
+ * is only DR-ready when every step has been signed off.
  */
 export function useDrMode() {
   const { data, isLoading } = useQuery({
@@ -38,6 +47,13 @@ export function useDrMode() {
     queryFn: fetchDrMode,
     refetchInterval: 60_000,
     staleTime: 30_000,
+  });
+
+  const { data: operational } = useQuery({
+    queryKey: ["dr-operational"],
+    queryFn: fetchDrOperational,
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
   });
 
   const dbReadOnly = data?.enabled ?? false;
@@ -59,6 +75,7 @@ export function useDrMode() {
     isReadOnly,
     dbReadOnly,
     hostIsDr,
+    isOperational: Boolean(operational),
     reason: data?.reason ?? null,
     setAt: data?.set_at ?? null,
     assertWritable,
