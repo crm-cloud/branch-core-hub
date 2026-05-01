@@ -1,8 +1,9 @@
 // Real PDF blob generation using jsPDF + autoTable.
-// These produce binary PDFs we can upload to storage and attach via WhatsApp / Email.
+// All builders accept an optional `brand: BrandContext` for company/branch info.
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { DEFAULT_BRAND, type BrandContext } from '@/lib/brand/useBrandContext';
 
 const BRAND = {
   primary: [99, 102, 241] as [number, number, number], // indigo
@@ -20,34 +21,105 @@ function inr(n: number) {
   return `Rs. ${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
-function header(doc: jsPDF, title: string, branchName?: string) {
+function fallbackBrand(branchName?: string): BrandContext {
+  return { ...DEFAULT_BRAND, branch: { name: branchName || 'Incline Fitness' } };
+}
+
+function header(
+  doc: jsPDF,
+  title: string,
+  brandOrBranchName?: BrandContext | string,
+  meta?: { docNumber?: string; issueDate?: string },
+) {
+  const brand: BrandContext =
+    typeof brandOrBranchName === 'string' || brandOrBranchName == null
+      ? fallbackBrand(brandOrBranchName as string | undefined)
+      : brandOrBranchName;
+
   doc.setFillColor(...BRAND.primary);
   doc.rect(0, 0, 210, 8, 'F');
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
   setColor(doc, BRAND.primary);
-  doc.text('INCLINE FITNESS', 14, 22);
-  doc.setFontSize(10);
+  doc.text(brand.companyName.toUpperCase(), 14, 22);
+
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   setColor(doc, BRAND.muted);
-  if (branchName) doc.text(branchName, 14, 28);
+  let yy = 28;
+  if (brand.branch.name) { doc.text(brand.branch.name, 14, yy); yy += 4; }
+  if (brand.branch.address) {
+    const lines = doc.splitTextToSize(brand.branch.address, 100);
+    doc.text(lines, 14, yy); yy += lines.length * 4;
+  }
+  const contact = [brand.branch.phone, brand.branch.email].filter(Boolean).join('  •  ');
+  if (contact) { doc.text(contact, 14, yy); yy += 4; }
+  if (brand.branch.gstin) { doc.text(`GSTIN: ${brand.branch.gstin}`, 14, yy); yy += 4; }
 
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   setColor(doc, BRAND.text);
   doc.text(title, 196, 22, { align: 'right' });
+
+  if (meta) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    setColor(doc, BRAND.muted);
+    let my = 28;
+    if (meta.docNumber) { doc.text(`# ${meta.docNumber}`, 196, my, { align: 'right' }); my += 4; }
+    if (meta.issueDate) { doc.text(`Date: ${meta.issueDate}`, 196, my, { align: 'right' }); my += 4; }
+  }
 }
 
-function footer(doc: jsPDF) {
+function footer(doc: jsPDF, brand?: BrandContext) {
+  const b = brand || DEFAULT_BRAND;
   const pageH = doc.internal.pageSize.height;
   setColor(doc, BRAND.muted);
   doc.setFontSize(8);
-  doc.text(
-    `Generated ${new Date().toLocaleString('en-IN')} • The Incline Life by Incline`,
-    105,
-    pageH - 8,
-    { align: 'center' },
-  );
+  const line1 = `Generated ${new Date().toLocaleString('en-IN')} • ${b.legalName}`;
+  doc.text(line1, 105, pageH - 12, { align: 'center' });
+  const line2 = [b.website, b.supportEmail].filter(Boolean).join('  •  ');
+  if (line2) doc.text(line2, 105, pageH - 7, { align: 'center' });
+}
+
+// Trigger a browser download for a blob.
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// Open a blob in a new tab for printing.
+export function printBlob(blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  if (w) {
+    w.addEventListener('load', () => w.print(), { once: true });
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Number to words (Indian, simple) for payslip.
+export function rupeesInWords(num: number): string {
+  num = Math.round(num);
+  if (num === 0) return 'Zero Rupees Only';
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const inWords = (n: number): string => {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
+    if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + inWords(n % 100) : '');
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + inWords(n % 1000) : '');
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + inWords(n % 100000) : '');
+    return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + inWords(n % 10000000) : '');
+  };
+  return inWords(num).trim() + ' Rupees Only';
 }
 
 // ---------- INVOICE ----------
