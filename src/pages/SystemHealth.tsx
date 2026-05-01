@@ -397,21 +397,33 @@ export default function SystemHealth() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Time</TableHead>
+                          <TableHead>Last Seen</TableHead>
+                          <TableHead>Severity</TableHead>
                           <TableHead>Source</TableHead>
-                          <TableHead>Route</TableHead>
-                          <TableHead>Error Message</TableHead>
+                          <TableHead>Function / Route</TableHead>
+                          <TableHead>Message</TableHead>
+                          <TableHead className="text-right">Count</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {errors.map((err) => {
                           const src = SOURCE_CONFIG[err.source || 'frontend'] || SOURCE_CONFIG.frontend;
+                          const sev = (err.severity || 'error').toLowerCase();
+                          const sevClass =
+                            sev === 'critical' ? 'bg-rose-100 text-rose-700' :
+                            sev === 'error' ? 'bg-red-100 text-red-700' :
+                            sev === 'warning' ? 'bg-amber-100 text-amber-700' :
+                            'bg-slate-100 text-slate-700';
+                          const lastTime = err.last_seen || err.created_at;
                           return (
                             <TableRow key={err.id}>
                               <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                {format(new Date(err.created_at), 'MMM d, HH:mm')}
+                                {format(new Date(lastTime), 'MMM d, HH:mm')}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${sevClass} rounded-full text-xs font-medium`} variant="secondary">{sev}</Badge>
                               </TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="gap-1 text-xs">
@@ -419,15 +431,23 @@ export default function SystemHealth() {
                                   {src.label}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="font-mono text-xs">{err.route || '—'}</TableCell>
-                              <TableCell className="max-w-[300px] truncate text-sm">{err.error_message}</TableCell>
+                              <TableCell className="font-mono text-xs max-w-[180px] truncate">{err.function_name || err.route || '—'}</TableCell>
+                              <TableCell className="max-w-[280px] truncate text-sm">{err.error_message}</TableCell>
+                              <TableCell className="text-right text-xs font-semibold">{err.occurrence_count ?? 1}</TableCell>
                               <TableCell>
                                 <Badge variant={err.status === 'open' ? 'destructive' : 'secondary'}>{err.status}</Badge>
                               </TableCell>
-                              <TableCell>
-                                <Button size="sm" variant="ghost" onClick={() => handleViewError(err)}>
-                                  <Eye className="h-4 w-4 mr-1" /> View
-                                </Button>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  {err.status === 'resolved' && (
+                                    <Button size="sm" variant="ghost" onClick={() => reopenError.mutate(err.id)} title="Reopen">
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="ghost" onClick={() => handleViewError(err)}>
+                                    <Eye className="h-4 w-4 mr-1" /> View
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           );
