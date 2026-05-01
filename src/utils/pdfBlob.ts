@@ -449,6 +449,241 @@ export function buildPlanPdf(input: PlanPdfInput, brand?: BrandContext): Blob {
     }
   }
 
-  footer(doc);
+  if (input.notes) {
+    y = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 6 : y + 6;
+    setColor(doc, BRAND.muted);
+    doc.setFontSize(8);
+    doc.text('Notes:', 14, y);
+    setColor(doc, BRAND.text);
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(input.notes, 180);
+    doc.text(lines, 14, y + 4);
+  }
+
+  footer(doc, resolvedBrand);
+  return doc.output('blob');
+}
+
+// ---------- PAYSLIP ----------
+export interface PayslipPdfInput {
+  employee_name: string;
+  employee_code?: string | null;
+  designation?: string | null;
+  period_label: string;        // e.g. "Sep 2026"
+  period_start: string;
+  period_end: string;
+  attendance: {
+    present?: number; half_day?: number; late?: number; missing_checkout?: number;
+    leave?: number; holiday?: number; weekly_off?: number; absent?: number;
+    payable_days?: number; total_days?: number; monthly_salary?: number;
+  };
+  earnings: { base: number; pt_commission: number; ot: number; bonus: number };
+  deductions: { deductions: number; advance: number; penalty: number };
+  gross: number;
+  net: number;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  paid_date?: string | null;
+  prepared_by?: string | null;
+  notes?: string | null;
+}
+
+export function buildPayslipPdf(data: PayslipPdfInput, brand: BrandContext): Blob {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  header(doc, 'PAYSLIP', brand, {
+    docNumber: data.period_label,
+    issueDate: new Date().toLocaleDateString('en-IN'),
+  });
+
+  let y = 58;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, BRAND.text);
+  doc.text(data.employee_name, 14, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  setColor(doc, BRAND.muted);
+  const sub = [data.employee_code, data.designation].filter(Boolean).join(' • ');
+  if (sub) { doc.text(sub, 14, y + 5); }
+  doc.text(
+    `Period: ${new Date(data.period_start).toLocaleDateString('en-IN')} – ${new Date(data.period_end).toLocaleDateString('en-IN')}`,
+    196, y, { align: 'right' },
+  );
+
+  // Attendance summary
+  y += 14;
+  const a = data.attendance || {};
+  autoTable(doc, {
+    startY: y,
+    head: [['Present', 'Half', 'Late', 'Missing', 'Leave', 'Holiday', 'Off', 'Absent', 'Payable']],
+    body: [[
+      String(a.present ?? 0), String(a.half_day ?? 0), String(a.late ?? 0),
+      String(a.missing_checkout ?? 0), String(a.leave ?? 0), String(a.holiday ?? 0),
+      String(a.weekly_off ?? 0), String(a.absent ?? 0), String(a.payable_days ?? 0),
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: BRAND.primary, textColor: 255, fontSize: 8 },
+    bodyStyles: { fontSize: 9, halign: 'center' },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 6;
+
+  // Earnings + deductions side-by-side
+  const earningsRows: Array<[string, string]> = [
+    ['Basic / Pro-rated', inr(data.earnings.base)],
+    ['PT Commission', inr(data.earnings.pt_commission)],
+    ['Overtime', inr(data.earnings.ot)],
+    ['Bonus', inr(data.earnings.bonus)],
+    ['Gross Earnings', inr(data.gross)],
+  ];
+  const deductionRows: Array<[string, string]> = [
+    ['Deductions', inr(data.deductions.deductions)],
+    ['Advance', inr(data.deductions.advance)],
+    ['Penalty', inr(data.deductions.penalty)],
+    ['Total Deductions', inr(data.deductions.deductions + data.deductions.advance + data.deductions.penalty)],
+  ];
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Earnings', '']],
+    body: earningsRows,
+    theme: 'grid',
+    headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+    bodyStyles: { fontSize: 9 },
+    columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
+    margin: { left: 14, right: 110 },
+    tableWidth: 88,
+  });
+  autoTable(doc, {
+    startY: y,
+    head: [['Deductions', '']],
+    body: deductionRows,
+    theme: 'grid',
+    headStyles: { fillColor: BRAND.danger, textColor: 255, fontSize: 9 },
+    bodyStyles: { fontSize: 9 },
+    columnStyles: { 1: { halign: 'right', cellWidth: 40 } },
+    margin: { left: 108, right: 14 },
+    tableWidth: 88,
+  });
+
+  const ny = Math.max(
+    (doc as any).lastAutoTable.finalY,
+    (doc as any).previousAutoTable?.finalY || 0,
+  ) + 8;
+
+  // Net pay
+  doc.setFillColor(238, 242, 255);
+  doc.rect(14, ny, 182, 18, 'F');
+  setColor(doc, BRAND.primary);
+  doc.setFontSize(10);
+  doc.text('NET PAY', 18, ny + 7);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, BRAND.text);
+  doc.text(inr(data.net), 192, ny + 9, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  setColor(doc, BRAND.muted);
+  doc.text(rupeesInWords(data.net), 18, ny + 14);
+
+  let py = ny + 24;
+  doc.setFontSize(9);
+  setColor(doc, BRAND.muted);
+  if (data.payment_method) { doc.text(`Payment: ${data.payment_method.toUpperCase()}${data.payment_reference ? ` (${data.payment_reference})` : ''}`, 14, py); py += 4; }
+  if (data.paid_date) { doc.text(`Paid on: ${new Date(data.paid_date).toLocaleDateString('en-IN')}`, 14, py); py += 4; }
+  if (data.prepared_by) { doc.text(`Prepared by: ${data.prepared_by}`, 14, py); py += 4; }
+  if (data.notes) {
+    py += 2;
+    doc.text('Notes: ' + data.notes, 14, py);
+  }
+
+  footer(doc, brand);
+  return doc.output('blob');
+}
+
+// ---------- CONTRACT ----------
+export interface ContractPdfInput {
+  contract_number?: string | null;
+  employee_name: string;
+  employee_code?: string | null;
+  position?: string | null;
+  department?: string | null;
+  contract_type: string;
+  start_date: string;
+  end_date?: string | null;
+  salary: number;
+  salary_type?: string | null;
+  terms?: string | null;
+  prepared_by?: string | null;
+}
+
+export function buildContractPdf(data: ContractPdfInput, brand: BrandContext): Blob {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  header(doc, 'EMPLOYMENT CONTRACT', brand, {
+    docNumber: data.contract_number || undefined,
+    issueDate: new Date().toLocaleDateString('en-IN'),
+  });
+
+  let y = 58;
+  doc.setFontSize(10);
+  setColor(doc, BRAND.text);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Between', 14, y); y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${brand.legalName} ("Company")`, 14, y); y += 5;
+  if (brand.branch.address) {
+    const lines = doc.splitTextToSize(brand.branch.address, 180);
+    doc.text(lines, 14, y); y += lines.length * 4;
+  }
+  y += 4;
+  doc.setFont('helvetica', 'bold');
+  doc.text('And', 14, y); y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${data.employee_name}${data.employee_code ? ` (${data.employee_code})` : ''} ("Employee")`, 14, y);
+  y += 8;
+
+  autoTable(doc, {
+    startY: y,
+    body: [
+      ['Position', data.position || '-'],
+      ['Department', data.department || '-'],
+      ['Contract Type', data.contract_type],
+      ['Start Date', new Date(data.start_date).toLocaleDateString('en-IN')],
+      ['End Date', data.end_date ? new Date(data.end_date).toLocaleDateString('en-IN') : 'Open-ended'],
+      ['Salary', `${inr(data.salary)}${data.salary_type ? ` / ${data.salary_type}` : ''}`],
+    ],
+    theme: 'plain',
+    bodyStyles: { fontSize: 10 },
+    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: BRAND.muted } },
+    margin: { left: 14, right: 14 },
+  });
+  y = (doc as any).lastAutoTable.finalY + 6;
+
+  if (data.terms) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    setColor(doc, BRAND.text);
+    doc.text('Terms & Conditions', 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(data.terms, 180);
+    doc.text(lines, 14, y);
+    y += lines.length * 4 + 6;
+  }
+
+  // Signature blocks
+  const pageH = doc.internal.pageSize.height;
+  const sy = Math.max(y, pageH - 50);
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(...BRAND.muted);
+  doc.line(20, sy, 90, sy);
+  doc.line(120, sy, 190, sy);
+  setColor(doc, BRAND.muted);
+  doc.setFontSize(9);
+  doc.text('Company Representative', 20, sy + 5);
+  doc.text('Employee Signature', 120, sy + 5);
+
+  footer(doc, brand);
   return doc.output('blob');
 }
