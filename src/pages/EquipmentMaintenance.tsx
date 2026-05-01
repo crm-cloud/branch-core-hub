@@ -32,8 +32,8 @@ export default function EquipmentMaintenancePage() {
   });
 
   const { data: maintenanceRecords = [] } = useQuery({
-    queryKey: ['maintenance-records'],
-    queryFn: () => fetchMaintenanceRecords(),
+    queryKey: ['maintenance-records', currentBranchId],
+    queryFn: () => fetchMaintenanceRecords(undefined, currentBranchId),
   });
 
   const { data: stats } = useQuery({
