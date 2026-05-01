@@ -184,19 +184,11 @@ export default function MemberStore() {
     setPromoCode('');
   };
 
-  // Claim referral reward via authoritative atomic RPC.
+  // Claim referral reward — single canonical path through referralService.
   const claimReward = useMutation({
     mutationFn: async (rewardId: string) => {
-      const idem = `reward_claim:${member!.id}:${rewardId}`;
-      const { data, error } = await supabase.rpc('claim_referral_reward', {
-        p_reward_id: rewardId,
-        p_member_id: member!.id,
-        p_idempotency_key: idem,
-      });
-      if (error) throw error;
-      const result = data as { success?: boolean; error?: string } | null;
-      if (!result?.success) throw new Error(result?.error || 'Failed to redeem reward');
-      return result;
+      const { claimReward: claimRewardSvc } = await import('@/services/referralService');
+      return claimRewardSvc(rewardId, member!.id);
     },
     onSuccess: () => {
       toast.success('Reward credited to your wallet!');
