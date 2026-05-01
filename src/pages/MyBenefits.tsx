@@ -200,7 +200,7 @@ export default function MyBenefits() {
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg flex items-center gap-2">
                           {getBenefitIcon(credit.benefit_type)}
-                          {(credit.benefit_type as any)?.name || credit.benefit_type}
+                          {resolveBenefitMeta(credit.benefit_type).label}
                         </CardTitle>
                         <Badge variant={daysLeft <= 7 ? "destructive" : "outline"}>
                           {daysLeft} days left
