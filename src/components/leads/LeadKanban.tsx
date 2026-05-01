@@ -169,6 +169,11 @@ export function LeadKanban({ leads, onSelectLead, onFollowup, onConvert }: LeadK
                                     Overdue: {format(new Date(lead.next_action_at), 'MMM dd')}
                                   </p>
                                 )}
+                                {!isOverdue && isStale && (
+                                  <p className="text-[10px] text-amber-700 font-medium bg-amber-50 rounded px-1.5 py-0.5 inline-block">
+                                    Stale · no contact in 3+ days
+                                  </p>
+                                )}
 
                                 {/* Owner + Assign */}
                                 <div className="flex items-center justify-between pt-1 border-t border-border/30">
