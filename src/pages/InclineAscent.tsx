@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import ScrollProgressBar from '@/components/ui/ScrollProgressBar';
 import RegisterModal from '@/components/ui/RegisterModal';
+import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
 
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
@@ -67,6 +68,7 @@ const InclineAscent = () => {
         </Suspense>
       )}
       <RegisterModal />
+      <LegalModal />
     </div>
   );
 };
