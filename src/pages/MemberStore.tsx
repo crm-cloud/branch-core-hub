@@ -129,49 +129,34 @@ export default function MemberStore() {
   const walletDeduction = useWalletBalance ? Math.min(walletBalance, afterDiscount) : 0;
   const finalAmount = Math.max(0, afterDiscount - walletDeduction);
 
-  // Apply promo code
+  // Apply promo code via authoritative server-side validator (no client-trust math).
   const applyPromoCode = async () => {
     if (!promoCode.trim()) return;
     setApplyingPromo(true);
     try {
-      const { data, error } = await supabase
-        .from('discount_codes')
-        .select('*')
-        .eq('code', promoCode.trim().toUpperCase())
-        .eq('is_active', true)
-        .single();
-
-      if (error || !data) {
-        toast.error('Invalid or expired promo code');
-        return;
-      }
-
-      // Validate
-      if (data.valid_until && new Date(data.valid_until) < new Date()) {
-        toast.error('This promo code has expired');
-        return;
-      }
-      if (data.max_uses && data.times_used >= data.max_uses) {
-        toast.error('This promo code has reached its usage limit');
-        return;
-      }
-      if (data.min_purchase && cartTotal < Number(data.min_purchase)) {
-        toast.error(`Minimum purchase of ₹${data.min_purchase} required`);
-        return;
-      }
-
-      const discAmt = data.discount_type === 'percentage'
-        ? (cartTotal * Number(data.discount_value)) / 100
-        : Number(data.discount_value);
-
-      setAppliedDiscount({
-        id: data.id,
-        code: data.code,
-        type: data.discount_type,
-        value: Number(data.discount_value),
-        discountAmount: Math.min(discAmt, cartTotal),
+      const { validateCoupon, couponReasonLabel } = await import('@/services/couponService');
+      const result = await validateCoupon({
+        code: promoCode.trim().toUpperCase(),
+        branchId: member?.branch_id ?? null,
+        subtotal: cartTotal,
       });
-      toast.success(`Promo code "${data.code}" applied!`);
+      if (!result.success) {
+        const failure = result as { success: false; reason: string; min_purchase?: number };
+        if (failure.reason === 'min_purchase' && failure.min_purchase) {
+          toast.error(`Minimum purchase of ₹${failure.min_purchase} required`);
+        } else {
+          toast.error(couponReasonLabel(failure.reason));
+        }
+        return;
+      }
+      setAppliedDiscount({
+        id: result.code_id,
+        code: result.code,
+        type: result.discount_type,
+        value: result.discount_value,
+        discountAmount: result.discount_amount,
+      });
+      toast.success(`Promo code "${result.code}" applied!`);
     } catch {
       toast.error('Failed to validate promo code');
     } finally {
