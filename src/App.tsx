@@ -21,7 +21,6 @@ import ForgotPasswordPage from "./pages/ForgotPassword";
 import ResetPasswordPage from "./pages/ResetPassword";
 import UnauthorizedPage from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
-import PublicWebsiteV1 from "./pages/PublicWebsiteV1";
 const InclineAscent = lazy(() => import("./pages/InclineAscent"));
 import EmbedLeadForm from "./pages/EmbedLeadForm";
 import PrivacyPolicyPage from "./pages/PrivacyPolicy";
@@ -162,10 +161,8 @@ function RoutedContent() {
     <>
       <Suspense fallback={null}>
         <Routes location={displayLocation}>
-          {/* Public Website */}
-          <Route path="/" element={<PublicWebsiteV1 />} />
-          <Route path="/website-v1" element={<PublicWebsiteV1 />} />
-          <Route path="/ascent" element={<InclineAscent />} />
+          {/* Public Website — InclineAscent 3D experience */}
+          <Route path="/" element={<InclineAscent />} />
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/terms-of-service" element={<TermsPage />} />
