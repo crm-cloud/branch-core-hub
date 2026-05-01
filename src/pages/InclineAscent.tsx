@@ -68,6 +68,7 @@ const InclineAscent = () => {
         </Suspense>
       )}
       <RegisterModal />
+      <LegalModal />
     </div>
   );
 };
