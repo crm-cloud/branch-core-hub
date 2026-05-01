@@ -275,7 +275,7 @@ export default function MyBenefits() {
                     <div className="flex items-center gap-3">
                       {getBenefitIcon(usage.benefit_type)}
                       <div>
-                        <p className="font-medium">{(usage.benefit_type as any)?.name || usage.benefit_type}</p>
+                        <p className="font-medium">{resolveBenefitMeta(usage.benefit_type).label}</p>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(usage.usage_date), 'EEE, dd MMM yyyy')}
                         </p>
