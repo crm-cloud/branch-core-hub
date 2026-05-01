@@ -28,6 +28,28 @@ export default function TasksPage() {
     queryFn: () => fetchTasks(effectiveBranchId),
   });
 
+  // Cmd+K deep links
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setDrawerOpen(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+    const taskId = url.searchParams.get('task');
+    if (!taskId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from('tasks').select('*').eq('id', taskId).maybeSingle();
+      if (cancelled || !data) return;
+      setSelectedTask(data);
+      const u2 = new URL(window.location.href);
+      u2.searchParams.delete('task');
+      window.history.replaceState({}, '', u2.toString());
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Realtime: tasks, status history, and comments stream live so the list
   // and any open detail drawer reflect new assignments / status changes
   // / comments without a refresh.
