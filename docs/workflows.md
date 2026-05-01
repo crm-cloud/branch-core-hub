@@ -37,3 +37,15 @@ client toasts.
   recipient) emits `campaign.converted` exactly once for attribution.
 - Verify the public site never imports the Supabase client (enforced by
   Phase 3 — InclineAscent and legal pages have zero backend reads).
+
+## Feedback / Google Reviews — boundaries
+
+- The app **never** writes a customer review to Google. Customers must post
+  reviews on Google themselves; we only send them the branch's review link.
+- The Google Business Profile integration is used only to **fetch** existing
+  reviews and **reply** to them. If it is not configured, request flows still
+  work — only fetch/reply are disabled.
+- Low-rating feedback (≤ 3★) never triggers a Google review request; it
+  always opens a recovery task assigned to a branch manager.
+- Public testimonials require explicit `consent_for_testimonial = true`
+  captured at submission or via the consent-request flow.
