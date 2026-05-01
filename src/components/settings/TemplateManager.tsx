@@ -177,6 +177,31 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     },
   });
 
+  // 7-day delivery counts per template (sent / failed / queued)
+  const { data: deliveryStats = {} } = useQuery({
+    queryKey: ['template-delivery-stats-7d'],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('communication_logs')
+        .select('template_id, delivery_status, status')
+        .gte('created_at', since)
+        .not('template_id', 'is', null);
+      const map: Record<string, { sent: number; failed: number; queued: number }> = {};
+      for (const r of (data || []) as any[]) {
+        if (!r.template_id) continue;
+        const k = r.template_id as string;
+        if (!map[k]) map[k] = { sent: 0, failed: 0, queued: 0 };
+        const ds = (r.delivery_status || r.status || '').toString().toLowerCase();
+        if (['sent', 'delivered', 'read'].includes(ds)) map[k].sent++;
+        else if (['failed', 'error', 'bounced', 'rejected'].includes(ds)) map[k].failed++;
+        else map[k].queued++;
+      }
+      return map;
+    },
+    refetchInterval: 60_000,
+  });
+
   /** After saving a template, optionally wire it to a system event in
    *  whatsapp_triggers so Templates Health flips green for that event. */
   const wireWhatsAppTrigger = async (templateId: string, eventName: string) => {
