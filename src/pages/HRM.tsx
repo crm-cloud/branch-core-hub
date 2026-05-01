@@ -13,6 +13,7 @@ import { AddEmployeeDrawer } from '@/components/employees/AddEmployeeDrawer';
 import { EditEmployeeDrawer } from '@/components/employees/EditEmployeeDrawer';
 import { EditTrainerDrawer } from '@/components/trainers/EditTrainerDrawer';
 import { SignedContractViewer } from '@/components/hrm/SignedContractViewer';
+import { PayrollRunPanel } from '@/components/hrm/PayrollRunPanel';
 import {
   Plus, 
   Users, 
@@ -774,7 +775,14 @@ export default function HRMPage() {
           </TabsContent>
 
           {/* Payroll Tab */}
-          <TabsContent value="payroll" className="mt-4">
+          <TabsContent value="payroll" className="mt-4 space-y-4">
+            <PayrollRunPanel
+              periodStart={`${payrollMonth}-01`}
+              periodEnd={(() => {
+                const [y, m] = payrollMonth.split('-').map(Number);
+                return new Date(y, m, 0).toISOString().split('T')[0];
+              })()}
+            />
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
