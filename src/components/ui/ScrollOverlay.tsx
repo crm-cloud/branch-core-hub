@@ -194,7 +194,7 @@ const ScrollOverlay = () => {
             </div>
           </div>
         </div>
-        <footer className="flex flex-col items-center gap-3">
+        <footer className="flex flex-col items-center gap-4 pb-2">
           <a
             href="https://www.instagram.com/theinclinelife/"
             target="_blank"
@@ -204,14 +204,38 @@ const ScrollOverlay = () => {
             <Instagram className="w-5 h-5 group-hover:scale-110 transition-transform" />
             <span className="text-sm tracking-wider font-medium">@theinclinelife</span>
           </a>
-          <nav aria-label="Legal" className="flex items-center gap-3 text-xs text-muted-foreground/70">
-            <a href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</a>
-            <span aria-hidden="true">·</span>
-            <a href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</a>
-            <span aria-hidden="true">·</span>
-            <a href="/data-deletion" className="hover:text-primary transition-colors">Data Deletion</a>
+
+          <nav
+            aria-label="Legal"
+            className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-primary/20 bg-card/40 backdrop-blur-md px-2 py-1.5 shadow-lg shadow-primary/5"
+          >
+            {[
+              { key: "privacy",  label: "Privacy" },
+              { key: "terms",    label: "Terms" },
+              { key: "deletion", label: "Data Deletion" },
+            ].map((item, i, arr) => (
+              <span key={item.key} className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("open-legal-modal", { detail: item.key })
+                    )
+                  }
+                  className="px-3 py-1 rounded-full text-xs font-semibold tracking-wide text-muted-foreground hover:text-primary-foreground hover:bg-primary transition-all duration-200 cursor-pointer"
+                >
+                  {item.label}
+                </button>
+                {i < arr.length - 1 && (
+                  <span aria-hidden="true" className="text-primary/30 select-none">·</span>
+                )}
+              </span>
+            ))}
           </nav>
-          <p className="text-muted-foreground/50 text-xs tracking-wider">© 2026 The Incline Life by Incline. All rights reserved.</p>
+
+          <p className="text-muted-foreground/50 text-xs tracking-wider text-center px-4">
+            © 2026 The Incline Life by Incline. All rights reserved.
+          </p>
         </footer>
       </section>
     </div>
