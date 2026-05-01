@@ -245,6 +245,20 @@ export default function MemberFeedback() {
                   />
                 </div>
 
+                {/* Testimonial consent */}
+                <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
+                  <Checkbox
+                    id="consent-testimonial"
+                    checked={consentTestimonial}
+                    onCheckedChange={(v) => setConsentTestimonial(Boolean(v))}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="consent-testimonial" className="text-sm leading-snug font-normal cursor-pointer">
+                    I agree my feedback can be used as a public testimonial (with my first name only).
+                    You can withdraw consent anytime by contacting the front desk.
+                  </Label>
+                </div>
+
                 <Button 
                   type="submit" 
                   className="w-full"
