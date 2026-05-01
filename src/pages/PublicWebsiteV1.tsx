@@ -1041,10 +1041,9 @@ export default function PublicWebsite() {
                       </button>
                       <p className="text-center text-xs text-white/25">
                         By submitting, you agree to our{' '}
-                        <Link to="/privacy-policy" className="text-orange-400 hover:text-orange-300 transition-colors">
-                          Privacy Policy
-                        </Link>
-                        .
+                        <Link to="/privacy-policy" className="text-orange-400 hover:text-orange-300 transition-colors">Privacy Policy</Link>
+                        {' '}and{' '}
+                        <Link to="/terms-of-service" className="text-orange-400 hover:text-orange-300 transition-colors">Terms of Service</Link>.
                       </p>
                     </form>
                   )}
@@ -1074,7 +1073,7 @@ export default function PublicWebsite() {
             {[
               { title: 'Company', links: [{ label: 'About Us', href: '#' }, { label: 'Careers', href: '#' }, { label: 'Blog', href: '#' }, { label: 'Press', href: '#' }] },
               { title: 'Members', links: [{ label: 'Sign In', href: '/auth' }, { label: 'Free Trial', href: '#contact' }, { label: 'Plans', href: '#pricing' }, { label: 'Classes', href: '#classes' }] },
-              { title: 'Support', links: [{ label: 'FAQ', href: '#' }, { label: 'Contact', href: '#contact' }, { label: 'Privacy Policy', href: '/privacy-policy' }, { label: 'Terms', href: '/terms' }] },
+              { title: 'Support', links: [{ label: 'FAQ', href: '#' }, { label: 'Contact', href: '#contact' }, { label: 'Privacy Policy', href: '/privacy-policy' }, { label: 'Terms of Service', href: '/terms-of-service' }, { label: 'Data Deletion', href: '/data-deletion' }] },
             ].map(({ title, links }) => (
               <div key={title}>
                 <h4 className="font-bold text-white text-sm mb-4">{title}</h4>

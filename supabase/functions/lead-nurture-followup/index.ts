@@ -1,4 +1,4 @@
-// v3.1.0 — Skips chats already converted to a lead OR linked to a member to stop redundant follow-ups
+// v3.2.0 — Multi-platform nurture: sends via send-message for IG/Messenger, send-whatsapp for WhatsApp
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const serve = Deno.serve;
 
@@ -47,7 +47,7 @@ serve(async (req) => {
     // Find chats where bot is active
     const { data: staleChats, error: chatErr } = await supabase
       .from("whatsapp_chat_settings")
-      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data, last_nurture_at")
+      .select("id, phone_number, branch_id, nurture_retry_count, partial_lead_data, last_nurture_at, platform")
       .eq("bot_active", true);
 
     if (chatErr) {
@@ -179,6 +179,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
 
       const contactName = lead?.full_name || partialData?.name || partialData?.whatsapp_name || null;
 
+      const chatPlatform = chat.platform || "whatsapp";
       const { data: msgData, error: msgErr } = await supabase
         .from("whatsapp_messages")
         .insert({
@@ -189,6 +190,7 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
           direction: "outbound",
           status: "pending",
           message_type: "text",
+          platform: chatPlatform,
         })
         .select()
         .single();
@@ -198,23 +200,25 @@ Keep it warm, casual, and use 1-2 emoji. Do NOT mention that they stopped replyi
         continue;
       }
 
-      try {
-        const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${supabaseKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message_id: msgData.id,
-            phone_number: chat.phone_number,
-            content: nudgeMessage,
-            branch_id: chat.branch_id,
-          }),
-        });
+      // Determine platform for send routing
+      const chatPlatform = chat.platform || "whatsapp";
 
-        if (!sendRes.ok) {
-          console.error(`Send failed for ${chat.phone_number}: ${sendRes.status}`);
+      try {
+        if (chatPlatform === "whatsapp") {
+          const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: msgData.id, phone_number: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id }),
+          });
+          if (!sendRes.ok) console.error(`Send failed for ${chat.phone_number}: ${sendRes.status}`);
+        } else {
+          // Instagram or Messenger — use unified send-message
+          const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-message`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: msgData.id, recipient_id: chat.phone_number, content: nudgeMessage, branch_id: chat.branch_id, platform: chatPlatform }),
+          });
+          if (!sendRes.ok) console.error(`Send (${chatPlatform}) failed for ${chat.phone_number}: ${sendRes.status}`);
         }
       } catch (sendErr) {
         console.error(`Send error for ${chat.phone_number}:`, sendErr);
