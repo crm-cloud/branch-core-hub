@@ -292,6 +292,52 @@ function skip(reason: string): AgentResult {
   return { replyText: null, leadCaptured: false, leadId: null, handoffTriggered: false, skipped: true, skipReason: reason };
 }
 
+// Gym knowledge cache (refreshes every 5 min)
+let _gymFactsCache: string | null = null;
+let _gymFactsTs = 0;
+async function hydrateGymFacts(supabase: any, branchId: string): Promise<string> {
+  if (_gymFactsCache && Date.now() - _gymFactsTs < 300_000) return _gymFactsCache;
+  try {
+    const [plansRes, facilitiesRes, branchRes] = await Promise.all([
+      supabase.from("membership_plans").select("name, duration_days, price, discounted_price, admission_fee, description").eq("branch_id", branchId).eq("is_active", true).order("price"),
+      supabase.from("facilities").select("name, capacity, description").eq("branch_id", branchId).eq("is_active", true),
+      supabase.from("branches").select("name, address, city, phone, opening_time, closing_time").eq("id", branchId).maybeSingle(),
+    ]);
+    const parts: string[] = ["[GYM KNOWLEDGE — use this to answer questions directly]"];
+
+    if (branchRes.data) {
+      const b = branchRes.data;
+      parts.push(`Location: ${b.name || "Incline Fitness"}, ${b.address || ""}, ${b.city || "Udaipur"}. Phone: ${b.phone || "N/A"}.`);
+      if (b.opening_time && b.closing_time) parts.push(`Timings: ${b.opening_time} – ${b.closing_time}`);
+    }
+
+    if (plansRes.data?.length) {
+      const planLines = plansRes.data.map((p: any) => {
+        const dur = p.duration_days >= 365 ? `${Math.round(p.duration_days / 365)} year` : p.duration_days >= 30 ? `${Math.round(p.duration_days / 30)} month` : `${p.duration_days} day`;
+        const price = p.discounted_price || p.price;
+        const admission = p.admission_fee ? ` + ₹${p.admission_fee} admission` : "";
+        return `• ${p.name} (${dur}): ₹${price}${admission}`;
+      });
+      parts.push(`\nMembership Plans:\n${planLines.join("\n")}`);
+    }
+
+    if (facilitiesRes.data?.length) {
+      const facLines = facilitiesRes.data.map((f: any) => `• ${f.name} (capacity: ${f.capacity})`);
+      parts.push(`\nRecovery Facilities:\n${facLines.join("\n")}`);
+    }
+
+    parts.push(`\nEquipment: 50+ machines including Panatta (Italy), Real Leader (USA), Hammer Strength. Full free-weight area, functional training zone.`);
+    parts.push(`USP: 3D body scanning (HOWBODY), ice bath, sauna therapy, biomechanical precision equipment.`);
+
+    _gymFactsCache = parts.join("\n");
+    _gymFactsTs = Date.now();
+    return _gymFactsCache;
+  } catch (e) {
+    console.error("[AI] hydrateGymFacts failed:", e);
+    return "";
+  }
+}
+
 let _orgConfigCache: any = null;
 let _orgConfigTs = 0;
 async function loadOrgConfig(supabase: any) {
