@@ -1041,10 +1041,9 @@ export default function PublicWebsite() {
                       </button>
                       <p className="text-center text-xs text-white/25">
                         By submitting, you agree to our{' '}
-                        <Link to="/privacy-policy" className="text-orange-400 hover:text-orange-300 transition-colors">
-                          Privacy Policy
-                        </Link>
-                        .
+                        <Link to="/privacy-policy" className="text-orange-400 hover:text-orange-300 transition-colors">Privacy Policy</Link>
+                        {' '}and{' '}
+                        <Link to="/terms-of-service" className="text-orange-400 hover:text-orange-300 transition-colors">Terms of Service</Link>.
                       </p>
                     </form>
                   )}
