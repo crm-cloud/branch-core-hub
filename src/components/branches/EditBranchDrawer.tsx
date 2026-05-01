@@ -390,6 +390,49 @@ export function EditBranchDrawer({ open, onOpenChange, branch }: EditBranchDrawe
             <p className="text-xs text-muted-foreground">GST Identification Number for tax invoices</p>
           </div>
 
+          {/* Google Reviews */}
+          <div className="space-y-3 rounded-xl border bg-muted/30 p-3">
+            <div>
+              <Label className="text-sm font-semibold">Google Reviews</Label>
+              <p className="text-xs text-muted-foreground">
+                Customers post reviews on Google themselves — paste your branch's "Get more reviews" short link here.
+                We'll use it for review requests and the printable QR.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="google_review_link">Google review link</Label>
+              <Input
+                id="google_review_link"
+                type="url"
+                value={formData.google_review_link}
+                onChange={(e) => setFormData({ ...formData, google_review_link: e.target.value })}
+                placeholder="https://g.page/r/..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="google_place_id">Google Place ID (optional)</Label>
+              <Input
+                id="google_place_id"
+                value={formData.google_place_id}
+                onChange={(e) => setFormData({ ...formData, google_place_id: e.target.value })}
+                placeholder="ChIJ..."
+              />
+              <p className="text-xs text-muted-foreground">Needed only to fetch existing Google reviews via API.</p>
+            </div>
+            {formData.google_review_link && (
+              <div className="flex items-center gap-3 pt-1">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(formData.google_review_link)}`}
+                  alt="Google review QR"
+                  className="h-24 w-24 rounded-md border bg-white p-1"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Scan-to-review QR. Print this and place it at the front desk or in the changing rooms.
+                </div>
+              </div>
+            )}
+          </div>
+
           <SheetFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
