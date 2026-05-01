@@ -186,6 +186,15 @@ export default function MyBenefits() {
           </Card>
         )}
 
+        {/* Combined Plan + Add-On summary */}
+        {benefitCredits.length > 0 && (
+          <CombinedCreditsSummary
+            credits={benefitCredits as any}
+            onBuyAddon={() => setAddOnOpen(true)}
+            disabled={!activeMembership}
+          />
+        )}
+
         {/* Benefit Credits */}
         {benefitCredits.length > 0 && (
           <div className="space-y-4">
