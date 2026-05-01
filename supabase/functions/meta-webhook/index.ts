@@ -799,164 +799,35 @@ async function triggerAiReply(
 ) {
   console.log(`[AI:${platform}] start sender=${senderId} branch=${branchId}`);
 
-  const { data: settings } = await supabase
-    .from("whatsapp_chat_settings")
-    .select("bot_active")
-    .eq("branch_id", branchId)
-    .eq("phone_number", senderId)
-    .maybeSingle();
-  if (settings?.bot_active === false) {
-    console.log(`[AI:${platform}] bot_active=false, skipping`);
-    return;
-  }
-
-  const orgConfig = await getOrgAiConfig();
-  const aiConfig = orgConfig?.whatsapp_ai_config as any;
-  if (!aiConfig?.auto_reply_enabled) {
-    console.log(`[AI:${platform}] auto_reply_enabled=false`);
-    return;
-  }
-
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.log(`[AI:${platform}] LOVABLE_API_KEY missing`);
-    return;
-  }
-
-  const { data: memberMatch } = await supabase
-    .from("members")
-    .select("id, branch_id, profiles(full_name)")
-    .or(`whatsapp_id.eq.${senderId}`)
-    .maybeSingle()
-    .then((r: any) => r, () => ({ data: null }));
-
-  const memberId = memberMatch?.id || null;
-  let membershipId: string | null = null;
-  let planId: string | null = null;
-  let memberName = "Guest";
-
-  if (memberId) {
-    memberName = (memberMatch as any).profiles?.full_name || "Member";
-    const { data: ms } = await supabase
-      .from("memberships")
-      .select("id, plan_id")
-      .eq("member_id", memberId)
-      .eq("status", "active")
-      .order("end_date", { ascending: false })
-      .limit(1).maybeSingle();
-    if (ms) { membershipId = ms.id; planId = ms.plan_id; }
-  }
-
-  // E3: cross-platform history (no platform filter) — tag each turn with platform
-  const { data: recentMessages } = await supabase
+  // Load the inbound message content + type for story guard
+  const { data: inboundMsg } = await supabase
     .from("whatsapp_messages")
-    .select("content, direction, platform")
-    .eq("phone_number", senderId)
-    .eq("branch_id", branchId)
-    .order("created_at", { ascending: false })
-    .limit(15);
+    .select("content, contact_name, message_type")
+    .eq("id", messageId)
+    .single();
 
-  // E3: cross-platform history fed to the model. Do NOT prepend "(via X)" tags —
-  // some models echo system-style annotations back into outbound replies, which
-  // then get sent to the end user verbatim. Platform context is already conveyed
-  // by the system prompt below; per-turn channel labels are not needed.
-  const history = (recentMessages || []).reverse().map((m: any) => ({
-    role: (m.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
-    content: String(m.content || ""),
-  }));
-
-  const platformLabel = platform === "instagram" ? "Instagram DM" : platform === "messenger" ? "Facebook Messenger" : "WhatsApp";
-  const gymName = orgConfig?.gym_name || "Incline Fitness";
-  const customPrompt = aiConfig?.system_prompt || "";
-  const baseRole = customPrompt || `You are a helpful gym assistant for "${gymName}".`;
-  const systemPrompt = `${baseRole}\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels (WhatsApp, IG, Messenger) — treat them as one continuous conversation. Keep replies short (1-3 sentences), warm, professional. Use tools when applicable.`;
-
-  let tools: any[] | undefined = memberId ? getAllToolDefinitions() : undefined;
-  if (tools) {
-    try {
-      const { data: orgRow } = await supabase.from("organization_settings").select("ai_tool_config").limit(1).maybeSingle();
-      const cfg = (orgRow?.ai_tool_config as Record<string, boolean>) || {};
-      tools = tools.filter((t: any) => cfg[t.function.name] !== false);
-      if (tools.length === 0) tools = undefined;
-    } catch (_e) { /* keep all */ }
-  }
-
-  const ctx = {
-    isMember: !!memberId,
-    memberId: memberId || undefined,
-    memberName,
+  const result = await runUnifiedAgent(supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    senderId,
     branchId,
-    membershipId: membershipId || undefined,
-    planId: planId || undefined,
-    contextPrompt: memberId ? `Member: ${memberName}` : "Speaking to a guest/lead.",
-  };
+    platform,
+    messageId,
+    messageContent: inboundMsg?.content || "",
+    contactName: inboundMsg?.contact_name || null,
+    messageType: inboundMsg?.message_type || "text",
+  });
 
-  const messages: any[] = [
-    { role: "system", content: `${systemPrompt}\n\n${ctx.contextPrompt}` },
-    ...history,
-  ];
-
-  let aiResult: any;
-  try {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: aiConfig?.model || "google/gemini-2.5-flash",
-        messages,
-        ...(tools ? { tools, tool_choice: "auto" } : {}),
-      }),
-    });
-    if (!resp.ok) {
-      console.error(`[AI:${platform}] gateway error ${resp.status}`);
-      return;
-    }
-    aiResult = await resp.json();
-  } catch (e) {
-    console.error(`[AI:${platform}] fetch failed:`, e);
+  if (result.skipped || !result.replyText) {
+    console.log(`[AI:${platform}] skipped: ${result.skipReason || "no_reply"}`);
     return;
   }
 
-  const choice = aiResult?.choices?.[0];
-  const toolCalls = choice?.message?.tool_calls;
-  let replyText: string | null = choice?.message?.content || null;
-  console.log(`[AI:${platform}] reply len=${replyText?.length || 0} toolCalls=${toolCalls?.length || 0}`);
-
-  if (toolCalls?.length && tools) {
-    const toolMessages: any[] = [];
-    for (const tc of toolCalls) {
-      let parsedArgs: any = {};
-      try { parsedArgs = JSON.parse(tc.function.arguments || "{}"); } catch { /* ignore */ }
-      const result = await executeSharedToolCall(
-        supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-        tc.function.name, parsedArgs, ctx, senderId, branchId, platform,
-      );
-      toolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
-    }
-    try {
-      const followup = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: aiConfig?.model || "google/gemini-2.5-flash",
-          messages: [...messages, choice.message, ...toolMessages],
-        }),
-      });
-      const followupData = await followup.json();
-      replyText = followupData?.choices?.[0]?.message?.content || replyText;
-    } catch (e) {
-      console.error(`[AI:${platform}] follow-up failed:`, e);
-    }
-  }
-
-  if (!replyText) return;
-
+  // Store reply
   const { data: replyMsg } = await supabase
     .from("whatsapp_messages")
     .insert({
       branch_id: branchId,
       phone_number: senderId,
-      content: replyText,
+      content: result.replyText,
       direction: "outbound",
       status: "pending",
       message_type: "text",
@@ -967,6 +838,7 @@ async function triggerAiReply(
 
   if (!replyMsg) return;
 
+  // Send via send-message edge function
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/send-message`, {
       method: "POST",
@@ -974,7 +846,7 @@ async function triggerAiReply(
       body: JSON.stringify({
         message_id: replyMsg.id,
         recipient_id: senderId,
-        content: replyText,
+        content: result.replyText,
         branch_id: branchId,
         platform,
       }),
