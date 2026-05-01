@@ -2742,6 +2742,84 @@ export type Database = {
           },
         ]
       }
+      dr_drill_log: {
+        Row: {
+          app_config_switched: boolean
+          attendance_ok: boolean
+          created_at: string
+          db_restored: boolean
+          drill_date: string
+          edge_functions_deployed: boolean
+          id: string
+          invoice_create_ok: boolean
+          member_login_ok: boolean
+          notes: string | null
+          outcome: string
+          payment_webhook_ok: boolean
+          performed_by: string | null
+          storage_restored: boolean
+          storage_upload_ok: boolean
+          whatsapp_webhook_ok: boolean
+        }
+        Insert: {
+          app_config_switched?: boolean
+          attendance_ok?: boolean
+          created_at?: string
+          db_restored?: boolean
+          drill_date?: string
+          edge_functions_deployed?: boolean
+          id?: string
+          invoice_create_ok?: boolean
+          member_login_ok?: boolean
+          notes?: string | null
+          outcome?: string
+          payment_webhook_ok?: boolean
+          performed_by?: string | null
+          storage_restored?: boolean
+          storage_upload_ok?: boolean
+          whatsapp_webhook_ok?: boolean
+        }
+        Update: {
+          app_config_switched?: boolean
+          attendance_ok?: boolean
+          created_at?: string
+          db_restored?: boolean
+          drill_date?: string
+          edge_functions_deployed?: boolean
+          id?: string
+          invoice_create_ok?: boolean
+          member_login_ok?: boolean
+          notes?: string | null
+          outcome?: string
+          payment_webhook_ok?: boolean
+          performed_by?: string | null
+          storage_restored?: boolean
+          storage_upload_ok?: boolean
+          whatsapp_webhook_ok?: boolean
+        }
+        Relationships: []
+      }
+      dr_probe: {
+        Row: {
+          id: string
+          observed_at: string
+          payload: Json | null
+          source: string
+        }
+        Insert: {
+          id?: string
+          observed_at?: string
+          payload?: Json | null
+          source: string
+        }
+        Update: {
+          id?: string
+          observed_at?: string
+          payload?: Json | null
+          source?: string
+        }
+        Relationships: []
+      }
       ecommerce_orders: {
         Row: {
           branch_id: string
@@ -8630,6 +8708,33 @@ export type Database = {
           },
         ]
       }
+      system_health_pings: {
+        Row: {
+          component: string
+          detail: Json | null
+          id: string
+          latency_ms: number | null
+          observed_at: string
+          status: string
+        }
+        Insert: {
+          component: string
+          detail?: Json | null
+          id?: string
+          latency_ms?: number | null
+          observed_at?: string
+          status: string
+        }
+        Update: {
+          component?: string
+          detail?: Json | null
+          id?: string
+          latency_ms?: number | null
+          observed_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       task_comments: {
         Row: {
           author_id: string | null
@@ -10322,6 +10427,7 @@ export type Database = {
         Args: { _equipment_no: string }
         Returns: undefined
       }
+      is_dr_readonly: { Args: never; Returns: boolean }
       issue_referral_reward: {
         Args: {
           p_actor_user_id?: string
@@ -10564,6 +10670,15 @@ export type Database = {
             }
             Returns: Json
           }
+      record_health_ping: {
+        Args: {
+          p_component: string
+          p_detail?: Json
+          p_latency_ms?: number
+          p_status: string
+        }
+        Returns: string
+      }
       record_member_measurement: {
         Args: { p_member_id: string; p_payload: Json }
         Returns: string
