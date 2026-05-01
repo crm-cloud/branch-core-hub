@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
+import { EligibleAddOns } from '@/components/benefits/EligibleAddOns';
 
 export default function MyBenefits() {
   const { profile } = useAuth();
@@ -287,6 +288,17 @@ export default function MyBenefits() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Available to add */}
+        {member && (
+          <EligibleAddOns
+            memberId={member.id}
+            memberName={profile?.full_name || undefined}
+            membershipId={activeMembership?.id ?? null}
+            branchId={member.branch_id}
+            variant="grid"
+          />
         )}
 
         {/* Empty State */}

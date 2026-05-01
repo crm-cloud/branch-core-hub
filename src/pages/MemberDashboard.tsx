@@ -19,6 +19,7 @@ import { getBenefitIcon } from '@/lib/benefitIcons';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useState } from 'react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
+import { EligibleAddOns } from '@/components/benefits/EligibleAddOns';
 
 export default function MemberDashboard() {
   const { profile } = useAuth();
@@ -347,6 +348,18 @@ export default function MemberDashboard() {
             </Card>
           </Link>
         </div>
+
+        {/* Eligible Add-Ons strip */}
+        {member && activeMembership && (
+          <EligibleAddOns
+            memberId={member.id}
+            memberName={profile?.full_name || undefined}
+            membershipId={activeMembership.id}
+            branchId={member.branch_id}
+            variant="compact"
+            limit={3}
+          />
+        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* My Entitlements */}
