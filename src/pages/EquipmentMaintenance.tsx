@@ -89,6 +89,55 @@ export default function EquipmentMaintenancePage() {
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
 
+  // Derived: due / overdue / warranty signals
+  const today = new Date();
+  const in7Days = new Date(today.getTime() + 7 * 86400000);
+  const in30Days = new Date(today.getTime() + 30 * 86400000);
+  const dueThisWeek = (maintenanceRecords as any[]).filter(
+    (r) => r.scheduled_date && !r.completed_date && new Date(r.scheduled_date) <= in7Days && new Date(r.scheduled_date) >= today,
+  ).length;
+  const overdue = (maintenanceRecords as any[]).filter(
+    (r) => r.scheduled_date && !r.completed_date && new Date(r.scheduled_date) < today,
+  ).length;
+  const warrantyExpiring = (equipment as any[]).filter(
+    (e) => e.warranty_expiry && new Date(e.warranty_expiry) > today && new Date(e.warranty_expiry) <= in30Days,
+  ).length;
+
+  const { data: branchInfo } = useQuery({
+    queryKey: ['branch-info', currentBranchId],
+    enabled: !!currentBranchId,
+    queryFn: async () => {
+      const { data } = await (await import('@/integrations/supabase/client')).supabase
+        .from('branches').select('id, name').eq('id', currentBranchId!).maybeSingle();
+      return data;
+    },
+  });
+
+  const showQR = async (item: any) => {
+    try {
+      const payload = `${window.location.origin}/equipment/${item.id}`;
+      const url = await QRCode.toDataURL(payload, { width: 320, margin: 1 });
+      const w = window.open('', '_blank', 'width=380,height=480');
+      if (w) {
+        w.document.write(`<html><head><title>${item.name} QR</title></head>
+          <body style="font-family:Inter,sans-serif;padding:24px;text-align:center;">
+            <h2 style="margin:0 0 8px;">${item.name}</h2>
+            <p style="color:#64748b;margin:0 0 16px;">${item.model || item.serial_number || ''}</p>
+            <img src="${url}" style="width:280px;height:280px;" />
+            <p style="font-size:11px;color:#64748b;word-break:break-all;margin-top:12px;">${payload}</p>
+            <button onclick="window.print()" style="margin-top:12px;padding:8px 16px;background:#4f46e5;color:#fff;border:0;border-radius:8px;cursor:pointer;">Print</button>
+          </body></html>`);
+      }
+    } catch (e) {
+      toast.error('Failed to generate QR');
+    }
+  };
+
+  const createMaintenanceTask = (item: any) => {
+    setSelectedEquipment(item.id);
+    setMaintenanceDialogOpen(true);
+  };
+
   const copyModelNumber = async (item: any) => {
     const modelValue = item.model || item.serial_number;
     if (!modelValue) {
