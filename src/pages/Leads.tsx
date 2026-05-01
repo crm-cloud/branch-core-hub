@@ -307,6 +307,33 @@ export default function LeadsPage() {
         {/* Dashboard Stats */}
         {stats && <LeadDashboard stats={stats} />}
 
+        {/* Stale-leads SLA banner */}
+        {staleCount > 0 && viewMode !== 'analytics' && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Clock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-900">
+                  {staleCount} stale lead{staleCount === 1 ? '' : 's'} need attention
+                </p>
+                <p className="text-xs text-amber-700">
+                  Active leads with no contact in the last 3 days. Reach out to keep them warm.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={showStaleOnly ? 'default' : 'outline'}
+              className="rounded-xl shrink-0"
+              onClick={() => setShowStaleOnly((v) => !v)}
+            >
+              {showStaleOnly ? 'Show all' : 'Show stale only'}
+            </Button>
+          </div>
+        )}
+
         {/* Filters */}
         {viewMode !== 'analytics' && (
           <Card className="rounded-2xl border-border/50 shadow-lg shadow-primary/5">
