@@ -33,6 +33,22 @@ export default function MemberFeedback() {
   const [hoverRating, setHoverRating] = useState(0);
   const [category, setCategory] = useState('general');
   const [feedbackText, setFeedbackText] = useState('');
+  const [consentTestimonial, setConsentTestimonial] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState<{ id: string; rating: number } | null>(null);
+
+  // Branch Google review link (for the post-submit CTA)
+  const { data: branchInfo } = useQuery({
+    queryKey: ['branch-google-link', member?.branch_id],
+    enabled: !!member?.branch_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('branches')
+        .select('name, google_review_link')
+        .eq('id', member!.branch_id)
+        .maybeSingle();
+      return data;
+    },
+  });
 
   // Fetch member's previous feedback
   const { data: myFeedback = [], isLoading: feedbackLoading } = useQuery({
