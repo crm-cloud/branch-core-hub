@@ -87,9 +87,20 @@ export default function AdminRoles() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newRole, setNewRole] = useState<AppRole | ''>('');
+  const [newBranchId, setNewBranchId] = useState<string>('');
+  const [assignReason, setAssignReason] = useState('');
   const [removeConfirm, setRemoveConfirm] = useState<{ userId: string; role: AppRole } | null>(null);
+  const [removeReason, setRemoveReason] = useState('');
 
   const canManageRoles = hasAnyRole(['owner', 'admin']);
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches-for-role-assign'],
+    queryFn: async () => {
+      const { data } = await supabase.from('branches').select('id, name').order('name');
+      return data || [];
+    },
+  });
 
   const { data: usersWithRoles = [], isLoading } = useQuery({
     queryKey: ['users-with-roles'],
@@ -117,32 +128,68 @@ export default function AdminRoles() {
     },
   });
 
-  const addRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const { error } = await supabase.from('user_roles').insert({ user_id: userId, role });
-      if (error) throw error;
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ['role-change-requests'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('role_change_requests' as any)
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      return (data as any[]) || [];
     },
-    onSuccess: () => {
+  });
+
+  const addRoleMutation = useMutation({
+    mutationFn: async ({ userId, role, branchId, reason }: { userId: string; role: AppRole; branchId: string | null; reason: string }) => {
+      const { data, error } = await supabase.rpc('assign_user_role', {
+        p_target_user_id: userId,
+        p_role: role,
+        p_branch_id: branchId,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      return data as any;
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
-      toast.success('Role added successfully');
+      queryClient.invalidateQueries({ queryKey: ['role-change-requests'] });
+      if (data?.status === 'pending_approval') {
+        toast.info('Role change submitted for owner approval');
+      } else {
+        toast.success('Role assigned');
+      }
       setSheetOpen(false);
       setSelectedUserId(null);
       setNewRole('');
+      setNewBranchId('');
+      setAssignReason('');
     },
-    onError: (error: any) => toast.error('Failed to add role: ' + error.message),
+    onError: (error: any) => toast.error(error.message || 'Failed to assign role'),
   });
 
   const removeRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const { error } = await supabase.from('user_roles').delete().eq('user_id', userId).eq('role', role);
+    mutationFn: async ({ userId, role, reason }: { userId: string; role: AppRole; reason: string }) => {
+      const { data, error } = await supabase.rpc('remove_user_role', {
+        p_target_user_id: userId,
+        p_role: role,
+        p_reason: reason,
+      });
       if (error) throw error;
+      return data as any;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
-      toast.success('Role removed');
+      queryClient.invalidateQueries({ queryKey: ['role-change-requests'] });
+      if (data?.status === 'pending_approval') {
+        toast.info('Removal submitted for owner approval');
+      } else {
+        toast.success('Role removed');
+      }
       setRemoveConfirm(null);
+      setRemoveReason('');
     },
-    onError: (error: any) => toast.error('Failed to remove role: ' + error.message),
+    onError: (error: any) => toast.error(error.message || 'Failed to remove role'),
   });
 
   const filteredUsers = usersWithRoles.filter(user => {
@@ -346,6 +393,34 @@ export default function AdminRoles() {
                     ))}
                   </SelectContent>
                 </Select>
+                {newRole && ['owner', 'admin'].includes(newRole) && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" /> Owner/Admin assignments require approval unless you are owner.
+                  </p>
+                )}
+              </div>
+              {newRole && ['manager', 'staff', 'trainer'].includes(newRole) && (
+                <div className="space-y-2">
+                  <Label>Branch <span className="text-destructive">*</span></Label>
+                  <Select value={newBranchId} onValueChange={setNewBranchId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a branch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map((b: any) => (
+                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Reason <span className="text-destructive">*</span></Label>
+                <Input
+                  placeholder="Why are you assigning this role?"
+                  value={assignReason}
+                  onChange={(e) => setAssignReason(e.target.value)}
+                />
               </div>
               {selectedUser && selectedUser.roles.length > 0 && (
                 <div className="space-y-2">
@@ -357,12 +432,27 @@ export default function AdminRoles() {
                   </div>
                 </div>
               )}
+              {pendingRequests.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <strong>{pendingRequests.length} pending</strong> role change request(s) awaiting owner approval.
+                </div>
+              )}
             </div>
             <SheetFooter>
               <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancel</Button>
               <Button
-                onClick={() => { if (selectedUserId && newRole) addRoleMutation.mutate({ userId: selectedUserId, role: newRole }); }}
-                disabled={!newRole || addRoleMutation.isPending}
+                onClick={() => {
+                  if (!selectedUserId || !newRole || !assignReason.trim()) return;
+                  const requiresBranch = ['manager','staff','trainer'].includes(newRole);
+                  if (requiresBranch && !newBranchId) { toast.error('Branch is required'); return; }
+                  addRoleMutation.mutate({
+                    userId: selectedUserId,
+                    role: newRole,
+                    branchId: requiresBranch ? newBranchId : null,
+                    reason: assignReason.trim(),
+                  });
+                }}
+                disabled={!newRole || !assignReason.trim() || addRoleMutation.isPending}
               >
                 {addRoleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Add Role
@@ -372,18 +462,30 @@ export default function AdminRoles() {
         </Sheet>
 
         {/* Remove Role Confirm */}
-        <AlertDialog open={!!removeConfirm} onOpenChange={(open) => { if (!open) setRemoveConfirm(null); }}>
+        <AlertDialog open={!!removeConfirm} onOpenChange={(open) => { if (!open) { setRemoveConfirm(null); setRemoveReason(''); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Remove Role</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to remove the "{removeConfirm?.role}" role? This action cannot be undone.
+                Remove the "{removeConfirm?.role}" role? Owner/Admin removals are blocked if it would leave none, and may require approval.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="py-2">
+              <Label>Reason <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="Reason for removal"
+                value={removeReason}
+                onChange={(e) => setRemoveReason(e.target.value)}
+                className="mt-1"
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => { if (removeConfirm) removeRoleMutation.mutate(removeConfirm); }}
+                onClick={() => {
+                  if (!removeConfirm || !removeReason.trim()) { toast.error('Reason required'); return; }
+                  removeRoleMutation.mutate({ ...removeConfirm, reason: removeReason.trim() });
+                }}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Remove
