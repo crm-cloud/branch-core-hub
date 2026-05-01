@@ -26,7 +26,7 @@ import {
 type IntegrationType = 'payment_gateway' | 'sms' | 'email' | 'whatsapp' | 'google_business' | 'instagram' | 'messenger';
 
 const GOOGLE_PROVIDERS = [
-  { id: 'google_business', name: 'Google Business Profile', description: 'Sync reviews to Google Maps' },
+  { id: 'google_business', name: 'Google Business Profile', description: 'Track Google Reviews & reply (review requests use the per-branch link)' },
 ];
 
 const PAYMENT_PROVIDERS = [
