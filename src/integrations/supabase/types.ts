@@ -6909,6 +6909,140 @@ export type Database = {
           },
         ]
       }
+      payroll_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after_data: Json | null
+          before_data: Json | null
+          created_at: string
+          id: string
+          item_id: string | null
+          reason: string | null
+          run_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after_data?: Json | null
+          before_data?: Json | null
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          reason?: string | null
+          run_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after_data?: Json | null
+          before_data?: Json | null
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          reason?: string | null
+          run_id?: string | null
+        }
+        Relationships: []
+      }
+      payroll_items: {
+        Row: {
+          adjustment_reason: string | null
+          calc_attendance: Json
+          calc_base: number
+          calc_deductions: number
+          calc_gross: number
+          calc_net: number
+          calc_ot: number
+          calc_pt_commission: number
+          created_at: string
+          final_advance: number
+          final_base: number
+          final_bonus: number
+          final_deductions: number
+          final_gross: number
+          final_net: number
+          final_ot: number
+          final_penalty: number
+          final_pt_commission: number
+          id: string
+          payment_method: string | null
+          payment_reference: string | null
+          payslip_url: string | null
+          run_id: string
+          staff_kind: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          adjustment_reason?: string | null
+          calc_attendance?: Json
+          calc_base?: number
+          calc_deductions?: number
+          calc_gross?: number
+          calc_net?: number
+          calc_ot?: number
+          calc_pt_commission?: number
+          created_at?: string
+          final_advance?: number
+          final_base?: number
+          final_bonus?: number
+          final_deductions?: number
+          final_gross?: number
+          final_net?: number
+          final_ot?: number
+          final_penalty?: number
+          final_pt_commission?: number
+          id?: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          payslip_url?: string | null
+          run_id: string
+          staff_kind?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          adjustment_reason?: string | null
+          calc_attendance?: Json
+          calc_base?: number
+          calc_deductions?: number
+          calc_gross?: number
+          calc_net?: number
+          calc_ot?: number
+          calc_pt_commission?: number
+          created_at?: string
+          final_advance?: number
+          final_base?: number
+          final_bonus?: number
+          final_deductions?: number
+          final_gross?: number
+          final_net?: number
+          final_ot?: number
+          final_penalty?: number
+          final_pt_commission?: number
+          id?: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          payslip_url?: string | null
+          run_id?: string
+          staff_kind?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_items_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_rules: {
         Row: {
           branch_id: string
@@ -7020,33 +7154,57 @@ export type Database = {
       }
       payroll_runs: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           branch_id: string | null
           created_at: string
           created_by: string | null
           finalized_at: string | null
           id: string
+          notes: string | null
+          paid_at: string | null
           period_end: string
           period_start: string
+          processed_at: string | null
+          processed_by: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           status: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id?: string | null
           created_at?: string
           created_by?: string | null
           finalized_at?: string | null
           id?: string
+          notes?: string | null
+          paid_at?: string | null
           period_end: string
           period_start: string
+          processed_at?: string | null
+          processed_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           branch_id?: string | null
           created_at?: string
           created_by?: string | null
           finalized_at?: string | null
           id?: string
+          notes?: string | null
+          paid_at?: string | null
           period_end?: string
           period_start?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
         }
         Relationships: []
@@ -7965,6 +8123,90 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      role_change_audit: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after_data: Json | null
+          before_data: Json | null
+          branch_id: string | null
+          created_at: string
+          id: string
+          reason: string | null
+          role: Database["public"]["Enums"]["app_role"] | null
+          target_user_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after_data?: Json | null
+          before_data?: Json | null
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          role?: Database["public"]["Enums"]["app_role"] | null
+          target_user_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after_data?: Json | null
+          before_data?: Json | null
+          branch_id?: string | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          role?: Database["public"]["Enums"]["app_role"] | null
+          target_user_id?: string
+        }
+        Relationships: []
+      }
+      role_change_requests: {
+        Row: {
+          action: string
+          branch_id: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_reason: string | null
+          id: string
+          reason: string
+          requested_by: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          target_user_id: string
+        }
+        Insert: {
+          action: string
+          branch_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_reason?: string | null
+          id?: string
+          reason: string
+          requested_by: string
+          role: Database["public"]["Enums"]["app_role"]
+          status?: string
+          target_user_id: string
+        }
+        Update: {
+          action?: string
+          branch_id?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_reason?: string | null
+          id?: string
+          reason?: string
+          requested_by?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          target_user_id?: string
+        }
+        Relationships: []
       }
       role_permissions: {
         Row: {
@@ -9803,6 +10045,15 @@ export type Database = {
         }
         Returns: Json
       }
+      assign_user_role: {
+        Args: {
+          p_branch_id: string
+          p_reason: string
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_target_user_id: string
+        }
+        Returns: Json
+      }
       auto_expire_memberships: { Args: never; Returns: undefined }
       book_class: {
         Args: { _class_id: string; _member_id: string }
@@ -10000,6 +10251,14 @@ export type Database = {
         }
         Returns: Json
       }
+      decide_role_change_request: {
+        Args: {
+          p_approve: boolean
+          p_decision_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
@@ -10176,6 +10435,43 @@ export type Database = {
         }
         Returns: Json
       }
+      payroll_adjust_item: {
+        Args: { p_item_id: string; p_patch: Json; p_reason: string }
+        Returns: undefined
+      }
+      payroll_approve_run: { Args: { p_run_id: string }; Returns: undefined }
+      payroll_create_run: {
+        Args: {
+          p_branch_id: string
+          p_period_end: string
+          p_period_start: string
+        }
+        Returns: string
+      }
+      payroll_mark_paid: {
+        Args: { p_item_ids: string[]; p_method: string; p_reference: string }
+        Returns: undefined
+      }
+      payroll_process_items: {
+        Args: { p_item_ids: string[] }
+        Returns: undefined
+      }
+      payroll_review_items: {
+        Args: { p_item_ids: string[] }
+        Returns: undefined
+      }
+      payroll_summarize: {
+        Args: {
+          p_period_end: string
+          p_period_start: string
+          p_user_id: string
+        }
+        Returns: {
+          attendance: Json
+          base: number
+          ot_hours: number
+        }[]
+      }
       process_approval_request: {
         Args: {
           p_decision: string
@@ -10304,6 +10600,14 @@ export type Database = {
       }
       release_locker: {
         Args: { p_assignment_id: string; p_release_date?: string }
+        Returns: Json
+      }
+      remove_user_role: {
+        Args: {
+          p_reason: string
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_target_user_id: string
+        }
         Returns: Json
       }
       resolve_gst_rate: {
