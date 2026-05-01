@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format, differenceInDays } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { AppLayout } from "@/components/layout/AppLayout";
