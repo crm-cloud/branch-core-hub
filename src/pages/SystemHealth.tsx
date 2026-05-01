@@ -292,11 +292,16 @@ export default function SystemHealth() {
     toast.success('Prompt copied to clipboard');
   };
 
+  const criticalOpen = openErrors.filter((e) => (e.severity || 'error') === 'critical').length;
+  const totalOccurrences = errors.reduce((sum, e) => sum + (e.occurrence_count ?? 1), 0);
+
   const stats = [
-    { label: 'Total Errors', value: errors.length, icon: Activity, color: 'text-primary' },
-    { label: 'Open', value: openErrors.length, icon: AlertTriangle, color: 'text-destructive' },
+    { label: 'Open Errors', value: openErrors.length, icon: AlertTriangle, color: 'text-destructive' },
+    { label: 'Critical Open', value: criticalOpen, icon: Zap, color: 'text-rose-600' },
+    { label: 'Today', value: todayErrors.length, icon: Clock, color: 'text-amber-600' },
+    { label: 'Total Occurrences', value: totalOccurrences, icon: Layers, color: 'text-violet-600' },
     { label: 'Frontend', value: frontendErrors.length, icon: Monitor, color: 'text-sky-600' },
-    { label: 'Backend', value: backendErrors.length, icon: Server, color: 'text-violet-600' },
+    { label: 'Backend', value: backendErrors.length, icon: Server, color: 'text-emerald-600' },
   ];
 
   return (
@@ -312,7 +317,10 @@ export default function SystemHealth() {
             </h1>
             <p className="text-muted-foreground mt-1">Monitor errors across frontend, backend functions, and database</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
             {openErrors.length > 0 && (
               <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => setResolveAllDialog(true)}>
                 <CheckCheck className="h-4 w-4" />
@@ -320,13 +328,19 @@ export default function SystemHealth() {
               </Button>
             )}
             {resolvedErrors.length > 0 && (
-              <Button variant="outline" size="sm" className="rounded-xl gap-1.5 text-destructive hover:text-destructive" onClick={() => setClearResolvedDialog(true)}>
-                <Trash2 className="h-4 w-4" />
-                Clear Resolved
-              </Button>
+              <>
+                <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => clearOldResolvedMutation.mutate()} disabled={clearOldResolvedMutation.isPending}>
+                  <Trash2 className="h-4 w-4" /> Clear &gt; 90 days
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-xl gap-1.5 text-destructive hover:text-destructive" onClick={() => setClearResolvedDialog(true)}>
+                  <Trash2 className="h-4 w-4" />
+                  Clear Resolved
+                </Button>
+              </>
             )}
           </div>
         </div>
+
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s) => (
