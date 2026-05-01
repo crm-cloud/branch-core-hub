@@ -1556,7 +1556,9 @@ export type Database = {
           created_at: string
           id: string
           member_id: string
+          no_show_reason: string | null
           status: Database["public"]["Enums"]["class_booking_status"]
+          was_waitlisted: boolean
         }
         Insert: {
           attended_at?: string | null
@@ -1567,7 +1569,9 @@ export type Database = {
           created_at?: string
           id?: string
           member_id: string
+          no_show_reason?: string | null
           status?: Database["public"]["Enums"]["class_booking_status"]
+          was_waitlisted?: boolean
         }
         Update: {
           attended_at?: string | null
@@ -1578,7 +1582,9 @@ export type Database = {
           created_at?: string
           id?: string
           member_id?: string
+          no_show_reason?: string | null
           status?: Database["public"]["Enums"]["class_booking_status"]
+          was_waitlisted?: boolean
         }
         Relationships: [
           {
@@ -2611,6 +2617,131 @@ export type Database = {
           },
         ]
       }
+      discount_redemption_attempts: {
+        Row: {
+          attempted_by: string | null
+          branch_id: string | null
+          code: string
+          created_at: string
+          discount_code_id: string | null
+          id: string
+          member_id: string | null
+          reason: string
+          subtotal: number | null
+        }
+        Insert: {
+          attempted_by?: string | null
+          branch_id?: string | null
+          code: string
+          created_at?: string
+          discount_code_id?: string | null
+          id?: string
+          member_id?: string | null
+          reason: string
+          subtotal?: number | null
+        }
+        Update: {
+          attempted_by?: string | null
+          branch_id?: string | null
+          code?: string
+          created_at?: string
+          discount_code_id?: string | null
+          id?: string
+          member_id?: string | null
+          reason?: string
+          subtotal?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discount_redemption_attempts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discount_redemption_attempts_discount_code_id_fkey"
+            columns: ["discount_code_id"]
+            isOneToOne: false
+            referencedRelation: "discount_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discount_redemption_attempts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      discount_redemptions: {
+        Row: {
+          branch_id: string | null
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_amount: number
+          discount_code_id: string
+          id: string
+          idempotency_key: string | null
+          member_id: string | null
+          reference_id: string | null
+          reference_type: string | null
+          subtotal: number
+        }
+        Insert: {
+          branch_id?: string | null
+          code: string
+          created_at?: string
+          created_by?: string | null
+          discount_amount?: number
+          discount_code_id: string
+          id?: string
+          idempotency_key?: string | null
+          member_id?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          subtotal?: number
+        }
+        Update: {
+          branch_id?: string | null
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          discount_amount?: number
+          discount_code_id?: string
+          id?: string
+          idempotency_key?: string | null
+          member_id?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          subtotal?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discount_redemptions_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discount_redemptions_discount_code_id_fkey"
+            columns: ["discount_code_id"]
+            isOneToOne: false
+            referencedRelation: "discount_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discount_redemptions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ecommerce_orders: {
         Row: {
           branch_id: string
@@ -3613,6 +3744,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "hardware_devices_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      holidays: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          holiday_date: string
+          id: string
+          is_paid: boolean
+          name: string
+          pay_multiplier: number
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          holiday_date: string
+          id?: string
+          is_paid?: boolean
+          name: string
+          pay_multiplier?: number
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          holiday_date?: string
+          id?: string
+          is_paid?: boolean
+          name?: string
+          pay_multiplier?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holidays_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
@@ -4663,6 +4832,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      leave_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          end_date: string
+          id: string
+          leave_type: string
+          reason: string | null
+          start_date: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          end_date: string
+          id?: string
+          leave_type: string
+          reason?: string | null
+          start_date: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          end_date?: string
+          id?: string
+          leave_type?: string
+          reason?: string | null
+          start_date?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       locker_assignments: {
         Row: {
@@ -6130,6 +6338,59 @@ export type Database = {
             foreignKeyName: "mips_connections_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: true
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mips_sync_failures: {
+        Row: {
+          attempts: number
+          branch_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          error_message: string | null
+          id: string
+          last_attempt_at: string
+          operation: string
+          payload: Json | null
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          branch_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string
+          operation: string
+          payload?: Json | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          branch_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string
+          operation?: string
+          payload?: Json | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mips_sync_failures_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
             referencedRelation: "branches"
             referencedColumns: ["id"]
           },
@@ -7983,6 +8244,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      staff_shifts: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          end_time: string
+          half_day_threshold_hours: number
+          id: string
+          is_weekly_off: boolean
+          late_grace_min: number
+          ot_multiplier: number
+          ot_threshold_hours: number
+          start_time: string
+          user_id: string
+          weekday: number
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          end_time?: string
+          half_day_threshold_hours?: number
+          id?: string
+          is_weekly_off?: boolean
+          late_grace_min?: number
+          ot_multiplier?: number
+          ot_threshold_hours?: number
+          start_time?: string
+          user_id: string
+          weekday: number
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          end_time?: string
+          half_day_threshold_hours?: number
+          id?: string
+          is_weekly_off?: boolean
+          late_grace_min?: number
+          ot_multiplier?: number
+          ot_threshold_hours?: number
+          start_time?: string
+          user_id?: string
+          weekday?: number
+        }
+        Relationships: []
       }
       staff_whatsapp_routing: {
         Row: {
@@ -9980,6 +10286,18 @@ export type Database = {
         }
         Returns: Json
       }
+      redeem_coupon: {
+        Args: {
+          p_branch_id: string
+          p_code: string
+          p_idempotency_key?: string
+          p_member_id: string
+          p_reference_id?: string
+          p_reference_type?: string
+          p_subtotal: number
+        }
+        Returns: Json
+      }
       release_coupon: {
         Args: { p_reason?: string; p_redemption_id: string }
         Returns: Json
@@ -10171,6 +10489,10 @@ export type Database = {
       }
       validate_class_booking: {
         Args: { _class_id: string; _member_id: string }
+        Returns: Json
+      }
+      validate_coupon: {
+        Args: { p_branch_id: string; p_code: string; p_subtotal: number }
         Returns: Json
       }
       validate_member_checkin: {
