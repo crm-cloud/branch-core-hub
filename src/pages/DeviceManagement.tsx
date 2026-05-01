@@ -22,12 +22,15 @@ import {
   remoteOpenDoor, verifyPersonOnMIPS, compareCRMvsMIPS,
 } from "@/services/mipsService";
 import { supabase } from "@/integrations/supabase/client";
+import { useMipsCallbackUrls } from "@/hooks/useMipsCallbackUrls";
 
 const DeviceManagement = () => {
   const { hasAnyRole } = useAuth();
   const isAdminOrOwner = hasAnyRole(["owner", "admin"]);
   const queryClient = useQueryClient();
   const { selectedBranch, branches } = useBranchContext();
+  const { data: mipsUrls } = useMipsCallbackUrls();
+  const recognitionUrl = mipsUrls?.receiver || '';
   const branchFilter = selectedBranch !== "all" ? selectedBranch : "";
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [debugResult, setDebugResult] = useState<string | null>(null);
@@ -137,15 +140,18 @@ const DeviceManagement = () => {
                       <p className="text-[11px] text-muted-foreground">Face scan events — this is the <strong>critical</strong> URL for attendance</p>
                       <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
                         <code className="text-xs font-mono flex-1 break-all">
-                          https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
+                          {recognitionUrl || 'Loading…'}
                         </code>
-                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" onClick={() => {
-                          navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
+                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" disabled={!recognitionUrl} onClick={() => {
+                          navigator.clipboard.writeText(recognitionUrl);
                           toast.success("Recognition URL copied");
                         }}>
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
+                      {mipsUrls?.isOverridden && (
+                        <p className="text-[10px] text-amber-600">Using override from integration settings.</p>
+                      )}
                     </div>
 
                     {/* Register Person Data Upload URL */}
@@ -157,10 +163,10 @@ const DeviceManagement = () => {
                       <p className="text-[11px] text-muted-foreground">Captured registration photos from the device</p>
                       <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
                         <code className="text-xs font-mono flex-1 break-all">
-                          https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver
+                          {recognitionUrl || 'Loading…'}
                         </code>
-                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" onClick={() => {
-                          navigator.clipboard.writeText("https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver");
+                        <Button variant="outline" size="icon" className="shrink-0 h-7 w-7" disabled={!recognitionUrl} onClick={() => {
+                          navigator.clipboard.writeText(recognitionUrl);
                           toast.success("Register URL copied");
                         }}>
                           <Copy className="h-3 w-3" />

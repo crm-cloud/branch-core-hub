@@ -354,43 +354,31 @@ export default function POSPage() {
     }
     setCouponValidating(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
-        .from('discount_codes')
-        .select('id, code, discount_type, discount_value, min_purchase, max_uses, times_used, valid_from, valid_until, is_active, branch_id')
-        .ilike('code', code)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) {
-        toast.error('Invalid coupon code');
+      const { validateCoupon: validateCouponSvc, couponReasonLabel } = await import('@/services/couponService');
+      const result = await validateCouponSvc({
+        code,
+        branchId: effectiveBranchId || null,
+        subtotal: cartSubtotal,
+      });
+      if (!result.success) {
+        const failure = result as { success: false; reason: string; min_purchase?: number };
+        const label = couponReasonLabel(failure.reason);
+        if (failure.reason === 'min_purchase' && failure.min_purchase) {
+          toast.error(`Minimum purchase ₹${Number(failure.min_purchase).toLocaleString()} required`);
+        } else {
+          toast.error(label);
+        }
         return;
       }
-      if (!data.is_active) {
-        toast.error('This coupon is no longer active');
-        return;
-      }
-      if (data.valid_from && data.valid_from > today) {
-        toast.error('This coupon is not yet valid');
-        return;
-      }
-      if (data.valid_until && data.valid_until < today) {
-        toast.error('This coupon has expired');
-        return;
-      }
-      if (data.max_uses != null && (data.times_used || 0) >= data.max_uses) {
-        toast.error('This coupon has reached its usage limit');
-        return;
-      }
-      if (data.branch_id && effectiveBranchId && data.branch_id !== effectiveBranchId) {
-        toast.error('This coupon is not valid at this branch');
-        return;
-      }
-      if (data.min_purchase && cartSubtotal < Number(data.min_purchase)) {
-        toast.error(`Minimum purchase ₹${Number(data.min_purchase).toLocaleString()} required`);
-        return;
-      }
-      setAppliedCoupon(data);
-      toast.success(`Coupon ${data.code} applied`);
+      // Store the validated preview (server is the source of truth on commit via record_sale)
+      setAppliedCoupon({
+        id: result.code_id,
+        code: result.code,
+        discount_type: result.discount_type,
+        discount_value: result.discount_value,
+        discount_amount: result.discount_amount,
+      });
+      toast.success(`Coupon ${result.code} applied`);
     } catch (err: any) {
       toast.error('Failed to validate coupon: ' + (err?.message || ''));
     } finally {

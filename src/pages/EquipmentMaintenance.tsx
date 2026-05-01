@@ -9,9 +9,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
+import QRCode from 'qrcode';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
@@ -32,8 +33,8 @@ export default function EquipmentMaintenancePage() {
   });
 
   const { data: maintenanceRecords = [] } = useQuery({
-    queryKey: ['maintenance-records'],
-    queryFn: () => fetchMaintenanceRecords(),
+    queryKey: ['maintenance-records', currentBranchId],
+    queryFn: () => fetchMaintenanceRecords(undefined, currentBranchId),
   });
 
   const { data: stats } = useQuery({
@@ -88,6 +89,55 @@ export default function EquipmentMaintenancePage() {
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
 
+  // Derived: due / overdue / warranty signals
+  const today = new Date();
+  const in7Days = new Date(today.getTime() + 7 * 86400000);
+  const in30Days = new Date(today.getTime() + 30 * 86400000);
+  const dueThisWeek = (maintenanceRecords as any[]).filter(
+    (r) => r.scheduled_date && !r.completed_date && new Date(r.scheduled_date) <= in7Days && new Date(r.scheduled_date) >= today,
+  ).length;
+  const overdue = (maintenanceRecords as any[]).filter(
+    (r) => r.scheduled_date && !r.completed_date && new Date(r.scheduled_date) < today,
+  ).length;
+  const warrantyExpiring = (equipment as any[]).filter(
+    (e) => e.warranty_expiry && new Date(e.warranty_expiry) > today && new Date(e.warranty_expiry) <= in30Days,
+  ).length;
+
+  const { data: branchInfo } = useQuery({
+    queryKey: ['branch-info', currentBranchId],
+    enabled: !!currentBranchId,
+    queryFn: async () => {
+      const { data } = await (await import('@/integrations/supabase/client')).supabase
+        .from('branches').select('id, name').eq('id', currentBranchId!).maybeSingle();
+      return data;
+    },
+  });
+
+  const showQR = async (item: any) => {
+    try {
+      const payload = `${window.location.origin}/equipment/${item.id}`;
+      const url = await QRCode.toDataURL(payload, { width: 320, margin: 1 });
+      const w = window.open('', '_blank', 'width=380,height=480');
+      if (w) {
+        w.document.write(`<html><head><title>${item.name} QR</title></head>
+          <body style="font-family:Inter,sans-serif;padding:24px;text-align:center;">
+            <h2 style="margin:0 0 8px;">${item.name}</h2>
+            <p style="color:#64748b;margin:0 0 16px;">${item.model || item.serial_number || ''}</p>
+            <img src="${url}" style="width:280px;height:280px;" />
+            <p style="font-size:11px;color:#64748b;word-break:break-all;margin-top:12px;">${payload}</p>
+            <button onclick="window.print()" style="margin-top:12px;padding:8px 16px;background:#4f46e5;color:#fff;border:0;border-radius:8px;cursor:pointer;">Print</button>
+          </body></html>`);
+      }
+    } catch (e) {
+      toast.error('Failed to generate QR');
+    }
+  };
+
+  const createMaintenanceTask = (item: any) => {
+    setSelectedEquipment(item.id);
+    setMaintenanceDialogOpen(true);
+  };
+
   const copyModelNumber = async (item: any) => {
     const modelValue = item.model || item.serial_number;
     if (!modelValue) {
@@ -106,15 +156,22 @@ export default function EquipmentMaintenancePage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
+            {branchInfo?.name && (
+              <Badge variant="outline" className="rounded-full">
+                Branch: {branchInfo.name}
+              </Badge>
+            )}
+          </div>
           <Button onClick={() => setAddDrawerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Equipment
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-7">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Equipment</CardTitle>
@@ -149,12 +206,38 @@ export default function EquipmentMaintenancePage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">YTD Maintenance Cost</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Due This Week</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">₹{totalMonthlyCost.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-amber-600 flex items-center gap-2">
+                <Calendar className="h-5 w-5" /> {dueThisWeek}
+              </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Overdue</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" /> {overdue}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Warranty Expiring (30d)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" /> {warrantyExpiring}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          YTD maintenance cost: <span className="font-semibold text-primary">₹{totalMonthlyCost.toLocaleString()}</span>
         </div>
 
         <Tabs defaultValue="equipment">
@@ -259,6 +342,24 @@ export default function EquipmentMaintenancePage() {
                                 }}
                               >
                                 <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => showQR(item)}
+                                title="Show QR code"
+                                aria-label="Show QR code"
+                              >
+                                <QrCode className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => createMaintenanceTask(item)}
+                                title="Create maintenance task"
+                                aria-label="Create maintenance task"
+                              >
+                                <ListTodo className="h-3 w-3" />
                               </Button>
                               <Sheet open={maintenanceDialogOpen && selectedEquipment === item.id} onOpenChange={(open) => {
                                 setMaintenanceDialogOpen(open);

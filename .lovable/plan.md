@@ -1,210 +1,106 @@
-## Goal
+## Deep Audit Findings
 
-Two parallel hardening tracks:
-1. **System Health** — turn `error_logs` into a real observability surface with deduped fingerprinting, used everywhere, with alerts.
-2. **Atomic critical RPCs** — lockers, approvals, PT purchase, trainer commission reversal, staff attendance, GST, and HRM payroll fixes.
+### Critical (data integrity / security)
+1. **Benefit add-on flow is NOT atomic.** `purchase_benefit_credits` (RPC) creates the invoice → calls `settle_payment` → THEN inserts `member_benefit_credits`. If credit insert fails, member is billed with no credits. Needs all-or-nothing wrapper inside one transaction with explicit rollback on credit insert failure (or reorder so credits + invoice + payment commit together, and never leave a paid invoice without credits).
+2. **Coupon redemption is client-validated only.** `POS.tsx` and `MemberStore.tsx` read `discount_codes`, compute discount client-side, then pass `discount_code_id` to `record_sale`/`settle_payment`. There is no server RPC that validates active/expiry/min purchase/max uses AND increments `times_used` atomically. Race condition allows over-redemption past `max_uses`.
+3. **PersonnelSync uses public-URL fields.** `PersonnelSyncTab.tsx` reads `biometric_photo_url` (public-style) instead of the new `biometric_photo_path` + signed URL helper (`uploadBiometricPhoto` already exists and writes to private bucket `member-photos`). Photos may still be served via legacy public URLs.
+4. **MIPS callback URL hard-coded.** `DeviceManagement.tsx` lines 140/143/160/163 hard-code `https://iyqqpbvnszyrrgerniog.supabase.co/functions/v1/mips-webhook-receiver` in the UI. Breaks when env/branch differs, and leaks the project ref in source.
+5. **EquipmentMaintenance ignores branch on records & costs.** `fetchMaintenanceRecords()` and `getMaintenanceCostsByMonth(currentBranchId)` — the maintenance records query takes no branch filter; equipment list passes branch but maintenance + (often) stats do not consistently filter via the join.
+6. **Referral claim paths are inconsistent.** `Referrals.tsx` and `MemberStore.tsx` partially bypass the service and call `supabase.rpc('claim_referral_reward', ...)` directly with their own argument shape; `MemberProfileDrawer.tsx` and `MemberReferrals.tsx` use `claimReward()` service. We need a single canonical path through `referralService.claimReward`.
+7. **HRM payroll is a stub.** `compute_payroll` exists but only handles longest attendance, no shift table integration, no late/early thresholds, no half-day rule from settings, no overtime cap, no duplicate-active-row collapse beyond MIN/MAX, no holiday-pay multiplier, no leave-type pay rules.
 
----
-
-## Part A — System Health with real logs
-
-### A1. Schema migration (extend `error_logs`)
-
-Add columns (keep existing rows compatible, all nullable except defaults):
-
-```text
-fingerprint        text          -- sha256(severity|source|function_name|route|normalized_message)
-occurrence_count   integer  DEFAULT 1
-first_seen         timestamptz  DEFAULT now()
-last_seen          timestamptz  DEFAULT now()
-function_name      text
-table_name         text
-request_id         text
-release_sha        text
-```
-
-Indexes:
-- `UNIQUE (fingerprint) WHERE status='open'` — collapses repeated open errors.
-- `(severity, created_at DESC)`, `(branch_id, created_at DESC)`, `(status, last_seen DESC)`.
-
-### A2. `log_error_event` RPC (SECURITY DEFINER)
-
-Signature:
-```text
-log_error_event(
-  p_severity text,           -- info|warning|error|critical
-  p_source text,             -- frontend|edge_function|database|trigger|cron|webhook
-  p_message text,
-  p_function_name text DEFAULT NULL,
-  p_route text DEFAULT NULL,
-  p_table_name text DEFAULT NULL,
-  p_branch_id uuid DEFAULT NULL,
-  p_user_id uuid DEFAULT NULL,
-  p_request_id text DEFAULT NULL,
-  p_release_sha text DEFAULT NULL,
-  p_stack text DEFAULT NULL,
-  p_context jsonb DEFAULT NULL
-) RETURNS uuid
-```
-
-Behavior: compute fingerprint, `INSERT ... ON CONFLICT (fingerprint) WHERE status='open' DO UPDATE SET occurrence_count = error_logs.occurrence_count + 1, last_seen = now(), context = EXCLUDED.context`. Returns log id.
-
-### A3. Edge-function helper
-
-Upgrade `supabase/functions/_shared/capture-edge-error.ts` to call `log_error_event` directly (still fire-and-forget). Wire into:
-- `payment-webhook`, `verify-payment`, `create-razorpay-link`, `create-payment-order`
-- `whatsapp-webhook`, `meta-webhook`, `mips-webhook-receiver`, `howbody-*-webhook`
-- `send-reminders`, `run-retention-nudges`, `lead-nurture-followup`, `process-scheduled-campaigns`, `process-comm-retry-queue`
-- `send-email`, `send-sms`, `send-whatsapp`, `send-broadcast`, `send-message`
-- `deliver-scan-report`, `howbody-report-pdf`, `backup-export`, `backup-import`
-
-Wrap each handler in `try { ... } catch (e) { await captureEdgeError(name, e, { branch_id, severity:'error', context }); throw }`.
-
-### A4. Database trigger error capture
-
-Add `EXCEPTION WHEN OTHERS THEN PERFORM log_error_event('error','trigger',SQLERRM, ...)` to critical triggers (`handle_new_feedback`, `handle_payment_*`, MIPS sync, etc.) without swallowing the failure for the caller.
-
-### A5. Frontend client errors
-
-Lightweight `src/lib/errorReporter.ts` that calls `log_error_event` via supabase RPC. Hook into the existing global `ErrorBoundary` and an unhandled-promise-rejection listener in `src/main.tsx`. Include `route`, `release_sha` (from Vite env), `user_id`.
-
-### A6. System Health UI rebuild (`src/pages/SystemHealth.tsx`)
-
-Sections:
-- KPI strip: error rate (24h), unresolved critical, failed jobs, failed messages, failed payments, failed storage uploads.
-- **Top errors by fingerprint** table: severity badge, source, message, occurrences, first/last seen, branch, route. Row → drawer with stack, context, related events.
-- Filters: severity, source, branch, status, time range.
-- Failed jobs: query `communication_logs WHERE status='failed'`, `payments WHERE status='failed'`, storage failures from logs.
-- Actions: Mark resolved, Reopen, Bulk resolve, Clear resolved >90 days, **Export CSV** (uses `csvExport.ts`).
-- Realtime: subscribe to `error_logs` insert/update for live updates.
-
-### A7. Alerts
-
-- pg_cron job `error_alerts_check` (every 5 min): if `count(*) FILTER (severity='critical', last_seen > now()-interval '5 min') >= threshold`, insert into `notifications` for users with role `owner|admin` and call `send-whatsapp`/`send-email` via existing dispatchers.
-- Threshold + channels stored in `organization_settings.alert_config` jsonb.
+### UX gaps (consistent with the request)
+- Equipment: no branch badge, no "due/overdue maintenance" callout, no warranty-expiring strip, no QR per machine, no "create maintenance task" CTA.
+- Devices: callbacks not env-aware, no last-heartbeat age, no failed-sync queue surface.
+- Benefits: plan credits and add-on credits shown in separate places; no combined view, no expiry/low-balance warning, no "Sell add-on" CTA.
+- Referrals: no lifecycle timeline (pending → eligible → issued → claimed → wallet credited).
+- Discounts: no redemption history view, no failed-attempt log, no remaining-uses surfaced clearly.
+- Classes: roster lacks quick attendance toggles, no-show reason capture, "waitlist promoted" badge, WhatsApp reminder action.
 
 ---
 
-## Part B — Lockers, Approvals, PT, Commission, GST, Staff Attendance, HRM
+## Plan
 
-### B1. GST helpers (single source of truth)
+### A. Database / RPC migration (single new migration)
 
-New SQL functions in migration:
-```text
-calc_gst(p_amount numeric, p_rate numeric, p_inclusive boolean)
-  RETURNS TABLE(taxable numeric, cgst numeric, sgst numeric, igst numeric, total numeric)
+1. **`record_benefit_addon_purchase` (replaces logic in `purchase_benefit_credits`)**
+   - One BEGIN…END block: lock package, compute GST via `calc_gst`, insert invoice + items in `pending`, insert `member_benefit_credits` BEFORE `settle_payment`, then call `settle_payment`. If settle fails → RAISE → entire txn rolls back (no orphan credits, no orphan paid invoice). If credit insert fails → rollback before any payment.
+   - Returns `{ success, credit_id, invoice_id, amount, gst }`.
+   - Keep `purchase_benefit_credits` name as a thin wrapper for backward compatibility.
 
-resolve_gst_rate(p_item_type text, p_item_id uuid, p_branch_id uuid)
-  RETURNS numeric
-```
-Used by all RPCs below + invoice item insertion. Frontend `useGstRates` continues to read defaults.
+2. **`redeem_coupon(p_code, p_branch_id, p_member_id, p_subtotal, p_idempotency_key)`**
+   - `SELECT … FOR UPDATE` on `discount_codes` row.
+   - Validate: `is_active`, `valid_from <= now <= valid_until`, `times_used < max_uses`, `subtotal >= min_purchase`, branch match (or null).
+   - Increment `times_used`.
+   - Insert `discount_redemptions` row (new table) with `code_id, member_id, branch_id, order_ref, discount_amount, status='applied', created_at`.
+   - Returns `{ success, discount_amount, code_id, redemption_id }` or `{ success: false, error }`.
+   - Add `discount_redemption_attempts` table for failed attempts (audit + remaining uses display).
+   - `record_sale` and `settle_payment` call this RPC instead of trusting client-passed discount.
 
-### B2. Lockers — atomic RPCs
+3. **HRM payroll upgrade**
+   - New tables/columns (only if missing): `staff_shifts (user_id, weekday, start_time, end_time, late_grace_min, half_day_threshold_hours, ot_threshold_hours, ot_multiplier)`, `holidays(holiday_date, branch_id, name, is_paid, multiplier)`.
+   - Rewrite `compute_payroll`: per day, resolve shift; classify late (in > start + grace), early-out, missing checkout, half-day, OT (hours > shift + threshold capped by `ot_threshold`), holiday-pay multiplier, leave pay rule per `leave_type`. Collapse multiple attendance rows by summing intervals (cap at 24h).
+   - Add `payroll_summarize(run_id)` returning per-employee payable_days, ot_hours, deductions.
 
-Replace existing `assign_locker_with_invoice` with hardened `assign_locker_with_billing`:
-- `SELECT ... FOR UPDATE` on `lockers` row, assert `status='available'`.
-- Insert `locker_assignments`, set `lockers.status='occupied'`.
-- If `p_chargeable`: create invoice + invoice_items with GST via `calc_gst`, return `invoice_id`.
-- Wrapped in single transaction; raises typed error codes (`LOCKER_TAKEN`, `MEMBER_INACTIVE`).
+4. **Coupon-related schema**
+   - `discount_redemptions` and `discount_redemption_attempts` tables with RLS (admin/owner/manager all access; staff insert via RPC; member: own redemptions read).
 
-`release_locker(p_assignment_id uuid, p_release_date date)`:
-- Lock assignment + locker, set assignment `is_active=false, end_date=release_date`, `lockers.status='available'`.
+### B. Frontend services & shared hooks
 
-Update `AssignLockerDrawer.tsx` and `Lockers.tsx` to call only these RPCs (remove client-side multi-step writes).
+5. **`couponService.ts` (new)** — `validateAndPreviewCoupon(code, branchId, memberId, subtotal)` calls a read-only RPC that validates without incrementing (for live preview), and `redeemCoupon(...)` for the final commit. `POS.tsx` and `MemberStore.tsx` switch to this service. No client-side discount math is trusted on the server side; server returns the authoritative `discount_amount`.
 
-### B3. Approvals — `process_approval_request` is the only mutation path
+6. **`referralService.ts` is the only path**
+   - Update `Referrals.tsx` and `MemberStore.tsx` to import and use `claimReward` from the service.
+   - Remove inline `supabase.rpc('claim_referral_reward', …)` calls.
+   - Verify `MemberProfileDrawer.tsx` and `MemberReferrals.tsx` are already correct.
 
-Keep the existing RPC name; rewrite body to:
-- Lock approval row, assert status `pending`.
-- For each `approval_type` (freeze/unfreeze/trainer_change/transfer/branch_move/comp/refund/discount), execute the side effect inside the same transaction. On failure → raise; status stays `pending`.
-- Only after side effects succeed, set `status=approved|rejected`, `reviewed_by/at`, `review_notes`, write `approval_audit_log`.
+7. **`equipmentService.ts`** — accept `branchId` in `fetchMaintenanceRecords`, `getMaintenanceCostsByMonth`, `getEquipmentStats` (already partial). Filter via `equipment.branch_id` join. `EquipmentMaintenance.tsx` passes `currentBranchId` to all four queries and includes branch in query keys.
 
-Strip side-effect mutations from `src/pages/ApprovalQueue.tsx` — UI calls the RPC and handles error toast.
+8. **PersonnelSync biometric** — `PersonnelSyncTab.tsx` reads `biometric_photo_path` (storage path). Use `resolveBiometricPhotoUrl` to get signed URLs for the avatar previews. Upload through `uploadBiometricPhoto` (already private). Migration: add `biometric_photo_path text` columns on `members`, `employees`, `trainers` if missing; backfill from any legacy public URL by parsing the path; deprecate writes to `biometric_photo_url`.
 
-### B4. PT package purchase via unified payment
+9. **MIPS callback URL** — Add `mips_webhook_receiver_url` to `integration_settings` (resolved per env). UI reads it from a tiny `useMipsCallbackUrls()` hook that falls back to `${VITE_SUPABASE_URL}/functions/v1/mips-webhook-receiver`. Remove all hard-coded `iyqqpbvnszyrrgerniog` strings from `DeviceManagement.tsx`.
 
-Drop legacy `purchase_pt_package` overloads; keep one definitive signature:
-```text
-purchase_pt_package(
-  p_member_id, p_package_id, p_branch_id, p_trainer_id,
-  p_total_amount, p_amount_paid, p_payment_method,
-  p_payment_link_id text, p_gst_rate numeric,
-  p_received_by uuid, p_idempotency_key text
-) RETURNS jsonb  -- { invoice_id, member_pt_package_id, payment_id, status }
-```
-- Creates `member_pt_packages` row (sessions ledger).
-- Creates invoice + invoice_items with GST via `calc_gst`.
-- Calls `record_payment` for the paid portion (handles partial → status `partial`, zero → `pending`).
-- Inserts pending `trainer_commissions` row tied to `source_payment_id`.
-- Idempotent on `p_idempotency_key`.
+### C. UI/UX work
 
-Update `src/services/ptService.ts` and PT purchase drawers accordingly.
+10. **Equipment & EquipmentMaintenance**
+    - Header: branch filter badge (active branch name + clear button).
+    - KPI cards: add "Due this week", "Overdue maintenance", "Warranty expiring (30d)".
+    - Row: QR code button (renders QR encoding `{branch}/{equipment_id}` for scan-to-log-maintenance flow) + "Create Maintenance Task" CTA that opens an existing TaskDrawer prefilled.
 
-### B5. Trainer commission reversal
+11. **DeviceManagement**
+    - Replace hard-coded URL block with env-aware `<CopyableUrl label="Webhook URL" value={callbackUrl} />`.
+    - Add per-device row: connection status pill, last heartbeat age (`formatDistanceToNow`), "Failed sync queue" tab listing rows from `mips_sync_log` where `status='failed'` with retry button.
 
-- Add trigger on `payments`/`invoices` status change: if a PT-linked payment becomes `refunded|voided|cancelled`, insert reversing `trainer_commissions` row (`kind='reversal'`, negative `amount`, `reverses_commission_id` set, `status='approved'`). Original commission marked `status='reversed'`.
-- Manual refund endpoint also calls `reverse_trainer_commission(p_payment_id)`.
+12. **Benefits (`MyBenefits.tsx`, `MemberProfileDrawer` Benefits tab, BenefitTracking)**
+    - Combined "Available credits" card: rows = plan-included credits + purchased add-on credits, with `expires_at`, type icon, low-balance pill (≤2 left), and a "Sell add-on" CTA (opens `PurchaseAddOnDrawer`).
 
-### B6. Staff attendance reliability
+13. **Referrals/rewards**
+    - Lifecycle timeline component on each reward card: pending (referral created) → eligible (referee converted) → issued (reward generated) → claimed (member claimed) → wallet credited (wallet txn id). Uses `referrals.status` + `referral_rewards.status` + linked `wallet_transactions.id`.
 
-- Partial unique index: `CREATE UNIQUE INDEX staff_attendance_one_open ON staff_attendance(user_id) WHERE check_out IS NULL;`
-- RPCs:
-  - `staff_check_in(p_user_id, p_branch_id, p_source text, p_device_id uuid)`: lock by user, assert no open row, insert.
-  - `staff_check_out(p_user_id, p_notes text)`: update the single open row; raise if none.
-- Update `src/services/staffAttendanceService.ts` and biometric webhook (`mips-webhook-receiver`) to use these RPCs.
+14. **Discounts (`DiscountCoupons.tsx` + `CouponDetailDrawer.tsx`)**
+    - Detail drawer adds tabs: "Redemptions" (list from `discount_redemptions` with order/invoice link), "Failed attempts" (list from `discount_redemption_attempts`), "Remaining uses" badge `times_used / max_uses`.
 
-### B7. HRM payroll engine
+15. **Classes roster (`Classes.tsx` Attendance tab)**
+    - Inline quick-mark buttons (Present / No-show / Late) per booking using existing RPC `mark_class_attendance`.
+    - "No-show reason" select (sick / no-call / late-cancel / other).
+    - Badge "Promoted from waitlist" when `booking.was_waitlisted = true`.
+    - "Send WhatsApp reminder" button (single + bulk) using existing `send-whatsapp` edge function with class reminder template.
 
-New `compute_payroll(p_user_id uuid, p_period_start date, p_period_end date)` returning per-day rows + summary:
-- Joins `staff_attendance`, `staff_shifts`, `holidays`, `leave_requests`, `payroll_rules`.
-- Rules: late (>15 min), early checkout, missing checkout (auto-close at shift end + flag), half-day (<50% hours), overtime (>shift+30min), weekly off, holiday, approved leave (paid/unpaid), duplicate attendance (collapsed), payable days = present + paid leave + holidays.
-- Output stored in `payroll_runs` + `payroll_run_lines` (new tables) for audit.
-- HRM UI shows per-employee breakdown with anomaly badges.
+### D. Memory & docs
+- Update `mem://architecture/atomic-rpcs-locker-pt-approval` to add benefit add-on and coupon redemption contracts.
+- Add `mem://features/coupon-redemption-engine` with the new RPC contract and tables.
+- Update `mem://features/membership-lifecycle-system` reference to point to combined credits view.
 
----
+### Out of scope (explicitly)
+- Full HRM UI for the new payroll engine — the migration ships the engine; UI surfacing is a follow-up.
+- Backfilling existing `biometric_photo_url` rows from external public sources beyond simple path parsing (will require an admin tool if needed).
 
-## Files to create / modify
-
-### Migrations
-- `error_logs` columns + indexes + `log_error_event` RPC + alerts cron.
-- `assign_locker_with_billing`, `release_locker`.
-- New `process_approval_request` body.
-- New `purchase_pt_package` (drop overloads).
-- Commission reversal trigger + `reverse_trainer_commission`.
-- Staff attendance unique index + `staff_check_in`/`staff_check_out`.
-- `calc_gst`, `resolve_gst_rate`.
-- `compute_payroll` + `payroll_runs`, `payroll_run_lines` tables.
-
-### Edge functions
-- `_shared/capture-edge-error.ts` upgraded to call `log_error_event`.
-- Try/catch + capture in all listed webhook/cron/sender functions.
-
-### Frontend
-- `src/lib/errorReporter.ts` + wire into ErrorBoundary + `main.tsx`.
-- `src/pages/SystemHealth.tsx` rebuilt (KPI, fingerprint table, drawer, filters, export, realtime).
-- `src/components/lockers/AssignLockerDrawer.tsx`, `src/pages/Lockers.tsx` → use new RPCs.
-- `src/pages/ApprovalQueue.tsx` → call `process_approval_request` only.
-- `src/services/ptService.ts` + PT purchase drawer → new `purchase_pt_package` signature.
-- `src/services/staffAttendanceService.ts` + StaffAttendance UI → new RPCs.
-- HRM payroll page → consume `compute_payroll`.
-- New `src/lib/gst.ts` mirroring `calc_gst` for client previews.
-
-### Memory updates
-- `mem://architecture/observability-error-logs` (fingerprint contract).
-- `mem://architecture/atomic-rpcs-locker-pt-approval` (no client-side multi-step writes).
-- `mem://features/hrm-payroll-engine` (rule precedence).
-
----
-
-## Acceptance criteria
-
-- Repeated identical errors show one row with incrementing `occurrence_count`.
-- All listed edge functions log failures to `error_logs`; SystemHealth shows them live.
-- Locker assignment cannot double-book under concurrent calls.
-- Approval status only flips after side effect commits.
-- PT purchase supports partial/pending/payment-link with GST line items and idempotency.
-- Refunding a PT payment auto-creates a reversing commission row.
-- Staff cannot have two open attendance rows; check-in/out via RPC only.
-- Payroll handles late/early/missing/half/OT/leave/holiday/duplicates correctly.
-- GST values across memberships, PT, lockers, store, benefits, invoices come from one helper.
-- Critical-error spike triggers WhatsApp/email alert to owners.
+### Acceptance criteria
+- Buying a benefit add-on either creates `(invoice, payment, credits)` together or none of them.
+- Coupon validation/redemption goes through one RPC; cannot exceed `max_uses` under concurrent redemptions; failed attempts are logged.
+- All four EquipmentMaintenance queries filter by selected branch.
+- `DeviceManagement.tsx` contains no `iyqqpbvnszyrrgerniog` literal.
+- `PersonnelSyncTab.tsx` resolves photos via signed URLs from `biometric_photo_path`.
+- All 4 referral-claim entry points call `referralService.claimReward`.
+- `compute_payroll` returns per-day classification including late, OT, half-day, holiday, leave, missing checkout, with shift table support.
+- New UI surfaces (combined credits, reward lifecycle, redemption history, equipment QR/branch badge, device callback URL, classes quick-attendance) are visible and functional.

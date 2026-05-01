@@ -129,49 +129,34 @@ export default function MemberStore() {
   const walletDeduction = useWalletBalance ? Math.min(walletBalance, afterDiscount) : 0;
   const finalAmount = Math.max(0, afterDiscount - walletDeduction);
 
-  // Apply promo code
+  // Apply promo code via authoritative server-side validator (no client-trust math).
   const applyPromoCode = async () => {
     if (!promoCode.trim()) return;
     setApplyingPromo(true);
     try {
-      const { data, error } = await supabase
-        .from('discount_codes')
-        .select('*')
-        .eq('code', promoCode.trim().toUpperCase())
-        .eq('is_active', true)
-        .single();
-
-      if (error || !data) {
-        toast.error('Invalid or expired promo code');
-        return;
-      }
-
-      // Validate
-      if (data.valid_until && new Date(data.valid_until) < new Date()) {
-        toast.error('This promo code has expired');
-        return;
-      }
-      if (data.max_uses && data.times_used >= data.max_uses) {
-        toast.error('This promo code has reached its usage limit');
-        return;
-      }
-      if (data.min_purchase && cartTotal < Number(data.min_purchase)) {
-        toast.error(`Minimum purchase of ₹${data.min_purchase} required`);
-        return;
-      }
-
-      const discAmt = data.discount_type === 'percentage'
-        ? (cartTotal * Number(data.discount_value)) / 100
-        : Number(data.discount_value);
-
-      setAppliedDiscount({
-        id: data.id,
-        code: data.code,
-        type: data.discount_type,
-        value: Number(data.discount_value),
-        discountAmount: Math.min(discAmt, cartTotal),
+      const { validateCoupon, couponReasonLabel } = await import('@/services/couponService');
+      const result = await validateCoupon({
+        code: promoCode.trim().toUpperCase(),
+        branchId: member?.branch_id ?? null,
+        subtotal: cartTotal,
       });
-      toast.success(`Promo code "${data.code}" applied!`);
+      if (!result.success) {
+        const failure = result as { success: false; reason: string; min_purchase?: number };
+        if (failure.reason === 'min_purchase' && failure.min_purchase) {
+          toast.error(`Minimum purchase of ₹${failure.min_purchase} required`);
+        } else {
+          toast.error(couponReasonLabel(failure.reason));
+        }
+        return;
+      }
+      setAppliedDiscount({
+        id: result.code_id,
+        code: result.code,
+        type: result.discount_type,
+        value: result.discount_value,
+        discountAmount: result.discount_amount,
+      });
+      toast.success(`Promo code "${result.code}" applied!`);
     } catch {
       toast.error('Failed to validate promo code');
     } finally {
@@ -184,19 +169,11 @@ export default function MemberStore() {
     setPromoCode('');
   };
 
-  // Claim referral reward via authoritative atomic RPC.
+  // Claim referral reward — single canonical path through referralService.
   const claimReward = useMutation({
     mutationFn: async (rewardId: string) => {
-      const idem = `reward_claim:${member!.id}:${rewardId}`;
-      const { data, error } = await supabase.rpc('claim_referral_reward', {
-        p_reward_id: rewardId,
-        p_member_id: member!.id,
-        p_idempotency_key: idem,
-      });
-      if (error) throw error;
-      const result = data as { success?: boolean; error?: string } | null;
-      if (!result?.success) throw new Error(result?.error || 'Failed to redeem reward');
-      return result;
+      const { claimReward: claimRewardSvc } = await import('@/services/referralService');
+      return claimRewardSvc(rewardId, member!.id);
     },
     onSuccess: () => {
       toast.success('Reward credited to your wallet!');
