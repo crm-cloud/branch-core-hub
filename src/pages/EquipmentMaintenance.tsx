@@ -9,9 +9,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
+import QRCode from 'qrcode';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddEquipmentDrawer } from '@/components/equipment/AddEquipmentDrawer';
