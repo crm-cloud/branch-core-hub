@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.google-review-redirect]
 verify_jwt = false
+
+[functions.healthz]
+verify_jwt = false
