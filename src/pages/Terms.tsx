@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Dumbbell } from 'lucide-react';
 import { cmsService, ThemeSettings } from '@/services/cmsService';
+import SEO from '@/components/seo/SEO';
 
 const LAST_UPDATED = 'April 1, 2026';
 
@@ -25,6 +26,11 @@ export default function TermsPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
+      <SEO
+        title="Terms of Service | The Incline Life by Incline"
+        description="The terms governing membership, payments, and use of The Incline Life facilities and services."
+        path="/terms"
+      />
       <header className="border-b border-white/10 bg-[#050508]/90 backdrop-blur-xl sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link to="/" className="inline-flex items-center gap-2 text-white/90 hover:text-white transition-colors">

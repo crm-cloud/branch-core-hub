@@ -125,12 +125,16 @@ Disallow: /admin
 Disallow: /dashboard
 Disallow: /staff
 Disallow: /trainer
+Disallow: /trainer-dashboard
 Disallow: /member-dashboard
+Disallow: /member/
 Disallow: /pos
 Disallow: /api/
 Disallow: /auth
 Disallow: /setup
 Disallow: /unauthorized
+Disallow: /contract-sign/
+Disallow: /embed/
 
 Sitemap: https://www.theincline.in/sitemap.xml
 Host: https://www.theincline.in
