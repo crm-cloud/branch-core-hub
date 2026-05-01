@@ -18,14 +18,23 @@ async function flushErrors() {
     if (!session) return;
 
     const batch = errorQueue.splice(0, 20);
-    const rows = batch.map(e => ({
-      ...e,
-      user_id: session.user?.id || null,
-      browser_info: navigator.userAgent,
-      status: 'open',
-    }));
-
-    await (supabase.from('error_logs') as any).insert(rows);
+    // Use log_error_event RPC (server-side fingerprinting + dedup)
+    await Promise.all(batch.map((e) =>
+      (supabase.rpc as any)('log_error_event', {
+        p_severity: 'error',
+        p_source: e.source,
+        p_message: e.error_message,
+        p_function_name: e.component_name,
+        p_route: e.route,
+        p_table_name: null,
+        p_branch_id: null,
+        p_user_id: session.user?.id || null,
+        p_request_id: null,
+        p_release_sha: (import.meta.env.VITE_RELEASE_SHA as string) || 'dev',
+        p_stack: e.stack_trace,
+        p_context: { browser: navigator.userAgent },
+      }).then(() => undefined).catch(() => undefined)
+    ));
   } catch {
     // Silently fail - never cause secondary crash
   }

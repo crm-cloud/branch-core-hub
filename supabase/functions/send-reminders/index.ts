@@ -1,4 +1,5 @@
 // send-reminders v2.0
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 // Honest-delivery for ALL reminder types: payment, membership_expiry, class,
 // PT, benefit. Each reminder honors the per-branch reminder_configurations
 // channel (whatsapp / sms / email / notification), attempts the real provider
@@ -672,6 +673,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
+    await captureEdgeError('send-reminders', error);
     console.error("Reminders error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,

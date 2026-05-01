@@ -1,4 +1,5 @@
 // v2.0.0 — Universal Email Dispatcher with Branded Template Support
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -142,6 +143,7 @@ Deno.serve(async (req) => {
       return json({ error: result.error, provider }, 500);
     }
   } catch (error: any) {
+    await captureEdgeError('send-email', error);
     console.error("send-email error:", error);
     return json({ error: error.message }, 500);
   }

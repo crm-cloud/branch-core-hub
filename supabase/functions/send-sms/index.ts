@@ -1,4 +1,5 @@
 // v2.0.0 — Multi-provider SMS Edge Function with RoundSMS full API
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -109,6 +110,7 @@ serve(async (req: Request) => {
         return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (error) {
+    await captureEdgeError('send-sms', error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return json({ error: message }, 500);
   }

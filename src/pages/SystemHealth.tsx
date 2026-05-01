@@ -11,9 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monitor, Server, Database, Zap, Trash2, CheckCheck, Download, RotateCcw, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { exportToCSV } from '@/lib/csvExport';
 
 interface ErrorLog {
   id: string;
@@ -21,6 +22,8 @@ interface ErrorLog {
   error_message: string;
   stack_trace: string | null;
   component_name: string | null;
+  function_name: string | null;
+  table_name: string | null;
   route: string | null;
   browser_info: string | null;
   status: string;
@@ -28,6 +31,13 @@ interface ErrorLog {
   resolved_by: string | null;
   created_at: string;
   source?: string;
+  severity?: string;
+  fingerprint?: string | null;
+  occurrence_count?: number;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  branch_id?: string | null;
+  context?: any;
 }
 
 const SOURCE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
@@ -211,6 +221,54 @@ export default function SystemHealth() {
     onError: () => toast.error('Failed to resolve errors'),
   });
 
+  const reopenError = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from('error_logs') as any)
+        .update({ status: 'open', resolved_at: null, resolved_by: null })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('Error reopened');
+    },
+  });
+
+  const clearOldResolvedMutation = useMutation({
+    mutationFn: async () => {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await (supabase.from('error_logs') as any)
+        .delete()
+        .eq('status', 'resolved')
+        .lt('resolved_at', cutoff);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['error-logs'] });
+      toast.success('Cleared resolved errors older than 90 days');
+    },
+  });
+
+  const handleExport = () => {
+    if (errors.length === 0) { toast.error('Nothing to export'); return; }
+    exportToCSV(
+      errors.map((e) => ({
+        time: e.created_at,
+        last_seen: e.last_seen || e.created_at,
+        occurrences: e.occurrence_count ?? 1,
+        severity: e.severity || 'error',
+        source: e.source || 'frontend',
+        function_name: e.function_name || '',
+        route: e.route || '',
+        message: e.error_message,
+        status: e.status,
+        fingerprint: e.fingerprint || '',
+      })),
+      `error-logs-${new Date().toISOString().split('T')[0]}.csv`,
+    );
+    toast.success('Exported error logs');
+  };
+
   const openErrors = errors.filter((e) => e.status === 'open');
   const resolvedErrors = errors.filter((e) => e.status === 'resolved');
   const todayErrors = errors.filter((e) => new Date(e.created_at).toDateString() === new Date().toDateString());
@@ -234,11 +292,16 @@ export default function SystemHealth() {
     toast.success('Prompt copied to clipboard');
   };
 
+  const criticalOpen = openErrors.filter((e) => (e.severity || 'error') === 'critical').length;
+  const totalOccurrences = errors.reduce((sum, e) => sum + (e.occurrence_count ?? 1), 0);
+
   const stats = [
-    { label: 'Total Errors', value: errors.length, icon: Activity, color: 'text-primary' },
-    { label: 'Open', value: openErrors.length, icon: AlertTriangle, color: 'text-destructive' },
+    { label: 'Open Errors', value: openErrors.length, icon: AlertTriangle, color: 'text-destructive' },
+    { label: 'Critical Open', value: criticalOpen, icon: Zap, color: 'text-rose-600' },
+    { label: 'Today', value: todayErrors.length, icon: Clock, color: 'text-amber-600' },
+    { label: 'Total Occurrences', value: totalOccurrences, icon: Layers, color: 'text-violet-600' },
     { label: 'Frontend', value: frontendErrors.length, icon: Monitor, color: 'text-sky-600' },
-    { label: 'Backend', value: backendErrors.length, icon: Server, color: 'text-violet-600' },
+    { label: 'Backend', value: backendErrors.length, icon: Server, color: 'text-emerald-600' },
   ];
 
   return (
@@ -254,7 +317,10 @@ export default function SystemHealth() {
             </h1>
             <p className="text-muted-foreground mt-1">Monitor errors across frontend, backend functions, and database</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
             {openErrors.length > 0 && (
               <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => setResolveAllDialog(true)}>
                 <CheckCheck className="h-4 w-4" />
@@ -262,15 +328,21 @@ export default function SystemHealth() {
               </Button>
             )}
             {resolvedErrors.length > 0 && (
-              <Button variant="outline" size="sm" className="rounded-xl gap-1.5 text-destructive hover:text-destructive" onClick={() => setClearResolvedDialog(true)}>
-                <Trash2 className="h-4 w-4" />
-                Clear Resolved
-              </Button>
+              <>
+                <Button variant="outline" size="sm" className="rounded-xl gap-1.5" onClick={() => clearOldResolvedMutation.mutate()} disabled={clearOldResolvedMutation.isPending}>
+                  <Trash2 className="h-4 w-4" /> Clear &gt; 90 days
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-xl gap-1.5 text-destructive hover:text-destructive" onClick={() => setClearResolvedDialog(true)}>
+                  <Trash2 className="h-4 w-4" />
+                  Clear Resolved
+                </Button>
+              </>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {stats.map((s) => (
             <Card key={s.label} className="rounded-2xl border-border/50 shadow-lg shadow-slate-200/50">
               <CardContent className="p-4 flex items-center gap-3">
@@ -325,21 +397,33 @@ export default function SystemHealth() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Time</TableHead>
+                          <TableHead>Last Seen</TableHead>
+                          <TableHead>Severity</TableHead>
                           <TableHead>Source</TableHead>
-                          <TableHead>Route</TableHead>
-                          <TableHead>Error Message</TableHead>
+                          <TableHead>Function / Route</TableHead>
+                          <TableHead>Message</TableHead>
+                          <TableHead className="text-right">Count</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {errors.map((err) => {
                           const src = SOURCE_CONFIG[err.source || 'frontend'] || SOURCE_CONFIG.frontend;
+                          const sev = (err.severity || 'error').toLowerCase();
+                          const sevClass =
+                            sev === 'critical' ? 'bg-rose-100 text-rose-700' :
+                            sev === 'error' ? 'bg-red-100 text-red-700' :
+                            sev === 'warning' ? 'bg-amber-100 text-amber-700' :
+                            'bg-slate-100 text-slate-700';
+                          const lastTime = err.last_seen || err.created_at;
                           return (
                             <TableRow key={err.id}>
                               <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                {format(new Date(err.created_at), 'MMM d, HH:mm')}
+                                {format(new Date(lastTime), 'MMM d, HH:mm')}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${sevClass} rounded-full text-xs font-medium`} variant="secondary">{sev}</Badge>
                               </TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="gap-1 text-xs">
@@ -347,15 +431,23 @@ export default function SystemHealth() {
                                   {src.label}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="font-mono text-xs">{err.route || '—'}</TableCell>
-                              <TableCell className="max-w-[300px] truncate text-sm">{err.error_message}</TableCell>
+                              <TableCell className="font-mono text-xs max-w-[180px] truncate">{err.function_name || err.route || '—'}</TableCell>
+                              <TableCell className="max-w-[280px] truncate text-sm">{err.error_message}</TableCell>
+                              <TableCell className="text-right text-xs font-semibold">{err.occurrence_count ?? 1}</TableCell>
                               <TableCell>
                                 <Badge variant={err.status === 'open' ? 'destructive' : 'secondary'}>{err.status}</Badge>
                               </TableCell>
-                              <TableCell>
-                                <Button size="sm" variant="ghost" onClick={() => handleViewError(err)}>
-                                  <Eye className="h-4 w-4 mr-1" /> View
-                                </Button>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  {err.status === 'resolved' && (
+                                    <Button size="sm" variant="ghost" onClick={() => reopenError.mutate(err.id)} title="Reopen">
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="ghost" onClick={() => handleViewError(err)}>
+                                    <Eye className="h-4 w-4 mr-1" /> View
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           );

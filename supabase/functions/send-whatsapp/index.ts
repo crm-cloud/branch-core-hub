@@ -1,4 +1,5 @@
 // v2.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
+import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
@@ -233,6 +234,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
+    await captureEdgeError('send-whatsapp', error);
     console.error("send-whatsapp error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: errorMessage }), {

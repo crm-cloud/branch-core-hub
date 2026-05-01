@@ -25,21 +25,14 @@ export const staffAttendanceService = {
       p_notes: null,
     });
     if (error) throw error;
-    return data as { success: boolean; attendance_id?: string; message?: string };
+    return { success: true, attendance_id: data as unknown as string };
   },
 
   // Race-safe check-out via backend RPC (locks the active row).
   async checkOut(userId: string) {
     const { data, error } = await supabase.rpc('staff_check_out', { p_user_id: userId });
     if (error) throw error;
-    return data as {
-      success: boolean;
-      attendance_id?: string;
-      check_in?: string;
-      check_out?: string;
-      duration_minutes?: number;
-      message?: string;
-    };
+    return { success: true, attendance_id: data as unknown as string };
   },
 
   // Get today's staff attendance
