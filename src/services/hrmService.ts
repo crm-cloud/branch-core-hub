@@ -321,20 +321,59 @@ export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: s
   const startDate = `${month}-01`;
   const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().split('T')[0];
 
-  // Fetch attendance by user_id
-  const { data: attendance } = await supabase
-    .from('staff_attendance')
-    .select('*')
-    .eq('user_id', staff.user_id)
-    .gte('check_in', `${startDate}T00:00:00`)
-    .lte('check_in', `${endDate}T23:59:59`);
+  // --- Authoritative per-day breakdown via the new compute_payroll RPC.
+  // It accounts for shifts, late/early-out, half-day, missing checkout,
+  // weekly off, holidays, approved leave and OT — collapsing duplicate
+  // attendance rows. We still gracefully fall back to a simple count if
+  // the RPC fails for any reason (e.g. brand-new env).
+  let payableDays = 0;
+  let halfDays = 0;
+  let lateDays = 0;
+  let earlyOutDays = 0;
+  let missingCheckoutDays = 0;
+  let otHours = 0;
+  let leaveDays = 0;
+  let holidayDays = 0;
+  let weeklyOffDays = 0;
+  let dailyBreakdown: Array<Record<string, unknown>> = [];
+
+  try {
+    const { data: payrollRows, error: rpcError } = await supabase.rpc('compute_payroll', {
+      p_user_id: staff.user_id,
+      p_period_start: startDate,
+      p_period_end: endDate,
+    });
+    if (rpcError) throw rpcError;
+    const rows = (payrollRows ?? []) as Array<any>;
+    dailyBreakdown = rows;
+    for (const r of rows) {
+      if (r.payable) payableDays += r.is_half_day ? 0.5 : 1;
+      if (r.is_half_day) halfDays += 1;
+      if (r.is_late) lateDays += 1;
+      if (r.is_early_out) earlyOutDays += 1;
+      if (r.is_missing_checkout) missingCheckoutDays += 1;
+      if (r.ot_hours) otHours += Number(r.ot_hours) || 0;
+      if (r.leave_type) leaveDays += 1;
+      if (r.is_holiday) holidayDays += 1;
+      if (r.is_weekly_off) weeklyOffDays += 1;
+    }
+  } catch (e) {
+    // Fallback: legacy attendance count
+    const { data: attendance } = await supabase
+      .from('staff_attendance')
+      .select('id')
+      .eq('user_id', staff.user_id)
+      .gte('check_in', `${startDate}T00:00:00`)
+      .lte('check_in', `${endDate}T23:59:59`);
+    payableDays = attendance?.length || 0;
+  }
 
   const workingDays = getDaysInMonth(month);
-  const daysPresent = attendance?.length || 0;
   const baseSalary = staff.salary || 0;
-  const proRatedPay = Math.round((baseSalary / workingDays) * daysPresent);
+  // Pro-rate by payable days (compute_payroll already handles half-days as 0.5)
+  const proRatedPay = Math.round((baseSalary / workingDays) * payableDays);
 
-  // Fetch PT commissions
+  // Fetch PT commissions (unchanged)
   let ptCommission = 0;
   if (staff.staff_type === 'trainer') {
     const { data: commissions } = await supabase
@@ -345,7 +384,6 @@ export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: s
       .lte('release_date', endDate);
     ptCommission = commissions?.reduce((s, c) => s + (c.amount || 0), 0) || 0;
   } else {
-    // Check if employee has a linked trainer record
     const { data: trainerLink } = await supabase
       .from('trainers')
       .select('id')
@@ -370,13 +408,25 @@ export async function calculatePayrollForStaff(staff: PayrollStaffItem, month: s
     staffId: staff.id,
     month,
     baseSalary,
-    daysPresent,
+    // Existing keys preserved for back-compat with current UI
+    daysPresent: Math.floor(payableDays),
     workingDays,
     proRatedPay,
     ptCommission,
     grossPay,
     pfDeduction,
     netPay,
+    // New, richer fields from compute_payroll
+    payableDays,
+    halfDays,
+    lateDays,
+    earlyOutDays,
+    missingCheckoutDays,
+    otHours,
+    leaveDays,
+    holidayDays,
+    weeklyOffDays,
+    dailyBreakdown,
   };
 }
 

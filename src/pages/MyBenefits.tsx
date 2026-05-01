@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 import { EligibleAddOns } from '@/components/benefits/EligibleAddOns';
+import { CombinedCreditsSummary } from '@/components/benefits/CombinedCreditsSummary';
 
 export default function MyBenefits() {
   const { profile } = useAuth();
@@ -185,6 +186,15 @@ export default function MyBenefits() {
           </Card>
         )}
 
+        {/* Combined Plan + Add-On summary */}
+        {benefitCredits.length > 0 && (
+          <CombinedCreditsSummary
+            credits={benefitCredits as any}
+            onBuyAddon={() => setAddOnOpen(true)}
+            disabled={!activeMembership}
+          />
+        )}
+
         {/* Benefit Credits */}
         {benefitCredits.length > 0 && (
           <div className="space-y-4">
@@ -205,6 +215,11 @@ export default function MyBenefits() {
                         </CardTitle>
                         <Badge variant={daysLeft <= 7 ? "destructive" : "outline"}>
                           {daysLeft} days left
+                        </Badge>
+                      </div>
+                      <div className="mt-1">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {credit.package_id ? 'Add-on' : 'Plan'}
                         </Badge>
                       </div>
                     </CardHeader>
