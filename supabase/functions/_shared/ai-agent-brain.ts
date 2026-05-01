@@ -120,7 +120,13 @@ export async function runUnifiedAgent(
   const customPrompt = aiConfig.system_prompt || `You are a helpful gym assistant for "${gymName}". Answer questions about membership, timings, and facilities. Keep responses short and friendly.`;
 
   let systemPrompt = `${memberCtx.contextPrompt}${summaryBlock}${alreadyCaptured}\n\n${customPrompt}`;
-  systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation. Keep replies short (1-3 sentences), warm, professional.`;
+  systemPrompt += `\n\nYou are responding on ${platformLabel}. Conversation history may include messages from other channels — treat them as one continuous conversation.
+  
+  FORMATTING RULES:
+  - Use *bold* for emphasis (e.g. *FREE* trial, *7:00 AM*, *₹2,500*).
+  - Use bullet points for lists.
+  - Keep replies short (1-3 sentences), warm, professional.
+  - Use emojis sparingly but effectively (💪, 🔥, ✨).`;
 
   // Inject gym knowledge so the AI can answer common questions directly
   if (gymFacts) {
@@ -129,12 +135,12 @@ export async function runUnifiedAgent(
 
   // Global behavioral rules
   systemPrompt += `\n\nCRITICAL BEHAVIORAL RULE:
-- When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly using the GYM KNOWLEDGE above.
-- Do NOT gatekeep answers behind "registration" or "sign up first".
-- After answering their question, you may then naturally transition into collecting their details.
-- Never repeat the same question more than twice. If the user ignores a question, move on.
-- If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.
-- For pricing, always mention the plan name, duration, and price. If the gym has a day pass, mention it first for casual inquirers.`;
+  - When a person asks a factual question (location, timings, fees, facilities, equipment), ALWAYS answer it directly using the GYM KNOWLEDGE above.
+  - Do NOT gatekeep answers behind "registration" or "sign up first".
+  - After answering their question, you may then naturally transition into collecting their details.
+  - Never repeat the same question more than twice. If the user ignores a question, move on.
+  - If the user sends short replies like "ok", "hmm", "yes", treat it as acknowledgment and ask a NEW question.
+  - For pricing, always mention the plan name, duration, and price. If the gym has a day pass, mention it first for casual inquirers.`;
 
   // Member tool instructions
   let tools: any[] | undefined;
@@ -152,12 +158,12 @@ export async function runUnifiedAgent(
 You have access to real tools that can query and modify the member's account. USE THEM when the member asks about membership status, benefits, bookings, PT sessions, etc.
 
 SELF-SERVICE BOOKING FLOW:
-1. When a member wants to book a facility (sauna, ice bath, etc.), ask which facility, date, and preferred time.
+1. When a member wants to book a facility (sauna, ice bath, etc.), ask for the facility, date, and preferred time range.
 2. Use the available tools to check slot availability for that date.
-3. Present 2-3 available time slots and ask the member to pick one.
-4. Once they confirm, call book_facility_slot with the exact slot details.
-5. Confirm the booking with date, time, and facility name.
-6. If no slots are available, suggest the next available date or an alternative facility.
+3. Present available time slots in a clear, numbered list (e.g., 1️⃣ 10:00 AM, 2️⃣ 11:30 AM).
+4. Once they pick a number or confirm a time, call book_facility_slot with the exact details.
+5. Confirm the booking with a "Success" message including *facility*, *date*, and *time*.
+6. If no slots are available, suggested the next available date or an alternative facility.
 
 GENERAL RULES:
 - Always confirm booking details with the member BEFORE calling book_facility_slot.
