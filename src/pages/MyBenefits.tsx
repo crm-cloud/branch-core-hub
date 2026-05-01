@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PurchaseAddOnDrawer } from '@/components/benefits/PurchaseAddOnDrawer';
 import { EligibleAddOns } from '@/components/benefits/EligibleAddOns';
+import { CombinedCreditsSummary } from '@/components/benefits/CombinedCreditsSummary';
 
 export default function MyBenefits() {
   const { profile } = useAuth();
