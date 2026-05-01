@@ -1,181 +1,53 @@
-## Goal
+# Disaster Recovery V1 — Active/Passive (Approved with adjustments)
 
-Replace ad-hoc HTML/print-based PDFs, toast-only payroll, and direct `user_roles` mutations with a unified branded PDF system, a real multi-stage payroll workflow, and secure RPC-based role management with full audit.
+Active/passive only. No active-active writes. No automatic DB failover. Backups via Supabase CLI / GitHub Actions, not Edge pg_dump.
 
----
+## Adjustments applied
+1. Active/passive only — confirmed.
+2. UI banner + disabled buttons **and** server-side write-block trigger on: `invoices, payments, memberships, member_attendance, staff_attendance, rewards_ledger, wallet_transactions, benefit_bookings, benefit_usage, referrals, lockers, approval_requests, ecommerce_orders`. Trigger bypasses for `service_role` only (so restore + service ops work).
+3. `app_settings` does not exist. Use existing key/value `public.settings` table with global row `(branch_id NULL, key='dr_mode', value={enabled, reason, set_at, set_by})`.
+4. Public `/healthz` returns only `{ status, env, version, latency_ms }`. Detailed `checks.{db,auth,storage}` only when caller is `service_role` or an authenticated owner/admin.
+5. Backups via `scripts/dr/*.sh` + GitHub Actions using Supabase CLI. Existing `backup-export` retained as secondary developer convenience only.
+6. `verify.sh` walks DR storage bucket, downloads each object, computes SHA-256, and compares against the backup manifest.
+7. Auth restore proven by dry-run into Supabase B + automated login smoke test (`scripts/dr/smoke-login.sh`).
+8. `system_health_pings` and `dr_probe` writes go through a `SECURITY DEFINER` RPC `record_health_ping(...)`, granted to `service_role` only — pg_cron call uses the RPC, sidestepping RLS-from-cron concerns.
+9. Failback rule: once Supabase B receives any production writes, **B is canonical**. Returning to A requires a planned maintenance window with delta export from B → A and re-verify; documented in runbook.
+10. Quarterly drill acceptance criteria stored as boolean columns on `dr_drill_log` (db_restored, storage_restored, edge_functions_deployed, app_config_switched, member_login_ok, invoice_create_ok, payment_webhook_ok, attendance_ok, whatsapp_webhook_ok, storage_upload_ok). All true ⇒ outcome=`pass`.
 
-## Part 1 — Branded Document Generator
+## Files to create
+- **Migration** `supabase/migrations/<ts>_dr_mode_and_health.sql`
+  - `is_dr_readonly()` SECURITY DEFINER reading `settings` row.
+  - `dr_block_writes()` trigger function + attach BEFORE INSERT/UPDATE/DELETE on the 13 critical tables. Service-role bypass.
+  - Insert `settings` row `dr_mode = { enabled:false, ... }`.
+  - Tables: `system_health_pings`, `dr_probe`, `dr_drill_log` with RLS (owner/admin SELECT, service_role INSERT). RPC `record_health_ping(...)` SECURITY DEFINER granted to service_role.
+  - pg_cron job `dr-health-probe-db` every 5 min calling `record_health_ping('db','ok',...)`.
+- **Edge function** `supabase/functions/healthz/index.ts` — public minimal payload; detailed checks only for service_role / owner / admin. `verify_jwt = false` (config.toml block added).
+- **Frontend**
+  - `src/lib/runtime/host.ts` — `getRuntimeEnv()` from `VITE_APP_ENV`, `getBuildSha()`.
+  - `src/hooks/useDrMode.ts` — TanStack query reading `settings` `dr_mode` row; exposes `{ isReadOnly, reason, assertWritable() }`.
+  - `src/components/system/DrBanner.tsx` — sticky top banner shown when `env==='dr'` or `isReadOnly`.
+  - Mount `DrBanner` in `src/App.tsx`.
+  - `vite.config.ts` build-time plugin `dr-assets` emitting:
+    - `public/healthz.json` → `{ status:'ok', env, version: <git sha or pkg version>, builtAt }`
+    - `public/app-config.json` → `{ supabaseUrl, supabaseAnonKey, env, minAppVersion, drMode:false, supportEmail }`
+- **Hosting fallbacks**
+  - `vercel.json` — SPA rewrite, `Cache-Control: no-store` for `/app-config.json` and `/healthz.json`, security headers.
+  - `netlify.toml` — equivalent.
+  - `public/_headers` and `public/_redirects` for Cloudflare Pages.
+- **DR scripts** (`scripts/dr/`)
+  - `backup.sh` — uses `supabase db dump` (`--schema public`, then `--schema auth --schema storage`), then `supabase storage cp` to mirror object bytes to DR bucket. Writes manifest with row counts + SHA-256.
+  - `restore.sh` — restores `auth` → `storage` metadata → `public` data into project B. Requires `--i-understand-this-overwrites`.
+  - `verify.sh` — row-count + checksum diff between A and B; fails on mismatch.
+  - `smoke-login.sh` — creates a throwaway test user on B and asserts sign-in works (proves Auth restore).
+  - `README.md` — usage, env vars (`SUPABASE_ACCESS_TOKEN`, `PRIMARY_PROJECT_REF`, `DR_PROJECT_REF`, `DR_BUCKET`), explicit warning that service_role keys live only in CI/vault.
+- **CI** `.github/workflows/dr-backup.yml` — nightly 02:30 IST; secrets from GitHub repo secrets only.
+- **Runbook** `docs/dr-runbook.md`
+  - Architecture diagram, **RPO/RTO** (5 min with PITR / 24 h logical-only; RTO 2–4 h).
+  - Failover steps including DR-mode flip via `settings` row.
+  - Per-provider webhook switch steps: **Razorpay**, **Meta WhatsApp Cloud API**, **MIPS** (push via existing `mips-*` functions), **Round SMS**, **Resend**.
+  - Auth restore section + dry-run + login smoke test.
+  - Failback rule: B becomes primary post-promotion; A returns only after planned maintenance + delta merge + re-verify.
+  - Quarterly drill checklist mirroring `dr_drill_log` columns; sign-off table.
 
-### 1.1 Brand resolver
-
-Create `src/lib/brand/useBrandContext.ts`:
-- Hook returning `{ companyName, legalName, logoUrl, website, supportEmail, branch: { name, address, phone, email, gstin } }`.
-- Pulls from `branches` (logo_url, gstin, address, phone, email) + `app_settings` (company name fallback, website).
-- Cached via TanStack Query, keyed by `branch_id`.
-- Default legal name: `"The Incline Life by Incline"`.
-
-### 1.2 Unified PDF builders (`src/utils/pdfBlob.ts`)
-
-Refactor existing file into a single shared module returning `Blob`s using jsPDF + autoTable. All builders accept a `BrandContext` parameter and share:
-- `drawHeader(doc, brand, docTitle, docNumber, issueDate)` — logo (loaded as base64 if `logoUrl` present), company name, branch address block, GSTIN, doc title + number on right.
-- `drawFooter(doc, brand)` — legal name, website, support email, page X/Y, "Computer-generated".
-- `drawMetaBlock(doc, { recipient, code, branch, preparedBy, qr? })` — uses `qrcode` lib (already common; add if missing) for reference QR.
-
-Builders to implement/refactor:
-1. `buildInvoicePdf(data, brand)` — line items, GST split (CGST/SGST/IGST when `is_gst_invoice`), totals, status watermark for `paid/void/refunded`.
-2. `buildReceiptPdf(data, brand)` — Receipt #, payment method, transaction id, paid date, amount paid, balance due, GST breakdown, signature block.
-3. `buildPayslipPdf(data, brand)` — uses **finalized** payroll item only; earnings vs deductions table, attendance summary, net pay in words.
-4. `buildWorkoutPlanPdf(data, brand)` — member name/code, trainer, goal, validity, day-by-day exercises table, notes.
-5. `buildDietPlanPdf(data, brand)` — member, trainer, goal, validity, meals table with macros/calories, notes.
-6. `buildContractPdf(data, brand)` — replaces existing HTML contract with branded PDF including signature placeholders.
-
-`src/utils/pdfGenerator.ts` (current HTML-window approach for payslip/invoice) is removed; all callers switched to the Blob API + `downloadBlob(blob, filename)` helper.
-
-### 1.3 Document actions component
-
-`src/components/documents/DocumentActions.tsx`:
-Buttons: **Download Invoice**, **Download Receipt** (only when paid), **Print** (opens blob in new tab), **Share WhatsApp**, **Share Email**. Share actions upload the blob to the existing `documents` storage bucket (signed URL) and call `send-whatsapp` / `send-email` edge functions with the link.
-
-Used by: `InvoiceViewDrawer`, `Invoices`, `MyInvoices`, `MemberProfileDrawer`, `Payments`, `MyWorkout`, `MyDiet`, `HRM` payslip, `ContractSign`, `TrainerEarnings`.
-
-### 1.4 Workout / Diet pages
-
-- `MyWorkout.tsx` and `MyDiet.tsx`: add `Download PDF` button (top-right of plan card) wired to `buildWorkoutPlanPdf` / `buildDietPlanPdf` with the resolved trainer name + member/code from auth profile.
-
----
-
-## Part 2 — Real Payroll Workflow
-
-### 2.1 Schema (migration)
-
-Extend existing `payroll_runs` and add `payroll_items`:
-
-```sql
-ALTER TABLE payroll_runs ADD COLUMN IF NOT EXISTS
-  -- stages: draft | calculated | review | adjusted | approved | processed | paid
-  reviewed_by uuid, reviewed_at timestamptz,
-  approved_by uuid, approved_at timestamptz,
-  processed_by uuid, processed_at timestamptz,
-  paid_at timestamptz, notes text;
-
-CREATE TABLE payroll_items (
-  id uuid PK,
-  run_id uuid REFERENCES payroll_runs ON DELETE CASCADE,
-  user_id uuid NOT NULL,
-  -- snapshot of original calculation
-  calc_base numeric, calc_pt_commission numeric, calc_ot numeric,
-  calc_deductions numeric, calc_gross numeric, calc_net numeric,
-  calc_attendance jsonb, -- present/half/late/missing/leave counts
-  -- final adjusted values
-  final_base numeric, final_pt_commission numeric, final_ot numeric,
-  final_bonus numeric DEFAULT 0, final_deductions numeric DEFAULT 0,
-  final_advance numeric DEFAULT 0, final_penalty numeric DEFAULT 0,
-  final_gross numeric, final_net numeric,
-  adjustment_reason text,
-  status text DEFAULT 'draft', -- draft | reviewed | approved | processed | paid
-  payslip_url text,
-  UNIQUE (run_id, user_id)
-);
-
-CREATE TABLE payroll_audit (
-  id uuid PK, run_id uuid, item_id uuid, actor_id uuid,
-  action text, before jsonb, after jsonb, reason text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-### 2.2 RPCs
-
-- `payroll_create_run(branch, period_start, period_end)` → calls `compute_payroll` per active staff, inserts `payroll_items` with `calc_*` and matching `final_*` defaults, status `draft`.
-- `payroll_adjust_item(item_id, patch jsonb, reason)` → updates `final_*`, recomputes `final_gross/net`, logs to `payroll_audit`, status `adjusted`.
-- `payroll_review_item(item_id)` / `payroll_approve_run(run_id)` / `payroll_process_items(item_ids[])` / `payroll_mark_paid(item_ids[], method, ref)` — each transitions status, logs audit, requires role.
-- Stage gating enforced server-side; payslip generation blocked until `approved`.
-
-### 2.3 UI — `src/pages/HRM.tsx` Payroll tab
-
-Replace toast-only `processPayroll` with a real flow:
-1. **Create Run** drawer — pick period + branch.
-2. **Run Detail** page (`/hrm/payroll/:runId`) showing items table:
-   - Columns: staff, attendance summary badges, calculated net, adjustments, final net, status.
-   - Inline drawer per row: edit bonus / deductions / advance / penalty / OT hours / commission / attendance override, with **reason** required.
-   - Show original calculated values side-by-side with final values + audit timeline.
-3. Action bar: `Review Selected` → `Approve` → `Process Selected` / `Process All` (only enabled per stage). `Download Payslip` only after `approved`, uses `final_*` values via `buildPayslipPdf`.
-
-Service: `src/services/payrollService.ts` wrapping all RPCs + queries.
-
----
-
-## Part 3 — Secure Admin Role Management
-
-### 3.1 RPCs (migration)
-
-```sql
-CREATE TABLE role_change_audit (
-  id uuid PK, target_user_id uuid, actor_id uuid,
-  action text, -- 'assigned' | 'removed' | 'requested' | 'approved' | 'rejected'
-  role app_role, branch_id uuid,
-  reason text, before jsonb, after jsonb,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE role_change_requests (
-  id uuid PK, target_user_id uuid, requested_by uuid,
-  role app_role, branch_id uuid, action text, reason text,
-  status text DEFAULT 'pending', -- pending | approved | rejected
-  decided_by uuid, decided_at timestamptz, decision_reason text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-RPCs (all `SECURITY DEFINER`, role-gated):
-- `assign_user_role(target, role, branch_id, reason)`:
-  - Validates caller is owner/admin.
-  - For `manager/staff/trainer`: requires `branch_id`, upserts into `staff_branches`.
-  - For `owner/admin`: if caller is admin (not owner), creates pending `role_change_request` instead of direct insert.
-  - Inserts into `user_roles` (idempotent), logs `role_change_audit`.
-- `remove_user_role(target, role, reason)`:
-  - Blocks if removing the **last owner or last admin** (`SELECT count(*) FROM user_roles WHERE role=...`).
-  - Same approval gate for owner/admin removal.
-- `decide_role_change_request(request_id, approve bool, reason)` — owner-only.
-- `get_role_permission_impact(target, role, action)` — returns JSON of pages/permissions gained or lost (computed from a static mapping table) for the impact preview.
-
-### 3.2 Service + UI (`src/pages/AdminRoles.tsx`)
-
-- Replace direct supabase inserts/deletes with `roleService.assign / remove`.
-- **Assign drawer** additions:
-  - Branch selector (required for manager/staff/trainer).
-  - Reason textarea (required).
-  - **Permission impact preview** panel populated from `get_role_permission_impact` showing pages/actions the user will gain.
-  - Banner if action requires owner approval ("This change will be sent for approval").
-- Last-owner/admin guard surfaces server error toast — additionally do client-side warning when count would drop to 0.
-- New tab **Approval Queue** (owner only) listing pending `role_change_requests` with Approve/Reject + reason.
-- New tab **Audit Log** showing `role_change_audit` (actor, target, action, role, branch, reason, time).
-
----
-
-## Files
-
-**New**
-- `src/lib/brand/useBrandContext.ts`
-- `src/components/documents/DocumentActions.tsx`
-- `src/services/payrollService.ts`
-- `src/services/roleService.ts`
-- `src/pages/PayrollRunDetail.tsx`
-- `supabase/migrations/<ts>_branded_payroll_roles.sql`
-
-**Modified**
-- `src/utils/pdfBlob.ts` (expanded; becomes the single PDF entry point)
-- Delete usage of `src/utils/pdfGenerator.ts` (file kept only as thin re-export shim or removed)
-- `src/pages/Invoices.tsx`, `src/pages/MyInvoices.tsx`, `src/components/invoices/InvoiceViewDrawer.tsx`, `src/pages/Payments.tsx`
-- `src/pages/MyWorkout.tsx`, `src/pages/MyDiet.tsx`
-- `src/pages/HRM.tsx`, `src/pages/TrainerEarnings.tsx`
-- `src/pages/AdminRoles.tsx`
-- `src/App.tsx` (route for payroll run detail)
-
----
-
-## Out of scope
-
-- Payment gateway integration for actual salary disbursal (only marks status `paid` with method + reference).
-- Multi-currency PDFs (INR only).
-- Bulk re-issuing historical invoices in new branded format (new downloads only).
+## Out of V1 scope (explicit)
+Active-active replication, automatic DNS failover, logical replication to B, Cloudflare WAF write blocking, edge-function pg_dump.
