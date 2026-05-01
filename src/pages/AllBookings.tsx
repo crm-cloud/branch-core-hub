@@ -32,6 +32,18 @@ export default function AllBookingsPage() {
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
   const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
 
+  // Cmd+K: ?facility=1 / ?class=1 open the concierge drawer; ?focus handled by useHighlightRow
+  useHighlightRow();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('facility') === '1' || url.searchParams.get('class') === '1') {
+      setConciergeOpen(true);
+      url.searchParams.delete('facility');
+      url.searchParams.delete('class');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   // Fetch class bookings
   const { data: classBookings = [], isLoading: loadingClasses } = useQuery({
     queryKey: ['all-class-bookings', branchId, dateFilter],

@@ -44,6 +44,16 @@ export default function PaymentsPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [duesOpen, setDuesOpen] = useState(true);
 
+  // Cmd+K: ?new=1 opens Record Payment
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setRecordPaymentOpen(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const isAdminOrOwner = roles?.some((r: any) => ['admin', 'owner'].includes(typeof r === 'string' ? r : r?.role));
 
   const { data: memberSearchResults = [] } = useQuery({

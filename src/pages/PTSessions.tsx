@@ -46,6 +46,16 @@ export default function PTSessionsPage() {
     duration_minutes: 60,
   });
 
+  // Cmd+K: ?new=1 opens Create PT Package
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('new') === '1') {
+      setIsCreatePackageOpen(true);
+      url.searchParams.delete('new');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const branchId = effectiveBranchId || "";
   // branchFilter is undefined when "All Branches" is selected — pass undefined to fetch all
   const queryBranchId = branchFilter || undefined;
