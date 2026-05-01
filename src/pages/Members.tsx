@@ -43,6 +43,15 @@ export default function MembersPage() {
   const [page, setPage] = useState(0);
   const { selectedBranch, setSelectedBranch, effectiveBranchId, branchFilter, branches } = useBranchContext();
 
+  // Deep-link actions from Cmd+K command center
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const stripParam = (k: string) => { url.searchParams.delete(k); window.history.replaceState({}, '', url.toString()); };
+    if (url.searchParams.get('new') === '1') { setAddMemberOpen(true); stripParam('new'); }
+    if (url.searchParams.get('sell') === '1') { setPurchaseOpen(true); stripParam('sell'); }
+    if (url.searchParams.get('renew') === '1') { setPurchaseOpen(true); stripParam('renew'); }
+  }, []);
+
   // Deep-link: /members?member=<id> auto-opens the member profile drawer.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
