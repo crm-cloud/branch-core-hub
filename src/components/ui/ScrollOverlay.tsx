@@ -7,7 +7,16 @@ const ScrollOverlay = () => {
   return (
     <div className="w-full">
       <div className="fixed top-6 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 z-50">
-        <img src={inclineLogo} alt="INCLINE" className="h-16 sm:h-20 md:h-28 w-auto brightness-0" />
+        <img
+          src={inclineLogo}
+          alt="INCLINE"
+          width={224}
+          height={128}
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          className="h-16 sm:h-20 md:h-28 w-auto brightness-0"
+        />
       </div>
 
       {/* Section 1: Hero */}
