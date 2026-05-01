@@ -86,7 +86,7 @@ export const lockerService = {
     return data;
   },
 
-  // Assign locker to member (atomic via RPC: locker status flip + assignment + invoice)
+  // Assign locker to member (atomic via assign_locker_with_billing RPC: row lock + status flip + assignment + GST invoice)
   async assignLocker(assignment: {
     locker_id: string;
     member_id: string;
@@ -95,8 +95,10 @@ export const lockerService = {
     fee_amount?: number;
     billing_months?: number;
     chargeable?: boolean;
+    gst_rate?: number;
+    received_by?: string;
   }) {
-    const { data, error } = await supabase.rpc('assign_locker_with_invoice', {
+    const { data, error } = await (supabase.rpc as any)('assign_locker_with_billing', {
       p_locker_id: assignment.locker_id,
       p_member_id: assignment.member_id,
       p_start_date: assignment.start_date,
@@ -104,33 +106,21 @@ export const lockerService = {
       p_fee_amount: assignment.fee_amount ?? 0,
       p_billing_months: assignment.billing_months ?? 1,
       p_chargeable: !!assignment.chargeable && (assignment.fee_amount ?? 0) > 0,
+      p_gst_rate: assignment.gst_rate ?? null,
+      p_received_by: assignment.received_by ?? null,
     });
     if (error) throw error;
-    const result = data as { success: boolean; error?: string; assignment_id?: string; invoice_id?: string | null };
-    if (!result?.success) throw new Error(result?.error || 'Failed to assign locker');
-    return result;
+    return data as { assignment_id: string; invoice_id: string | null; locker_id: string; branch_id: string };
   },
 
-  // Release locker
-  async releaseLocker(assignmentId: string, lockerId: string) {
-    const { error: assignError } = await supabase
-      .from('locker_assignments')
-      .update({ 
-        is_active: false,
-        end_date: new Date().toISOString().split('T')[0],
-      })
-      .eq('id', assignmentId);
-
-    if (assignError) throw assignError;
-
-    const { error: lockerError } = await supabase
-      .from('lockers')
-      .update({ status: 'available' as LockerStatus })
-      .eq('id', lockerId);
-
-    if (lockerError) throw lockerError;
-
-    return { success: true };
+  // Release locker (atomic via release_locker RPC: locks assignment + locker, closes both)
+  async releaseLocker(assignmentId: string, _lockerId?: string) {
+    const { data, error } = await (supabase.rpc as any)('release_locker', {
+      p_assignment_id: assignmentId,
+      p_release_date: new Date().toISOString().split('T')[0],
+    });
+    if (error) throw error;
+    return { success: true, ...(data as any) };
   },
 
   // Get member's active locker assignment
