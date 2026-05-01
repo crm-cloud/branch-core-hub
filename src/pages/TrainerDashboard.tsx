@@ -19,6 +19,46 @@ export default function TrainerDashboard() {
   const { profile } = useAuth();
   const { trainer, generalClients, ptClients, todaySessions, myClasses, isLoading } = useTrainerData();
 
+  // Earnings this month — uses same logic as TrainerEarnings page (sessions × hourly rate + commissions)
+  const monthStart = startOfMonth(new Date()).toISOString();
+  const monthEnd = endOfMonth(new Date()).toISOString();
+
+  const { data: monthEarnings } = useQuery({
+    queryKey: ['trainer-dashboard-earnings', trainer?.id, monthStart],
+    enabled: !!trainer,
+    queryFn: async () => {
+      const { data: sessions } = await supabase
+        .from('pt_sessions')
+        .select('id')
+        .eq('trainer_id', trainer!.id)
+        .eq('status', 'completed')
+        .gte('scheduled_at', monthStart)
+        .lte('scheduled_at', monthEnd);
+
+      const completedCount = sessions?.length || 0;
+      const sessionRate = (trainer as any)?.hourly_rate || 0;
+      const sessionsEarn = completedCount * sessionRate;
+
+      let commissionsTotal = 0;
+      try {
+        const { data: comms } = await supabase
+          .from('trainer_commissions' as any)
+          .select('amount')
+          .eq('trainer_id', trainer!.id)
+          .gte('release_date', monthStart.split('T')[0])
+          .lte('release_date', monthEnd.split('T')[0]);
+        commissionsTotal = (comms || []).reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+      } catch { /* table may not exist in some envs */ }
+
+      return {
+        completedSessions: completedCount,
+        estimated: sessionsEarn + commissionsTotal,
+        sessionsEarn,
+        commissionsTotal,
+      };
+    },
+  });
+
   if (isLoading) {
     return (
       <AppLayout>
