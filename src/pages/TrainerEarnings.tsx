@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { useTrainerData } from '@/hooks/useMemberData';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { generatePayslipPDF } from '@/utils/pdfGenerator';
+import { buildPayslipPdf, downloadBlob } from '@/utils/pdfBlob';
+import { useBrandContext } from '@/lib/brand/useBrandContext';
 import {
   Wallet, TrendingUp, Calendar, DollarSign, CheckCircle,
   Clock, AlertCircle, User, Download
@@ -95,24 +96,24 @@ export default function TrainerEarnings() {
 
   const isLoading = trainerLoading || sessionsLoading;
 
+  const { data: brand } = useBrandContext((trainer as any)?.branch_id || null);
+
   const handleDownloadPayslip = () => {
-    if (!trainer) return;
-    generatePayslipPDF({
-      employeeName: profile?.full_name || 'Trainer',
-      employeeCode: (trainer as any)?.employee_code || trainer.id.slice(0, 8),
-      month: format(monthDate, 'MMMM yyyy'),
-      baseSalary,
-      daysPresent: totalSessionsCompleted,
-      workingDays: 26,
-      proRatedPay: baseSalary,
-      ptCommission: estimatedEarnings + totalCommissions,
-      grossPay,
-      pfDeduction,
-      netPay,
-      department: 'Training',
-      position: 'Personal Trainer',
-      companyName: (trainer as any)?.branch?.name || 'Gym',
-    });
+    if (!trainer || !brand) return;
+    const blob = buildPayslipPdf({
+      employee_name: profile?.full_name || 'Trainer',
+      employee_code: (trainer as any)?.employee_code || trainer.id.slice(0, 8),
+      designation: 'Personal Trainer',
+      period_label: format(monthDate, 'MMMM yyyy'),
+      period_start: monthStart.split('T')[0],
+      period_end: monthEnd.split('T')[0],
+      attendance: { present: totalSessionsCompleted, payable_days: totalSessionsCompleted, total_days: 26, monthly_salary: baseSalary },
+      earnings: { base: baseSalary, pt_commission: estimatedEarnings + totalCommissions, ot: 0, bonus: 0 },
+      deductions: { deductions: pfDeduction, advance: 0, penalty: 0 },
+      gross: grossPay,
+      net: netPay,
+    }, brand);
+    downloadBlob(blob, `Payslip_${format(monthDate, 'yyyy-MM')}.pdf`);
   };
 
   if (isLoading) {
