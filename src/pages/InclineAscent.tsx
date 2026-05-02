@@ -5,7 +5,10 @@ import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import SEO from '@/components/seo/SEO';
 import { PUBLIC_BRANCHES, PUBLIC_FAQS } from '@/config/publicSite';
-import inclineLogo from '@/assets/incline-logo.png';
+
+// Logo lives in /public so it can be preloaded from index.html with a stable
+// path (Vite hashes anything under /src/assets, which breaks <link rel="preload">).
+const INCLINE_LOGO = '/incline-logo.png';
 
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
 // main thread during initial paint. This dramatically reduces Max Potential FID.
@@ -18,12 +21,21 @@ const InclineAscent = () => {
   const { handleScrollProgress } = useSoundEffects({ enabled: true });
 
   // Defer mounting the 3D scene until (a) the browser is idle and (b) the
-  // hero section is on-screen. Both gates exist so we never block the LCP
-  // image / static H1 on a multi-MB GPU pipeline.
+  // hero section is on-screen. On low-end mobiles we further defer until the
+  // user actually engages (scroll/touch), so phones get instant static paint.
   useEffect(() => {
     let cancelled = false;
     const target = interactionRootRef.current;
     if (!target) return;
+
+    // Honor reduced-motion: never mount the 3D scene.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    const isLowEndMobile =
+      window.innerWidth < 768 &&
+      (navigator.hardwareConcurrency ?? 8) <= 4;
 
     const idleMount = () => {
       if (cancelled) return;
@@ -33,6 +45,27 @@ const InclineAscent = () => {
       if (idle) idle(() => !cancelled && setMountScene(true), { timeout: 1200 });
       else window.setTimeout(() => !cancelled && setMountScene(true), 200);
     };
+
+    // Low-end mobile: wait for first user interaction instead of idle.
+    if (isLowEndMobile) {
+      const onEngage = () => {
+        if (cancelled) return;
+        cleanup();
+        idleMount();
+      };
+      const cleanup = () => {
+        window.removeEventListener('scroll', onEngage);
+        window.removeEventListener('touchstart', onEngage);
+        window.removeEventListener('pointerdown', onEngage);
+      };
+      window.addEventListener('scroll', onEngage, { once: true, passive: true });
+      window.addEventListener('touchstart', onEngage, { once: true, passive: true });
+      window.addEventListener('pointerdown', onEngage, { once: true, passive: true });
+      return () => {
+        cancelled = true;
+        cleanup();
+      };
+    }
 
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver(
