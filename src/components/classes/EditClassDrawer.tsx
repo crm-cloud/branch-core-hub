@@ -77,15 +77,34 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
       toast.error('Please fill in required fields');
       return;
     }
+    if (mode === 'benefit' && !formData.benefit_type_id) {
+      toast.error('Select which benefit unlocks this class');
+      return;
+    }
+    if (mode === 'paid' && (!formData.price || formData.price <= 0)) {
+      toast.error('Enter a workshop price greater than 0');
+      return;
+    }
 
     try {
       await updateClass.mutateAsync({
         classId: classData.id,
         updates: {
-          ...formData,
+          name: formData.name,
+          description: formData.description,
+          capacity: formData.capacity,
+          duration_minutes: formData.duration_minutes,
+          class_type: formData.class_type,
+          is_active: formData.is_active,
           trainer_id: formData.trainer_id || null,
           scheduled_at: new Date(formData.scheduled_at).toISOString(),
-        },
+          benefit_type_id: mode === 'benefit' ? formData.benefit_type_id : null,
+          requires_benefit: mode === 'benefit' ? formData.requires_benefit : false,
+          is_paid: mode === 'paid',
+          price: mode === 'paid' ? formData.price : 0,
+          gst_rate: mode === 'paid' ? formData.gst_rate : 0,
+          is_gst_inclusive: mode === 'paid' ? formData.is_gst_inclusive : true,
+        } as any,
       });
       toast.success('Class updated successfully');
       onOpenChange(false);
