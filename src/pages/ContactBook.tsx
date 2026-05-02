@@ -56,6 +56,7 @@ export default function ContactBookPage() {
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [form, setForm] = useState<ContactInput>(empty(effectiveBranchId || ''));
   const [deleteTarget, setDeleteTarget] = useState<ContactRow | null>(null);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ['contacts', selectedBranch],
