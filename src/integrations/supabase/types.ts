@@ -10997,20 +10997,36 @@ export type Database = {
         }
         Returns: Json
       }
-      create_manual_invoice: {
-        Args: {
-          p_branch_id: string
-          p_customer_gstin?: string
-          p_discount_amount?: number
-          p_due_date?: string
-          p_gst_rate?: number
-          p_include_gst?: boolean
-          p_items: Json
-          p_member_id: string
-          p_notes?: string
-        }
-        Returns: Json
-      }
+      create_manual_invoice:
+        | {
+            Args: {
+              p_branch_id: string
+              p_customer_gstin?: string
+              p_discount_amount?: number
+              p_due_date?: string
+              p_gst_rate?: number
+              p_include_gst?: boolean
+              p_items: Json
+              p_member_id: string
+              p_notes?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_branch_id: string
+              p_customer_gstin?: string
+              p_discount_amount?: number
+              p_due_date?: string
+              p_gst_inclusive?: boolean
+              p_gst_rate?: number
+              p_include_gst?: boolean
+              p_items: Json
+              p_member_id: string
+              p_notes?: string
+            }
+            Returns: Json
+          }
       create_pos_sale: {
         Args: {
           p_awaiting_payment?: boolean

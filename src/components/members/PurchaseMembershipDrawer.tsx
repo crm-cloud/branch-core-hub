@@ -155,17 +155,37 @@ export function PurchaseMembershipDrawer({
     },
   });
 
-  const calculateGstAmount = () => {
-    if (!includeGst || !selectedPlan) return 0;
-    const base = (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0) - discountAmount;
-    return Math.round(base * (gstRate / 100));
-  };
+  // Plan price + admission is the *gross* (consumer-facing) amount the member pays.
+  // GST inclusive plans (default): tax is extracted out of the gross — total stays the same
+  //   regardless of whether the cashier ticks "Tax invoice".
+  // GST exclusive plans (legacy): tax is added on top.
+  const isPlanGstInclusive = (selectedPlan as any)?.is_gst_inclusive !== false;
 
-  const calculateTotal = () => {
+  const calculateGross = () => {
     if (!selectedPlan) return 0;
     const base = selectedPlan.discounted_price || selectedPlan.price;
     const admission = selectedPlan.admission_fee || 0;
-    return base + admission - discountAmount + calculateGstAmount();
+    return Math.max(base + admission - discountAmount, 0);
+  };
+
+  const calculateGstAmount = () => {
+    if (!includeGst || !selectedPlan || !gstRate) return 0;
+    const gross = calculateGross();
+    if (isPlanGstInclusive) {
+      // Extract: gross = base * (1 + r/100)  =>  tax = gross - gross/(1+r/100)
+      const taxable = Math.round((gross / (1 + gstRate / 100)) * 100) / 100;
+      return Math.round((gross - taxable) * 100) / 100;
+    }
+    return Math.round(gross * (gstRate / 100) * 100) / 100;
+  };
+
+  const calculateTotal = () => {
+    const gross = calculateGross();
+    if (!includeGst || isPlanGstInclusive) {
+      // Inclusive plans: total = gross. Receipt vs tax invoice only changes the breakdown.
+      return gross;
+    }
+    return gross + calculateGstAmount();
   };
 
   const calculateEndDate = () => {
@@ -389,7 +409,7 @@ export function PurchaseMembershipDrawer({
               <Card className="bg-muted/50">
                 <CardContent className="pt-4 space-y-2">
                   <div className="flex justify-between">
-                    <span>Plan Price</span>
+                    <span>Plan Price{isPlanGstInclusive ? ' (incl. GST)' : ''}</span>
                     <span>₹{selectedPlan.discounted_price || selectedPlan.price}</span>
                   </div>
                   {selectedPlan.admission_fee > 0 && (
@@ -406,6 +426,10 @@ export function PurchaseMembershipDrawer({
                   )}
                   {includeGst && (
                     <>
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Taxable value</span>
+                        <span>₹{(calculateTotal() - calculateGstAmount()).toLocaleString()}</span>
+                      </div>
                       <div className="flex justify-between text-sm">
                         <span>CGST ({gstRate / 2}%)</span>
                         <span>₹{(calculateGstAmount() / 2).toLocaleString()}</span>
@@ -417,28 +441,40 @@ export function PurchaseMembershipDrawer({
                     </>
                   )}
                   <div className="flex justify-between font-bold border-t pt-2">
-                    <span>Total</span>
+                    <span>Total Payable</span>
                     <span className="flex items-center">
                       <IndianRupee className="h-4 w-4" />
                       {calculateTotal()}
                     </span>
                   </div>
+                  {isPlanGstInclusive && (
+                    <p className="text-[11px] text-muted-foreground pt-1">
+                      Plan is GST-inclusive. Total stays the same whether you issue a tax invoice or a receipt — only the invoice breakdown changes.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* GST Toggle (back-office only) */}
+              {/* Invoice Type (back-office only) */}
               {!isMemberMode && (
                 <Card className="border-dashed">
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <Label htmlFor="gst-toggle" className="cursor-pointer">GST Invoice</Label>
-                        <p className="text-xs text-muted-foreground">Enable to generate a tax invoice</p>
+                        <Label htmlFor="gst-toggle" className="cursor-pointer">Tax Invoice (GST breakup)</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Off = simple receipt, no tax breakup. {isPlanGstInclusive ? 'Member pays the same either way.' : 'GST will be added on top.'}
+                        </p>
                       </div>
                       <Switch
                         id="gst-toggle"
                         checked={includeGst}
-                        onCheckedChange={setIncludeGst}
+                        onCheckedChange={(v) => {
+                          setIncludeGst(v);
+                          // When turning on, default to the plan's configured rate.
+                          const planRate = (selectedPlan as any)?.gst_rate;
+                          if (v && planRate) setGstRate(Number(planRate));
+                        }}
                       />
                     </div>
                     {includeGst && (
