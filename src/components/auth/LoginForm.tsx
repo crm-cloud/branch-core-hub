@@ -8,11 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Loader2, Mail, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail, Lock, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+
+const GoogleIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.66 4.1-5.5 4.1-3.31 0-6-2.74-6-6.1S8.69 6 12 6c1.88 0 3.14.8 3.86 1.49l2.63-2.54C16.85 3.42 14.62 2.5 12 2.5 6.76 2.5 2.5 6.76 2.5 12s4.26 9.5 9.5 9.5c5.49 0 9.12-3.86 9.12-9.29 0-.62-.07-1.1-.16-1.51H12z"/>
+    <path fill="#34A853" d="M3.88 7.36l3.2 2.35C7.94 7.7 9.8 6 12 6c1.88 0 3.14.8 3.86 1.49l2.63-2.54C16.85 3.42 14.62 2.5 12 2.5 8.24 2.5 5.01 4.62 3.88 7.36z" opacity=".0"/>
+    <path fill="none" d="M0 0h24v24H0z"/>
+  </svg>
+);
 
 const passwordLoginSchema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -155,18 +163,56 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     }
   };
 
+  const handleGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/home` },
+      });
+      if (error) throw error;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Google sign-in failed');
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      {/* Mode toggle — persists across both modes so user always sees both options */}
-      <div className="flex rounded-xl bg-muted/60 p-1 gap-1">
+      {/* Header (always visible at top of card) */}
+      <div className="space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Welcome back</h2>
+        <p className="text-sm text-slate-500">Sign in to your Incline account to continue</p>
+      </div>
+
+      {/* Google sign-in */}
+      <button
+        type="button"
+        onClick={handleGoogle}
+        disabled={isLoading}
+        data-testid="btn-google"
+        className="group w-full h-12 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 text-sm font-semibold text-slate-700 transition-all shadow-sm hover:shadow-md disabled:opacity-60"
+      >
+        <GoogleIcon className="h-5 w-5" />
+        Continue with Google
+      </button>
+
+      <div className="relative flex items-center">
+        <div className="flex-1 h-px bg-slate-200" />
+        <span className="px-3 text-[11px] uppercase tracking-wider text-slate-400 font-medium">or use email</span>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
+      {/* Mode toggle */}
+      <div className="flex rounded-xl bg-slate-100 p-1 gap-1">
         <button
           type="button"
           data-testid="tab-password"
           onClick={() => switchMode('password')}
           className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
             mode === 'password'
-              ? 'bg-card shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'bg-white shadow-sm text-slate-900'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Password
@@ -177,8 +223,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           onClick={() => switchMode('email_code')}
           className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
             mode === 'email_code'
-              ? 'bg-card shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'bg-white shadow-sm text-slate-900'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Email code
@@ -188,10 +234,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       {/* ── PASSWORD MODE ── */}
       {mode === 'password' && (
         <div className="space-y-4">
-          <div className="space-y-0.5">
-            <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
-            <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
-          </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handlePasswordSubmit)} className="space-y-3.5">
