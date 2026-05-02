@@ -63,3 +63,19 @@ See `docs/dr-runbook.md`. Last drill: not yet completed. Acceptance criteria rec
 
 - RPO: 24h (nightly CLI backup) **or** ≤ 5 min if PITR is enabled on Project A — confirm PITR plan and update this doc accordingly.
 - RTO: target ≤ 60 min for full failover (provision, restore, verify, switch DNS / app-config).
+
+## Wave 3 — P0.2 / P0.3 / P1.1 (delivered 2026-05-02)
+
+| Area | Item | Status |
+|---|---|---|
+| Atomicity | `create_manual_invoice` RPC + service refactor + drawer refactor | ✅ shipped |
+| Atomicity | `bill_locker_period` RPC for renewal billing | ✅ shipped |
+| Atomicity | Legacy `purchaseMembership()` collapsed onto `purchase_member_membership` RPC | ✅ shipped |
+| Atomicity | `lockerService.createLockerInvoice` now uses `create_manual_invoice` RPC | ✅ shipped |
+| CI guard | Extended to `invoice_items`, `locker_assignments`, `membership_freeze_history` | ✅ shipped |
+| Branch scoping | `fetchTemplates`, `fetchCommunicationLogs`, `fetchDevices` — `branchId` is now required (fail-closed); explicit owner-mode escape hatches | ✅ shipped |
+| Branch scoping | RLS overlay on `templates`, `communication_logs`, `messages`, `access_devices`, `biometric_sync_queue` requires `is_branch_member(branch_id)` for non-privileged roles | ✅ shipped |
+| Resilience | `useRequiredBranch()` hook returns `{loading|unavailable|ready}` so restricted roles render a "Select a branch" empty state instead of issuing unscoped queries | ✅ shipped |
+| Discoverability | `/equipment` and `/book-benefit` added to menu; intentionally-hidden routes documented | ✅ shipped — `docs/route-topology.md` |
+
+**Score after wave 3:** 8.7 / 10 (target met).
