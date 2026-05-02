@@ -154,6 +154,14 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-muted-foreground/50;
   }
+
+  /* Public landing — floating background words drift gently. GPU-only
+     transform + opacity so it doesn't compete with the WebGL canvas. */
+  @keyframes inclineFloat {
+    0%   { transform: translate3d(0, 0, 0)     rotate(0deg); }
+    50%  { transform: translate3d(0, -18px, 0) rotate(0.5deg); }
+    100% { transform: translate3d(0, 8px, 0)   rotate(-0.5deg); }
+  }
 }
 
 @layer components {
