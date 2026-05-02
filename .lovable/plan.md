@@ -1,88 +1,82 @@
-## Issues to fix
+# Invoice WhatsApp + Live Feed + Contact Book — Plan
 
-1. **Logo crops to a square thumbnail.** Wide/rectangular logos (like the INCLINE wordmark) get clipped because the preview uses `h-24 w-24 object-cover`.
-2. **Per-branch logos cause "uuid" / 'all' error.** When a specific branch is selected and you upload, the code still upserts the global row (`branch_id: null`), or — if we naively pass `selectedBranch` — the literal string `"all"` is sent into a `uuid` column and Postgres rejects it.
-3. **No branch-aware logo concept.** Today there is one global logo. We want: an optional override per branch, with **fallback to the organization (global) logo** when a branch hasn't uploaded its own.
-4. **Naming.** "Gym Logo" should become **"Brand Logo"** (clearer for multi-branch SaaS context).
+## Diagnosis
 
-The DB schema already supports this cleanly — `organization_settings` has `branch_id` with a unique constraint, so one global row (`branch_id IS NULL`) plus one row per branch is the natural model. No migration needed.
+When you shared the invoice PDF, it went out via `sendWhatsAppDocument` which writes **directly** to `whatsapp_messages` and calls `send-whatsapp`. It **bypasses** `dispatch-communication`, so:
 
-## UX (Organization Settings → Brand Logo card)
+1. **No `communication_logs` row** → no entry in Live Feed, no funnel count in System Health.
+2. **PDF appears as plain text bubble** in WhatsApp Chat, because the chat renderer only special-cases `image` / `template`; for `document` it just shows the caption with a tiny `[document]` chip — no PDF preview, no download link.
+3. **"+919928910901"** shows because the WhatsApp Chat thread list (and contact card) only resolves names from `members` matched on `phone_number`. If the member's stored phone differs (e.g. no `+91`, or a different format), or they exist only as a lead, the lookup fails and the raw number is shown.
+4. The "Member" badge in your screenshot proves the row is linked to a member — but the **profile name** isn't being read from the joined `profiles.full_name`.
 
-Rename card title to **"Brand Logo"**, description: *"Upload your brand logo. Recommended: SVG, transparent background, max 5MB."*
+This violates our Core memory rule: *"All NEW outbound Email/SMS/WhatsApp/in-app code MUST call `dispatchCommunication()`."* Invoice share was written before that rule and was never migrated.
 
-Behavior depends on the branch selector at the top of the app:
+---
 
-- **All Branches selected** (or user only has access to one) → editing the **Organization (default) logo**. Helper text: *"This logo is used everywhere unless a branch overrides it."*
-- **A specific branch selected** → editing **that branch's logo override**. Show:
-  - A small badge: *"Editing logo for: {Branch Name}"*
-  - Current preview shows the branch's own logo if set, otherwise the org logo (greyed with an "Inherited from organization" chip).
-  - A **"Remove override"** button (instead of plain "Remove") which clears only the branch's `logo_url` and falls back to the org logo.
-  - A **"Use organization logo"** quick action when no branch override exists yet (no-op visual hint).
+## Plan
 
-## Visual fixes (cropping)
+### 1. Route invoice WhatsApp through `dispatch-communication`
 
-Replace the square cropping preview with a responsive logo plate:
+- Extend `dispatch-communication` to accept an optional `attachment` field:
+  `{ url: string, filename: string, content_type: 'application/pdf' | ... }`.
+- When present and channel is `whatsapp`, forward `message_type='document'`, `media_url`, `filename`, `caption=body` to `send-whatsapp` (it already supports this).
+- Persist `attachment` into a new `communication_logs.metadata.attachment` jsonb field so Live Feed can render a paperclip + filename + open-link.
+- Refactor `sendWhatsAppDocument` to upload the PDF to storage, then call `dispatchCommunication({ channel:'whatsapp', category:'payment_receipt', attachment:{url,filename}, dedupe_key:`invoice-${invoice.id}-wa` })`. Drop the direct `whatsapp_messages` insert — `send-whatsapp` already creates that row.
+- Same migration for `sendPlanToMember` and any other caller of `sendWhatsAppDocument`.
 
-- Container: `h-20 w-40 rounded-xl border bg-muted/40 p-2 flex items-center justify-center` (wider, fits wordmarks).
-- Image: `max-h-full max-w-full object-contain` (NEVER `object-cover` for logos).
-- Show a subtle checkered/grid background (`bg-[radial-gradient(...)]` or just `bg-muted/40`) so transparent SVGs are visible.
-- Drag/drop zone keeps its current style; sits to the right of the preview on `md+`, stacks on mobile.
+Result: invoice PDF send appears in **Live Feed** with status progressing `sent → delivered → read`, counted in **System Health → Communication Funnel**, and dedupe protects against double-clicks.
 
-## Data layer
+### 2. Render PDFs properly in WhatsApp Chat bubble
 
-Single query keyed by branch:
+In `WhatsAppChat.tsx` message renderer:
+- For `message_type === 'document'`: show a card with PDF icon, filename (parsed from `media_url` or stored separately), file-size if available, and an "Open" button that links to `media_url` in a new tab (or downloads).
+- For `image`: render the actual `<img>` thumbnail (today it just shows a `Photo` chip).
+- Keep caption text below the attachment card.
 
-```ts
-const { selectedBranch } = useBranchContext(); // 'all' | uuid
-const branchScope = selectedBranch !== 'all' ? selectedBranch : null;
+### 3. Fix member name resolution in chat
 
-useQuery(['organization-settings', branchScope ?? 'global'], async () => {
-  const q = supabase.from('organization_settings').select('*');
-  const { data } = branchScope
-    ? await q.eq('branch_id', branchScope).maybeSingle()
-    : await q.is('branch_id', null).maybeSingle();
-  return data;
-});
-```
+- In the thread list and chat header, fall back through:
+  1. `messages.member_id → members → profiles.full_name`
+  2. Match `phone_number` against `members.profiles.phone` **after normalizing both** to `+91XXXXXXXXXX` (strip spaces, leading `0`, ensure `+91` prefix).
+  3. Match against `leads.phone` (same normalization) → show `Lead: <name>`.
+  4. Otherwise show `Unknown · <phone>`.
+- Apply same resolver to the right-hand contact card so it stops showing "Unknown contact" when the row already has `member_id` set.
 
-Also fetch the global row separately (only when `branchScope` is set) to drive the "Inherited from organization" preview fallback.
+### 4. Polish unknown-contact UI
 
-Upload mutation:
+- Replace the green `+` avatar with member initials (or a generic user icon for true unknowns).
+- Show name as the primary line, phone as secondary muted line.
+- Add a small "Save as Contact" button on the contact card for unknown numbers (ties into Contact Book — see §5).
 
-1. Compute `branchScope` (uuid or `null`). **Never** pass the string `'all'`.
-2. Storage path is namespaced so branches don't collide:
-   - Global: `org/logo-{ts}.{ext}`
-   - Branch: `branches/{branchId}/logo-{ts}.{ext}`
-3. Upsert into `organization_settings`:
-   - If a row already exists for that scope → `update({ logo_url }).eq('id', existing.id)`.
-   - Else → `insert({ branch_id: branchScope, logo_url, ...defaults })`. The unique constraint on `branch_id` keeps this one-row-per-scope.
-4. After success: invalidate both `['organization-settings', branchScope ?? 'global']` and `['brand-context', branchScope ?? 'global']` so headers/PDFs pick up the new logo.
+### 5. Contact Book — recommendation
 
-Remove logo:
+**Yes, add a lightweight Contact Book.** Use case:
 
-- Global scope → `update({ logo_url: null })` on the global row.
-- Branch scope → `update({ logo_url: null })` on the branch row (label this **"Remove override"**). The branch will then visually inherit the org logo.
+- Vendors, prospects, ex-members, walk-ins, partners, suppliers — people you message but who aren't members or active leads.
+- Today every unknown number shows as `+91xxxxxxxxxx` forever; staff can't tag them with a name or note.
+- Lets staff **start a chat from a name**, not just reply to inbound numbers.
 
-Save mutation for the other fields (name/timezone/etc.) keeps writing to the **global** row only — those remain organization-wide. The form panel below the logo gets a small note: *"Organization-wide settings (apply to all branches)."* and is disabled when a branch is selected, with a hint "Switch to All Branches to edit organization details."
+**Scope (minimal):**
+- New table `contacts` (`id, branch_id, name, phone, email, tags text[], notes, created_by, created_at`).
+- New page **Marketing → Contact Book**: searchable list, "Add Contact" sheet (right drawer), bulk import via CSV, "Start WhatsApp" / "Start SMS" actions.
+- Chat name resolver (§3) gets a 4th fallback to `contacts` before "Unknown".
+- "Save as Contact" button on unknown chats one-click pre-fills the sheet.
+- RLS: branch-scoped; staff can read/write within their branch.
 
-## Brand context wiring
+This is non-trivial; ship §1–§4 first, then §5 in a follow-up so you can validate the dispatcher flow before adding the Contact Book UI.
 
-Update `src/lib/brand/useBrandContext.ts` so PDFs/headers reflect the per-branch logo:
-
-- When `branchId` is provided, also fetch `organization_settings` for that branch (`logo_url` only).
-- Fall back to the global row's `logo_url` when the branch row has none.
-- Expose the resolved `logoUrl` in `BrandContext` (already a field) — no API change needed at call sites.
-
-`AppHeader` already reads org settings for its left-side brand; update its query to use the branch-aware resolver (org logo when no branch selected, branch logo when a specific branch is selected). Out of scope for this round if it adds risk — note as a follow-up but keep using the global logo there for now.
+---
 
 ## Files to change
 
-- `src/components/settings/OrganizationSettings.tsx` — rename card, branch-aware queries/mutations, fixed preview (no crop), branch override UX, disable org-wide form fields when a branch is selected.
-- `src/lib/brand/useBrandContext.ts` — branch-aware `logoUrl` resolution with fallback to global.
+- `supabase/functions/dispatch-communication/index.ts` — add `attachment` passthrough, store in `metadata`.
+- `src/utils/whatsappDocumentSender.ts` — re-route through dispatcher.
+- `src/utils/sendPlanToMember.ts` — same refactor.
+- `src/pages/WhatsAppChat.tsx` — document/image bubble renderer + name resolver.
+- `src/components/communications/LiveFeed.tsx` — render attachment chip when `metadata.attachment` present.
+- *(Phase 2)* migration `contacts` table + RLS, `src/pages/ContactBook.tsx`, menu entry under Marketing.
 
 ## Out of scope
 
-- No DB migration (schema already supports it).
-- No changes to `AppHeader` logo source in this round — flagged as a follow-up.
-- No bulk "copy logo to all branches" tool.
+- Changing WhatsApp delivery webhook plumbing (already works for documents once routed via dispatcher).
+- Migrating other historical direct-write callers found by the CI guard — only invoice + plan sender for this round.
