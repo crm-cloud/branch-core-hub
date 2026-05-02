@@ -249,8 +249,19 @@ export default function EquipmentMaintenancePage() {
 
           <TabsContent value="equipment" className="mt-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>All Equipment</CardTitle>
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name, brand, model, serial, category, or location…"
+                    className="pl-9"
+                    aria-label="Search equipment"
+                  />
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
