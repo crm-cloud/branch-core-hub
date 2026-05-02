@@ -10387,6 +10387,7 @@ export type Database = {
         }
         Returns: Json
       }
+      current_branch: { Args: never; Returns: string }
       decide_role_change_request: {
         Args: {
           p_approve: boolean
@@ -10396,6 +10397,10 @@ export type Database = {
         Returns: Json
       }
       dr_is_operational: { Args: never; Returns: boolean }
+      enforce_branch_match: {
+        Args: { p_branch_id: string }
+        Returns: undefined
+      }
       ensure_facility_slots: {
         Args: { p_branch_id: string; p_end_date: string; p_start_date: string }
         Returns: undefined
@@ -10459,6 +10464,7 @@ export type Database = {
         Args: { _equipment_no: string }
         Returns: undefined
       }
+      is_branch_member: { Args: { p_branch_id: string }; Returns: boolean }
       is_dr_readonly: { Args: never; Returns: boolean }
       issue_referral_reward: {
         Args: {
