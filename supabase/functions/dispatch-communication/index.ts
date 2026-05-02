@@ -1,5 +1,6 @@
-// dispatch-communication v1.0.0
+// dispatch-communication v1.1.0
 // Canonical outbound communication funnel.
+// v1.1.0: WhatsApp attachment passthrough (PDF / image documents).
 // All other edge functions MUST route through this instead of writing
 // communication_logs directly. Enforces:
 //   1. dedupe_key uniqueness (cron retries / webhook replays cannot double-send)
@@ -33,6 +34,12 @@ interface DispatchInput {
   dedupe_key: string;
   ttl_seconds?: number;          // dedupe lookback window, default 86400
   force?: boolean;               // bypass preferences (transactional)
+  attachment?: {                 // optional file attachment (whatsapp document/image)
+    url: string;
+    filename: string;
+    content_type?: string;       // e.g. application/pdf
+    kind?: 'document' | 'image';
+  };
 }
 
 interface DispatchResult {
