@@ -18,6 +18,7 @@ import { exportToCSV } from '@/lib/csvExport';
 import { CommunicationFunnelCard } from '@/components/system/CommunicationFunnelCard';
 import { ReconciliationFindingsCard } from '@/components/system/ReconciliationFindingsCard';
 import { WhatsAppDeliveryHealthCard } from '@/components/system/WhatsAppDeliveryHealthCard';
+import { PolicyAuditCard } from '@/components/system/PolicyAuditCard';
 
 interface ErrorLog {
   id: string;
@@ -367,6 +368,9 @@ export default function SystemHealth() {
           <ReconciliationFindingsCard />
           <WhatsAppDeliveryHealthCard />
         </div>
+
+        <PolicyAuditCard />
+
 
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader className="pb-3">
