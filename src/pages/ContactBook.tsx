@@ -51,6 +51,7 @@ export default function ContactBookPage() {
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [form, setForm] = useState<ContactInput>(empty(effectiveBranchId || ''));
@@ -65,6 +66,7 @@ export default function ContactBookPage() {
     const q = search.trim().toLowerCase();
     return contacts.filter((c) => {
       if (categoryFilter !== 'all' && c.category !== categoryFilter) return false;
+      if (sourceFilter !== 'all' && (c.source_type || 'manual') !== sourceFilter) return false;
       if (!q) return true;
       return (
         c.full_name.toLowerCase().includes(q)
@@ -73,7 +75,16 @@ export default function ContactBookPage() {
         || (c.company || '').toLowerCase().includes(q)
       );
     });
-  }, [contacts, search, categoryFilter]);
+  }, [contacts, search, categoryFilter, sourceFilter]);
+
+  const counts = useMemo(() => {
+    const c = { total: contacts.length, member: 0, lead: 0, ai: 0, manual: 0 };
+    contacts.forEach((x) => {
+      const s = (x.source_type || 'manual') as keyof typeof c;
+      if (s in c) (c as any)[s]++;
+    });
+    return c;
+  }, [contacts]);
 
   const createMutation = useMutation({
     mutationFn: (input: ContactInput) => upsertContact(input),
