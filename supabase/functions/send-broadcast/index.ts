@@ -1,4 +1,4 @@
-// v2.1.0 — Provider-agnostic broadcast; sets delivery_status terminal value so Live Feed shows correct badge
+// v3.0.0 — Unified recipients (members + leads + contacts) via dispatch-communication; per-recipient log to campaign_recipients
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
