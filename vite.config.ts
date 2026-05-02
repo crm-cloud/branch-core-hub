@@ -25,12 +25,82 @@ export default defineConfig(() => ({
     }),
   ],
   build: {
+    // Raised after vendor split lands. Charts/data vendors legitimately
+    // approach 600 KB; anything above that is a regression worth investigating.
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        // Isolate heavy 3D libs so the public landing only loads them when
-        // Scene3D is actually mounted (lazy + IO-gated).
-        manualChunks: {
-          three: ['three', '@react-three/fiber', '@react-three/drei'],
+        // Vendor-aware manual chunks. Each route only pays for what it imports;
+        // shared vendors are split into focused groups so a single page refresh
+        // doesn't redownload everything.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined;
+
+          // 3D landing page (heaviest, IO-gated)
+          if (
+            id.includes('/three/') ||
+            id.includes('@react-three/fiber') ||
+            id.includes('@react-three/drei')
+          ) return 'three';
+
+          // PDF / spreadsheet / QR — only loaded by routes that build documents
+          if (
+            id.includes('/jspdf/') ||
+            id.includes('jspdf-autotable') ||
+            id.includes('/qrcode/') ||
+            id.includes('/html2canvas/') ||
+            id.includes('/xlsx/')
+          ) return 'docs-vendor';
+
+          // Charts (recharts + d3 dependencies)
+          if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts-vendor';
+
+          // Drag & drop, carousels, animations
+          if (
+            id.includes('@hello-pangea/dnd') ||
+            id.includes('embla-carousel') ||
+            id.includes('framer-motion')
+          ) return 'motion-vendor';
+
+          // Date utilities
+          if (id.includes('/date-fns/') || id.includes('react-day-picker')) return 'date-vendor';
+
+          // Form stack
+          if (
+            id.includes('react-hook-form') ||
+            id.includes('@hookform') ||
+            id.includes('/zod/')
+          ) return 'forms-vendor';
+
+          // Data layer
+          if (
+            id.includes('@tanstack/react-query') ||
+            id.includes('@supabase/supabase-js')
+          ) return 'data-vendor';
+
+          // Radix primitives (one chunk for all radix packages)
+          if (id.includes('@radix-ui/')) return 'radix-vendor';
+
+          // Misc UI utilities frequently shared
+          if (
+            id.includes('lucide-react') ||
+            id.includes('/sonner/') ||
+            id.includes('/cmdk/') ||
+            id.includes('/vaul/') ||
+            id.includes('class-variance-authority') ||
+            id.includes('tailwind-merge') ||
+            id.includes('/clsx/')
+          ) return 'ui-vendor';
+
+          // React core
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('react-router-dom') ||
+            id.includes('react-helmet-async')
+          ) return 'react-vendor';
+
+          return undefined;
         },
       },
     },
