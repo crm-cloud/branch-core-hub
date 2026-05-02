@@ -15,6 +15,7 @@ import { Activity, AlertTriangle, CheckCircle, Copy, Sparkles, Clock, Eye, Monit
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
+import { CommunicationFunnelCard } from '@/components/system/CommunicationFunnelCard';
 
 interface ErrorLog {
   id: string;
@@ -357,6 +358,8 @@ export default function SystemHealth() {
             </Card>
           ))}
         </div>
+
+        <CommunicationFunnelCard />
 
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader className="pb-3">

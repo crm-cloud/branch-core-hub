@@ -55,11 +55,10 @@ export default defineConfig(() => ({
           // Charts (recharts + d3 dependencies)
           if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts-vendor';
 
-          // Drag & drop, carousels, animations
+          // Drag & drop, carousels
           if (
             id.includes('@hello-pangea/dnd') ||
-            id.includes('embla-carousel') ||
-            id.includes('framer-motion')
+            id.includes('embla-carousel')
           ) return 'motion-vendor';
 
           // Date utilities
