@@ -4,11 +4,46 @@ export type CampaignChannel = 'whatsapp' | 'email' | 'sms';
 export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'paused';
 export type CampaignTriggerType = 'send_now' | 'automated' | 'scheduled';
 
+export type AudienceKind = 'members' | 'leads' | 'contacts' | 'segment' | 'mixed';
+
 export interface AudienceFilter {
-  status?: 'active' | 'lead' | 'expired' | 'all';
+  audience_kind?: AudienceKind;
+  segment_id?: string | null;
+  // members
+  member_status?: 'active' | 'expired' | 'all';
   goal?: string | null;
-  last_attendance_before?: string | null; // ISO date — "no visit since"
+  last_attendance_before?: string | null;
   last_attendance_after?: string | null;
+  // contacts
+  source_types?: Array<'member' | 'lead' | 'manual' | 'ai'>;
+  categories?: string[];
+  tags?: string[];
+  // leads
+  lead_status?: string[];
+  lead_temperature?: string[];
+  // legacy
+  status?: 'active' | 'lead' | 'expired' | 'all';
+}
+
+export interface ResolvedRecipient {
+  source_type: 'member' | 'lead' | 'contact';
+  source_ref_id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  contact_id: string | null;
+}
+
+export async function resolveCampaignAudience(
+  branchId: string,
+  filter: AudienceFilter
+): Promise<ResolvedRecipient[]> {
+  const { data, error } = await supabase.rpc('resolve_campaign_audience' as any, {
+    p_branch_id: branchId,
+    p_filter: filter as any,
+  });
+  if (error) throw error;
+  return (data as any) || [];
 }
 
 export interface Campaign {
