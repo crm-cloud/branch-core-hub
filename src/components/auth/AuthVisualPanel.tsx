@@ -36,8 +36,8 @@ export function AuthVisualPanel() {
       <span
         className="absolute font-oswald font-bold tracking-widest text-white/55 select-none pointer-events-none"
         style={{
-          top: "10%",
-          right: "10%",
+          top: "12%",
+          right: "8%",
           fontSize: "clamp(0.7rem, 1.1vw, 0.9rem)",
           animation: "incFloatA 14s ease-in-out infinite",
         }}
@@ -45,7 +45,7 @@ export function AuthVisualPanel() {
         RISE
       </span>
       <span
-        className="absolute font-oswald font-bold tracking-widest text-cyan-200/60 select-none pointer-events-none"
+        className="hidden lg:block absolute font-oswald font-bold tracking-widest text-cyan-200/60 select-none pointer-events-none"
         style={{
           top: "40%",
           right: "6%",
@@ -56,7 +56,7 @@ export function AuthVisualPanel() {
         REFLECT
       </span>
       <span
-        className="absolute font-oswald font-bold tracking-widest text-white/50 select-none pointer-events-none"
+        className="hidden lg:block absolute font-oswald font-bold tracking-widest text-white/50 select-none pointer-events-none"
         style={{
           top: "70%",
           right: "14%",
