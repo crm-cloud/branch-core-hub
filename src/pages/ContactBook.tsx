@@ -52,7 +52,7 @@ export default function ContactBookPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
-  const [form, setForm] = useState<ContactInput>(empty(activeBranchId || ''));
+  const [form, setForm] = useState<ContactInput>(empty(effectiveBranchId || ''));
   const [deleteTarget, setDeleteTarget] = useState<ContactRow | null>(null);
 
   const { data: contacts = [], isLoading } = useQuery({
@@ -106,12 +106,12 @@ export default function ContactBookPage() {
   });
 
   function openCreate() {
-    if (!activeBranchId) {
+    if (!effectiveBranchId) {
       toast.error('Pick a specific branch to add a contact');
       return;
     }
     setEditing(null);
-    setForm(empty(activeBranchId));
+    setForm(empty(effectiveBranchId));
     setDrawerOpen(true);
   }
 
