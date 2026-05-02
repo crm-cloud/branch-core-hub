@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { revokeHardwareAccess } from '@/services/membershipService';
+import { cancelMembership as cancelMembershipRpc } from '@/services/membershipActionsService';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,94 +68,17 @@ export function CancelMembershipDrawer({
       if (!cancellationReason.trim()) {
         throw new Error('Please provide a cancellation reason');
       }
-
-      // Update membership status
-      const { error: membershipError } = await supabase
-        .from('memberships')
-        .update({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-          cancelled_by: user?.id,
-          cancellation_reason: cancellationReason,
-          refund_amount: refundAmount,
-        })
-        .eq('id', membership.id);
-
-      if (membershipError) throw membershipError;
-
-      // If there's a refund, create a refund invoice
-      if (refundAmount > 0) {
-        // Find original invoice
-        const { data: originalInvoice } = await supabase
-          .from('invoices')
-          .select('id, invoice_number')
-          .eq('member_id', membership.member_id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        // Create refund invoice (negative amount)
-        const { data: refundInvoice, error: invoiceError } = await supabase
-          .from('invoices')
-          .insert({
-            branch_id: membership.branch_id,
-            member_id: membership.member_id,
-            invoice_number: '', // Auto-generated
-            subtotal: -refundAmount,
-            total_amount: -refundAmount,
-            status: 'refunded',
-            notes: `Refund for cancelled membership. Original invoice: ${originalInvoice?.invoice_number || 'N/A'}. Reason: ${cancellationReason}`,
-            refund_amount: refundAmount,
-            refund_reason: cancellationReason,
-            refunded_at: new Date().toISOString(),
-            refunded_by: user?.id,
-          })
-          .select()
-          .single();
-
-        if (invoiceError) throw invoiceError;
-
-        // Create refund invoice item
-        await supabase.from('invoice_items').insert({
-          invoice_id: refundInvoice.id,
-          description: `Refund - ${membership.membership_plans?.name || 'Membership'} (${daysRemaining} days remaining)`,
-          quantity: 1,
-          unit_price: -refundAmount,
-          total_amount: -refundAmount,
-          reference_type: 'membership_refund',
-          reference_id: membership.id,
-        });
-
-        // Record refund payment
-        await supabase.from('payments').insert({
-          branch_id: membership.branch_id,
-          member_id: membership.member_id,
-          invoice_id: refundInvoice.id,
-          amount: -refundAmount,
-          payment_method: refundMethod as any,
-          status: 'completed',
-          payment_date: new Date().toISOString(),
-        });
-      }
-
-      // Check if member has any other active memberships
-      const { data: otherMemberships } = await supabase
-        .from('memberships')
-        .select('id')
-        .eq('member_id', membership.member_id)
-        .eq('status', 'active')
-        .neq('id', membership.id)
-        .limit(1);
-
-      // If no other active memberships, update member status
-      if (!otherMemberships || otherMemberships.length === 0) {
-        await supabase
-          .from('members')
-          .update({ status: 'inactive' })
-          .eq('id', membership.member_id);
-      }
-
-      return { refundAmount };
+      // P4: route through atomic RPC — no more multi-step client writes.
+      // Server handles status update, refund invoice/payment, member deactivation,
+      // lifecycle audit, and idempotency in a single transaction.
+      const result = await cancelMembershipRpc({
+        membershipId: membership.id,
+        reason: cancellationReason,
+        refundAmount,
+        refundMethod: refundMethod as 'cash' | 'card' | 'upi' | 'bank_transfer' | 'wallet',
+        idempotencyKey: `cancel-${membership.id}-${cancellationReason.slice(0, 32)}`,
+      });
+      return { refundAmount: result.refund_amount };
     },
     onSuccess: (data) => {
       toast.success(

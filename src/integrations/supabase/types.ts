@@ -6272,6 +6272,42 @@ export type Database = {
           },
         ]
       }
+      membership_action_attempts: {
+        Row: {
+          action: string
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          idempotency_key: string
+          membership_id: string | null
+          result: Json | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          idempotency_key: string
+          membership_id?: string | null
+          result?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          idempotency_key?: string
+          membership_id?: string | null
+          result?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       membership_free_days: {
         Row: {
           added_by: string | null
@@ -8593,6 +8629,21 @@ export type Database = {
           },
         ]
       }
+      role_capabilities: {
+        Row: {
+          capability: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          capability: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          capability?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
       role_change_audit: {
         Row: {
           action: string
@@ -9688,6 +9739,32 @@ export type Database = {
           },
         ]
       }
+      user_active_branch: {
+        Row: {
+          branch_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          branch_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          branch_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_active_branch_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -10539,6 +10616,18 @@ export type Database = {
           },
         ]
       }
+      policy_audit: {
+        Row: {
+          delete_policies: number | null
+          insert_policies: number | null
+          policy_count: number | null
+          rls_enabled: boolean | null
+          select_policies: number | null
+          table_name: unknown
+          update_policies: number | null
+        }
+        Relationships: []
+      }
       trainers_public: {
         Row: {
           avatar_url: string | null
@@ -10754,6 +10843,16 @@ export type Database = {
         }
         Returns: Json
       }
+      cancel_membership: {
+        Args: {
+          p_idempotency_key?: string
+          p_membership_id: string
+          p_reason: string
+          p_refund_amount?: number
+          p_refund_method?: string
+        }
+        Returns: Json
+      }
       check_critical_error_alerts: { Args: never; Returns: number }
       check_trainer_slot_available: {
         Args: {
@@ -10880,6 +10979,7 @@ export type Database = {
         }
         Returns: Json
       }
+      current_active_branch: { Args: never; Returns: string }
       current_branch: { Args: never; Returns: string }
       decide_role_change_request: {
         Args: {
@@ -10912,6 +11012,14 @@ export type Database = {
         Args: { _path: string }
         Returns: string
       }
+      freeze_membership: {
+        Args: {
+          p_freeze_days: number
+          p_membership_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       generate_renewal_invoices: { Args: never; Returns: undefined }
       get_inactive_members: {
         Args: { p_branch_id: string; p_days?: number; p_limit?: number }
@@ -10940,6 +11048,10 @@ export type Database = {
           _roles: Database["public"]["Enums"]["app_role"][]
           _user_id: string
         }
+        Returns: boolean
+      }
+      has_capability: {
+        Args: { _capability: string; _user_id: string }
         Returns: boolean
       }
       has_role: {
@@ -11390,6 +11502,7 @@ export type Database = {
           phone: string
         }[]
       }
+      set_active_branch: { Args: { p_branch_id: string }; Returns: undefined }
       set_handoff:
         | {
             Args: { _phone: string; _reason?: string; _urgency?: string }
