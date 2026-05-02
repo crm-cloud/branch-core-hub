@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table';
 import {
   Plus, Search, Edit2, Trash2, BookUser, Phone, Mail, MessageSquare, Building2,
-  UserCircle2, Sparkles, UserPlus, ExternalLink,
+  UserCircle2, Sparkles, UserPlus, ExternalLink, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
