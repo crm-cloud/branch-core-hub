@@ -485,6 +485,8 @@ export default function ContactBookPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SegmentsManagerDrawer open={segmentsOpen} onOpenChange={setSegmentsOpen} branchId={effectiveBranchId || ''} />
     </AppLayout>
   );
 }
