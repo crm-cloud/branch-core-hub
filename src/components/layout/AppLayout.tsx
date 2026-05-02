@@ -211,6 +211,55 @@ export function AppLayout({ children }: AppLayoutProps) {
     );
   }
 
+  // ===== Header + Horizontal stacked mode: full AppHeader on top, modules band below, no sidebar =====
+  if (navMode === 'horizontal-stacked') {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        {/* Mobile header (unchanged) */}
+        <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-card">
+          <MobileNav />
+          <h1 className="text-xl font-bold">
+            {org?.logo_url ? (
+              <img src={org.logo_url} alt={org.name || 'Logo'} className="max-h-7 object-contain" />
+            ) : (
+              <span className="text-accent">{org?.name || 'Incline'}</span>
+            )}
+          </h1>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url ?? undefined} />
+              <AvatarFallback className="bg-accent text-accent-foreground text-xs">
+                {getInitials(profile?.full_name)}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+        </header>
+
+        {/* Desktop: full AppHeader on top */}
+        <div className="hidden lg:block">
+          <AppHeader />
+        </div>
+
+        {/* Desktop: horizontal modules band directly under header */}
+        <div className="hidden lg:block sticky top-0 z-30">
+          <TopModulesBar
+            groups={moduleGroups}
+            activeModuleId={activeModuleId}
+            onSelect={setActiveModuleId}
+          />
+        </div>
+
+        {/* Full-width content (no sidebar) */}
+        <div className="flex flex-1 flex-col min-w-0">
+          {renderContent()}
+        </div>
+
+        <SessionTimeoutWarning />
+      </div>
+    );
+  }
+
   // ===== Standard layout (vertical / collapsed) =====
   return (
     <div className="min-h-screen flex bg-background">

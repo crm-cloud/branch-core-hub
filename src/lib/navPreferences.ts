@@ -1,11 +1,11 @@
-export type NavMode = 'vertical' | 'collapsed' | 'hybrid';
+export type NavMode = 'vertical' | 'collapsed' | 'hybrid' | 'horizontal-stacked';
 
 const KEY = 'incline.nav-mode';
 const LEGACY_COLLAPSED_KEY = 'sidebar-collapsed';
 const EVENT = 'incline:nav-mode-changed';
 
 function isValid(v: unknown): v is NavMode {
-  return v === 'vertical' || v === 'collapsed' || v === 'hybrid';
+  return v === 'vertical' || v === 'collapsed' || v === 'hybrid' || v === 'horizontal-stacked';
 }
 
 export function getNavMode(): NavMode {
