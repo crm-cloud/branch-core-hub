@@ -69,7 +69,7 @@ export default function AuthPage() {
       </div>
 
       {/* Mobile compact hero */}
-      <div className="lg:hidden relative h-[240px] overflow-hidden">
+      <div className="lg:hidden relative h-[280px] overflow-hidden">
         <AuthVisualPanel />
       </div>
 
