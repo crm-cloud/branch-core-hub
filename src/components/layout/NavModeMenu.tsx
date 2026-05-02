@@ -5,13 +5,14 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { LayoutGrid, PanelLeft, PanelLeftClose, Check, PanelTop } from 'lucide-react';
+import { LayoutGrid, PanelLeft, PanelLeftClose, Check, PanelTop, Rows3 } from 'lucide-react';
 import { getNavMode, setNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
 
 const OPTIONS: Array<{ id: NavMode; label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'vertical', label: 'Vertical', description: 'Full sidebar with sections', icon: PanelLeft },
   { id: 'collapsed', label: 'Collapsed', description: 'Icon-only sidebar', icon: PanelLeftClose },
-  { id: 'hybrid', label: 'Horizontal', description: 'Top menu, no sidebar', icon: PanelTop },
+  { id: 'hybrid', label: 'Horizontal (compact)', description: 'Single top band, no sidebar', icon: PanelTop },
+  { id: 'horizontal-stacked', label: 'Header + Horizontal', description: 'Header on top, horizontal menu below', icon: Rows3 },
 ];
 
 export function NavModeMenu() {
