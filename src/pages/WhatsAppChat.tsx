@@ -294,15 +294,33 @@ export default function WhatsAppChatPage() {
     },
   });
 
+  // Resolve identities (member → lead → contact book) for every phone in the list.
+  const phonesKey = contacts.map(c => c.phone_number).sort().join('|');
+  const { data: identityMap } = useQuery({
+    queryKey: ['chat-identities', phonesKey],
+    queryFn: () => resolveIdentities(contacts.map(c => c.phone_number)),
+    enabled: contacts.length > 0,
+    staleTime: 60_000,
+  });
+
   // Enrich contacts with settings (normalize phone for matching)
   const enrichedContacts: ChatContact[] = contacts.map(c => {
     const normalized = normalizePhone(c.phone_number);
     const s = settingsMap.get(c.phone_number) || settingsMap.get(normalized) || settingsMap.get('+' + normalized);
+    const ident = identityMap?.get(normalizePhoneE164(c.phone_number));
+    const resolvedName = ident && ident.source !== 'unknown'
+      ? ident.display_name
+      : c.contact_name;
     return {
       ...c,
+      contact_name: resolvedName,
+      member_id: ident?.member_id ?? c.member_id,
       is_unread: s?.is_unread ?? false,
       bot_active: s?.bot_active ?? true,
-    };
+      identity_source: ident?.source ?? 'unknown',
+      lead_id: ident?.lead_id ?? null,
+      contact_id: ident?.contact_id ?? null,
+    } as ChatContact & { identity_source: string; lead_id: string | null; contact_id: string | null };
   });
 
   // Messages query for the selected contact
