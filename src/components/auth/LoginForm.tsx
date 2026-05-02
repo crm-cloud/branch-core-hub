@@ -8,11 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Loader2, Mail, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail, Lock, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+
+const GoogleIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.66 4.1-5.5 4.1-3.31 0-6-2.74-6-6.1S8.69 6 12 6c1.88 0 3.14.8 3.86 1.49l2.63-2.54C16.85 3.42 14.62 2.5 12 2.5 6.76 2.5 2.5 6.76 2.5 12s4.26 9.5 9.5 9.5c5.49 0 9.12-3.86 9.12-9.29 0-.62-.07-1.1-.16-1.51H12z"/>
+    <path fill="#34A853" d="M3.88 7.36l3.2 2.35C7.94 7.7 9.8 6 12 6c1.88 0 3.14.8 3.86 1.49l2.63-2.54C16.85 3.42 14.62 2.5 12 2.5 8.24 2.5 5.01 4.62 3.88 7.36z" opacity=".0"/>
+    <path fill="none" d="M0 0h24v24H0z"/>
+  </svg>
+);
 
 const passwordLoginSchema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -155,18 +163,56 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     }
   };
 
+  const handleGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/home` },
+      });
+      if (error) throw error;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Google sign-in failed');
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      {/* Mode toggle — persists across both modes so user always sees both options */}
-      <div className="flex rounded-xl bg-muted/60 p-1 gap-1">
+      {/* Header (always visible at top of card) */}
+      <div className="space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Welcome back</h2>
+        <p className="text-sm text-slate-500">Sign in to your Incline account to continue</p>
+      </div>
+
+      {/* Google sign-in */}
+      <button
+        type="button"
+        onClick={handleGoogle}
+        disabled={isLoading}
+        data-testid="btn-google"
+        className="group w-full h-12 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-center gap-3 text-sm font-semibold text-slate-700 transition-all shadow-sm hover:shadow-md disabled:opacity-60"
+      >
+        <GoogleIcon className="h-5 w-5" />
+        Continue with Google
+      </button>
+
+      <div className="relative flex items-center">
+        <div className="flex-1 h-px bg-slate-200" />
+        <span className="px-3 text-[11px] uppercase tracking-wider text-slate-400 font-medium">or use email</span>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
+      {/* Mode toggle */}
+      <div className="flex rounded-xl bg-slate-100 p-1 gap-1">
         <button
           type="button"
           data-testid="tab-password"
           onClick={() => switchMode('password')}
           className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
             mode === 'password'
-              ? 'bg-card shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'bg-white shadow-sm text-slate-900'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Password
@@ -177,8 +223,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           onClick={() => switchMode('email_code')}
           className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
             mode === 'email_code'
-              ? 'bg-card shadow-sm text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'bg-white shadow-sm text-slate-900'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Email code
@@ -188,10 +234,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       {/* ── PASSWORD MODE ── */}
       {mode === 'password' && (
         <div className="space-y-4">
-          <div className="space-y-0.5">
-            <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
-            <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
-          </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(handlePasswordSubmit)} className="space-y-3.5">
@@ -200,16 +242,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground font-medium">Email</FormLabel>
+                    <FormLabel className="text-slate-700 font-medium text-sm">Email</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                         <Input
                           type="email"
                           placeholder="you@example.com"
                           autoComplete="email"
                           data-testid="input-email"
-                          className="h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent"
+                          className="h-12 pl-10 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary"
                           {...field}
                         />
                       </div>
@@ -223,16 +265,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground font-medium">Password</FormLabel>
+                    <FormLabel className="text-slate-700 font-medium text-sm">Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                         <Input
                           type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           autoComplete="current-password"
                           data-testid="input-password"
-                          className="h-12 pl-9 pr-11 text-base bg-secondary/50 border-border focus:border-accent"
+                          className="h-12 pl-10 pr-11 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary"
                           {...field}
                         />
                         <button
@@ -252,7 +294,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               <Button
                 type="submit"
                 data-testid="btn-sign-in"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -268,7 +310,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             <Link
               to="/auth/forgot-password"
               data-testid="link-forgot-password"
-              className="text-sm text-muted-foreground hover:text-accent transition-colors"
+              className="text-sm text-slate-500 hover:text-primary font-medium transition-colors"
             >
               Forgot your password?
             </Link>
@@ -282,18 +324,18 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           {otpStep === 'send' ? (
             <>
               <div className="space-y-0.5">
-                <h2 className="text-xl font-bold text-foreground">Sign in with a code</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-xl font-bold text-slate-900">Sign in with a code</h2>
+                <p className="text-sm text-slate-500">
                   Enter your email and we'll send a 6-digit sign-in code.
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="otp-email" className="text-sm font-medium text-foreground">
+                <label htmlFor="otp-email" className="text-sm font-medium text-slate-700">
                   Email address
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                   <Input
                     id="otp-email"
                     type="email"
@@ -305,7 +347,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     autoComplete="email"
                     autoFocus
                     data-testid="input-otp-email"
-                    className={`h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent ${otpEmailError ? 'border-destructive' : ''}`}
+                    className={`h-12 pl-10 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary ${otpEmailError ? 'border-destructive' : ''}`}
                   />
                 </div>
                 {otpEmailError && (
@@ -317,7 +359,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 onClick={handleSendCode}
                 disabled={isLoading || !otpEmail}
                 data-testid="btn-send-code"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
               >
                 {isLoading ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending code...</>
@@ -329,14 +371,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           ) : (
             <>
               <div className="space-y-0.5">
-                <h2 className="text-xl font-bold text-foreground">Enter the code</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-xl font-bold text-slate-900">Enter the code</h2>
+                <p className="text-sm text-slate-500">
                   A 6-digit code was sent to{' '}
                   <button
                     type="button"
                     onClick={() => { setOtpStep('send'); setOtp(''); }}
                     data-testid="btn-change-email"
-                    className="font-semibold text-foreground underline-offset-2 hover:underline"
+                    className="font-semibold text-slate-900 underline-offset-2 hover:underline"
                   >
                     {otpEmail}
                   </button>
@@ -356,12 +398,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   data-testid="input-otp-code"
                 >
                   <InputOTPGroup className="gap-1.5 sm:gap-2">
-                    <InputOTPSlot index={0} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={1} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={2} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={3} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={4} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={5} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={0} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={1} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={2} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={3} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={4} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={5} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
                   </InputOTPGroup>
                 </InputOTP>
               </div>
@@ -370,7 +412,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 onClick={handleVerifyOtp}
                 disabled={isLoading || otp.length !== 6}
                 data-testid="btn-verify-code"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
               >
                 {isLoading ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
@@ -379,7 +421,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 )}
               </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-slate-500">
                 Didn't receive it?{' '}
                 {countdown > 0 ? (
                   <span className="text-muted-foreground/70">
@@ -391,7 +433,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     onClick={handleResendCode}
                     disabled={isLoading}
                     data-testid="btn-resend-code"
-                    className="text-accent hover:underline font-medium inline-flex items-center gap-1"
+                    className="text-primary hover:underline font-medium inline-flex items-center gap-1"
                   >
                     <RefreshCw className="h-3 w-3" /> Resend now
                   </button>

@@ -422,6 +422,79 @@
     display: none;
   }
 
+  /* ===== Auth page (split-screen redesign) ===== */
+  .incline-auth {
+    --primary: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 217 91% 50%;
+    --accent: 217 91% 50%;
+    --accent-foreground: 0 0% 100%;
+  }
+  .incline-auth .glass-card {
+    background: hsl(0 0% 100% / 0.82);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid hsl(0 0% 100% / 0.7);
+    box-shadow: 0 30px 80px -20px hsl(217 91% 20% / 0.25), 0 0 0 1px hsl(217 91% 50% / 0.04);
+    animation: authCardIn 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .auth-visual .auth-orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(60px);
+    opacity: 0.55;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .auth-visual .auth-orb-1 {
+    width: 420px; height: 420px;
+    top: -80px; left: -80px;
+    background: radial-gradient(circle, hsl(199 95% 60%) 0%, transparent 70%);
+    animation: authOrbDrift 22s ease-in-out infinite;
+  }
+  .auth-visual .auth-orb-2 {
+    width: 360px; height: 360px;
+    bottom: -100px; right: -60px;
+    background: radial-gradient(circle, hsl(217 91% 55%) 0%, transparent 70%);
+    animation: authOrbDrift 26s ease-in-out -6s infinite reverse;
+  }
+  .auth-visual .auth-orb-3 {
+    width: 280px; height: 280px;
+    top: 45%; left: 55%;
+    background: radial-gradient(circle, hsl(189 95% 65%) 0%, transparent 70%);
+    opacity: 0.35;
+    animation: authOrbDrift 30s ease-in-out -12s infinite;
+  }
+  .auth-visual .auth-grid {
+    background-image:
+      linear-gradient(hsl(0 0% 100% / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(0 0% 100% / 0.08) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-position: 0 0;
+    animation: authGridShift 40s linear infinite;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+  }
+  @keyframes authOrbDrift {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+  }
+  @keyframes authGridShift {
+    from { background-position: 0 0; }
+    to { background-position: 44px 44px; }
+  }
+  @keyframes authCardIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .auth-visual .auth-orb,
+    .auth-visual .auth-grid,
+    .incline-auth .glass-card {
+      animation: none !important;
+    }
+  }
+
   /* Noise texture overlay */
   .noise-overlay::after {
     content: '';

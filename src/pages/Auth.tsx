@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { AuthVisualPanel } from '@/components/auth/AuthVisualPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { GymLoader } from '@/components/ui/gym-loader';
-import { Card, CardContent } from '@/components/ui/card';
 import { getHomePath } from '@/lib/roleRedirect';
 import SEO from '@/components/seo/SEO';
 
@@ -17,9 +17,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     const refCode = searchParams.get('ref');
-    if (refCode) {
-      sessionStorage.setItem('referral_code', refCode);
-    }
+    if (refCode) sessionStorage.setItem('referral_code', refCode);
   }, [searchParams]);
 
   useEffect(() => {
@@ -54,53 +52,50 @@ export default function AuthPage() {
   if (user && !mustSetPassword) return <Navigate to={getHomePath(roles)} replace />;
   if (user && mustSetPassword) return <Navigate to="/auth/set-password" replace />;
 
-  const handleLoginSuccess = () => {
-    navigate('/home');
-  };
+  const handleLoginSuccess = () => navigate('/home');
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center p-4"
-      style={{ background: 'var(--gradient-hero)' }}
-    >
+    <div className="incline-auth min-h-dvh w-full bg-slate-50 lg:grid lg:grid-cols-2">
       <SEO
         title="Sign in | The Incline Life"
         description="Sign in to your Incline account."
         path="/auth"
         noindex
       />
-      <div className="w-full max-w-[420px] space-y-6">
-        {/* Logo */}
-        <div className="text-center space-y-1">
-          <h1 className="text-5xl font-extrabold tracking-tight">
-            <span className="text-gradient">Incline</span>
-          </h1>
-          <p className="text-primary-foreground/60 text-sm">Gym Management System</p>
+
+      {/* LEFT — Visual panel (desktop full height, mobile compact hero) */}
+      <div className="hidden lg:block relative min-h-dvh">
+        <AuthVisualPanel />
+      </div>
+
+      {/* Mobile compact hero */}
+      <div className="lg:hidden relative h-[240px] overflow-hidden">
+        <AuthVisualPanel />
+      </div>
+
+      {/* RIGHT — Auth card */}
+      <div className="relative flex flex-col items-center justify-center px-4 py-10 sm:px-8 lg:px-12">
+        {/* Soft decorative bg blobs (right side, behind card) */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-blue-100/60 blur-3xl" />
+          <div className="absolute bottom-0 -left-20 h-72 w-72 rounded-full bg-cyan-100/50 blur-3xl" />
         </div>
 
-        {/* Login Card — self-contained with all auth modes */}
-        <Card className="rounded-2xl border-0 shadow-2xl shadow-black/20 bg-card">
-          <CardContent className="p-5 sm:p-7">
+        <div className="relative w-full max-w-[440px] space-y-6">
+          <div className="glass-card rounded-3xl p-6 sm:p-8">
             <LoginForm onSuccess={handleLoginSuccess} />
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Branding + legal footer */}
-        <div className="text-center space-y-2">
-          <p className="text-xs text-primary-foreground/30">Powered by Incline</p>
-          <nav className="flex items-center justify-center gap-3 text-xs text-primary-foreground/50">
-            <Link to="/privacy-policy" className="hover:text-primary-foreground/80 transition-colors">
-              Privacy Policy
-            </Link>
-            <span aria-hidden className="text-primary-foreground/20">·</span>
-            <Link to="/terms" className="hover:text-primary-foreground/80 transition-colors">
-              Terms of Service
-            </Link>
-            <span aria-hidden className="text-primary-foreground/20">·</span>
-            <Link to="/data-deletion" className="hover:text-primary-foreground/80 transition-colors">
-              Data Deletion
-            </Link>
+          <nav className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-500">
+            <Link to="/privacy-policy" className="hover:text-slate-900 transition-colors">Privacy Policy</Link>
+            <span aria-hidden className="text-slate-300">·</span>
+            <Link to="/terms" className="hover:text-slate-900 transition-colors">Terms of Service</Link>
+            <span aria-hidden className="text-slate-300">·</span>
+            <Link to="/data-deletion" className="hover:text-slate-900 transition-colors">Data Deletion</Link>
           </nav>
+          <p className="text-center text-[11px] text-slate-400">
+            © {new Date().getFullYear()} The Incline Life by Incline
+          </p>
         </div>
       </div>
     </div>
