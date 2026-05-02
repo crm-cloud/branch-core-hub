@@ -36,6 +36,18 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [name, setName] = useState('');
   const [channel, setChannel] = useState<CampaignChannel>('whatsapp');
   const [filter, setFilter] = useState<AudienceFilter>({ status: 'active' });
+
+  // Auto-prefill from a saved segment (set by Contact Book → Segments → Send)
+  useEffect(() => {
+    const segId = sessionStorage.getItem('campaign_prefill_segment');
+    const segName = sessionStorage.getItem('campaign_prefill_segment_name');
+    if (segId) {
+      setFilter({ audience_kind: 'segment', segment_id: segId });
+      if (segName) setName(`Segment: ${segName}`);
+      sessionStorage.removeItem('campaign_prefill_segment');
+      sessionStorage.removeItem('campaign_prefill_segment_name');
+    }
+  }, []);
   const [resolvedMemberIds, setResolvedMemberIds] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
