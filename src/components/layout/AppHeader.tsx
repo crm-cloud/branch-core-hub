@@ -130,8 +130,14 @@ export function AppHeader({ variant = 'standalone', showBrand = false }: AppHead
         </div>
       )}
 
-      {/* Centered Search */}
-      <div className="flex-1 flex items-center justify-center gap-3 min-w-0">
+      {/* Search — centered when brand is on the left, otherwise left-aligned */}
+      <div
+        className={
+          showBrand
+            ? 'flex-1 flex items-center justify-center gap-3 min-w-0'
+            : 'flex-1 flex items-center justify-start gap-3 min-w-0'
+        }
+      >
         {!isMember && (
           <div className="w-full max-w-md">
             <GlobalSearch />
