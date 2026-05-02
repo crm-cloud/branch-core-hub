@@ -80,6 +80,7 @@ interface Message {
   created_at: string;
   message_type: string;
   is_internal_note?: boolean;
+  media_url?: string | null;
 }
 
 interface ChatSettingsRow {
