@@ -1701,6 +1701,96 @@ export default function WhatsAppChatPage() {
         defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
         prefill={leadPrefill}
       />
+
+      {/* Save as Contact drawer (for unknown numbers) */}
+      <ResponsiveSheet open={saveContactOpen} onOpenChange={setSaveContactOpen}>
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>Save as Contact</ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Add this number to your Contact Book so future chats show the name.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        <div className="space-y-4 mt-2">
+          <div className="rounded-xl bg-muted/50 px-3 py-2 text-sm flex items-center gap-2">
+            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-mono">{selectedContact ? formatPhoneDisplay(selectedContact.phone_number) : ''}</span>
+          </div>
+          <div className="space-y-2">
+            <Label>Full name *</Label>
+            <Input
+              value={saveContactForm.full_name}
+              onChange={(e) => setSaveContactForm({ ...saveContactForm, full_name: e.target.value })}
+              placeholder="e.g. Ravi Kumar"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={saveContactForm.category}
+                onValueChange={(v) => setSaveContactForm({ ...saveContactForm, category: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONTACT_CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Company</Label>
+              <Input
+                value={saveContactForm.company}
+                onChange={(e) => setSaveContactForm({ ...saveContactForm, company: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea
+              rows={3}
+              value={saveContactForm.notes}
+              onChange={(e) => setSaveContactForm({ ...saveContactForm, notes: e.target.value })}
+              placeholder="Anything worth remembering"
+            />
+          </div>
+        </div>
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setSaveContactOpen(false)}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (!selectedContact) return;
+              if (!saveContactForm.full_name.trim()) {
+                toast.error('Name is required');
+                return;
+              }
+              if (!selectedBranch || selectedBranch === 'all') {
+                toast.error('Pick a specific branch first');
+                return;
+              }
+              try {
+                await upsertContact({
+                  branch_id: selectedBranch,
+                  phone: selectedContact.phone_number,
+                  full_name: saveContactForm.full_name.trim(),
+                  category: saveContactForm.category,
+                  company: saveContactForm.company || null,
+                  notes: saveContactForm.notes || null,
+                });
+                toast.success('Contact saved');
+                setSaveContactOpen(false);
+                queryClient.invalidateQueries({ queryKey: ['chat-identities'] });
+              } catch (e: any) {
+                toast.error(e.message || 'Failed to save contact');
+              }
+            }}
+          >
+            Save Contact
+          </Button>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
     </AppLayout>
   );
 }
