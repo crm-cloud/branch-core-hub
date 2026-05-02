@@ -427,10 +427,14 @@ export type Database = {
       }
       announcements: {
         Row: {
+          audience_filter: Json
           branch_id: string | null
+          channels: string[]
           content: string
           created_at: string
           created_by: string | null
+          dispatch_summary: Json | null
+          dispatched_at: string | null
           expire_at: string | null
           id: string
           is_active: boolean | null
@@ -440,10 +444,14 @@ export type Database = {
           title: string
         }
         Insert: {
+          audience_filter?: Json
           branch_id?: string | null
+          channels?: string[]
           content: string
           created_at?: string
           created_by?: string | null
+          dispatch_summary?: Json | null
+          dispatched_at?: string | null
           expire_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -453,10 +461,14 @@ export type Database = {
           title: string
         }
         Update: {
+          audience_filter?: Json
           branch_id?: string | null
+          channels?: string[]
           content?: string
           created_at?: string
           created_by?: string | null
+          dispatch_summary?: Json | null
+          dispatched_at?: string | null
           expire_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -1425,6 +1437,56 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_recipients: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          dispatched_at: string | null
+          email: string | null
+          error: string | null
+          full_name: string | null
+          id: string
+          phone: string | null
+          source_ref_id: string
+          source_type: string
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          dispatched_at?: string | null
+          email?: string | null
+          error?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          source_ref_id: string
+          source_type: string
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          dispatched_at?: string | null
+          email?: string | null
+          error?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          source_ref_id?: string
+          source_type?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_runs: {
         Row: {
           campaign_id: string
@@ -1981,6 +2043,53 @@ export type Database = {
             columns: ["original_log_id"]
             isOneToOne: false
             referencedRelation: "communication_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_segments: {
+        Row: {
+          audience_count: number
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          filter: Json
+          id: string
+          last_refreshed_at: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          audience_count?: number
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          filter?: Json
+          id?: string
+          last_refreshed_at?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          audience_count?: number
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          filter?: Json
+          id?: string
+          last_refreshed_at?: string | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_segments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -10944,6 +11053,7 @@ export type Database = {
         Returns: Json
       }
       auto_expire_memberships: { Args: never; Returns: undefined }
+      award_group_bonus: { Args: { p_group_id: string }; Returns: Json }
       bill_locker_period: {
         Args: { p_amount: number; p_assignment_id: string; p_months?: number }
         Returns: Json
@@ -11260,6 +11370,10 @@ export type Database = {
         }[]
       }
       get_member_id: { Args: { _user_id: string }; Returns: string }
+      get_setting_numeric: {
+        Args: { p_branch_id: string; p_default: number; p_key: string }
+        Returns: number
+      }
       get_user_branch: { Args: { _user_id: string }; Returns: string }
       has_active_benefit: {
         Args: {
@@ -11456,6 +11570,10 @@ export type Database = {
         }
         Returns: Json
       }
+      promote_announcement_to_campaign: {
+        Args: { p_announcement_id: string }
+        Returns: Json
+      }
       purchase_benefit_credits: {
         Args: {
           p_branch_id?: string
@@ -11619,6 +11737,17 @@ export type Database = {
           p_target_user_id: string
         }
         Returns: Json
+      }
+      resolve_campaign_audience: {
+        Args: { p_branch_id: string; p_filter: Json }
+        Returns: {
+          contact_id: string
+          email: string
+          full_name: string
+          phone: string
+          source_ref_id: string
+          source_type: string
+        }[]
       }
       resolve_gst_rate: {
         Args: { p_branch_id?: string; p_item_id?: string; p_item_type: string }
