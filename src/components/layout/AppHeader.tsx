@@ -88,7 +88,13 @@ export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
   };
 
   return (
-    <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+    <header
+      className={
+        variant === 'hybrid'
+          ? 'hidden lg:flex h-14 items-center justify-between px-4 w-full'
+          : 'hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40'
+      }
+    >
       {/* Single Search - GlobalSearch component (hidden for members) */}
       <div className="flex-1 max-w-md flex items-center gap-3">
         {!isMember && <GlobalSearch />}
