@@ -137,7 +137,22 @@ export function GroupPurchaseDrawer({ open, onOpenChange, branchId }: Props) {
       qc.invalidateQueries({ queryKey: ['invoices'] });
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const map: Record<string, string> = {
+        GROUP_REQUIRES_MIN_2_MEMBERS: 'A group must have at least 2 members.',
+        COUPLE_REQUIRES_EXACTLY_2_MEMBERS: 'A couple group must have exactly 2 members.',
+        DUPLICATE_MEMBER_IN_GROUP: 'The same member appears more than once.',
+        ALREADY_IN_ACTIVE_GROUP: 'One of the selected members is already in another active group.',
+        MEMBER_BRANCH_MISMATCH: 'A selected member belongs to another branch.',
+        MEMBER_NOT_ACTIVE: 'A selected member is not active.',
+        DISCOUNT_PERCENT_OUT_OF_RANGE: 'Discount % must be between 0 and 100.',
+        DISCOUNT_FIXED_OUT_OF_RANGE: 'Fixed discount exceeds the total plan price.',
+        PLAN_NOT_FOUND: 'Selected plan no longer exists.',
+        INVALID_GROUP_TYPE: 'Invalid group type.',
+      };
+      const code = (e.message || '').split(':')[0].trim();
+      toast.error(map[code] || e.message || 'Group purchase failed');
+    },
   });
 
   return (
