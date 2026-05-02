@@ -128,9 +128,13 @@ export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
         </div>
       )}
 
-      {/* Single Search - GlobalSearch component (hidden for members) */}
-      <div className="flex-1 max-w-md flex items-center gap-3">
-        {!isMember && <GlobalSearch />}
+      {/* Centered Search */}
+      <div className="flex-1 flex items-center justify-center gap-3 min-w-0">
+        {!isMember && (
+          <div className="w-full max-w-md">
+            <GlobalSearch />
+          </div>
+        )}
         {/* Branch badge for non-selector roles */}
         {showBranchBadge && (
           <Badge variant="secondary" className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium whitespace-nowrap">
