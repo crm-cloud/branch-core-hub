@@ -13,12 +13,9 @@ interface SceneContentProps {
 
 const SceneContent = ({ isMobile, onScrollProgress }: SceneContentProps) => {
   const scroll = useScroll();
-  const [scrollProgress, setScrollProgress] = useState(0);
 
   useFrame(() => {
-    const offset = scroll.offset;
-    setScrollProgress(offset);
-    onScrollProgress(offset);
+    onScrollProgress(scroll.offset);
   });
 
   return (
@@ -31,8 +28,7 @@ const SceneContent = ({ isMobile, onScrollProgress }: SceneContentProps) => {
       <spotLight position={[-10, 5, -5]} angle={0.4} penumbra={1} intensity={0.6} color="#3b82f6" />
       <pointLight position={[0, 5, 5]} intensity={0.6} color="#ffffff" />
       <pointLight position={[0, -5, 0]} intensity={0.25} color="#3b82f6" />
-      <HeroDumbbell scrollProgress={scrollProgress} isMobile={isMobile} />
-      <FloatingWords scrollProgress={scrollProgress} />
+      <HeroDumbbell scrollProgress={scroll.offset} isMobile={isMobile} />
       <Scroll html style={{ width: '100%' }}>
         <ScrollOverlay />
       </Scroll>
@@ -46,6 +42,7 @@ interface Scene3DProps {
 
 const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
   const [isMobile, setIsMobile] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -54,21 +51,32 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  const handleScrollProgress = (p: number) => {
+    setScrollProgress(p);
+    onScrollProgress(p);
+  };
+
   return (
-    <div className="fixed inset-0 z-0" style={{ height: '100dvh' }}>
-      <Canvas
-        camera={{ position: [0, 0, 5], fov: 50 }}
-        dpr={isMobile ? [1, 1.25] : [1, 1.75]}
-        gl={{ antialias: !isMobile, alpha: true, powerPreference: 'high-performance' }}
-        style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%)' }}
-      >
-        <Suspense fallback={null}>
-          <ScrollControls pages={5} damping={0.2}>
-            <SceneContent isMobile={isMobile} onScrollProgress={onScrollProgress} />
-          </ScrollControls>
-        </Suspense>
-      </Canvas>
-    </div>
+    <>
+      {/* DOM-rendered floating words sit between the static SEO hero and the
+          WebGL canvas. They animate via CSS keyframes — no per-frame work. */}
+      <FloatingWords scrollProgress={scrollProgress} />
+
+      <div className="fixed inset-0 z-[2]" style={{ height: '100dvh' }}>
+        <Canvas
+          camera={{ position: [0, 0, 5], fov: 50 }}
+          dpr={isMobile ? [1, 1.25] : [1, 1.75]}
+          gl={{ antialias: !isMobile, alpha: true, powerPreference: 'high-performance' }}
+          style={{ background: 'transparent' }}
+        >
+          <Suspense fallback={null}>
+            <ScrollControls pages={5} damping={0.2}>
+              <SceneContent isMobile={isMobile} onScrollProgress={handleScrollProgress} />
+            </ScrollControls>
+          </Suspense>
+        </Canvas>
+      </div>
+    </>
   );
 };
 

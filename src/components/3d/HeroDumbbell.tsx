@@ -1,6 +1,5 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface HeroDumbbellProps {
@@ -106,15 +105,9 @@ const HeroDumbbell = ({ scrollProgress, isMobile }: HeroDumbbellProps) => {
   return (
     <group ref={groupRef}>
       <mesh geometry={handleGeometry} material={chromeMaterial} rotation={[0, 0, Math.PI / 2]} />
-      <Text font="/fonts/inter-regular.woff" position={[0, 0.12, 0]} fontSize={0.045} color="#3b82f6" anchorX="center" anchorY="middle" characters="RISE·REFLECTPA ">
-        RISE · REFLECT · REPEAT
-      </Text>
       <group ref={plate1Ref} position={[-0.6, 0, 0]}>
         <mesh geometry={largePlateGeometry} material={obsidianMaterial} rotation={[0, 0, Math.PI / 2]} />
         <mesh geometry={largePlateGeometry} material={glowMaterial} rotation={[0, 0, Math.PI / 2]} scale={[1.02, 0.3, 1.02]} />
-        <Text font="/fonts/inter-regular.woff" position={[0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, 0, Math.PI / 2]} characters="INCLE">
-          INCLINE
-        </Text>
       </group>
       <group ref={plate2Ref} position={[-0.5, 0, 0]}>
         <mesh geometry={mediumPlateGeometry} material={obsidianMaterial} rotation={[0, 0, Math.PI / 2]} />
@@ -125,9 +118,6 @@ const HeroDumbbell = ({ scrollProgress, isMobile }: HeroDumbbellProps) => {
       <group ref={plate4Ref} position={[0.6, 0, 0]}>
         <mesh geometry={largePlateGeometry} material={obsidianMaterial} rotation={[0, 0, Math.PI / 2]} />
         <mesh geometry={largePlateGeometry} material={glowMaterial} rotation={[0, 0, Math.PI / 2]} scale={[1.02, 0.3, 1.02]} />
-        <Text font="/fonts/inter-regular.woff" position={[-0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, Math.PI, Math.PI / 2]} characters="INCLE">
-          INCLINE
-        </Text>
       </group>
       <mesh geometry={endCapGeometry} material={chromeMaterial} position={[-0.82, 0, 0]} rotation={[0, 0, Math.PI / 2]} />
       <mesh geometry={endCapGeometry} material={chromeMaterial} position={[0.82, 0, 0]} rotation={[0, 0, Math.PI / 2]} />

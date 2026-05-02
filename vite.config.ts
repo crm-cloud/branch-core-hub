@@ -40,12 +40,7 @@ export default defineConfig(() => ({
           if (
             id.includes('/three/') ||
             id.includes('@react-three/fiber') ||
-            id.includes('@react-three/drei') ||
-            id.includes('troika-three-text') ||
-            id.includes('troika-three-utils') ||
-            id.includes('troika-worker-utils') ||
-            id.includes('bidi-js') ||
-            id.includes('webgl-sdf-generator')
+            id.includes('@react-three/drei')
           ) return 'three';
 
           // PDF / spreadsheet / QR — only loaded by routes that build documents
