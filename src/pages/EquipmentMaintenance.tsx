@@ -90,6 +90,19 @@ export default function EquipmentMaintenancePage() {
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
 
+  // Search filter (name, brand, model, serial, category, location)
+  const filteredEquipment = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return equipment as any[];
+    return (equipment as any[]).filter((e) => {
+      const haystack = [e.name, e.brand, e.model, e.serial_number, e.category, e.location]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  })();
+
   // Derived: due / overdue / warranty signals
   const today = new Date();
   const in7Days = new Date(today.getTime() + 7 * 86400000);
@@ -283,7 +296,7 @@ export default function EquipmentMaintenancePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {equipment.map((item: any) => (
+                      {filteredEquipment.map((item: any) => (
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
@@ -440,10 +453,12 @@ export default function EquipmentMaintenancePage() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {equipment.length === 0 && (
+                      {filteredEquipment.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No equipment found
+                            {searchQuery.trim()
+                              ? `No equipment matches "${searchQuery}"`
+                              : 'No equipment found'}
                           </TableCell>
                         </TableRow>
                       )}
