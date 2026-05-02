@@ -1,82 +1,135 @@
-# Invoice WhatsApp + Live Feed + Contact Book — Plan
+# Audit & Plan — Classes, Lockers, GST, Group Discounts
 
-## Diagnosis
+## Audit Findings
 
-When you shared the invoice PDF, it went out via `sendWhatsAppDocument` which writes **directly** to `whatsapp_messages` and calls `send-whatsapp`. It **bypasses** `dispatch-communication`, so:
+### 1. Classes & Class Bookings
+**Current state:** `classes` table has no pricing fields (no `price`, `is_free`, `requires_benefit`). `book_class` RPC only checks capacity — any active member can book any class for free. There is no link between a class and `benefit_types` / `plan_benefits`. So today **every class is implicitly free for every active member** with no entitlement gating, no quota enforcement, and no charging path for paid/special classes.
 
-1. **No `communication_logs` row** → no entry in Live Feed, no funnel count in System Health.
-2. **PDF appears as plain text bubble** in WhatsApp Chat, because the chat renderer only special-cases `image` / `template`; for `document` it just shows the caption with a tiny `[document]` chip — no PDF preview, no download link.
-3. **"+919928910901"** shows because the WhatsApp Chat thread list (and contact card) only resolves names from `members` matched on `phone_number`. If the member's stored phone differs (e.g. no `+91`, or a different format), or they exist only as a lead, the lookup fails and the raw number is shown.
-4. The "Member" badge in your screenshot proves the row is linked to a member — but the **profile name** isn't being read from the joined `profiles.full_name`.
+**Gap:** No way to mark a class as "Group Class included in Plan A" vs "Special Workshop ₹500" vs "Trainer-led HIIT — 4 sessions/month included".
 
-This violates our Core memory rule: *"All NEW outbound Email/SMS/WhatsApp/in-app code MUST call `dispatchCommunication()`."* Invoice share was written before that rule and was never migrated.
+### 2. Lockers
+**Current state:** Two separate paths exist but they don't talk to each other:
+- `membership_plans.includes_free_locker` + `free_locker_size` → handled inside `purchase_member_membership` RPC (assigns a locker on plan purchase).
+- `lockers.monthly_fee` + `assign_locker_with_billing` RPC → standalone paid rental with its own GST invoice.
 
----
+There is **no `locker_access` benefit_type linkage**, no expiry sync between locker assignment and membership end_date, and no clear UI distinction between "free with plan" vs "paid add-on" in the assignment drawer.
 
-## Plan
+### 3. GST on Memberships
+**Current state:** `membership_plans.is_gst_inclusive = true` and `gst_rate = 18` exist on the plan, but the purchase drawer treats GST as an **opt-in toggle** (`includeGst` defaults to `false`). When unchecked, GST is simply not added — but the plan price already includes GST. So:
+- GST-skip case: invoice shows the inclusive price with no tax breakup → fine for non-GST customers but **the gym still over-collects** because the inclusive 18% is buried in the price with no offset.
+- GST-include case: GST is **added on top** of an already-inclusive price → double tax.
 
-### 1. Route invoice WhatsApp through `dispatch-communication`
+This is a real billing bug, not just a UX gap.
 
-- Extend `dispatch-communication` to accept an optional `attachment` field:
-  `{ url: string, filename: string, content_type: 'application/pdf' | ... }`.
-- When present and channel is `whatsapp`, forward `message_type='document'`, `media_url`, `filename`, `caption=body` to `send-whatsapp` (it already supports this).
-- Persist `attachment` into a new `communication_logs.metadata.attachment` jsonb field so Live Feed can render a paperclip + filename + open-link.
-- Refactor `sendWhatsAppDocument` to upload the PDF to storage, then call `dispatchCommunication({ channel:'whatsapp', category:'payment_receipt', attachment:{url,filename}, dedupe_key:`invoice-${invoice.id}-wa` })`. Drop the direct `whatsapp_messages` insert — `send-whatsapp` already creates that row.
-- Same migration for `sendPlanToMember` and any other caller of `sendWhatsAppDocument`.
-
-Result: invoice PDF send appears in **Live Feed** with status progressing `sent → delivered → read`, counted in **System Health → Communication Funnel**, and dedupe protects against double-clicks.
-
-### 2. Render PDFs properly in WhatsApp Chat bubble
-
-In `WhatsAppChat.tsx` message renderer:
-- For `message_type === 'document'`: show a card with PDF icon, filename (parsed from `media_url` or stored separately), file-size if available, and an "Open" button that links to `media_url` in a new tab (or downloads).
-- For `image`: render the actual `<img>` thumbnail (today it just shows a `Photo` chip).
-- Keep caption text below the attachment card.
-
-### 3. Fix member name resolution in chat
-
-- In the thread list and chat header, fall back through:
-  1. `messages.member_id → members → profiles.full_name`
-  2. Match `phone_number` against `members.profiles.phone` **after normalizing both** to `+91XXXXXXXXXX` (strip spaces, leading `0`, ensure `+91` prefix).
-  3. Match against `leads.phone` (same normalization) → show `Lead: <name>`.
-  4. Otherwise show `Unknown · <phone>`.
-- Apply same resolver to the right-hand contact card so it stops showing "Unknown contact" when the row already has `member_id` set.
-
-### 4. Polish unknown-contact UI
-
-- Replace the green `+` avatar with member initials (or a generic user icon for true unknowns).
-- Show name as the primary line, phone as secondary muted line.
-- Add a small "Save as Contact" button on the contact card for unknown numbers (ties into Contact Book — see §5).
-
-### 5. Contact Book — recommendation
-
-**Yes, add a lightweight Contact Book.** Use case:
-
-- Vendors, prospects, ex-members, walk-ins, partners, suppliers — people you message but who aren't members or active leads.
-- Today every unknown number shows as `+91xxxxxxxxxx` forever; staff can't tag them with a name or note.
-- Lets staff **start a chat from a name**, not just reply to inbound numbers.
-
-**Scope (minimal):**
-- New table `contacts` (`id, branch_id, name, phone, email, tags text[], notes, created_by, created_at`).
-- New page **Marketing → Contact Book**: searchable list, "Add Contact" sheet (right drawer), bulk import via CSV, "Start WhatsApp" / "Start SMS" actions.
-- Chat name resolver (§3) gets a 4th fallback to `contacts` before "Unknown".
-- "Save as Contact" button on unknown chats one-click pre-fills the sheet.
-- RLS: branch-scoped; staff can read/write within their branch.
-
-This is non-trivial; ship §1–§4 first, then §5 in a follow-up so you can validate the dispatcher flow before adding the Contact Book UI.
+### 4. Group / Couple Discounts
+**Current state:** `discount_codes` + `validate_coupon`/`redeem_coupon` RPCs exist, but they are single-member, single-invoice. There is no concept of a "group", no shared coupon per booking, no auto-split of a bulk discount across N members, and no way to record "these 4 members joined together → 15% off each."
 
 ---
 
-## Files to change
+## Proposed Plan
 
-- `supabase/functions/dispatch-communication/index.ts` — add `attachment` passthrough, store in `metadata`.
-- `src/utils/whatsappDocumentSender.ts` — re-route through dispatcher.
-- `src/utils/sendPlanToMember.ts` — same refactor.
-- `src/pages/WhatsAppChat.tsx` — document/image bubble renderer + name resolver.
-- `src/components/communications/LiveFeed.tsx` — render attachment chip when `metadata.attachment` present.
-- *(Phase 2)* migration `contacts` table + RLS, `src/pages/ContactBook.tsx`, menu entry under Marketing.
+### Part A — Classes as Benefits (recommended: yes, route through Benefits)
 
-## Out of scope
+1. **Schema additions to `classes`:**
+   - `is_paid boolean default false`
+   - `price numeric(10,2) default 0`
+   - `gst_rate numeric default 18`, `is_gst_inclusive boolean default true`
+   - `benefit_type_id uuid null` → links class to a bookable benefit (e.g. "Group Classes", "Yoga"); when set and member has quota, booking is free.
+   - `requires_benefit boolean default false` → if true, members without the benefit can't book unless they pay `price`.
 
-- Changing WhatsApp delivery webhook plumbing (already works for documents once routed via dispatcher).
-- Migrating other historical direct-write callers found by the CI guard — only invoice + plan sender for this round.
+2. **Booking flow (`book_class` RPC v2):**
+   ```text
+   if class.benefit_type_id is set:
+     if member has remaining benefit quota → consume quota, book free
+     elif class.requires_benefit and not class.is_paid → reject
+     else → create unpaid invoice for class.price, then book
+   elif class.is_paid → invoice + book
+   else → free book (legacy behaviour)
+   ```
+
+3. **UI:** Add Class drawer gets three toggles — *Free*, *Included in Benefit*, *Paid Workshop*. Member booking screen shows badge: "Included in your plan", "1 of 4 remaining this month", or "₹500 to book".
+
+### Part B — Lockers: unify free vs paid via Benefits
+
+1. **Create canonical `locker_access` benefit_type** (seeded per branch). Plans that include a free locker get a `plan_benefits` row with `benefit_type_id = locker_access` and a `description` holding the size.
+
+2. **Deprecate `membership_plans.includes_free_locker` / `free_locker_size`** in favour of the benefit row (keep columns for one release as read-only, with a migration that backfills rows).
+
+3. **`assign_locker_with_billing` v2:** accept `p_source: 'plan' | 'addon'`. When `'plan'`, set `p_chargeable=false`, sync `end_date` to membership end, skip invoice. When `'addon'`, current behaviour (monthly fee + GST invoice).
+
+4. **UI:** Locker assignment drawer shows two tabs — "Included with Plan" (auto-picks size, no fee) and "Paid Rental" (monthly fee, billing months, GST). Member profile shows "Locker #12 — included with Premium plan, expires 31 Dec".
+
+### Part C — GST Inclusive / Skip-GST handling (bug fix)
+
+1. **Stop the double-tax.** Treat plan price as the **gross** (consumer-facing) price always. Compute taxable base on the fly:
+   ```text
+   if include_gst (B2B / customer wants tax invoice):
+       taxable_base = price / (1 + gst_rate/100)
+       gst_amount   = price - taxable_base
+       invoice line: base + CGST/SGST split
+       total = price (unchanged)
+   else (skip GST / non-tax invoice):
+       invoice line: lump-sum price, no tax breakup
+       total = price (unchanged)
+   ```
+   Net result: **member pays the same ₹** in both cases; only the invoice presentation and the GSTR-1 reporting differs.
+
+2. **Update `purchase_member_membership` RPC** to accept `p_include_gst` as a *presentation flag*, not a price-modifier. Apply same logic to `assign_locker_with_billing` and `create_manual_invoice`.
+
+3. **Purchase drawer UX:**
+   - Replace "Include GST" toggle with a clearer **"Invoice Type"** radio: *Tax Invoice (with GSTIN)* vs *Receipt (no GST breakup)*.
+   - Total stays identical; only the breakdown card changes.
+   - When *Tax Invoice* selected, require customer GSTIN field (optional for B2C tax invoices).
+
+4. **Reporting:** GST report (GSTR-1 export) only pulls invoices with `gst_breakup_recorded = true`. Skip-GST invoices are excluded — accountant-clean.
+
+### Part D — Group / Couple Discounts
+
+1. **New table `member_groups`:**
+   ```text
+   id, branch_id, group_name, group_type ('couple'|'family'|'corporate'|'friends'),
+   discount_type ('percentage'|'fixed'), discount_value, created_at, created_by, is_active
+   ```
+   With `member_group_members(group_id, member_id, role)` join table.
+
+2. **Group purchase flow:** New "Group Purchase" drawer (Owner/Manager only) that:
+   - Selects 2–N members already in the system (or registers them inline).
+   - Picks a single plan (or per-member plans).
+   - Applies group discount % once → auto-splits across each member's invoice.
+   - Creates one `member_groups` row + one membership + one invoice per member, all sharing a `group_purchase_id` for reporting.
+
+3. **Coupon extension (lighter alternative):** Add `discount_codes.is_group_coupon boolean` and `min_members int`. A code like `COUPLE15` only validates if redeemed with ≥2 member IDs in the same transaction. `redeem_coupon` accepts an array of member_ids and records N redemption rows sharing one `group_redemption_id`.
+
+4. **Reporting:** Group revenue dashboard — total groups, avg group size, group-attributed MRR, retention vs. solo members.
+
+---
+
+## Technical Details
+
+**Migrations:**
+- `classes`: add `is_paid`, `price`, `gst_rate`, `is_gst_inclusive`, `benefit_type_id`, `requires_benefit`.
+- New: `member_groups`, `member_group_members`, `group_purchases`.
+- Backfill: convert `membership_plans.includes_free_locker=true` rows into `plan_benefits(benefit_type_id=locker_access)`.
+
+**RPC changes:**
+- `book_class` → quota-aware, paid-class-aware.
+- `purchase_member_membership` → fix GST math (inclusive-base), accept `p_invoice_type`.
+- `assign_locker_with_billing` → accept `p_source`, sync to membership end when `'plan'`.
+- New: `purchase_group_membership(p_member_ids[], p_plan_id, p_group_discount, p_group_type, ...)`.
+- `redeem_coupon` → optional `p_member_ids[]` for group coupons.
+
+**UI files:**
+- `src/components/classes/AddClassDrawer.tsx`, `EditClassDrawer.tsx` — pricing/benefit fields.
+- `src/components/lockers/AssignLockerDrawer.tsx` — Plan vs Add-on tabs.
+- `src/components/members/PurchaseMembershipDrawer.tsx` — Invoice Type radio replaces GST toggle.
+- New: `src/components/members/GroupPurchaseDrawer.tsx`.
+- New: `src/pages/MemberGroups.tsx` (under Members menu).
+- Member booking UI shows entitlement badges.
+
+**Phasing suggestion (4 separate turns):**
+1. **Phase 1 (critical bug):** Fix GST inclusive double-tax in purchase + locker + manual invoice RPCs and the drawer UX.
+2. **Phase 2:** Classes-as-benefits — schema + book_class v2 + Add/Edit drawer + member booking badges.
+3. **Phase 3:** Lockers unification — `locker_access` benefit + assign drawer tabs + RPC source param.
+4. **Phase 4:** Group/Couple discounts — `member_groups` + group purchase drawer + coupon extension.
+
+Approve to start with **Phase 1 (GST fix)** since it's a live billing correctness issue, or tell me a different order.
