@@ -200,7 +200,8 @@ export const adminMenuConfig: MenuSection[] = [
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Equipment', href: '/equipment', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Equipment Maintenance', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin'] },
     ],
