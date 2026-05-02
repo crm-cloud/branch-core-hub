@@ -155,12 +155,13 @@
     @apply bg-muted-foreground/50;
   }
 
-  /* Public landing — floating background words drift gently. GPU-only
-     transform + opacity so it doesn't compete with the WebGL canvas. */
-  @keyframes inclineFloat {
-    0%   { transform: translate3d(0, 0, 0)     rotate(0deg); }
-    50%  { transform: translate3d(0, -18px, 0) rotate(0.5deg); }
-    100% { transform: translate3d(0, 8px, 0)   rotate(-0.5deg); }
+  /* Public landing — floating background words drift slowly across the
+     viewport (left → right) with a tiny vertical sway. GPU-only transform
+     so it doesn't compete with the WebGL canvas. */
+  @keyframes inclineDrift {
+    0%   { transform: translate3d(-30vw, 0, 0); }
+    50%  { transform: translate3d(20vw, -10px, 0); }
+    100% { transform: translate3d(70vw, 0, 0); }
   }
 }
 
