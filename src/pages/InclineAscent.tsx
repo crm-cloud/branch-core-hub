@@ -5,6 +5,7 @@ import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import SEO from '@/components/seo/SEO';
 import { PUBLIC_BRANCHES, PUBLIC_FAQS } from '@/config/publicSite';
+import inclineLogo from '@/assets/incline-logo.png';
 
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
 // main thread during initial paint. This dramatically reduces Max Potential FID.
