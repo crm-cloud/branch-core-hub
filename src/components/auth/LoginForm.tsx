@@ -242,16 +242,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground font-medium">Email</FormLabel>
+                    <FormLabel className="text-slate-700 font-medium text-sm">Email</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                         <Input
                           type="email"
                           placeholder="you@example.com"
                           autoComplete="email"
                           data-testid="input-email"
-                          className="h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent"
+                          className="h-12 pl-10 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary"
                           {...field}
                         />
                       </div>
@@ -265,16 +265,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground font-medium">Password</FormLabel>
+                    <FormLabel className="text-slate-700 font-medium text-sm">Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                         <Input
                           type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           autoComplete="current-password"
                           data-testid="input-password"
-                          className="h-12 pl-9 pr-11 text-base bg-secondary/50 border-border focus:border-accent"
+                          className="h-12 pl-10 pr-11 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary"
                           {...field}
                         />
                         <button
@@ -294,7 +294,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               <Button
                 type="submit"
                 data-testid="btn-sign-in"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -310,7 +310,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             <Link
               to="/auth/forgot-password"
               data-testid="link-forgot-password"
-              className="text-sm text-muted-foreground hover:text-accent transition-colors"
+              className="text-sm text-slate-500 hover:text-primary font-medium transition-colors"
             >
               Forgot your password?
             </Link>
@@ -324,18 +324,18 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           {otpStep === 'send' ? (
             <>
               <div className="space-y-0.5">
-                <h2 className="text-xl font-bold text-foreground">Sign in with a code</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-xl font-bold text-slate-900">Sign in with a code</h2>
+                <p className="text-sm text-slate-500">
                   Enter your email and we'll send a 6-digit sign-in code.
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="otp-email" className="text-sm font-medium text-foreground">
+                <label htmlFor="otp-email" className="text-sm font-medium text-slate-700">
                   Email address
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                   <Input
                     id="otp-email"
                     type="email"
@@ -347,7 +347,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     autoComplete="email"
                     autoFocus
                     data-testid="input-otp-email"
-                    className={`h-12 pl-9 text-base bg-secondary/50 border-border focus:border-accent ${otpEmailError ? 'border-destructive' : ''}`}
+                    className={`h-12 pl-10 text-base rounded-xl bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-primary/30 focus:border-primary ${otpEmailError ? 'border-destructive' : ''}`}
                   />
                 </div>
                 {otpEmailError && (
@@ -359,7 +359,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 onClick={handleSendCode}
                 disabled={isLoading || !otpEmail}
                 data-testid="btn-send-code"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
               >
                 {isLoading ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending code...</>
@@ -371,14 +371,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           ) : (
             <>
               <div className="space-y-0.5">
-                <h2 className="text-xl font-bold text-foreground">Enter the code</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-xl font-bold text-slate-900">Enter the code</h2>
+                <p className="text-sm text-slate-500">
                   A 6-digit code was sent to{' '}
                   <button
                     type="button"
                     onClick={() => { setOtpStep('send'); setOtp(''); }}
                     data-testid="btn-change-email"
-                    className="font-semibold text-foreground underline-offset-2 hover:underline"
+                    className="font-semibold text-slate-900 underline-offset-2 hover:underline"
                   >
                     {otpEmail}
                   </button>
@@ -398,12 +398,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   data-testid="input-otp-code"
                 >
                   <InputOTPGroup className="gap-1.5 sm:gap-2">
-                    <InputOTPSlot index={0} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={1} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={2} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={3} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={4} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
-                    <InputOTPSlot index={5} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-border" />
+                    <InputOTPSlot index={0} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={1} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={2} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={3} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={4} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
+                    <InputOTPSlot index={5} className="h-12 w-9 sm:w-10 text-lg rounded-xl border-slate-200 bg-white focus-within:ring-2 focus-within:ring-primary/30" />
                   </InputOTPGroup>
                 </InputOTP>
               </div>
@@ -412,7 +412,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 onClick={handleVerifyOtp}
                 disabled={isLoading || otp.length !== 6}
                 data-testid="btn-verify-code"
-                className="w-full h-12 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-base shadow-lg shadow-accent/20"
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.6)] hover:shadow-[0_14px_36px_-12px_hsl(217_91%_50%/0.7)] transition-all"
               >
                 {isLoading ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
@@ -421,7 +421,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 )}
               </Button>
 
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-slate-500">
                 Didn't receive it?{' '}
                 {countdown > 0 ? (
                   <span className="text-muted-foreground/70">
@@ -433,7 +433,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                     onClick={handleResendCode}
                     disabled={isLoading}
                     data-testid="btn-resend-code"
-                    className="text-accent hover:underline font-medium inline-flex items-center gap-1"
+                    className="text-primary hover:underline font-medium inline-flex items-center gap-1"
                   >
                     <RefreshCw className="h-3 w-3" /> Resend now
                   </button>
