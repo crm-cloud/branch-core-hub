@@ -259,6 +259,7 @@ Deno.serve(async (req) => {
                 media_url: input.attachment.url,
                 caption: input.payload.body,
                 filename: input.attachment.filename,
+                skip_log: true,
               },
             });
             if (r.error) throw new Error(r.error.message);
