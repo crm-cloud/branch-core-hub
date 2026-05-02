@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Type check
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Unit tests
+        run: bunx vitest run --passWithNoTests
+
+      - name: Build
+        run: bun run build
+
+      - name: Bundle size guard
+        run: |
+          set -e
+          MAIN_KB=$(du -k dist/assets/index-*.js 2>/dev/null | sort -nr | head -1 | awk '{print $1}')
+          echo "Largest entry chunk: ${MAIN_KB:-0} KB (uncompressed)"
+          # 1.5 MB uncompressed ≈ ~400 KB gzip budget; tune as needed.
+          if [ "${MAIN_KB:-0}" -gt 1500 ]; then
+            echo "::error::Initial JS chunk exceeds 1500 KB uncompressed"
+            exit 1
+          fi
+
+      - name: Direct-write guard (services-only)
+        run: |
+          # Forbid bare from('<critical-table>').(insert|update|delete) outside its
+          # owning service module. Atomic RPCs must be used instead.
+          set +e
+          MATCHES=$(grep -RnoE \
+            "from\\('(invoices|payments|memberships|wallet_transactions|attendance|lockers|benefit_bookings)'\\)\\.(insert|update|delete)" \
+            src/components src/pages src/hooks 2>/dev/null)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Direct mutating writes to critical tables found outside services/ — use the atomic RPC instead:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "Direct-write guard passed."
