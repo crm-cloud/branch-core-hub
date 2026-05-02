@@ -137,7 +137,7 @@ const InclineAscent = () => {
           first HTML render, not after the lazy Three.js bundle finishes. */}
       <div className="fixed top-6 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 z-50 pointer-events-none">
         <img
-          src={inclineLogo}
+          src={INCLINE_LOGO}
           alt="INCLINE"
           width={224}
           height={128}
