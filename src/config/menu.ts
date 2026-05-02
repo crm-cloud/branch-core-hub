@@ -36,6 +36,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Fitness',
     items: [
       { label: 'Book & Schedule', href: '/my-classes', icon: Calendar, roles: ['member'] },
+      { label: 'Book a Benefit', href: '/book-benefit', icon: Heart, roles: ['member'] },
       { label: 'PT Sessions', href: '/my-pt-sessions', icon: Dumbbell, roles: ['member'] },
       { label: 'Workout Plan', href: '/my-workout', icon: Activity, roles: ['member'] },
       { label: 'Diet Plan', href: '/my-diet', icon: UtensilsCrossed, roles: ['member'] },
