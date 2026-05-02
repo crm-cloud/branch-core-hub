@@ -80,6 +80,7 @@ interface Template {
   is_active: boolean;
   created_at: string;
   meta_template_name?: string | null;
+  meta_template_id?: string | null;
   meta_template_status?: string | null;
   meta_rejection_reason?: string | null;
   header_type?: 'none' | 'image' | 'document' | 'video' | null;
@@ -447,18 +448,41 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         );
       }
 
+      // Look up real meta_template_id (the view doesn't expose it; query the canonical table).
+      let metaId: string | null = null;
+      if (metaTarget.meta_template_name) {
+        const { data: row } = await supabase
+          .from('whatsapp_templates')
+          .select('meta_template_id')
+          .eq('name', metaTarget.meta_template_name)
+          .eq('language', metaForm.language)
+          .maybeSingle();
+        metaId = (row as any)?.meta_template_id ?? null;
+      }
+      const isEdit = !!metaId;
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-        body: {
-          action: 'create',
-          branch_id: branch,
-          template_data: {
-            name: metaForm.name,
-            category: metaForm.category,
-            language: metaForm.language,
-            body_text: metaForm.body_text,
-            local_template_id: metaTarget.id,
-          },
-        },
+        body: isEdit
+          ? {
+              action: 'edit',
+              branch_id: branch,
+              template_data: {
+                meta_template_id: metaId,
+                category: metaForm.category,
+                body_text: metaForm.body_text,
+                local_template_id: metaTarget.id,
+              },
+            }
+          : {
+              action: 'create',
+              branch_id: branch,
+              template_data: {
+                name: metaForm.name,
+                category: metaForm.category,
+                language: metaForm.language,
+                body_text: metaForm.body_text,
+                local_template_id: metaTarget.id,
+              },
+            },
       });
 
       // supabase-js wraps non-2xx responses; try to extract real body.
@@ -640,10 +664,22 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 size="sm"
                                 className="text-xs gap-1.5"
                                 onClick={() => openMetaDialog(template)}
-                                title="Submit to Meta for approval"
+                                title={
+                                  template.meta_template_status === 'REJECTED'
+                                    ? 'Edit & resubmit this template to Meta'
+                                    : template.meta_template_name
+                                      ? 'Already submitted — opens edit form'
+                                      : 'Submit to Meta for approval'
+                                }
                               >
                                 <Send className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Submit to Meta</span>
+                                <span className="hidden sm:inline">
+                                  {template.meta_template_status === 'REJECTED'
+                                    ? 'Submit for Edit'
+                                    : template.meta_template_name
+                                      ? 'Edit & Resubmit'
+                                      : 'Submit to Meta'}
+                                </span>
                               </Button>
                             )}
                             <Button

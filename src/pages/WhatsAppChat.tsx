@@ -40,7 +40,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare, Send, Search, Phone, User,
   CheckCheck, Check, Clock, Paperclip, Smile, MoreVertical, Sparkles, Loader2, Plus, AlertTriangle, Bot, UserPlus, Image, FileText,
-  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook, Users, PanelRightOpen, PanelRightClose,
+  Trash2, Ban, Eye, CircleDot, AlertCircle, Instagram, Facebook, Users, PanelRightOpen, PanelRightClose, BookUser,
 } from 'lucide-react';
 
 // Platform icon helper
@@ -54,6 +54,13 @@ const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: stri
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import { ContactMemberContext } from '@/components/communications/ContactMemberContext';
 import { useChatSound } from '@/hooks/useChatSound';
+import { resolveIdentities, type ResolvedIdentity } from '@/lib/contacts/resolveIdentity';
+import { upsertContact, CONTACT_CATEGORIES } from '@/services/contactService';
+import { formatPhoneDisplay, normalizePhone as normalizePhoneE164 } from '@/lib/contacts/phone';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 
@@ -152,6 +159,12 @@ export default function WhatsAppChatPage() {
   const [transferStaffOpen, setTransferStaffOpen] = useState(false);
   // Right context panel — collapsed by default to maximise chat view area
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
+
+  // Save-as-Contact drawer state
+  const [saveContactOpen, setSaveContactOpen] = useState(false);
+  const [saveContactForm, setSaveContactForm] = useState({
+    full_name: '', category: 'general', company: '', notes: '',
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -287,15 +300,33 @@ export default function WhatsAppChatPage() {
     },
   });
 
+  // Resolve identities (member → lead → contact book) for every phone in the list.
+  const phonesKey = contacts.map(c => c.phone_number).sort().join('|');
+  const { data: identityMap } = useQuery({
+    queryKey: ['chat-identities', phonesKey],
+    queryFn: () => resolveIdentities(contacts.map(c => c.phone_number)),
+    enabled: contacts.length > 0,
+    staleTime: 60_000,
+  });
+
   // Enrich contacts with settings (normalize phone for matching)
   const enrichedContacts: ChatContact[] = contacts.map(c => {
     const normalized = normalizePhone(c.phone_number);
     const s = settingsMap.get(c.phone_number) || settingsMap.get(normalized) || settingsMap.get('+' + normalized);
+    const ident = identityMap?.get(normalizePhoneE164(c.phone_number));
+    const resolvedName = ident && ident.source !== 'unknown'
+      ? ident.display_name
+      : c.contact_name;
     return {
       ...c,
+      contact_name: resolvedName,
+      member_id: ident?.member_id ?? c.member_id,
       is_unread: s?.is_unread ?? false,
       bot_active: s?.bot_active ?? true,
-    };
+      identity_source: ident?.source ?? 'unknown',
+      lead_id: ident?.lead_id ?? null,
+      contact_id: ident?.contact_id ?? null,
+    } as ChatContact & { identity_source: string; lead_id: string | null; contact_id: string | null };
   });
 
   // Messages query for the selected contact
@@ -856,7 +887,7 @@ export default function WhatsAppChatPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-semibold text-sm text-foreground truncate">
-                            {contact.contact_name || contact.phone_number}
+                            {contact.contact_name || formatPhoneDisplay(contact.phone_number)}
                           </span>
                           <Badge variant="outline" className={`text-[9px] h-4 px-1 flex-shrink-0 rounded-md font-medium ${
                             contact.platform === 'instagram'
@@ -918,12 +949,26 @@ export default function WhatsAppChatPage() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                          {selectedContact.contact_name || selectedContact.phone_number}
+                          {selectedContact.contact_name || formatPhoneDisplay(selectedContact.phone_number)}
                         </h3>
-                        {/* Platform badge */}
+                        {(() => {
+                          const src = (selectedContact as any).identity_source as string | undefined;
+                          if (!src || src === 'unknown') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-amber-300 bg-amber-50 text-amber-700">Unknown</Badge>
+                          );
+                          if (src === 'member') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-emerald-300 bg-emerald-50 text-emerald-700">Member</Badge>
+                          );
+                          if (src === 'lead') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-violet-300 bg-violet-50 text-violet-700">Lead</Badge>
+                          );
+                          return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-blue-300 bg-blue-50 text-blue-700">Contact</Badge>
+                          );
+                        })()}
                         <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ml-1 ${
                           selectedContact.platform === 'instagram'
                             ? 'border-pink-300 text-pink-600 bg-pink-50 dark:bg-pink-500/10'
@@ -936,10 +981,7 @@ export default function WhatsAppChatPage() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        {selectedContact.phone_number}
-                        {selectedContact.member_id && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1">Member</Badge>
-                        )}
+                        {formatPhoneDisplay(selectedContact.phone_number)}
                       </div>
                     </div>
                   </div>
@@ -983,10 +1025,21 @@ export default function WhatsAppChatPage() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuContent align="end" className="w-52">
                         {selectedContact.member_id && (
                           <DropdownMenuItem onClick={() => navigate(`/members`)}>
                             <Eye className="h-4 w-4 mr-2" /> View Profile
+                          </DropdownMenuItem>
+                        )}
+                        {((selectedContact as any).identity_source === 'unknown' || (selectedContact as any).identity_source === undefined) && (
+                          <DropdownMenuItem onClick={() => {
+                            setSaveContactForm({
+                              full_name: selectedContact.contact_name || '',
+                              category: 'general', company: '', notes: '',
+                            });
+                            setSaveContactOpen(true);
+                          }}>
+                            <BookUser className="h-4 w-4 mr-2 text-indigo-600" /> Save as Contact
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
@@ -1648,6 +1701,96 @@ export default function WhatsAppChatPage() {
         defaultBranchId={selectedBranch !== 'all' ? selectedBranch : undefined}
         prefill={leadPrefill}
       />
+
+      {/* Save as Contact drawer (for unknown numbers) */}
+      <ResponsiveSheet open={saveContactOpen} onOpenChange={setSaveContactOpen}>
+        <ResponsiveSheetHeader>
+          <ResponsiveSheetTitle>Save as Contact</ResponsiveSheetTitle>
+          <ResponsiveSheetDescription>
+            Add this number to your Contact Book so future chats show the name.
+          </ResponsiveSheetDescription>
+        </ResponsiveSheetHeader>
+        <div className="space-y-4 mt-2">
+          <div className="rounded-xl bg-muted/50 px-3 py-2 text-sm flex items-center gap-2">
+            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-mono">{selectedContact ? formatPhoneDisplay(selectedContact.phone_number) : ''}</span>
+          </div>
+          <div className="space-y-2">
+            <Label>Full name *</Label>
+            <Input
+              value={saveContactForm.full_name}
+              onChange={(e) => setSaveContactForm({ ...saveContactForm, full_name: e.target.value })}
+              placeholder="e.g. Ravi Kumar"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={saveContactForm.category}
+                onValueChange={(v) => setSaveContactForm({ ...saveContactForm, category: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONTACT_CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Company</Label>
+              <Input
+                value={saveContactForm.company}
+                onChange={(e) => setSaveContactForm({ ...saveContactForm, company: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea
+              rows={3}
+              value={saveContactForm.notes}
+              onChange={(e) => setSaveContactForm({ ...saveContactForm, notes: e.target.value })}
+              placeholder="Anything worth remembering"
+            />
+          </div>
+        </div>
+        <ResponsiveSheetFooter>
+          <Button variant="outline" onClick={() => setSaveContactOpen(false)}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (!selectedContact) return;
+              if (!saveContactForm.full_name.trim()) {
+                toast.error('Name is required');
+                return;
+              }
+              if (!selectedBranch || selectedBranch === 'all') {
+                toast.error('Pick a specific branch first');
+                return;
+              }
+              try {
+                await upsertContact({
+                  branch_id: selectedBranch,
+                  phone: selectedContact.phone_number,
+                  full_name: saveContactForm.full_name.trim(),
+                  category: saveContactForm.category,
+                  company: saveContactForm.company || null,
+                  notes: saveContactForm.notes || null,
+                });
+                toast.success('Contact saved');
+                setSaveContactOpen(false);
+                queryClient.invalidateQueries({ queryKey: ['chat-identities'] });
+              } catch (e: any) {
+                toast.error(e.message || 'Failed to save contact');
+              }
+            }}
+          >
+            Save Contact
+          </Button>
+        </ResponsiveSheetFooter>
+      </ResponsiveSheet>
     </AppLayout>
   );
 }

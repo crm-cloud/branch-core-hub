@@ -1960,6 +1960,59 @@ export type Database = {
           },
         ]
       }
+      contacts: {
+        Row: {
+          branch_id: string
+          category: string
+          company: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          category?: string
+          company?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          phone: string
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          category?: string
+          company?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          phone?: string
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_signature_requests: {
         Row: {
           branch_id: string | null
@@ -11151,6 +11204,7 @@ export type Database = {
         }
         Returns: Json
       }
+      normalize_phone_in: { Args: { p: string }; Returns: string }
       notify_member: {
         Args: {
           p_branch_id: string

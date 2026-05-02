@@ -1,4 +1,4 @@
-// v2.1.0 — Phase G: pinned to shared META_GRAPH_VERSION (v25.0).
+// v2.2.0 — Phase G: pinned to shared META_GRAPH_VERSION (v25.0). Adds `edit` action.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_GRAPH_VERSION, META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
@@ -405,6 +405,119 @@ serve(async (req) => {
       );
     }
 
+    // ── ACTION: edit ──
+    // Resubmits an existing Meta template with edited body/category. Useful when a
+    // template was REJECTED and we want to fix it without losing the slot.
+    if (action === "edit") {
+      const { meta_template_id, category, body_text, local_template_id } = template_data || {};
+      if (!meta_template_id) {
+        return new Response(
+          JSON.stringify({ error: "Missing template_data.meta_template_id for edit action" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!body_text && !category) {
+        return new Response(
+          JSON.stringify({ error: "Provide at least one of: body_text, category" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Convert {{name}} → {{1}} just like create
+      let convertedBody: string | undefined = undefined;
+      if (body_text) {
+        convertedBody = body_text;
+        const namedVarRegex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+        const namedVars: string[] = [];
+        let match;
+        while ((match = namedVarRegex.exec(body_text)) !== null) {
+          if (!namedVars.includes(match[1])) namedVars.push(match[1]);
+        }
+        namedVars.forEach((varName, index) => {
+          convertedBody = convertedBody!.replace(
+            new RegExp(`\\{\\{${varName}\\}\\}`, "g"),
+            `{{${index + 1}}}`,
+          );
+        });
+      }
+
+      const editPayload: Record<string, unknown> = {};
+      if (category) editPayload.category = category;
+      if (convertedBody) {
+        const bodyComponent: any = { type: "BODY", text: convertedBody };
+        // Minimal example to satisfy Meta when variables are present
+        const numbered = (convertedBody.match(/\{\{(\d+)\}\}/g) || []).length;
+        if (numbered > 0) {
+          bodyComponent.example = { body_text: [Array(numbered).fill("Sample")] };
+        }
+        editPayload.components = [bodyComponent];
+      }
+
+      const editUrl = appendProof(`${META_API_BASE}/${meta_template_id}`, proof);
+      let metaRes: Response;
+      let metaData: any;
+      try {
+        metaRes = await fetch(editUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(editPayload),
+        });
+        metaData = await metaRes.json();
+      } catch (fetchErr) {
+        const errMsg = fetchErr instanceof Error ? fetchErr.message : "Network error";
+        await logError(supabase, branch_id, "manage-whatsapp-templates", "Meta API edit fetch error", errMsg);
+        return new Response(
+          JSON.stringify({ error: "Failed to reach Meta API", details: errMsg }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!metaRes.ok || metaData?.error) {
+        const me = metaData?.error || {};
+        const userMsg = me.error_user_msg || me.message || "Failed to edit template in Meta";
+        const userTitle = me.error_user_title || null;
+        const errMsg = userTitle ? `${userTitle}: ${userMsg}` : userMsg;
+        await logError(supabase, branch_id, "manage-whatsapp-templates", `Meta API edit ${metaRes.status}`, errMsg);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: errMsg,
+            meta_error: {
+              message: me.message || null,
+              user_title: userTitle,
+              user_msg: userMsg,
+              code: me.code ?? null,
+              subcode: me.error_subcode ?? null,
+              fbtrace_id: me.fbtrace_id || null,
+              type: me.type || null,
+            },
+            upstream_status: metaRes.status,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Mark local row as PENDING again
+      if (local_template_id) {
+        await supabase
+          .from("templates")
+          .update({
+            meta_template_status: "PENDING",
+            meta_rejection_reason: null,
+            content: body_text || undefined,
+          })
+          .eq("id", local_template_id);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, status: "PENDING", meta_response: metaData }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ── ACTION: get_status ──
     if (action === "get_status") {
       if (!template_id) {
@@ -518,7 +631,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | get_status | sync_ig_icebreakers | sync_messenger_quick_replies` }),
+      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | edit | get_status | sync_ig_icebreakers | sync_messenger_quick_replies` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
