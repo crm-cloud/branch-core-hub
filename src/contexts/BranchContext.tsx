@@ -38,6 +38,13 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const setSelectedBranch = (id: string) => {
     setSelectedBranchState(id);
     localStorage.setItem('incline-selected-branch', id);
+    // Mirror the selection on the server (defense-in-depth for RLS / audit).
+    // Best-effort: silent on failure so UI remains responsive.
+    void supabase
+      .rpc('set_active_branch', { p_branch_id: id === 'all' ? null : id })
+      .then(({ error }) => {
+        if (error) console.warn('[BranchContext] set_active_branch failed', error.message);
+      });
   };
 
   const isOwnerOrAdmin = hasAnyRole(['owner', 'admin']);
