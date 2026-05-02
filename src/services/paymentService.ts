@@ -209,3 +209,23 @@ export async function openRazorpayCheckout(
   });
   rzp.open();
 }
+
+/**
+ * Atomically reverse a payment (refund or commission reversal).
+ * Calls the SECURITY DEFINER `reverse_payment` RPC. Idempotent: if a
+ * reversal already exists for the same payment_id the existing reversal
+ * row is returned.
+ */
+export async function reversePayment(
+  paymentId: string,
+  reason: string,
+  actorId?: string,
+): Promise<{ status: string; reversal_payment_id: string; original_payment_id?: string; amount?: number }> {
+  const { data, error } = await supabase.rpc('reverse_payment', {
+    p_payment_id: paymentId,
+    p_reason: reason,
+    p_actor_id: actorId ?? null,
+  });
+  if (error) throw error;
+  return data as any;
+}
