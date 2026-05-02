@@ -6924,6 +6924,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_source: string
           received_by: string | null
+          reversal_of: string | null
           settled_at: string | null
           slip_url: string | null
           status: Database["public"]["Enums"]["payment_status"]
@@ -6949,6 +6950,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           payment_source?: string
           received_by?: string | null
+          reversal_of?: string | null
           settled_at?: string | null
           slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
@@ -6974,6 +6976,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           payment_source?: string
           received_by?: string | null
+          reversal_of?: string | null
           settled_at?: string | null
           slip_url?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
@@ -7014,6 +7017,13 @@ export type Database = {
           {
             foreignKeyName: "payments_original_payment_id_fkey"
             columns: ["original_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_reversal_of_fkey"
+            columns: ["reversal_of"]
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
@@ -10766,6 +10776,10 @@ export type Database = {
       resolve_member_document_url: {
         Args: { p_document_id: string; p_expires_in?: number }
         Returns: string
+      }
+      reverse_payment: {
+        Args: { p_actor_id?: string; p_payment_id: string; p_reason: string }
+        Returns: Json
       }
       reverse_trainer_commission: {
         Args: { p_payment_id: string; p_reason?: string }
