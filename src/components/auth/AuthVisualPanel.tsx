@@ -10,7 +10,7 @@ export function AuthVisualPanel() {
   return (
     <aside
       aria-hidden="true"
-      className="auth-visual relative overflow-hidden text-white"
+      className="auth-visual absolute inset-0 overflow-hidden text-white"
     >
       {/* Base gradient */}
       <div
@@ -29,35 +29,35 @@ export function AuthVisualPanel() {
       {/* Subtle grid */}
       <div className="auth-grid absolute inset-0 opacity-[0.18]" />
 
-      {/* Floating tagline words */}
+      {/* Floating tagline words — kept in right margin away from main content */}
       <span
-        className="absolute font-oswald font-bold tracking-widest text-white/70 select-none"
+        className="absolute font-oswald font-bold tracking-widest text-white/55 select-none pointer-events-none"
         style={{
-          top: "14%",
-          left: "10%",
-          fontSize: "clamp(0.8rem, 1.4vw, 1.05rem)",
+          top: "10%",
+          right: "10%",
+          fontSize: "clamp(0.7rem, 1.1vw, 0.9rem)",
           animation: "incFloatA 14s ease-in-out infinite",
         }}
       >
         RISE
       </span>
       <span
-        className="absolute font-oswald font-bold tracking-widest text-cyan-200/70 select-none"
+        className="absolute font-oswald font-bold tracking-widest text-cyan-200/60 select-none pointer-events-none"
         style={{
-          top: "28%",
-          right: "12%",
-          fontSize: "clamp(0.7rem, 1.2vw, 0.95rem)",
+          top: "40%",
+          right: "6%",
+          fontSize: "clamp(0.7rem, 1.1vw, 0.9rem)",
           animation: "incFloatB 16s ease-in-out 1s infinite",
         }}
       >
         REFLECT
       </span>
       <span
-        className="absolute font-oswald font-bold tracking-widest text-white/60 select-none"
+        className="absolute font-oswald font-bold tracking-widest text-white/50 select-none pointer-events-none"
         style={{
-          bottom: "30%",
-          left: "16%",
-          fontSize: "clamp(0.7rem, 1.2vw, 0.95rem)",
+          top: "70%",
+          right: "14%",
+          fontSize: "clamp(0.7rem, 1.1vw, 0.9rem)",
           animation: "incFloatC 18s ease-in-out 2s infinite",
         }}
       >

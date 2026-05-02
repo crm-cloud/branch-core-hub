@@ -64,12 +64,12 @@ export default function AuthPage() {
       />
 
       {/* LEFT — Visual panel (desktop full height, mobile compact hero) */}
-      <div className="hidden lg:block relative">
+      <div className="hidden lg:block relative min-h-dvh">
         <AuthVisualPanel />
       </div>
 
       {/* Mobile compact hero */}
-      <div className="lg:hidden relative h-[220px] overflow-hidden">
+      <div className="lg:hidden relative h-[240px] overflow-hidden">
         <AuthVisualPanel />
       </div>
 
