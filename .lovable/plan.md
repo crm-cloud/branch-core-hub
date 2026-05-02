@@ -1,66 +1,45 @@
-## Goal
+## Tune floating words + adopt reference site's CSS tokens
 
-Adopt the proven pattern from the reference site: keep the dumbbell as a real 3D object, but render every "floating word" as a normal HTML element. Switch the public site's typography to **Oswald** loaded straight from Google Fonts. This eliminates the GPOS/GSUB warnings, removes the woff/woff2 failure path, and meaningfully shrinks the 3D bundle.
+You shared the working CSS from the reference project. I'll fold the parts that affect the floating-word feel into our project, then fix the size / opacity / drift issues you reported.
 
-The hero "feel" stays the same (dumbbell rotates, words float behind/around it, parallax on scroll). Only the rendering technique changes.
+### 1. Fix the floating words (the actual bug)
 
-## What changes
+In `src/components/3d/FloatingWords.tsx`:
 
-### 1. Typography — Oswald via Google Fonts
-- In `index.html`: remove the `<link rel="preload" ... inter-regular.woff>` and add Google Fonts links for **Oswald** (weights 400/500/600/700, `display=swap`) plus `preconnect` to `fonts.gstatic.com`. Same recipe the reference site uses.
-- In `src/index.css` / Tailwind config: set Oswald as the display/heading font on the public landing only. Keep Inter as the app-wide UI font everywhere else (admin, member portal, dashboards) so we don't disturb the whole product.
-- Delete `public/fonts/inter-regular.woff` (no longer needed).
+- **Smaller** — drop sizes from `clamp(2–6rem)` to `clamp(1rem–2.75rem)` so they read as ambient background, not headlines.
+- **Fainter** — base opacity 0.32 → **0.14** (mid-scroll 0.20, end 0.08).
+- **Drift left → right** (the bit that wasn't happening). Today the keyframe only translates Y. Replace with a horizontal `inclineDrift` keyframe so each word slowly traverses the viewport with a tiny vertical sway:
 
-### 2. FloatingWords — move from `<Text>` (WebGL) to DOM
-- Rewrite `src/components/3d/FloatingWords.tsx` as a plain React component that renders absolutely-positioned `<span>`s in the HTML overlay above the canvas (not inside `<Canvas>`).
-- Each word gets a CSS animation (slow float on Y, slight horizontal drift) and an opacity that scales with `scrollProgress` (same curve as today). Use `transform: translate3d` + `will-change: transform` for GPU compositing — zero main-thread work per frame.
-- Words: `RISE`, `REFLECT`, `REPEAT`, `RECOVER`, `RESTORE`, `REBUILD`. Uppercase Oswald, low opacity (~25–40%), large size, scattered around the dumbbell area.
-- Mount this component as a sibling of `<Scene3D>` inside `InclineAscent.tsx`, pinned `fixed inset-0` with `pointer-events-none` so it sits behind/around the canvas without blocking clicks.
+```css
+@keyframes inclineDrift {
+  0%   { transform: translate3d(-30vw, 0, 0); }
+  50%  { transform: translate3d( 20vw, -10px, 0); }
+  100% { transform: translate3d( 70vw, 0, 0); }
+}
+```
 
-### 3. HeroDumbbell — remove the in-mesh `<Text>` labels
-- The dumbbell currently embeds three small `<Text>` labels (centre band "RISE·REFLECT…" and two "INCLE" side labels) using `troika-three-text`. These are the source of the `unsupported GPOS/GSUB LookupType` warnings.
-- Replace those with either:
-  - tiny **decal textures** (a one-time PNG generated from a `<canvas>`), or
-  - simply **remove them** — they're sub-pixel at most viewport sizes and not visually meaningful.
-- Recommendation: remove. The dumbbell silhouette and chrome material carry the hero on their own (this is exactly what the reference site does).
+- Long durations (22–30s, `linear`) so motion is constant and ambient.
+- Staggered `animation-delay` per word so they don't all enter together.
+- Add `whitespace-nowrap` so longer words don't wrap mid-drift.
 
-### 4. Drop `troika-three-text` from the bundle
-- Once `<Text>` is gone from both `FloatingWords` and `HeroDumbbell`, remove the `Text` import from `@react-three/drei` everywhere.
-- Update `vite.config.ts` manual chunking: drop the `troika-three-text` / `bidi-js` group since it's no longer pulled in. Three.js chunk shrinks noticeably.
+### 2. Adopt the reference site's tokens (lightly)
 
-### 5. Scene3D — small simplifications
-- No font-related code changes needed inside the canvas anymore.
-- Keep current DPR caps (mobile 1.25, desktop 1.75) and antialias-off-on-mobile — they're already good.
+I'll merge — **not overwrite** — the relevant pieces from the CSS you shared. Many of our admin components depend on the existing design tokens (Vuexy palette), so blanket replacement would break dashboards. What I'll lift:
 
-### 6. Cleanup
-- Remove the font preload line from `index.html`.
-- Delete `public/fonts/` if empty after removing the woff.
-- No DB / edge function changes. No auth changes. No memory updates required (this is a public-site visual refactor).
+- **Body font** → `'Oswald', sans-serif` for the public landing only (we already added the Google Fonts link). Admin/portal keeps Inter.
+- **`html { scroll-behavior: smooth }`** + **`body { overflow-x: hidden }`** — safe globals, harmless to admin.
+- **`.hero-title`** and **`.section-title`** utility classes — copied verbatim into `@layer components` so the public landing hero can use them.
+- **`.fade-in-up`** keyframe + utility — used by the public sections.
+- **`scroll-indicator` / `bounce`** keyframe — for the chevron under the CTA.
 
-## Files touched
+What I will **not** touch:
+- Existing color tokens (`--primary`, `--background`, etc.) in `src/index.css` — admin theming depends on them.
+- `.glass`, `.neon-text`, `.neon-border` — we already have equivalent components.
+- Dark mode block — admin uses it.
 
-- `index.html` — swap font preload for Google Fonts links
-- `src/index.css` — add Oswald font-family for landing
-- `tailwind.config.ts` — add `oswald` font key (optional; can use inline `style` instead)
-- `src/components/3d/FloatingWords.tsx` — rewrite as DOM component (no R3F)
-- `src/components/3d/HeroDumbbell.tsx` — remove three `<Text>` instances
-- `src/components/3d/Scene3D.tsx` — render `<FloatingWords>` outside the `<Canvas>` (or move mounting up to the page)
-- `src/pages/InclineAscent.tsx` — mount the new DOM `<FloatingWords>` as overlay
-- `vite.config.ts` — remove troika manual-chunk entries
-- `public/fonts/inter-regular.woff` — delete
+### 3. Files touched
+- `src/index.css` — add `inclineDrift` keyframe (replacing `inclineFloat`), add `.hero-title` / `.section-title` / `.fade-in-up` / `.scroll-indicator` utilities, add `html { scroll-behavior:smooth }` and `body { overflow-x:hidden }`.
+- `src/components/3d/FloatingWords.tsx` — new sizes, opacities, animation reference, `whitespace-nowrap`.
+- (Optional) `src/pages/InclineAscent.tsx` — apply `.hero-title` to the H1 if it visually improves; will check first and only swap if it's a clear win.
 
-## Expected outcome
-
-- Console warnings `unsupported GPOS/GSUB LookupType …` → gone.
-- Font load failures → gone (no font is fetched by the WebGL canvas).
-- First contentful paint earlier on mobile (no font waiting on the hero text — Oswald uses `display=swap`).
-- Smaller JS bundle (drop troika + bidi-js, ~70–120 KB gz off the three chunk).
-- Same visual: rotating dumbbell + floating "RISE/REFLECT/…" words + scroll parallax.
-
-## Out of scope
-
-- No changes to admin app, member portal, dashboards, auth, or backend.
-- No changes to dumbbell geometry, lighting, or animation curves.
-- No changes to the scroll/section content beneath the hero.
-
-Approve and I'll implement in this same order: fonts → FloatingWords rewrite → HeroDumbbell label removal → bundle cleanup.
+No changes to dumbbell, scene, fonts setup, admin app, or backend. Approve and I'll apply.
