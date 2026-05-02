@@ -11,8 +11,10 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useUpdateClass } from '@/hooks/useClasses';
 import { useTrainers } from '@/hooks/useTrainers';
+import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { format } from 'date-fns';
-import { AlertTriangle, Phone, Mail, User } from 'lucide-react';
+import { AlertTriangle, Phone, Mail, User, Gift, IndianRupee, Sparkles } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { ClassWithDetails } from '@/services/classService';
 
 interface EditClassDrawerProps {
@@ -22,10 +24,14 @@ interface EditClassDrawerProps {
   branchId: string;
 }
 
+type ChargingMode = 'free' | 'benefit' | 'paid';
+
 export function EditClassDrawer({ open, onOpenChange, classData, branchId }: EditClassDrawerProps) {
   const updateClass = useUpdateClass();
   const { data: trainers } = useTrainers(branchId);
+  const { data: benefitTypes = [] } = useBenefitTypes(branchId);
 
+  const [mode, setMode] = useState<ChargingMode>('free');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -35,10 +41,18 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
     trainer_id: '',
     class_type: '',
     is_active: true,
+    benefit_type_id: '',
+    requires_benefit: true,
+    price: 0,
+    gst_rate: 18,
+    is_gst_inclusive: true,
   });
 
   useEffect(() => {
     if (classData) {
+      const cd = classData as any;
+      const initialMode: ChargingMode = cd.is_paid ? 'paid' : (cd.benefit_type_id ? 'benefit' : 'free');
+      setMode(initialMode);
       setFormData({
         name: classData.name,
         description: classData.description || '',
@@ -48,6 +62,11 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
         trainer_id: classData.trainer_id || '',
         class_type: classData.class_type || '',
         is_active: classData.is_active ?? true,
+        benefit_type_id: cd.benefit_type_id || '',
+        requires_benefit: cd.requires_benefit ?? true,
+        price: cd.price ?? 0,
+        gst_rate: cd.gst_rate ?? 18,
+        is_gst_inclusive: cd.is_gst_inclusive ?? true,
       });
     }
   }, [classData]);
