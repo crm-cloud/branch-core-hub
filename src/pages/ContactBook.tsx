@@ -181,6 +181,22 @@ export default function ContactBookPage() {
           </Button>
         </div>
 
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: 'Total', value: counts.total, cls: 'bg-slate-50 text-slate-700' },
+            { label: 'Members', value: counts.member, cls: 'bg-emerald-50 text-emerald-700' },
+            { label: 'Leads', value: counts.lead, cls: 'bg-amber-50 text-amber-700' },
+            { label: 'AI / Marketing', value: counts.ai, cls: 'bg-violet-50 text-violet-700' },
+            { label: 'Manual', value: counts.manual, cls: 'bg-indigo-50 text-indigo-700' },
+          ].map((s) => (
+            <div key={s.label} className={`rounded-2xl p-3 ${s.cls}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{s.label}</p>
+              <p className="text-2xl font-bold">{s.value}</p>
+            </div>
+          ))}
+        </div>
+
         {/* Filters */}
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -192,6 +208,16 @@ export default function ContactBookPage() {
               className="pl-9 rounded-xl"
             />
           </div>
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="md:w-44 rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              <SelectItem value="member">Members</SelectItem>
+              <SelectItem value="lead">Leads</SelectItem>
+              <SelectItem value="ai">AI / Marketing</SelectItem>
+              <SelectItem value="manual">Manual</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="md:w-48 rounded-xl">
               <SelectValue />
