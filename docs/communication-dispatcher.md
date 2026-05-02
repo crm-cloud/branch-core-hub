@@ -46,12 +46,12 @@ Returns `{ status, log_id?, reason?, provider_message_id? }` where `status` is o
 
 ## Migration roadmap
 
-The dispatcher is the new canonical path. Existing edge functions write to `communication_logs` directly; they will be migrated incrementally:
+The dispatcher is the new canonical path. Existing edge functions write to `communication_logs` directly; they are being migrated incrementally:
 
 1. **New code MUST use the dispatcher** (enforced by CI).
-2. Wave A (next): `notify-booking-event`, `notify-lead-created`, `request-google-review` — straightforward 1-message functions.
-3. Wave B: `send-reminders`, `run-retention-nudges` — add dedupe keys per loop iteration.
-4. Wave C: `send-broadcast`, `notify-staff-handoff` — preserve campaign-level batching semantics.
+2. **Wave A — done**: `request-google-review` (full refactor); `notify-booking-event` (removed redundant direct write).
+3. **Wave B — pending**: `notify-lead-created`, `send-reminders`, `run-retention-nudges` — add stable dedupe keys per loop iteration.
+4. **Wave C — pending**: `send-broadcast`, `notify-staff-handoff` — preserve campaign-level batching semantics.
 
 The `skip_log: true` and `source_log_id` parameters on `send-whatsapp`, `send-sms`, `send-message` are reserved for the dispatcher to suppress double logging while it owns the canonical row.
 
