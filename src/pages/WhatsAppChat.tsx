@@ -1025,10 +1025,21 @@ export default function WhatsAppChatPage() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuContent align="end" className="w-52">
                         {selectedContact.member_id && (
                           <DropdownMenuItem onClick={() => navigate(`/members`)}>
                             <Eye className="h-4 w-4 mr-2" /> View Profile
+                          </DropdownMenuItem>
+                        )}
+                        {((selectedContact as any).identity_source === 'unknown' || (selectedContact as any).identity_source === undefined) && (
+                          <DropdownMenuItem onClick={() => {
+                            setSaveContactForm({
+                              full_name: selectedContact.contact_name || '',
+                              category: 'general', company: '', notes: '',
+                            });
+                            setSaveContactOpen(true);
+                          }}>
+                            <BookUser className="h-4 w-4 mr-2 text-indigo-600" /> Save as Contact
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
