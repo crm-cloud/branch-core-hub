@@ -79,7 +79,7 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
       });
 
       if (trigger === 'send_now') {
-        const result = await sendCampaignNow(campaign, resolvedMemberIds);
+        const result = await sendCampaignNow(campaign, { memberIds: resolvedMemberIds });
         toast.success(`Campaign sent — ${result.sent} delivered, ${result.failed} failed`);
       } else if (trigger === 'scheduled') {
         toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
