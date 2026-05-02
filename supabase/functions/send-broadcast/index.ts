@@ -42,12 +42,88 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
     }
 
-    const { channel, message, audience, branch_id, subject, member_ids, campaign_id } = await req.json();
+    const { channel, message, audience, branch_id, subject, member_ids, recipients, campaign_id } = await req.json();
 
     if (!channel || !message || !branch_id) {
       return new Response(JSON.stringify({ error: "Missing required fields: channel, message, branch_id" }), {
         status: 400, headers: corsHeaders,
       });
+    }
+
+    // ---- Path A: caller passed an explicit resolved recipient list (members + leads + contacts) ----
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      let sent = 0, failed = 0;
+      const recipientRows: any[] = [];
+
+      for (const r of recipients) {
+        const target = channel === 'email' ? r.email : r.phone;
+        if (!target) {
+          recipientRows.push({
+            campaign_id: campaign_id ?? null,
+            source_type: r.source_type, source_ref_id: r.source_ref_id,
+            full_name: r.full_name, phone: r.phone, email: r.email,
+            status: 'skipped', error: 'missing_channel_address',
+          });
+          continue;
+        }
+
+        const personalized = message
+          .replace(/\{\{member_name\}\}/g, r.full_name || 'there')
+          .replace(/\{\{full_name\}\}/g, r.full_name || 'there');
+
+        try {
+          const { data: dispatchRes, error: dispatchErr } = await adminClient.functions.invoke('dispatch-communication', {
+            body: {
+              channel,
+              recipient: target,
+              subject: subject || null,
+              content: personalized,
+              branch_id,
+              category: 'marketing',
+              member_id: r.source_type === 'member' ? r.source_ref_id : null,
+              dedupe_key: campaign_id ? `campaign:${campaign_id}:${r.source_type}:${r.source_ref_id}` : null,
+            },
+          });
+          const ok = !dispatchErr && (dispatchRes as any)?.success !== false;
+          if (ok) sent++; else failed++;
+          recipientRows.push({
+            campaign_id: campaign_id ?? null,
+            source_type: r.source_type, source_ref_id: r.source_ref_id,
+            full_name: r.full_name, phone: r.phone, email: r.email,
+            status: ok ? 'sent' : 'failed',
+            error: ok ? null : (dispatchErr?.message || (dispatchRes as any)?.error || 'dispatch_failed'),
+            dispatched_at: new Date().toISOString(),
+          });
+        } catch (e: any) {
+          failed++;
+          recipientRows.push({
+            campaign_id: campaign_id ?? null,
+            source_type: r.source_type, source_ref_id: r.source_ref_id,
+            full_name: r.full_name, phone: r.phone, email: r.email,
+            status: 'failed', error: e?.message || 'exception',
+            dispatched_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (campaign_id && recipientRows.length > 0) {
+        await adminClient.from('campaign_recipients').insert(recipientRows);
+        await adminClient.from('campaigns').update({
+          status: failed > 0 && sent === 0 ? 'failed' : 'sent',
+          recipients_count: recipients.length,
+          success_count: sent,
+          failure_count: failed,
+          sent_at: new Date().toISOString(),
+        }).eq('id', campaign_id);
+      }
+
+      await adminClient.from('notifications').insert({
+        user_id: userId, branch_id, title: 'Broadcast Sent',
+        message: `${channel.toUpperCase()} broadcast: ${sent} sent, ${failed} failed (${recipients.length} recipients across members/leads/contacts)`,
+        type: 'info', category: 'communication',
+      });
+
+      return json({ success: true, sent, failed, total: recipients.length });
     }
 
     // Resolve recipients
