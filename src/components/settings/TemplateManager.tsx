@@ -80,6 +80,7 @@ interface Template {
   is_active: boolean;
   created_at: string;
   meta_template_name?: string | null;
+  meta_template_id?: string | null;
   meta_template_status?: string | null;
   meta_rejection_reason?: string | null;
   header_type?: 'none' | 'image' | 'document' | 'video' | null;
