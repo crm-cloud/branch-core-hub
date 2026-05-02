@@ -163,8 +163,19 @@ export function AppSidebar({
           'border-b border-sidebar-border flex items-center',
           collapsed ? 'p-3 justify-center' : 'p-5 justify-between'
         )}>
-          <BrandLogo collapsed={collapsed} />
-          {!collapsed && (
+          {isHybrid ? (
+            <div className="flex flex-col">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+                Module
+              </span>
+              <span className="text-base font-bold text-sidebar-primary leading-tight">
+                {hybridModuleLabel ?? 'Menu'}
+              </span>
+            </div>
+          ) : (
+            <BrandLogo collapsed={collapsed} />
+          )}
+          {!collapsed && !isHybrid && (
             <Button
               variant="ghost"
               size="icon"
@@ -194,7 +205,7 @@ export function AppSidebar({
           <nav className={cn('space-y-6', collapsed ? 'px-1' : 'px-3')}>
             {menuSections.map((section) => (
               <div key={section.title}>
-                {!collapsed && (
+                {!collapsed && !isHybrid && section.title && (
                   <p className="px-3 mb-2 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
                     {section.title}
                   </p>
