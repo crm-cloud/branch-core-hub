@@ -1997,6 +1997,8 @@ export type Database = {
           id: string
           notes: string | null
           phone: string
+          source_id: string | null
+          source_type: string
           tags: string[]
           updated_at: string
         }
@@ -2011,6 +2013,8 @@ export type Database = {
           id?: string
           notes?: string | null
           phone: string
+          source_id?: string | null
+          source_type?: string
           tags?: string[]
           updated_at?: string
         }
@@ -2025,6 +2029,8 @@ export type Database = {
           id?: string
           notes?: string | null
           phone?: string
+          source_id?: string | null
+          source_type?: string
           tags?: string[]
           updated_at?: string
         }
@@ -11124,6 +11130,22 @@ export type Database = {
           p_referred_reward_value?: number
           p_referrer_reward_type?: string
           p_referrer_reward_value?: number
+        }
+        Returns: Json
+      }
+      create_ai_lead: {
+        Args: {
+          p_branch_id: string
+          p_email?: string
+          p_full_name: string
+          p_notes?: string
+          p_phone: string
+          p_source?: string
+          p_tags?: string[]
+          p_temperature?: string
+          p_utm_campaign?: string
+          p_utm_medium?: string
+          p_utm_source?: string
         }
         Returns: Json
       }
