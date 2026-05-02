@@ -33,7 +33,12 @@ function mapRoleLabel(role: string): string {
   return role === 'owner' ? 'Admin' : role;
 }
 
-export function AppHeader() {
+export interface AppHeaderProps {
+  /** 'standalone' (default) draws own border + sticky shell. 'hybrid' is bare — the parent grid owns chrome. */
+  variant?: 'standalone' | 'hybrid';
+}
+
+export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
   const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
