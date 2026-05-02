@@ -36,6 +36,7 @@ export const memberMenuConfig: MenuSection[] = [
     title: 'Fitness',
     items: [
       { label: 'Book & Schedule', href: '/my-classes', icon: Calendar, roles: ['member'] },
+      { label: 'Book a Benefit', href: '/book-benefit', icon: Heart, roles: ['member'] },
       { label: 'PT Sessions', href: '/my-pt-sessions', icon: Dumbbell, roles: ['member'] },
       { label: 'Workout Plan', href: '/my-workout', icon: Activity, roles: ['member'] },
       { label: 'Diet Plan', href: '/my-diet', icon: UtensilsCrossed, roles: ['member'] },
@@ -199,7 +200,8 @@ export const adminMenuConfig: MenuSection[] = [
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
-      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Equipment', href: '/equipment', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Equipment Maintenance', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
       { label: 'Devices', href: '/devices', icon: Router, roles: ['owner', 'admin'] },
     ],
@@ -273,7 +275,8 @@ export const managerMenuConfig: MenuSection[] = [
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['manager'] },
-      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
+      { label: 'Equipment', href: '/equipment', icon: Wrench, roles: ['manager'] },
+      { label: 'Equipment Maintenance', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
     ],
   },

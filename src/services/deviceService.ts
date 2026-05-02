@@ -43,7 +43,12 @@ export interface DeviceAccessEvent {
   } | null;
 }
 
-export const fetchDevices = async (branchId?: string): Promise<AccessDevice[]> => {
+// branchId is REQUIRED for non-owner contexts. Owners viewing all branches must
+// pass `null` explicitly to bypass the scope filter — RLS still enforces access.
+export const fetchDevices = async (branchId: string | null): Promise<AccessDevice[]> => {
+  if (branchId === undefined) {
+    throw new Error('BRANCH_REQUIRED: pass an explicit branchId or null for owner-wide read');
+  }
   let query = supabase
     .from('access_devices')
     .select('*')
@@ -54,7 +59,7 @@ export const fetchDevices = async (branchId?: string): Promise<AccessDevice[]> =
   }
 
   const { data, error } = await query;
-  
+
   if (error) throw error;
   return (data || []) as AccessDevice[];
 };
@@ -286,7 +291,7 @@ export const subscribeToCommandStatus = (
   };
 };
 
-export const getDeviceStats = async (branchId?: string) => {
+export const getDeviceStats = async (branchId: string | null) => {
   const devices = await fetchDevices(branchId);
 
   const online = devices.filter((d) => {
