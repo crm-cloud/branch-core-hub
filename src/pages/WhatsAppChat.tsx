@@ -949,12 +949,26 @@ export default function WhatsAppChatPage() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <PlatformIcon platform={selectedContact.platform} className="h-4 w-4" />
                         <h3 className="font-semibold text-foreground text-sm break-words [overflow-wrap:anywhere]">
-                          {selectedContact.contact_name || selectedContact.phone_number}
+                          {selectedContact.contact_name || formatPhoneDisplay(selectedContact.phone_number)}
                         </h3>
-                        {/* Platform badge */}
+                        {(() => {
+                          const src = (selectedContact as any).identity_source as string | undefined;
+                          if (!src || src === 'unknown') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-amber-300 bg-amber-50 text-amber-700">Unknown</Badge>
+                          );
+                          if (src === 'member') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-emerald-300 bg-emerald-50 text-emerald-700">Member</Badge>
+                          );
+                          if (src === 'lead') return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-violet-300 bg-violet-50 text-violet-700">Lead</Badge>
+                          );
+                          return (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1 border-blue-300 bg-blue-50 text-blue-700">Contact</Badge>
+                          );
+                        })()}
                         <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ml-1 ${
                           selectedContact.platform === 'instagram'
                             ? 'border-pink-300 text-pink-600 bg-pink-50 dark:bg-pink-500/10'
@@ -967,10 +981,7 @@ export default function WhatsAppChatPage() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        {selectedContact.phone_number}
-                        {selectedContact.member_id && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 ml-1">Member</Badge>
-                        )}
+                        {formatPhoneDisplay(selectedContact.phone_number)}
                       </div>
                     </div>
                   </div>
