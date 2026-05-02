@@ -88,14 +88,46 @@ export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
     }
   };
 
+  // Org branding for the standalone (Header + Horizontal stacked) variant
+  const { data: org } = useQuery({
+    queryKey: ['org-branding'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('organization_settings')
+        .select('logo_url, name')
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: variant === 'standalone',
+  });
+
   return (
     <header
       className={
         variant === 'hybrid'
           ? 'hidden lg:flex h-14 items-center justify-between px-4 w-full'
-          : 'hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40'
+          : 'hidden lg:flex h-16 items-center gap-4 px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40'
       }
     >
+      {/* Brand / logo (standalone variant only) */}
+      {variant === 'standalone' && (
+        <div className="shrink-0 flex items-center">
+          {org?.logo_url ? (
+            <img
+              src={org.logo_url}
+              alt={org.name || 'Logo'}
+              className="max-h-8 object-contain object-left"
+            />
+          ) : (
+            <span className="text-lg font-bold text-foreground">
+              {org?.name && org.name !== 'Default' ? org.name : 'Incline'}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Single Search - GlobalSearch component (hidden for members) */}
       <div className="flex-1 max-w-md flex items-center gap-3">
         {!isMember && <GlobalSearch />}
