@@ -10,6 +10,7 @@ import { PurchaseMembershipDrawer } from '@/components/members/PurchaseMembershi
 import { PurchasePTDrawer } from '@/components/members/PurchasePTDrawer';
 import { MemberProfileDrawer } from '@/components/members/MemberProfileDrawer';
 import { QuickFreezeDrawer } from '@/components/members/QuickFreezeDrawer';
+import { GroupPurchaseDrawer } from '@/components/members/GroupPurchaseDrawer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -17,7 +18,7 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { 
   Search, Plus, Users, UserCheck, UserX, CreditCard, Dumbbell, 
   Eye, Clock, Building2, AlertTriangle, CheckCircle, MoreHorizontal, Snowflake,
-  ChevronLeft, ChevronRight, Download
+  ChevronLeft, ChevronRight, Download, UsersRound
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,7 @@ export default function MembersPage() {
   const [purchasePTOpen, setPurchasePTOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [quickFreezeOpen, setQuickFreezeOpen] = useState(false);
+  const [groupPurchaseOpen, setGroupPurchaseOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedMembershipForFreeze, setSelectedMembershipForFreeze] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -326,6 +328,10 @@ export default function MembersPage() {
             <p className="text-muted-foreground">Manage your gym members and their memberships</p>
           </div>
           <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => setGroupPurchaseOpen(true)} className="gap-2" disabled={!effectiveBranchId}>
+              <UsersRound className="h-4 w-4" />
+              Group Purchase
+            </Button>
             <Button onClick={() => setAddMemberOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Add Member
@@ -703,6 +709,13 @@ export default function MembersPage() {
               />
             )}
           </>
+        )}
+        {effectiveBranchId && (
+          <GroupPurchaseDrawer
+            open={groupPurchaseOpen}
+            onOpenChange={setGroupPurchaseOpen}
+            branchId={effectiveBranchId}
+          />
         )}
       </div>
     </AppLayout>

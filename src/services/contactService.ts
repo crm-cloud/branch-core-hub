@@ -11,6 +11,8 @@ export interface ContactRow {
   company: string | null;
   notes: string | null;
   tags: string[];
+  source_type: 'manual' | 'lead' | 'member' | 'ai' | string;
+  source_id: string | null;
   created_at: string;
   updated_at: string;
 }

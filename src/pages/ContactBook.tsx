@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import {
   Plus, Search, Edit2, Trash2, BookUser, Phone, Mail, MessageSquare, Building2,
+  UserCircle2, Sparkles, UserPlus, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -50,6 +51,7 @@ export default function ContactBookPage() {
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [form, setForm] = useState<ContactInput>(empty(effectiveBranchId || ''));
@@ -64,6 +66,7 @@ export default function ContactBookPage() {
     const q = search.trim().toLowerCase();
     return contacts.filter((c) => {
       if (categoryFilter !== 'all' && c.category !== categoryFilter) return false;
+      if (sourceFilter !== 'all' && (c.source_type || 'manual') !== sourceFilter) return false;
       if (!q) return true;
       return (
         c.full_name.toLowerCase().includes(q)
@@ -72,7 +75,16 @@ export default function ContactBookPage() {
         || (c.company || '').toLowerCase().includes(q)
       );
     });
-  }, [contacts, search, categoryFilter]);
+  }, [contacts, search, categoryFilter, sourceFilter]);
+
+  const counts = useMemo(() => {
+    const c = { total: contacts.length, member: 0, lead: 0, ai: 0, manual: 0 };
+    contacts.forEach((x) => {
+      const s = (x.source_type || 'manual') as keyof typeof c;
+      if (s in c) (c as any)[s]++;
+    });
+    return c;
+  }, [contacts]);
 
   const createMutation = useMutation({
     mutationFn: (input: ContactInput) => upsertContact(input),
@@ -169,6 +181,22 @@ export default function ContactBookPage() {
           </Button>
         </div>
 
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: 'Total', value: counts.total, cls: 'bg-slate-50 text-slate-700' },
+            { label: 'Members', value: counts.member, cls: 'bg-emerald-50 text-emerald-700' },
+            { label: 'Leads', value: counts.lead, cls: 'bg-amber-50 text-amber-700' },
+            { label: 'AI / Marketing', value: counts.ai, cls: 'bg-violet-50 text-violet-700' },
+            { label: 'Manual', value: counts.manual, cls: 'bg-indigo-50 text-indigo-700' },
+          ].map((s) => (
+            <div key={s.label} className={`rounded-2xl p-3 ${s.cls}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{s.label}</p>
+              <p className="text-2xl font-bold">{s.value}</p>
+            </div>
+          ))}
+        </div>
+
         {/* Filters */}
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -180,6 +208,16 @@ export default function ContactBookPage() {
               className="pl-9 rounded-xl"
             />
           </div>
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="md:w-44 rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              <SelectItem value="member">Members</SelectItem>
+              <SelectItem value="lead">Leads</SelectItem>
+              <SelectItem value="ai">AI / Marketing</SelectItem>
+              <SelectItem value="manual">Manual</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="md:w-48 rounded-xl">
               <SelectValue />
@@ -201,30 +239,41 @@ export default function ContactBookPage() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <BookUser className="h-10 w-10 text-muted-foreground/50" />
                       <p className="text-sm font-medium text-foreground">No contacts yet</p>
                       <p className="text-xs text-muted-foreground">
-                        Add vendors, walk-ins or prospects to keep your chat list named.
+                        Members and leads sync automatically. Add vendors or walk-ins manually.
                       </p>
                       <Button size="sm" onClick={openCreate} className="mt-2 rounded-xl gap-2">
-                        <Plus className="h-4 w-4" /> Add your first contact
+                        <Plus className="h-4 w-4" /> Add manual contact
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((c) => (
+                filtered.map((c) => {
+                  const sourceMeta = (() => {
+                    switch (c.source_type) {
+                      case 'member': return { label: 'Member', icon: UserCircle2, cls: 'bg-emerald-100 text-emerald-700' };
+                      case 'lead':   return { label: 'Lead',   icon: UserPlus,    cls: 'bg-amber-100 text-amber-700' };
+                      case 'ai':     return { label: 'AI',     icon: Sparkles,    cls: 'bg-violet-100 text-violet-700' };
+                      default:       return { label: 'Manual', icon: BookUser,    cls: 'bg-slate-100 text-slate-700' };
+                    }
+                  })();
+                  const SourceIcon = sourceMeta.icon;
+                  return (
                   <TableRow key={c.id} className="hover:bg-slate-50">
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -248,12 +297,33 @@ export default function ContactBookPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.email || '—'}</TableCell>
                     <TableCell>
+                      <Badge className={`gap-1 rounded-full ${sourceMeta.cls}`} variant="secondary">
+                        <SourceIcon className="h-3 w-3" /> {sourceMeta.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline" className="capitalize rounded-full">
                         {c.category.replace('_', ' ')}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        {c.source_type === 'member' && c.source_id && (
+                          <Button
+                            variant="ghost" size="icon" aria-label="Open member"
+                            onClick={() => navigate(`/members?member=${c.source_id}`)}
+                          >
+                            <ExternalLink className="h-4 w-4 text-emerald-600" />
+                          </Button>
+                        )}
+                        {c.source_type === 'lead' && c.source_id && (
+                          <Button
+                            variant="ghost" size="icon" aria-label="Open lead"
+                            onClick={() => navigate(`/leads?lead=${c.source_id}`)}
+                          >
+                            <ExternalLink className="h-4 w-4 text-amber-600" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -281,7 +351,8 @@ export default function ContactBookPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>
