@@ -11,7 +11,7 @@
 | `forms-vendor`   | react-hook-form, @hookform/*, zod                               | routes with forms                      |
 | `date-vendor`    | date-fns, react-day-picker                                      | routes with calendars / date pickers   |
 | `charts-vendor`  | recharts, d3-*                                                  | dashboards, analytics, finance         |
-| `motion-vendor`  | framer-motion, embla-carousel, @hello-pangea/dnd                | landing page, kanban, carousels        |
+| `motion-vendor`  | embla-carousel, @hello-pangea/dnd                               | landing page, kanban, carousels        |
 | `docs-vendor`    | jspdf, jspdf-autotable, qrcode, html2canvas, xlsx               | invoice / receipt / report generation  |
 | `three`          | three, @react-three/fiber, @react-three/drei                    | `/` (InclineAscent only)               |
 
@@ -20,7 +20,7 @@
 1. **No static page imports** outside `src/App.tsx`. Pages must be `lazy(() => import(...))`.
 2. **Heavy libs (`jspdf`, `xlsx`, `qrcode`, `html2canvas`, `three`) must never be top-level imported by shared utilities** consumed across many routes. If they must be, ensure the importing util is itself only used inside lazy-loaded pages.
 3. **`lucide-react` imports must be named** (`import { X } from 'lucide-react'`) — never namespace imports — so tree-shaking works.
-4. **`framer-motion` is a candidate for removal** if no module imports it; check before each release.
+4. **Unused deps removed**: `framer-motion` (no source usages as of P2 cleanup).
 
 ## CI guard
 
