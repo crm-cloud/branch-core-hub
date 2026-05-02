@@ -148,6 +148,97 @@ export function AppLayout({ children }: AppLayoutProps) {
     );
   };
 
+  // ===== Hybrid mode: Materialize-style two-band grid (desktop only) =====
+  if (navMode === 'hybrid') {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        {/* Mobile header (unchanged) */}
+        <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-card">
+          <MobileNav />
+          <h1 className="text-xl font-bold">
+            {org?.logo_url ? (
+              <img src={org.logo_url} alt={org.name || 'Logo'} className="max-h-7 object-contain" />
+            ) : (
+              <span className="text-accent">{org?.name || 'Incline'}</span>
+            )}
+          </h1>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url ?? undefined} />
+              <AvatarFallback className="bg-accent text-accent-foreground text-xs">
+                {getInitials(profile?.full_name)}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+        </header>
+
+        {/* Desktop hybrid bands */}
+        <div className="hidden lg:block sticky top-0 z-40">
+          {/* Row 1: brand | top modules */}
+          <div className="flex h-14 bg-card border-b border-border">
+            <div className="w-64 shrink-0 flex items-center px-5 border-r border-border">
+              {org?.logo_url ? (
+                <img
+                  src={org.logo_url}
+                  alt={org.name || 'Logo'}
+                  className="max-h-8 object-contain object-left"
+                />
+              ) : (
+                <span className="text-lg font-bold text-foreground">
+                  {org?.name && org.name !== 'Default' ? org.name : 'Incline'}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 flex items-center">
+              <TopModulesBar
+                groups={moduleGroups}
+                activeModuleId={activeModuleId}
+                onSelect={setActiveModuleId}
+                bare
+              />
+            </div>
+          </div>
+
+          {/* Row 2: module label | utilities */}
+          <div className="flex bg-card/60 backdrop-blur border-b border-border">
+            <div className="w-64 shrink-0 flex items-center px-5 border-r border-border h-14">
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Module
+                </span>
+                <span className="text-sm font-bold text-foreground">
+                  {activeModuleLabel ?? 'Menu'}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <AppHeader variant="hybrid" />
+            </div>
+          </div>
+        </div>
+
+        {/* Row 3: sidebar | content */}
+        <div className="flex flex-1 min-h-0">
+          <AppSidebar
+            mode="hybrid"
+            onToggleCollapse={handleToggleCollapse}
+            hybridItems={activeItems}
+            hybridModuleLabel={activeModuleLabel}
+            headerless
+            embedded
+          />
+          <div className="flex-1 flex flex-col min-w-0">
+            {renderContent()}
+          </div>
+        </div>
+
+        <SessionTimeoutWarning />
+      </div>
+    );
+  }
+
+  // ===== Standard layout (vertical / collapsed) =====
   return (
     <div className="min-h-screen flex bg-background">
       <AppSidebar
@@ -158,15 +249,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Hybrid top modules bar (desktop only) */}
-        {navMode === 'hybrid' && (
-          <TopModulesBar
-            groups={moduleGroups}
-            activeModuleId={activeModuleId}
-            onSelect={setActiveModuleId}
-          />
-        )}
-
         {/* Desktop header */}
         <AppHeader />
 
@@ -191,12 +273,11 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </header>
 
-        {/* Main content with branch status handling */}
         {renderContent()}
       </div>
 
-      {/* Session timeout warning */}
       <SessionTimeoutWarning />
     </div>
   );
 }
+

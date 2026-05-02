@@ -33,7 +33,12 @@ function mapRoleLabel(role: string): string {
   return role === 'owner' ? 'Admin' : role;
 }
 
-export function AppHeader() {
+export interface AppHeaderProps {
+  /** 'standalone' (default) draws own border + sticky shell. 'hybrid' is bare — the parent grid owns chrome. */
+  variant?: 'standalone' | 'hybrid';
+}
+
+export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
   const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
@@ -83,7 +88,13 @@ export function AppHeader() {
   };
 
   return (
-    <header className="hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+    <header
+      className={
+        variant === 'hybrid'
+          ? 'hidden lg:flex h-14 items-center justify-between px-4 w-full'
+          : 'hidden lg:flex h-16 items-center justify-between px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40'
+      }
+    >
       {/* Single Search - GlobalSearch component (hidden for members) */}
       <div className="flex-1 max-w-md flex items-center gap-3">
         {!isMember && <GlobalSearch />}
