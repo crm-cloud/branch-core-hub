@@ -1,62 +1,66 @@
-## Public Site — Speed & Stability Plan
+## Goal
 
-### Why your site feels slow right now
-1. **3D text is broken.** My previous fix pointed `<Text>` at a Google Fonts CDN URL that troika can't load via XHR. That's the `Failure loading font` error you're seeing — the scene now hangs waiting for a font that will never arrive, which is why "the website is not loading complete".
-2. **Logo preload is wrong.** `index.html` preloads `/src/assets/incline-logo.png`. That path only works in dev — in production Vite hashes the asset, so the preload 404s and the browser wastes a request.
-3. **Mobile 3D is heavier than it needs to be.** Antialiasing on + DPR up to 1.5 doubles fragment shader cost on phones.
-4. **Lovable preview iframe `postMessage` errors** are unrelated noise from the preview tool itself — they don't appear on the published `theincline.in` site. Documented, not fixed in code.
+Adopt the proven pattern from the reference site: keep the dumbbell as a real 3D object, but render every "floating word" as a normal HTML element. Switch the public site's typography to **Oswald** loaded straight from Google Fonts. This eliminates the GPOS/GSUB warnings, removes the woff/woff2 failure path, and meaningfully shrinks the 3D bundle.
 
-### Why the reference Lovable URL loads instantly
-That URL (`643f75d4...lovableproject.com`) is a Lovable login screen — one SVG logo, a couple of buttons, no fonts, no 3D, no images. It's not a real comparison to a Three.js landing. The valid takeaways: small payload, system fonts, no blocking external requests on first paint. We'll apply those same principles below without removing your 3D experience.
+The hero "feel" stays the same (dumbbell rotates, words float behind/around it, parallax on scroll). Only the rendering technique changes.
 
-### What we'll change
+## What changes
 
-**1. Fix the broken 3D font (highest priority — currently blocking render)**
-- Add `public/fonts/inter-regular.woff2` (Inter Regular only, ~30 KB, no advanced GPOS/GSUB tables).
-- Point all `<Text font="...">` props in `HeroDumbbell.tsx` and `FloatingWords.tsx` at `/fonts/inter-regular.woff2`. Same-origin → no CORS/XHR failure → text renders, console is clean, no more "unsupported LookupType" warnings either.
-- Keep `characters="…"` subsetting so the GPU glyph atlas stays tiny.
+### 1. Typography — Oswald via Google Fonts
+- In `index.html`: remove the `<link rel="preload" ... inter-regular.woff>` and add Google Fonts links for **Oswald** (weights 400/500/600/700, `display=swap`) plus `preconnect` to `fonts.gstatic.com`. Same recipe the reference site uses.
+- In `src/index.css` / Tailwind config: set Oswald as the display/heading font on the public landing only. Keep Inter as the app-wide UI font everywhere else (admin, member portal, dashboards) so we don't disturb the whole product.
+- Delete `public/fonts/inter-regular.woff` (no longer needed).
 
-**2. Fix the logo preload (production-safe)**
-- Copy the logo to `public/incline-logo.png`.
-- Update `index.html` preload to `/incline-logo.png`.
-- Update `src/pages/InclineAscent.tsx` `<img src>` to `/incline-logo.png`.
-- Result: logo paints from the HTML preload, before any JS executes.
+### 2. FloatingWords — move from `<Text>` (WebGL) to DOM
+- Rewrite `src/components/3d/FloatingWords.tsx` as a plain React component that renders absolutely-positioned `<span>`s in the HTML overlay above the canvas (not inside `<Canvas>`).
+- Each word gets a CSS animation (slow float on Y, slight horizontal drift) and an opacity that scales with `scrollProgress` (same curve as today). Use `transform: translate3d` + `will-change: transform` for GPU compositing — zero main-thread work per frame.
+- Words: `RISE`, `REFLECT`, `REPEAT`, `RECOVER`, `RESTORE`, `REBUILD`. Uppercase Oswald, low opacity (~25–40%), large size, scattered around the dumbbell area.
+- Mount this component as a sibling of `<Scene3D>` inside `InclineAscent.tsx`, pinned `fixed inset-0` with `pointer-events-none` so it sits behind/around the canvas without blocking clicks.
 
-**3. Lighter 3D defaults (no visual change)**
-- In `Scene3D.tsx`:
-  - Mobile `dpr` `[1, 1.5]` → `[1, 1.25]`.
-  - Desktop `dpr` `[1, 2]` → `[1, 1.75]`.
-  - `antialias: !isMobile` (off on phones; canvas size is small enough that the difference is invisible, but it cuts ~30–40% of fragment work).
-- Result: smoother scroll on mid-range Android, lower battery drain, faster first frame.
+### 3. HeroDumbbell — remove the in-mesh `<Text>` labels
+- The dumbbell currently embeds three small `<Text>` labels (centre band "RISE·REFLECT…" and two "INCLE" side labels) using `troika-three-text`. These are the source of the `unsupported GPOS/GSUB LookupType` warnings.
+- Replace those with either:
+  - tiny **decal textures** (a one-time PNG generated from a `<canvas>`), or
+  - simply **remove them** — they're sub-pixel at most viewport sizes and not visually meaningful.
+- Recommendation: remove. The dumbbell silhouette and chrome material carry the hero on their own (this is exactly what the reference site does).
 
-**4. Smarter mount gating for low-end mobiles**
-- Current logic: mount 3D when hero is in view + browser is idle. Keep it.
-- Add: if `navigator.hardwareConcurrency <= 4` AND viewport < 768 px, defer until first user scroll/tap instead of on idle. The static SEO hero stays visible; 3D loads only when the user engages.
-- Honors `prefers-reduced-motion` (skip mount entirely → static hero only).
+### 4. Drop `troika-three-text` from the bundle
+- Once `<Text>` is gone from both `FloatingWords` and `HeroDumbbell`, remove the `Text` import from `@react-three/drei` everywhere.
+- Update `vite.config.ts` manual chunking: drop the `troika-three-text` / `bidi-js` group since it's no longer pulled in. Three.js chunk shrinks noticeably.
 
-**5. Bundle hygiene**
-- Extend the `three` chunk in `vite.config.ts` to also capture `troika-three-text` and `bidi-js` so they cache together with three.js.
-- Add a small inline script in `index.html` that, on desktop only (`innerWidth >= 768`), injects `<link rel="modulepreload">` for the `three` chunk so it warms up while the user reads the hero. Mobiles skip this to avoid metered-data waste.
+### 5. Scene3D — small simplifications
+- No font-related code changes needed inside the canvas anymore.
+- Keep current DPR caps (mobile 1.25, desktop 1.75) and antialias-off-on-mobile — they're already good.
 
-### Files to change
-- `public/fonts/inter-regular.woff2` — new (~30 KB).
-- `public/incline-logo.png` — copied from `src/assets/`.
-- `index.html` — fix preload path, add desktop-only modulepreload injector.
-- `src/components/3d/HeroDumbbell.tsx` — `font="/fonts/inter-regular.woff2"`.
-- `src/components/3d/FloatingWords.tsx` — same.
-- `src/components/3d/Scene3D.tsx` — DPR + antialias tuning.
-- `src/pages/InclineAscent.tsx` — low-end-device mount gate; logo `src` to `/incline-logo.png`.
-- `vite.config.ts` — extend `three` manualChunk.
+### 6. Cleanup
+- Remove the font preload line from `index.html`.
+- Delete `public/fonts/` if empty after removing the woff.
+- No DB / edge function changes. No auth changes. No memory updates required (this is a public-site visual refactor).
 
-### Explicitly NOT changing (your constraint)
-- Floating words list, motion, opacity, layout.
-- Dumbbell geometry, rotation, materials, scroll-driven animation.
-- Scroll length, overlay copy, ScrollControls behavior.
-- RegisterModal / LegalModal / SEO / branches data.
-- Any visible color, typography, or interaction.
+## Files touched
 
-### Expected impact
-- 3D text renders correctly on first load (currently broken).
-- Mobile LCP improvement of ~0.4–0.8 s from correct logo preload + lighter GPU settings.
-- Console clean of font/OpenType errors.
-- No visual regression on any device.
+- `index.html` — swap font preload for Google Fonts links
+- `src/index.css` — add Oswald font-family for landing
+- `tailwind.config.ts` — add `oswald` font key (optional; can use inline `style` instead)
+- `src/components/3d/FloatingWords.tsx` — rewrite as DOM component (no R3F)
+- `src/components/3d/HeroDumbbell.tsx` — remove three `<Text>` instances
+- `src/components/3d/Scene3D.tsx` — render `<FloatingWords>` outside the `<Canvas>` (or move mounting up to the page)
+- `src/pages/InclineAscent.tsx` — mount the new DOM `<FloatingWords>` as overlay
+- `vite.config.ts` — remove troika manual-chunk entries
+- `public/fonts/inter-regular.woff` — delete
+
+## Expected outcome
+
+- Console warnings `unsupported GPOS/GSUB LookupType …` → gone.
+- Font load failures → gone (no font is fetched by the WebGL canvas).
+- First contentful paint earlier on mobile (no font waiting on the hero text — Oswald uses `display=swap`).
+- Smaller JS bundle (drop troika + bidi-js, ~70–120 KB gz off the three chunk).
+- Same visual: rotating dumbbell + floating "RISE/REFLECT/…" words + scroll parallax.
+
+## Out of scope
+
+- No changes to admin app, member portal, dashboards, auth, or backend.
+- No changes to dumbbell geometry, lighting, or animation curves.
+- No changes to the scroll/section content beneath the hero.
+
+Approve and I'll implement in this same order: fonts → FloatingWords rewrite → HeroDumbbell label removal → bundle cleanup.
