@@ -100,23 +100,47 @@ function BrandLogo({ collapsed = false, mobile = false }: { collapsed?: boolean;
   );
 }
 
+import type { MenuItem as MenuItemType } from '@/config/menu';
+import type { NavMode } from '@/lib/navPreferences';
+
 interface AppSidebarProps {
-  collapsed: boolean;
+  /** New navigation mode. Falls back to legacy `collapsed` prop when omitted. */
+  mode?: NavMode;
+  /** Legacy boolean prop — kept for back-compat. */
+  collapsed?: boolean;
   onToggleCollapse: () => void;
+  /** Items to show in hybrid mode (already RBAC-filtered, scoped to active module). */
+  hybridItems?: MenuItemType[];
+  /** Active module label shown above the items in hybrid mode. */
+  hybridModuleLabel?: string;
 }
 
-export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
+export function AppSidebar({
+  mode,
+  collapsed: collapsedProp,
+  onToggleCollapse,
+  hybridItems,
+  hybridModuleLabel,
+}: AppSidebarProps) {
   const { signOut, roles } = useAuth();
   const location = useLocation();
   const { data: unreadCount = 0 } = useWhatsAppUnreadCount();
 
+  const resolvedMode: NavMode = mode ?? (collapsedProp ? 'collapsed' : 'vertical');
+  const collapsed = resolvedMode === 'collapsed';
+  const isHybrid = resolvedMode === 'hybrid';
+
   const userRoleSet = new Set(roles.map(r => r.role));
-  const menuSections = getMenuForRole(roles)
+  const fullSections = getMenuForRole(roles)
     .map(section => ({
       ...section,
       items: section.items.filter(item => item.roles.some(r => userRoleSet.has(r))),
     }))
     .filter(section => section.items.length > 0);
+
+  const menuSections = isHybrid
+    ? [{ title: hybridModuleLabel ?? '', items: hybridItems ?? [] }].filter(s => s.items.length > 0)
+    : fullSections;
 
   const renderUnreadBadge = (href: string) => {
     if (href !== '/whatsapp-chat' || unreadCount === 0) return null;
