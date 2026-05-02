@@ -347,6 +347,7 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
 
           <div className="space-y-2">
             <Label>Description</Label>
+            <Textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Class description..."
