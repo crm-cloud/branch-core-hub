@@ -160,6 +160,12 @@ export default function WhatsAppChatPage() {
   // Right context panel — collapsed by default to maximise chat view area
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
 
+  // Save-as-Contact drawer state
+  const [saveContactOpen, setSaveContactOpen] = useState(false);
+  const [saveContactForm, setSaveContactForm] = useState({
+    full_name: '', category: 'general', company: '', notes: '',
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
