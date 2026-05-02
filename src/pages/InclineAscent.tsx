@@ -126,7 +126,7 @@ const InclineAscent = () => {
   return (
     <div
       ref={interactionRootRef}
-      className="w-full min-h-[100dvh]"
+      className="incline-landing w-full min-h-[100dvh] overflow-x-hidden"
       style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%)' }}
     >
       <SEO

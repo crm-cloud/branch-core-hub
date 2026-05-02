@@ -6,6 +6,8 @@ const RELEASE_SHA = (import.meta.env.VITE_RELEASE_SHA as string) || 'dev';
 
 export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
 
+let reporterDisabled = false;
+
 export async function reportError(
   message: string,
   opts: {
@@ -16,9 +18,10 @@ export async function reportError(
     branchId?: string | null;
   } = {},
 ) {
+  if (reporterDisabled) return;
   try {
     const { data: userResult } = await supabase.auth.getUser();
-    await (supabase.rpc as any)('log_error_event', {
+    const { error } = await (supabase.rpc as any)('log_error_event', {
       p_severity: opts.severity || 'error',
       p_source: 'frontend',
       p_message: String(message).slice(0, 2000),
@@ -32,6 +35,11 @@ export async function reportError(
       p_stack: opts.stack || null,
       p_context: opts.context || null,
     });
+    // If the RPC is missing (404 / PGRST202), permanently disable reporting
+    // for this session so we don't spam the console with retries.
+    if (error && (error.code === 'PGRST202' || (error as any).status === 404)) {
+      reporterDisabled = true;
+    }
   } catch {
     /* never throw from reporter */
   }

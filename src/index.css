@@ -155,13 +155,53 @@
     @apply bg-muted-foreground/50;
   }
 
-  /* Public landing — floating background words drift slowly across the
-     viewport (left → right) with a tiny vertical sway. GPU-only transform
-     so it doesn't compete with the WebGL canvas. */
-  @keyframes inclineDrift {
-    0%   { transform: translate3d(-30vw, 0, 0); }
-    50%  { transform: translate3d(20vw, -10px, 0); }
-    100% { transform: translate3d(70vw, 0, 0); }
+  /* Public landing — ambient floating words. Each word has its own
+     random-feel direction so the group doesn't read as a marquee. */
+  @keyframes incFloatA {
+    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+    33%      { transform: translate3d(40px, -30px, 0) rotate(2deg); }
+    66%      { transform: translate3d(-25px, 20px, 0) rotate(-2deg); }
+  }
+  @keyframes incFloatB {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50%      { transform: translate3d(-50px, 35px, 0) rotate(-3deg); }
+  }
+  @keyframes incFloatC {
+    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+    25%      { transform: translate3d(30px, 25px, 0) rotate(3deg); }
+    75%      { transform: translate3d(-20px, -30px, 0) rotate(-1deg); }
+  }
+  @keyframes incFloatD {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    40%      { transform: translate3d(-35px, -25px, 0) rotate(2deg); }
+    80%      { transform: translate3d(25px, 15px, 0) rotate(-2deg); }
+  }
+  @keyframes incFloatE {
+    0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+    50%      { transform: translate3d(45px, 30px, 0) rotate(4deg); }
+  }
+  @keyframes incFloatF {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    33%      { transform: translate3d(-40px, 20px, 0) rotate(-3deg); }
+    66%      { transform: translate3d(30px, -25px, 0) rotate(2deg); }
+  }
+
+  /* Public landing — scoped electric-blue palette overrides so we don't
+     touch the admin SaaS theme. Applied via .incline-landing wrapper. */
+  .incline-landing {
+    --primary: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 217 91% 50%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 217 91% 50%;
+    --foreground: 222 47% 11%;
+    --muted-foreground: 215 16% 40%;
+  }
+  .incline-landing .scroll-indicator { animation: bounce 2s infinite; }
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10px); }
+    60% { transform: translateY(-5px); }
   }
 }
 

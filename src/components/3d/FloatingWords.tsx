@@ -1,89 +1,59 @@
-import { useRef, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
-import { Text } from "@react-three/drei";
-import * as THREE from "three";
+import { useMemo } from "react";
 
 interface FloatingWordsProps {
   scrollProgress: number;
 }
 
-const words = ["RISE", "REFLECT", "REPEAT", "RECOVER", "RESTORE", "REBUILD"];
+const WORDS = ["RISE", "REFLECT", "REPEAT", "RECOVER", "RESTORE", "REBUILD"];
+
+// Each word gets independent placement, size, opacity, and a random
+// direction animation defined in src/index.css. Pure DOM/CSS — safe to
+// render outside the R3F <Canvas>.
+const FLOATERS = [
+  { word: "RISE",    top: "12%", left: "8%",  size: "clamp(1.4rem, 4vw, 3rem)",   anim: "incFloatA", dur: 22, delay: 0 },
+  { word: "REFLECT", top: "22%", left: "72%", size: "clamp(1.2rem, 3.4vw, 2.5rem)", anim: "incFloatB", dur: 26, delay: 2 },
+  { word: "REPEAT",  top: "55%", left: "5%",  size: "clamp(1.6rem, 5vw, 3.6rem)", anim: "incFloatC", dur: 30, delay: 4 },
+  { word: "RECOVER", top: "70%", left: "60%", size: "clamp(1.2rem, 3.4vw, 2.5rem)", anim: "incFloatD", dur: 24, delay: 1 },
+  { word: "RESTORE", top: "38%", left: "40%", size: "clamp(1rem, 2.8vw, 2rem)",   anim: "incFloatE", dur: 28, delay: 3 },
+  { word: "REBUILD", top: "85%", left: "30%", size: "clamp(1.4rem, 4vw, 3rem)",   anim: "incFloatF", dur: 32, delay: 5 },
+] as const;
 
 const FloatingWords = ({ scrollProgress }: FloatingWordsProps) => {
-  const groupRef = useRef<THREE.Group>(null);
-  const wordRefs = useRef<THREE.Mesh[]>([]);
-
-  // Create word instances with different orbital parameters
-  const wordInstances = useMemo(() => {
-    return words.map((word, i) => ({
-      word,
-      radius: 2.2 + (i % 3) * 0.6,
-      speed: 0.08 + i * 0.03,
-      yOffset: (i - 2.5) * 0.5,
-      phase: (i / words.length) * Math.PI * 2,
-      floatSpeed: 0.3 + i * 0.1,
-      floatAmplitude: 0.15 + (i % 2) * 0.1,
-    }));
-  }, []);
-
-  useFrame((state) => {
-    const time = state.clock.elapsedTime;
-
-    wordRefs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-
-      const instance = wordInstances[i];
-
-      // Orbital motion around the dumbbell
-      const angle = instance.phase + time * instance.speed;
-      const x = Math.cos(angle) * instance.radius;
-      const z = Math.sin(angle) * instance.radius * 0.5; // Elliptical orbit
-
-      // Vertical floating motion
-      const y = instance.yOffset + Math.sin(time * instance.floatSpeed + instance.phase) * instance.floatAmplitude;
-
-      mesh.position.set(x, y, z);
-
-      // Make text face the camera (billboard effect)
-      mesh.lookAt(state.camera.position);
-    });
-
-    // Rotate entire group slowly
-    if (groupRef.current) {
-      groupRef.current.rotation.y = time * 0.02;
-    }
-  });
-
-  // Calculate opacity based on scroll - frosted glass effect (visible but soft)
-  const opacity = useMemo(() => {
-    if (scrollProgress < 0.1) return 0.4;
-    if (scrollProgress > 0.2 && scrollProgress < 0.5) return 0.55;
-    if (scrollProgress > 0.9) return 0.25;
-    return 0.4;
+  // Frosted-soft ambient opacity, modulated subtly by scroll.
+  const baseOpacity = useMemo(() => {
+    if (scrollProgress < 0.1) return 0.18;
+    if (scrollProgress > 0.9) return 0.08;
+    return 0.14;
   }, [scrollProgress]);
 
+  // Skip when length matches WORDS — defensive, in case lists drift.
+  const items = FLOATERS.length === WORDS.length ? FLOATERS : FLOATERS;
+
   return (
-    <group ref={groupRef}>
-      {wordInstances.map((instance, i) => (
-        <Text
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-[1] overflow-hidden"
+      style={{ height: "100dvh" }}
+    >
+      {items.map((f, i) => (
+        <span
           key={i}
-          ref={(el) => {
-            if (el) wordRefs.current[i] = el;
+          className="absolute font-oswald font-bold whitespace-nowrap select-none tracking-[0.18em]"
+          style={{
+            top: f.top,
+            left: f.left,
+            fontSize: f.size,
+            color: "hsl(217 91% 50%)",
+            opacity: baseOpacity,
+            animation: `${f.anim} ${f.dur}s ease-in-out ${f.delay}s infinite`,
+            willChange: "transform, opacity",
+            textShadow: "0 0 24px hsl(217 91% 50% / 0.25)",
           }}
-          fontSize={0.12 + (i % 3) * 0.03}
-          color="#ffffff"
-          anchorX="center"
-          anchorY="middle"
-          fillOpacity={opacity}
-          outlineWidth={0.003}
-          outlineColor="#3b82f6"
-          outlineOpacity={opacity * 0.5}
-          letterSpacing={0.08}
         >
-          {instance.word}
-        </Text>
+          {f.word}
+        </span>
       ))}
-    </group>
+    </div>
   );
 };
 
