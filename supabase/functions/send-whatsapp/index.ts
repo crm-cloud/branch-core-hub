@@ -1,4 +1,4 @@
-// v2.1.0 — Phase G: pinned to shared META_API_BASE (v25.0).
+// v2.2.0 — honor skip_log from dispatcher to avoid duplicate communication_logs rows.
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_API_BASE } from "../_shared/meta-config.ts";
@@ -219,15 +219,17 @@ serve(async (req) => {
       })
       .eq("id", message_id);
 
-    // Log communication
-    await supabase.from("communication_logs").insert({
-      branch_id,
-      recipient: phone_number,
-      type: "whatsapp",
-      content: content || `[${message_type}]`,
-      status: "sent",
-      sent_at: new Date().toISOString(),
-    });
+    // Log communication (skip when dispatcher already owns the log row)
+    if (!body.skip_log) {
+      await supabase.from("communication_logs").insert({
+        branch_id,
+        recipient: phone_number,
+        type: "whatsapp",
+        content: content || `[${message_type}]`,
+        status: "sent",
+        sent_at: new Date().toISOString(),
+      });
+    }
 
     return new Response(JSON.stringify({ success: true, whatsapp_message_id: waMessageId }), {
       status: 200,
