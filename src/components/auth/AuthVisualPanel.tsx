@@ -1,4 +1,6 @@
-import { ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { useState } from "react";
+import { Dumbbell, Sparkles, Zap } from "lucide-react";
+import inclineLogo from "@/assets/incline-logo.png";
 
 /**
  * Decorative left-side panel for the redesigned /auth page.
@@ -7,6 +9,7 @@ import { ShieldCheck, Sparkles, Zap } from "lucide-react";
  * `prefers-reduced-motion`.
  */
 export function AuthVisualPanel() {
+  const [logoFailed, setLogoFailed] = useState(false);
   return (
     <aside
       aria-hidden="true"
@@ -66,15 +69,21 @@ export function AuthVisualPanel() {
 
       {/* Content */}
       <div className="relative z-10 h-full flex flex-col justify-between p-10 lg:p-14 xl:p-16">
-        {/* Logo lockup */}
+        {/* Logo lockup — uses Incline logo image; falls back to text on error */}
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 grid place-items-center shadow-lg shadow-black/20">
-            <span className="text-white font-extrabold text-lg leading-none">I</span>
-          </div>
-          <div className="leading-tight">
-            <div className="text-white font-extrabold text-lg tracking-tight">Incline</div>
-            <div className="text-white/60 text-[11px] tracking-wider uppercase">The Incline Life</div>
-          </div>
+          {!logoFailed ? (
+            <img
+              src={inclineLogo}
+              alt="Incline"
+              onError={() => setLogoFailed(true)}
+              className="h-11 w-auto object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+            />
+          ) : (
+            <div className="leading-tight">
+              <div className="text-white font-extrabold text-xl tracking-tight">Incline</div>
+              <div className="text-white/60 text-[11px] tracking-wider uppercase">The Incline Life</div>
+            </div>
+          )}
         </div>
 
         {/* Tagline + value props */}
@@ -105,23 +114,15 @@ export function AuthVisualPanel() {
             </li>
             <li className="flex items-center gap-3">
               <span className="h-8 w-8 rounded-lg bg-white/10 border border-white/15 grid place-items-center">
-                <ShieldCheck className="h-4 w-4 text-cyan-200" />
+                <Dumbbell className="h-4 w-4 text-cyan-200" />
               </span>
-              Bank-grade security & branch isolation
+              Smarter training, recovery & progress tracking
             </li>
           </ul>
         </div>
 
-        {/* Footer / social proof */}
-        <div className="flex items-center justify-between text-xs text-white/55">
-          <div className="flex items-center gap-2">
-            <div className="flex -space-x-2">
-              <span className="h-7 w-7 rounded-full bg-gradient-to-br from-cyan-300 to-blue-500 border-2 border-[hsl(217_91%_14%)]" />
-              <span className="h-7 w-7 rounded-full bg-gradient-to-br from-violet-400 to-indigo-600 border-2 border-[hsl(217_91%_14%)]" />
-              <span className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-300 to-teal-500 border-2 border-[hsl(217_91%_14%)]" />
-            </div>
-            <span>Trusted by 4,000+ members</span>
-          </div>
+        {/* Footer */}
+        <div className="flex items-center justify-end text-xs text-white/55">
           <span>© Incline · The Incline Life by Incline</span>
         </div>
       </div>
