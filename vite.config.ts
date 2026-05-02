@@ -80,9 +80,11 @@ export default defineConfig(() => ({
           // Radix primitives (one chunk for all radix packages)
           if (id.includes('@radix-ui/')) return 'radix-vendor';
 
+          // Lucide icons — large, isolated so it can be cached separately
+          if (id.includes('lucide-react')) return 'icons-vendor';
+
           // Misc UI utilities frequently shared
           if (
-            id.includes('lucide-react') ||
             id.includes('/sonner/') ||
             id.includes('/cmdk/') ||
             id.includes('/vaul/') ||
