@@ -10,12 +10,12 @@ const WORDS = ["RISE", "REFLECT", "REPEAT", "RECOVER", "RESTORE", "REBUILD"];
 // direction animation defined in src/index.css. Pure DOM/CSS — safe to
 // render outside the R3F <Canvas>.
 const FLOATERS = [
-  { word: "RISE",    top: "12%", left: "8%",  size: "clamp(1.4rem, 4vw, 3rem)",   anim: "incFloatA", dur: 22, delay: 0 },
-  { word: "REFLECT", top: "22%", left: "72%", size: "clamp(1.2rem, 3.4vw, 2.5rem)", anim: "incFloatB", dur: 26, delay: 2 },
-  { word: "REPEAT",  top: "55%", left: "5%",  size: "clamp(1.6rem, 5vw, 3.6rem)", anim: "incFloatC", dur: 30, delay: 4 },
-  { word: "RECOVER", top: "70%", left: "60%", size: "clamp(1.2rem, 3.4vw, 2.5rem)", anim: "incFloatD", dur: 24, delay: 1 },
-  { word: "RESTORE", top: "38%", left: "40%", size: "clamp(1rem, 2.8vw, 2rem)",   anim: "incFloatE", dur: 28, delay: 3 },
-  { word: "REBUILD", top: "85%", left: "30%", size: "clamp(1.4rem, 4vw, 3rem)",   anim: "incFloatF", dur: 32, delay: 5 },
+  { word: "RISE",    top: "12%", left: "8%",  size: "clamp(0.75rem, 1.8vw, 1.25rem)", anim: "incFloatA", dur: 12, delay: 0 },
+  { word: "REFLECT", top: "22%", left: "72%", size: "clamp(0.7rem, 1.6vw, 1.1rem)",   anim: "incFloatB", dur: 14, delay: 1.2 },
+  { word: "REPEAT",  top: "55%", left: "5%",  size: "clamp(0.8rem, 2vw, 1.4rem)",     anim: "incFloatC", dur: 16, delay: 2.4 },
+  { word: "RECOVER", top: "70%", left: "60%", size: "clamp(0.7rem, 1.6vw, 1.1rem)",   anim: "incFloatD", dur: 13, delay: 0.6 },
+  { word: "RESTORE", top: "38%", left: "40%", size: "clamp(0.65rem, 1.4vw, 1rem)",    anim: "incFloatE", dur: 15, delay: 1.8 },
+  { word: "REBUILD", top: "85%", left: "30%", size: "clamp(0.75rem, 1.8vw, 1.25rem)", anim: "incFloatF", dur: 17, delay: 3 },
 ] as const;
 
 const FloatingWords = ({ scrollProgress }: FloatingWordsProps) => {
