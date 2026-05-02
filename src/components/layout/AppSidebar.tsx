@@ -113,6 +113,10 @@ interface AppSidebarProps {
   hybridItems?: MenuItemType[];
   /** Active module label shown above the items in hybrid mode. */
   hybridModuleLabel?: string;
+  /** When true, do not render the sidebar's own header block (logo / module chip / collapse). */
+  headerless?: boolean;
+  /** When true, the aside doesn't manage its own height/sticky — parent grid does. */
+  embedded?: boolean;
 }
 
 export function AppSidebar({
@@ -121,6 +125,8 @@ export function AppSidebar({
   onToggleCollapse,
   hybridItems,
   hybridModuleLabel,
+  headerless = false,
+  embedded = false,
 }: AppSidebarProps) {
   const { signOut, roles } = useAuth();
   const location = useLocation();
@@ -155,51 +161,43 @@ export function AppSidebar({
     <TooltipProvider delayDuration={200}>
       <aside
         className={cn(
-          'hidden lg:flex flex-col h-screen sticky top-0 bg-sidebar border-r border-sidebar-border shadow-sm transition-all duration-200',
+          'hidden lg:flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200',
+          embedded ? 'h-full' : 'h-screen sticky top-0 shadow-sm',
           collapsed ? 'w-14' : 'w-64'
         )}
       >
-        <div className={cn(
-          'border-b border-sidebar-border flex items-center',
-          collapsed ? 'p-3 justify-center' : 'p-5 justify-between'
-        )}>
-          {isHybrid ? (
-            <div className="flex flex-col">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
-                Module
-              </span>
-              <span className="text-base font-bold text-sidebar-primary leading-tight">
-                {hybridModuleLabel ?? 'Menu'}
-              </span>
-            </div>
-          ) : (
+        {!headerless && (
+          <div className={cn(
+            'border-b border-sidebar-border flex items-center',
+            collapsed ? 'p-3 justify-center' : 'p-5 justify-between'
+          )}>
             <BrandLogo collapsed={collapsed} />
-          )}
-          {!collapsed && !isHybrid && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onToggleCollapse}
-              data-testid="button-sidebar-toggle"
-              aria-label="Collapse sidebar"
-              className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          )}
-          {collapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onToggleCollapse}
-              data-testid="button-sidebar-toggle"
-              aria-label="Expand sidebar"
-              className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute -right-3 top-5 bg-sidebar border border-sidebar-border rounded-full shadow-sm z-10"
-            >
-              <ChevronRight className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
+            {!collapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                data-testid="button-sidebar-toggle"
+                aria-label="Collapse sidebar"
+                className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            )}
+            {collapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                data-testid="button-sidebar-toggle"
+                aria-label="Expand sidebar"
+                className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute -right-3 top-5 bg-sidebar border border-sidebar-border rounded-full shadow-sm z-10"
+              >
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
 
         <ScrollArea className="flex-1 py-4">
           <nav className={cn('space-y-6', collapsed ? 'px-1' : 'px-3')}>
