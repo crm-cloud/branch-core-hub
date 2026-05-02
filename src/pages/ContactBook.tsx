@@ -23,9 +23,10 @@ import {
 } from '@/components/ui/table';
 import {
   Plus, Search, Edit2, Trash2, BookUser, Phone, Mail, MessageSquare, Building2,
-  UserCircle2, Sparkles, UserPlus, ExternalLink,
+  UserCircle2, Sparkles, UserPlus, ExternalLink, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SegmentsManagerDrawer } from '@/components/contacts/SegmentsManagerDrawer';
 import { useNavigate } from 'react-router-dom';
 import {
   CONTACT_CATEGORIES, ContactInput, ContactRow, deleteContact, listContacts,
@@ -56,6 +57,7 @@ export default function ContactBookPage() {
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [form, setForm] = useState<ContactInput>(empty(effectiveBranchId || ''));
   const [deleteTarget, setDeleteTarget] = useState<ContactRow | null>(null);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ['contacts', selectedBranch],
@@ -176,9 +178,14 @@ export default function ContactBookPage() {
               Save vendors, walk-ins, prospects and other non-member numbers so chats show real names.
             </p>
           </div>
-          <Button onClick={openCreate} className="rounded-xl gap-2">
-            <Plus className="h-4 w-4" /> Add Contact
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setSegmentsOpen(true)} className="rounded-xl gap-2">
+              <Layers className="h-4 w-4" /> Segments
+            </Button>
+            <Button onClick={openCreate} className="rounded-xl gap-2">
+              <Plus className="h-4 w-4" /> Add Contact
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -479,6 +486,8 @@ export default function ContactBookPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SegmentsManagerDrawer open={segmentsOpen} onOpenChange={setSegmentsOpen} branchId={effectiveBranchId || ''} />
     </AppLayout>
   );
 }

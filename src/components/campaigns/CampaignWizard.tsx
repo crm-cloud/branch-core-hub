@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ResponsiveSheet,
   ResponsiveSheetHeader,
@@ -36,6 +36,18 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [name, setName] = useState('');
   const [channel, setChannel] = useState<CampaignChannel>('whatsapp');
   const [filter, setFilter] = useState<AudienceFilter>({ status: 'active' });
+
+  // Auto-prefill from a saved segment (set by Contact Book → Segments → Send)
+  useEffect(() => {
+    const segId = sessionStorage.getItem('campaign_prefill_segment');
+    const segName = sessionStorage.getItem('campaign_prefill_segment_name');
+    if (segId) {
+      setFilter({ audience_kind: 'segment', segment_id: segId });
+      if (segName) setName(`Segment: ${segName}`);
+      sessionStorage.removeItem('campaign_prefill_segment');
+      sessionStorage.removeItem('campaign_prefill_segment_name');
+    }
+  }, []);
   const [resolvedMemberIds, setResolvedMemberIds] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
@@ -79,7 +91,13 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
       });
 
       if (trigger === 'send_now') {
-        const result = await sendCampaignNow(campaign, resolvedMemberIds);
+        // If a richer audience kind is selected, route through the unified resolver so
+        // members + leads + contacts can all be reached in one broadcast.
+        const useResolver = filter.audience_kind && filter.audience_kind !== 'members';
+        const audience = useResolver
+          ? { recipients: await (await import('@/services/campaignService')).resolveCampaignAudience(branchId, filter) }
+          : { memberIds: resolvedMemberIds };
+        const result = await sendCampaignNow(campaign, audience);
         toast.success(`Campaign sent — ${result.sent} delivered, ${result.failed} failed`);
       } else if (trigger === 'scheduled') {
         toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);

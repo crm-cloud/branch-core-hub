@@ -4,11 +4,46 @@ export type CampaignChannel = 'whatsapp' | 'email' | 'sms';
 export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'paused';
 export type CampaignTriggerType = 'send_now' | 'automated' | 'scheduled';
 
+export type AudienceKind = 'members' | 'leads' | 'contacts' | 'segment' | 'mixed';
+
 export interface AudienceFilter {
-  status?: 'active' | 'lead' | 'expired' | 'all';
+  audience_kind?: AudienceKind;
+  segment_id?: string | null;
+  // members
+  member_status?: 'active' | 'expired' | 'all';
   goal?: string | null;
-  last_attendance_before?: string | null; // ISO date — "no visit since"
+  last_attendance_before?: string | null;
   last_attendance_after?: string | null;
+  // contacts
+  source_types?: Array<'member' | 'lead' | 'manual' | 'ai'>;
+  categories?: string[];
+  tags?: string[];
+  // leads
+  lead_status?: string[];
+  lead_temperature?: string[];
+  // legacy
+  status?: 'active' | 'lead' | 'expired' | 'all';
+}
+
+export interface ResolvedRecipient {
+  source_type: 'member' | 'lead' | 'contact';
+  source_ref_id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  contact_id: string | null;
+}
+
+export async function resolveCampaignAudience(
+  branchId: string,
+  filter: AudienceFilter
+): Promise<ResolvedRecipient[]> {
+  const { data, error } = await supabase.rpc('resolve_campaign_audience' as any, {
+    p_branch_id: branchId,
+    p_filter: filter as any,
+  });
+  if (error) throw error;
+  return (data as any) || [];
 }
 
 export interface Campaign {
@@ -151,7 +186,7 @@ export async function createCampaign(input: Omit<Campaign,
 
 export async function sendCampaignNow(
   campaign: Campaign,
-  memberIds: string[]
+  audience: { memberIds?: string[]; recipients?: ResolvedRecipient[] }
 ): Promise<{ sent: number; failed: number; total: number }> {
   await supabase.from('campaigns').update({ status: 'sending' }).eq('id', campaign.id);
 
@@ -161,10 +196,60 @@ export async function sendCampaignNow(
       message: campaign.message,
       subject: campaign.subject,
       branch_id: campaign.branch_id,
-      member_ids: memberIds,
+      member_ids: audience.memberIds,
+      recipients: audience.recipients,
       campaign_id: campaign.id,
     },
   });
   if (error) throw error;
   return data as any;
+}
+
+// ---------- Segments ----------
+export interface ContactSegment {
+  id: string;
+  branch_id: string;
+  name: string;
+  description: string | null;
+  filter: AudienceFilter;
+  audience_count: number;
+  last_refreshed_at: string | null;
+  created_at: string;
+}
+
+export async function listSegments(branchId: string): Promise<ContactSegment[]> {
+  const { data, error } = await supabase
+    .from('contact_segments' as any)
+    .select('*')
+    .eq('branch_id', branchId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data as any) || [];
+}
+
+export async function saveSegment(input: {
+  branch_id: string; name: string; description?: string; filter: AudienceFilter;
+}): Promise<ContactSegment> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const recipients = await resolveCampaignAudience(input.branch_id, input.filter);
+  const { data, error } = await supabase
+    .from('contact_segments' as any)
+    .insert({
+      branch_id: input.branch_id,
+      name: input.name,
+      description: input.description ?? null,
+      filter: input.filter as any,
+      audience_count: recipients.length,
+      last_refreshed_at: new Date().toISOString(),
+      created_by: user?.id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as any;
+}
+
+export async function deleteSegment(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_segments' as any).delete().eq('id', id);
+  if (error) throw error;
 }
