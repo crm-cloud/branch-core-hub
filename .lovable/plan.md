@@ -1,120 +1,92 @@
-# Login Page Redesign — Premium Split-Screen
+## Goal
 
-Inspired by the Dribbble references (3D animated landing-style login, Rive-animated brand panel, illustration-led hero):
+Introduce a Vuexy-style "Navigation Mode" with three options — **Vertical** (current default), **Collapsed** (current icon-only mode), and **Hybrid** (new: top horizontal modules + left sidebar showing only child items of the active module). Existing menu config, role permissions, and routes stay 100% untouched. Mobile nav stays exactly as-is.
 
-- Left = a rich, branded "visual stage" with motion (Incline electric-blue palette).
-- Right = a clean, focused glass auth card.
-- Mobile = visual collapses to a compact gradient hero on top, form below.
+## What ships
 
-All existing auth flows (Password, Email Code, OTP, Forgot Password, Google) keep working unchanged — only the **shell + visuals** of `Auth.tsx` and `LoginForm.tsx` styling are redesigned.
+### 1. Navigation mode setting
 
----
+- New file `src/lib/navPreferences.ts`
+  - `type NavMode = 'vertical' | 'collapsed' | 'hybrid'`
+  - `getNavMode()` / `setNavMode(mode)` — reads/writes `localStorage` key `incline.nav-mode` (per-browser, per-user since auth is single-session).
+  - Falls back to `'vertical'`. Safe try/catch.
+- Backwards compat: existing `sidebar-collapsed` localStorage key is migrated once → if `true`, seed `nav-mode = 'collapsed'`.
 
-## What it will look like
+### 2. Module derivation (no menu rewrite)
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  LEFT PANEL (50%)            │  RIGHT PANEL (50%)            │
-│  electric-blue gradient      │  off-white / subtle texture   │
-│                              │                               │
-│  • Incline logo (top-left)   │   ┌─ Glass card ──────────┐   │
-│  • Floating words: RISE,     │   │ Welcome back          │   │
-│    REFLECT, REPEAT (slow     │   │ Sign in to continue   │   │
-│    drift, scoped CSS anims)  │   │                       │   │
-│  • Animated grid + glow orbs │   │ [ Google sign-in ]    │   │
-│  • Big tagline:              │   │ ─── or ───            │   │
-│      "Climb higher.          │   │ [ Tabs Pwd | Code ]   │   │
-│       Every. Single. Day."   │   │ [ Email ]             │   │
-│  • Small testimonial /       │   │ [ Password 👁 ]       │   │
-│    member avatar stack       │   │ [ Sign In CTA ]       │   │
-│  • Footer: © Incline · v…    │   │ Forgot password?      │   │
-│                              │   └───────────────────────┘   │
-│                              │   Privacy · Terms · Deletion  │
-└──────────────────────────────────────────────────────────────┘
-```
+- New file `src/config/navModules.ts`
+  - Hard-coded ordered list of "top modules" with label + icon + matching section titles in the existing `menuConfig`:
+    ```
+    Dashboard   → ['Main']
+    Members     → ['Members & Leads', 'My Account']
+    Sales       → ['E-Commerce & Sales']
+    Finance     → ['Finance']
+    Operations  → ['Operations & Comm', 'Core']
+    PT/Trainers → ['Training & Bookings', 'Training', 'Earnings']
+    Benefits    → items whose href starts with `/benefit` / `/book-benefit` / `/my-benefits`
+    HRM         → ['Admin & HR', 'Work']
+    Marketing   → ['Communication']  (chats, announcements, campaigns)
+    Reports     → items whose href is `/analytics`, `/reports`, `/audit-logs`, `/system-health`
+    Settings    → items whose href is `/settings`, `/admin-roles`, `/devices`
+    ```
+  - Helper `groupMenuIntoModules(sections)` returns `Array<{ module, items }>`, dropping modules with zero visible items so RBAC continues to gate everything.
+  - A module is considered "active" if `location.pathname` matches any of its child items' `href` (longest-prefix wins). Falls back to first non-empty module.
 
-Mobile (<768px): left panel collapses into a 220px gradient hero with logo + tagline + 2 floating words; auth card sits below as a full-width sheet.
+### 3. New components
 
----
+- `src/components/layout/NavModeMenu.tsx`
+  - Small dropdown (icon-only button in `AppHeader`) listing the 3 modes with check marks. Calls `setNavMode` and dispatches a `storage`-like event so `AppLayout` re-reads.
+- `src/components/layout/TopModulesBar.tsx`
+  - Horizontal pill bar rendered only when `navMode === 'hybrid'` and viewport ≥ `lg`.
+  - Shows brand logo on the left, module pills in the middle (icon + label), header utilities (search, notifications, profile) reused via existing `AppHeader` placement.
+  - Active pill: `bg-indigo-50 text-indigo-700 rounded-xl shadow-sm` (Vuexy-flavoured, matches project tokens).
+  - Clicking a pill navigates to the module's first child route AND sets that module as active for the sidebar.
 
-## Visual system
+### 4. AppLayout / AppSidebar wiring
 
-- **Palette (scoped to `.incline-auth`)** — electric blue primary, deep navy ink, soft ice surface:
-  - `--primary: 217 91% 50%` (electric blue)
-  - `--primary-glow: 199 95% 60%` (cyan accent for orbs)
-  - `--ink: 222 47% 11%` (card text)
-  - `--surface: 0 0% 100%` with 70% opacity + backdrop blur for the glass card
-  - Left panel: `bg-gradient-to-br from-[hsl(222_47%_8%)] via-[hsl(217_91%_18%)] to-[hsl(199_95%_30%)]`
-- **Typography**: existing Inter + Oswald (already loaded). Tagline uses Oswald 600, body Inter.
-- **Surfaces**: `rounded-3xl`, `shadow-[0_30px_80px_-20px_rgba(15,23,42,0.25)]`, 1px hairline border `border-white/60`.
-- **Motion** (CSS only, respects `prefers-reduced-motion`):
-  - `authOrbDrift` — slow 18–24s translate/scale on 3 blurred orbs.
-  - `authGridShift` — subtle 40s background-position pan on a faint grid.
-  - `authWordFloat` (reuse existing keyframes `incFloatA/B/C`) — 3 floating words on the left panel.
-  - Card entrance: `translateY(12px) + opacity 0 → 1` over 400ms ease-out.
-  - Button hover: subtle scale 1.01 + glow shadow.
-- **Icons**: lucide-react only (Mail, Lock, Eye/EyeOff, Loader2 — already used).
+- `AppLayout.tsx`
+  - Replace `collapsed` boolean state with `navMode` state.
+  - Subscribe to `storage` events to keep multiple tabs in sync.
+  - Render order:
+    - `navMode === 'hybrid'`: render `TopModulesBar` above the content row; pass the active module to `AppSidebar`.
+    - Else: render today's layout unchanged.
+- `AppSidebar.tsx`
+  - Accept new optional props: `mode: NavMode`, `activeModuleId?: string`.
+  - When `mode === 'hybrid'`: filter `menuSections` down to only the items belonging to the active module (no section headers, single flat list). Hide collapse toggle. Width stays `w-64`. Logo hidden in hybrid (it's already in TopModulesBar) — header area becomes the active module title.
+  - When `mode === 'collapsed'`: behave exactly as today's collapsed.
+  - When `mode === 'vertical'`: behave exactly as today's expanded.
+- `MobileNav` is **not modified** — mobile keeps the full grouped sidebar via the existing Sheet.
 
----
+### 5. Header touch-up
 
-## Files to change
+- `AppHeader.tsx`: insert `<NavModeMenu />` next to the theme toggle. No other changes.
 
-1. **`src/pages/Auth.tsx`** — replace single-card layout with split-screen shell:
-   - Wrap in `.incline-auth` (scoped palette).
-   - `lg:grid-cols-2` two-column layout, left = `<AuthVisualPanel />`, right = centered `<LoginForm />` inside glass card.
-   - Mobile: stack with compact hero on top.
-   - Keep all existing redirect/setup-check logic untouched.
-   - Keep `<SEO />` and footer legal links (move into right column footer).
+## Visual / UX polish (Vuexy 2026)
 
-2. **`src/components/auth/AuthVisualPanel.tsx`** *(new)* — pure DOM/CSS, no R3F:
-   - Logo lockup (Incline wordmark, gradient text).
-   - 3 absolutely-positioned floating words ("RISE", "REFLECT", "REPEAT") using existing `incFloatA/B/C` keyframes.
-   - 3 blurred gradient orbs with `authOrbDrift`.
-   - SVG dot/line grid overlay at low opacity.
-   - Big tagline + sub-copy.
-   - Avatar stack + "Trusted by 4,000+ members across 6 branches" social proof.
-   - Bottom-left: small `© Incline · The Incline Life`.
+- Top bar: `h-14 bg-white/80 backdrop-blur border-b border-slate-200/70 shadow-sm`, pills `rounded-xl px-3 py-1.5 text-sm font-medium`, active pill carries soft indigo glow `shadow-[0_6px_20px_-10px_hsl(var(--primary)/0.55)]`.
+- Sidebar in hybrid mode: subtitle chip at top showing "MODULE · {name}" in `text-[10px] uppercase tracking-widest text-slate-500`.
+- Smooth `transition-all duration-200` when switching modes.
+- Honors existing dark theme tokens (`sidebar-*`, `primary`).
 
-3. **`src/components/auth/LoginForm.tsx`** — *visual polish only, no logic changes*:
-   - Heading: `text-2xl` + a small "Hi 👋" replaced with "Welcome back" + warm subcopy.
-   - Add a **Google sign-in button** at the top (calls `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/home' } })`) above the tabs, with a "or use email" divider.
-   - Inputs get `rounded-xl`, larger left icon padding, focus ring `ring-2 ring-primary/30`.
-   - Primary button: `bg-primary text-primary-foreground` with soft glow shadow `shadow-[0_10px_30px_-10px_hsl(217_91%_50%/0.55)]`.
-   - Tab pill: switch to a sleeker underline-style toggle (still accessible buttons).
-   - Keep all data-testids, OTP step, Forgot link, error handling exactly as-is.
+## Safety / non-regression
 
-4. **`src/index.css`** — add scoped block:
-   - `.incline-auth { --primary: 217 91% 50%; --primary-foreground: 0 0% 100%; --ring: 217 91% 50%; ... }`
-   - New keyframes: `authOrbDrift`, `authGridShift`, `authCardIn`.
-   - `.incline-auth .glass-card { backdrop-filter: blur(18px); background: hsl(0 0% 100% / 0.78); }`
-   - `@media (prefers-reduced-motion: reduce)` disables all auth animations.
+- Zero changes to `src/config/menu.ts`, role checks, routes, or `getMenuForRole`.
+- All filtering still runs through the existing role-based `menuSections` pipeline before module grouping → RBAC preserved.
+- If module grouping yields zero items for the user (e.g. a Trainer with no Sales module), that pill is simply not rendered.
+- Mobile (`<lg`) always uses the existing `MobileNav` Sheet regardless of `navMode`.
+- Auth pages, member portal pages, and any page not wrapped in `AppLayout` are untouched.
 
----
+## Files
 
-## Technical details
+Created:
+- `src/lib/navPreferences.ts`
+- `src/config/navModules.ts`
+- `src/components/layout/TopModulesBar.tsx`
+- `src/components/layout/NavModeMenu.tsx`
 
-- **No new dependencies** — all motion is CSS, all icons from lucide-react, all components from existing shadcn set. No three.js, no Framer Motion, no Rive (the Dribbble refs use heavy 3D/Rive; we get the *feel* with pure CSS to keep bundle and crash-free).
-- **R3F-safe**: no `useFrame`/`useThree` anywhere — the visual panel is plain JSX/CSS.
-- **Accessibility**:
-  - Left panel marked `aria-hidden="true"` (decorative).
-  - Form labels stay visible (no placeholder-only).
-  - Focus rings preserved on all inputs/buttons (≥2px, primary color).
-  - Color contrast verified: white on electric-blue ≥ 4.5:1; ink on white card ≥ 12:1.
-  - Touch targets ≥ 44px (h-12 inputs/buttons stay).
-  - `prefers-reduced-motion` disables drift animations.
-- **Responsive breakpoints**: mobile <768 stacked, ≥`lg` (1024) split 50/50, `≥xl` (1280) split 55/45 with extra left-panel padding.
-- **Performance**: orbs use `transform` + `opacity` only (GPU). Grid is a single inline SVG data-URL background — no extra image requests.
-- **Auth logic**: zero behavioral change. All Supabase calls, OTP countdown, redirect logic, `getHomePath`, `mustSetPassword`, referral capture stay exactly as today.
-- **Google sign-in**: uses managed Lovable Cloud Google OAuth (no extra config needed). If `signInWithOAuth` returns an error it's toasted; success redirects via Supabase.
-- **Brand**: footer keeps "The Incline Life by Incline" per memory rule.
-- **Memory rule compliance**: Vuexy aesthetic (rounded-2xl/3xl, soft colored shadows, no harsh borders), mobile-safe (`min-h-dvh`, `pb-safe` on stacked footer), no inline `hasAnyRole`, no dialogs introduced.
+Edited:
+- `src/components/layout/AppLayout.tsx` (state → navMode, conditional render)
+- `src/components/layout/AppSidebar.tsx` (accept `mode` + `activeModuleId`, hybrid render branch)
+- `src/components/layout/AppHeader.tsx` (mount `NavModeMenu`)
 
----
-
-## Out of scope (explicit)
-
-- No changes to `ForgotPassword`, `ResetPassword`, `SetPassword` pages (can be a follow-up if you want them themed too — happy to do in a second pass).
-- No changes to `AuthContext`, RLS, or any backend.
-- No new images/assets uploaded; everything is CSS/SVG.
-
-After approval I'll implement all four file changes in one pass and screenshot the result at desktop + mobile to verify.
+No DB, no edge functions, no route changes, no menu config changes.
