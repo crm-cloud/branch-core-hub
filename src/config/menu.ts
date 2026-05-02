@@ -4,7 +4,7 @@ import {
   Settings, ClipboardList, Megaphone, BarChart3, Wallet, Clock,
   Lock, Sparkles, ShoppingBag, ShoppingCart, Gift, FileText, Wrench, CheckSquare, 
   Briefcase, MessageSquare, Tags, Activity, UtensilsCrossed, Target, 
-  Bell, Snowflake, UserCog, TrendingUp, Heart, Router
+  Bell, Snowflake, UserCog, TrendingUp, Heart, Router, BookUser
 } from 'lucide-react';
 
 type AppRole = Database['public']['Enums']['app_role'];
@@ -135,6 +135,7 @@ export const staffMenuConfig: MenuSection[] = [
     title: 'Communication',
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['staff'] },
+      { label: 'Contact Book', href: '/contact-book', icon: BookUser, roles: ['staff'] },
       { label: 'Announcements', href: '/announcements', icon: Megaphone, roles: ['staff'] },
     ],
   },
@@ -199,6 +200,7 @@ export const adminMenuConfig: MenuSection[] = [
     title: 'Operations & Comm',
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['owner', 'admin', 'manager'] },
+      { label: 'Contact Book', href: '/contact-book', icon: BookUser, roles: ['owner', 'admin', 'manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['owner', 'admin', 'manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['owner', 'admin', 'manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['owner', 'admin', 'manager'] },
@@ -273,6 +275,7 @@ export const managerMenuConfig: MenuSection[] = [
     title: 'Operations & Comm',
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
+      { label: 'Contact Book', href: '/contact-book', icon: BookUser, roles: ['manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['manager'] },
       { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
