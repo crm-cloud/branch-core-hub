@@ -150,17 +150,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 9. Audit log
-    try {
-      await supabase.from("communication_logs").insert({
-        branch_id: branchId,
-        type: "whatsapp",
-        recipient: memberProfile?.phone || memberProfile?.email || (member as any).member_code,
-        content: body.slice(0, 500),
-        status: results.some((r) => r.success) ? "sent" : "failed",
-        delivery_metadata: { event, booking_id, results },
-      });
-    } catch (_) { /* best effort */ }
+    // 9. Audit logging is handled by the sub-senders (send-whatsapp / send-email
+    //    write their own communication_logs rows). Direct writes here are
+    //    forbidden by the dispatcher CI guard — sub-senders or
+    //    dispatch-communication are the only sanctioned paths.
 
     return json({ success: true, sent: results.filter((r) => r.success).length, results });
   } catch (e) {
