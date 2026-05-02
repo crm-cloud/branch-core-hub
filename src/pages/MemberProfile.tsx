@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { CommunicationPreferences } from '@/components/profile/CommunicationPreferences';
 
 export default function MemberProfile() {
   const { profile, refreshProfile } = useAuth();
@@ -298,6 +299,11 @@ export default function MemberProfile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Communication preferences */}
+        {member?.id && (member as any)?.branch_id && (
+          <CommunicationPreferences memberId={member.id} branchId={(member as any).branch_id} />
+        )}
       </div>
     </AppLayout>
   );
