@@ -11021,6 +11021,10 @@ export type Database = {
         Returns: Json
       }
       generate_renewal_invoices: { Args: never; Returns: undefined }
+      get_howbody_public_report: {
+        Args: { _report_type: string; _token: string }
+        Returns: Json
+      }
       get_inactive_members: {
         Args: { p_branch_id: string; p_days?: number; p_limit?: number }
         Returns: {
