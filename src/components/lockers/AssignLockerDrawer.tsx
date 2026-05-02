@@ -174,6 +174,7 @@ export function AssignLockerDrawer({ open, onOpenChange, locker, branchId }: Ass
         fee_amount: feeAmount,
         billing_months: billingMonths,
         chargeable: feeAmount > 0,
+        assign_source: memberHasFreeLocker ? 'plan' : 'addon',
       });
 
       if (feeAmount > 0 && result.invoice_id) {

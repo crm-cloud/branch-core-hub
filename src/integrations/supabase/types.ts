@@ -1650,54 +1650,79 @@ export type Database = {
       }
       classes: {
         Row: {
+          benefit_type_id: string | null
           branch_id: string
           capacity: number
           class_type: string | null
           created_at: string
           description: string | null
           duration_minutes: number | null
+          gst_rate: number
           id: string
           is_active: boolean | null
+          is_gst_inclusive: boolean
+          is_paid: boolean
           is_recurring: boolean | null
           name: string
+          price: number
           recurrence_rule: string | null
+          requires_benefit: boolean
           scheduled_at: string
           trainer_id: string | null
           updated_at: string
         }
         Insert: {
+          benefit_type_id?: string | null
           branch_id: string
           capacity: number
           class_type?: string | null
           created_at?: string
           description?: string | null
           duration_minutes?: number | null
+          gst_rate?: number
           id?: string
           is_active?: boolean | null
+          is_gst_inclusive?: boolean
+          is_paid?: boolean
           is_recurring?: boolean | null
           name: string
+          price?: number
           recurrence_rule?: string | null
+          requires_benefit?: boolean
           scheduled_at: string
           trainer_id?: string | null
           updated_at?: string
         }
         Update: {
+          benefit_type_id?: string | null
           branch_id?: string
           capacity?: number
           class_type?: string | null
           created_at?: string
           description?: string | null
           duration_minutes?: number | null
+          gst_rate?: number
           id?: string
           is_active?: boolean | null
+          is_gst_inclusive?: boolean
+          is_paid?: boolean
           is_recurring?: boolean | null
           name?: string
+          price?: number
           recurrence_rule?: string | null
+          requires_benefit?: boolean
           scheduled_at?: string
           trainer_id?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "classes_benefit_type_id_fkey"
+            columns: ["benefit_type_id"]
+            isOneToOne: false
+            referencedRelation: "benefit_types"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "classes_branch_id_fkey"
             columns: ["branch_id"]
@@ -5704,6 +5729,95 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_group_members: {
+        Row: {
+          added_at: string
+          group_id: string
+          id: string
+          member_id: string
+          role: string | null
+        }
+        Insert: {
+          added_at?: string
+          group_id: string
+          id?: string
+          member_id: string
+          role?: string | null
+        }
+        Update: {
+          added_at?: string
+          group_id?: string
+          id?: string
+          member_id?: string
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "member_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_group_members_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_groups: {
+        Row: {
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          discount_type: string
+          discount_value: number
+          group_name: string
+          group_type: string
+          id: string
+          is_active: boolean
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          discount_type?: string
+          discount_value?: number
+          group_name: string
+          group_type?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          discount_type?: string
+          discount_value?: number
+          group_name?: string
+          group_type?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_groups_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -10784,20 +10898,36 @@ export type Database = {
         Args: { _field: string; _max: number; _min: number; _value: number }
         Returns: number
       }
-      assign_locker_with_billing: {
-        Args: {
-          p_billing_months?: number
-          p_chargeable?: boolean
-          p_end_date: string
-          p_fee_amount: number
-          p_gst_rate?: number
-          p_locker_id: string
-          p_member_id: string
-          p_received_by?: string
-          p_start_date: string
-        }
-        Returns: Json
-      }
+      assign_locker_with_billing:
+        | {
+            Args: {
+              p_billing_months?: number
+              p_chargeable?: boolean
+              p_end_date: string
+              p_fee_amount: number
+              p_gst_rate?: number
+              p_locker_id: string
+              p_member_id: string
+              p_received_by?: string
+              p_start_date: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_assign_source?: string
+              p_billing_months?: number
+              p_chargeable?: boolean
+              p_end_date: string
+              p_fee_amount: number
+              p_gst_rate?: number
+              p_locker_id: string
+              p_member_id: string
+              p_received_by?: string
+              p_start_date: string
+            }
+            Returns: Json
+          }
       assign_user_role: {
         Args: {
           p_branch_id: string
@@ -11328,6 +11458,23 @@ export type Database = {
           p_payment_method?: string
           p_received_by?: string
           p_unit_price: number
+        }
+        Returns: Json
+      }
+      purchase_group_membership: {
+        Args: {
+          p_branch_id: string
+          p_discount_type?: string
+          p_discount_value?: number
+          p_group_name: string
+          p_group_type?: string
+          p_include_gst?: boolean
+          p_member_ids: string[]
+          p_notes?: string
+          p_payment_method?: string
+          p_plan_id: string
+          p_received_by?: string
+          p_start_date: string
         }
         Returns: Json
       }

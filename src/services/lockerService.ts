@@ -86,7 +86,9 @@ export const lockerService = {
     return data;
   },
 
-  // Assign locker to member (atomic via assign_locker_with_billing RPC: row lock + status flip + assignment + GST invoice)
+  // Assign locker to member (atomic via assign_locker_with_billing RPC).
+  // assign_source='plan' => no invoice, end_date synced to membership.
+  // assign_source='addon' => paid rental with GST invoice (default).
   async assignLocker(assignment: {
     locker_id: string;
     member_id: string;
@@ -97,6 +99,7 @@ export const lockerService = {
     chargeable?: boolean;
     gst_rate?: number;
     received_by?: string;
+    assign_source?: 'plan' | 'addon';
   }) {
     const { data, error } = await (supabase.rpc as any)('assign_locker_with_billing', {
       p_locker_id: assignment.locker_id,
@@ -108,6 +111,7 @@ export const lockerService = {
       p_chargeable: !!assignment.chargeable && (assignment.fee_amount ?? 0) > 0,
       p_gst_rate: assignment.gst_rate ?? null,
       p_received_by: assignment.received_by ?? null,
+      p_assign_source: assignment.assign_source ?? 'addon',
     });
     if (error) throw error;
     return data as { assignment_id: string; invoice_id: string | null; locker_id: string; branch_id: string };

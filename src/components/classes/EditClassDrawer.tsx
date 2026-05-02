@@ -11,8 +11,10 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useUpdateClass } from '@/hooks/useClasses';
 import { useTrainers } from '@/hooks/useTrainers';
+import { useBenefitTypes } from '@/hooks/useBenefitTypes';
 import { format } from 'date-fns';
-import { AlertTriangle, Phone, Mail, User } from 'lucide-react';
+import { AlertTriangle, Phone, Mail, User, Gift, IndianRupee, Sparkles } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { ClassWithDetails } from '@/services/classService';
 
 interface EditClassDrawerProps {
@@ -22,10 +24,14 @@ interface EditClassDrawerProps {
   branchId: string;
 }
 
+type ChargingMode = 'free' | 'benefit' | 'paid';
+
 export function EditClassDrawer({ open, onOpenChange, classData, branchId }: EditClassDrawerProps) {
   const updateClass = useUpdateClass();
   const { data: trainers } = useTrainers(branchId);
+  const { data: benefitTypes = [] } = useBenefitTypes(branchId);
 
+  const [mode, setMode] = useState<ChargingMode>('free');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -35,10 +41,18 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
     trainer_id: '',
     class_type: '',
     is_active: true,
+    benefit_type_id: '',
+    requires_benefit: true,
+    price: 0,
+    gst_rate: 18,
+    is_gst_inclusive: true,
   });
 
   useEffect(() => {
     if (classData) {
+      const cd = classData as any;
+      const initialMode: ChargingMode = cd.is_paid ? 'paid' : (cd.benefit_type_id ? 'benefit' : 'free');
+      setMode(initialMode);
       setFormData({
         name: classData.name,
         description: classData.description || '',
@@ -48,6 +62,11 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
         trainer_id: classData.trainer_id || '',
         class_type: classData.class_type || '',
         is_active: classData.is_active ?? true,
+        benefit_type_id: cd.benefit_type_id || '',
+        requires_benefit: cd.requires_benefit ?? true,
+        price: cd.price ?? 0,
+        gst_rate: cd.gst_rate ?? 18,
+        is_gst_inclusive: cd.is_gst_inclusive ?? true,
       });
     }
   }, [classData]);
@@ -58,15 +77,34 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
       toast.error('Please fill in required fields');
       return;
     }
+    if (mode === 'benefit' && !formData.benefit_type_id) {
+      toast.error('Select which benefit unlocks this class');
+      return;
+    }
+    if (mode === 'paid' && (!formData.price || formData.price <= 0)) {
+      toast.error('Enter a workshop price greater than 0');
+      return;
+    }
 
     try {
       await updateClass.mutateAsync({
         classId: classData.id,
         updates: {
-          ...formData,
+          name: formData.name,
+          description: formData.description,
+          capacity: formData.capacity,
+          duration_minutes: formData.duration_minutes,
+          class_type: formData.class_type,
+          is_active: formData.is_active,
           trainer_id: formData.trainer_id || null,
           scheduled_at: new Date(formData.scheduled_at).toISOString(),
-        },
+          benefit_type_id: mode === 'benefit' ? formData.benefit_type_id : null,
+          requires_benefit: mode === 'benefit' ? formData.requires_benefit : false,
+          is_paid: mode === 'paid',
+          price: mode === 'paid' ? formData.price : 0,
+          gst_rate: mode === 'paid' ? formData.gst_rate : 0,
+          is_gst_inclusive: mode === 'paid' ? formData.is_gst_inclusive : true,
+        } as any,
       });
       toast.success('Class updated successfully');
       onOpenChange(false);
@@ -232,6 +270,78 @@ export function EditClassDrawer({ open, onOpenChange, classData, branchId }: Edi
                   {selectedTrainer.profile_email}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Charging mode */}
+          <div className="space-y-2 rounded-xl border p-4 bg-muted/30">
+            <Label className="text-sm font-semibold">How is this class charged?</Label>
+            <RadioGroup value={mode} onValueChange={(v) => setMode(v as ChargingMode)} className="space-y-2 pt-1">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <RadioGroupItem value="free" className="mt-1" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium"><Sparkles className="h-3.5 w-3.5" /> Free for everyone</div>
+                  <p className="text-xs text-muted-foreground">Any active member can book — no quota, no charge.</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <RadioGroupItem value="benefit" className="mt-1" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium"><Gift className="h-3.5 w-3.5" /> Included in plan benefit</div>
+                  <p className="text-xs text-muted-foreground">Booking consumes a member's quota.</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <RadioGroupItem value="paid" className="mt-1" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium"><IndianRupee className="h-3.5 w-3.5" /> Paid workshop</div>
+                  <p className="text-xs text-muted-foreground">Auto-creates an invoice on booking.</p>
+                </div>
+              </label>
+            </RadioGroup>
+          </div>
+
+          {mode === 'benefit' && (
+            <div className="space-y-3 rounded-xl border p-4">
+              <div className="space-y-2">
+                <Label>Linked Benefit *</Label>
+                <Select value={formData.benefit_type_id} onValueChange={(v) => setFormData({ ...formData, benefit_type_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select a benefit" /></SelectTrigger>
+                  <SelectContent>
+                    {benefitTypes.map((bt: any) => (
+                      <SelectItem key={bt.id} value={bt.id}>{bt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm">Block members without this benefit</Label>
+                  <p className="text-xs text-muted-foreground">If off, anyone can book for free.</p>
+                </div>
+                <Switch checked={formData.requires_benefit} onCheckedChange={(v) => setFormData({ ...formData, requires_benefit: v })} />
+              </div>
+            </div>
+          )}
+
+          {mode === 'paid' && (
+            <div className="space-y-3 rounded-xl border p-4">
+              <div className="space-y-2">
+                <Label>Workshop Price (₹) *</Label>
+                <Input type="number" min={0} value={formData.price} onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>GST Rate (%)</Label>
+                  <Input type="number" min={0} value={formData.gst_rate} onChange={(e) => setFormData({ ...formData, gst_rate: Number(e.target.value) })} />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Switch checked={formData.is_gst_inclusive} onCheckedChange={(v) => setFormData({ ...formData, is_gst_inclusive: v })} />
+                    Price includes GST
+                  </label>
+                </div>
+              </div>
             </div>
           )}
 
