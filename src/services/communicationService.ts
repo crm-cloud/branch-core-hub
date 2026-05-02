@@ -5,19 +5,28 @@ type CommunicationLog = Database['public']['Tables']['communication_logs']['Row'
 type Template = Database['public']['Tables']['templates']['Row'];
 
 export const communicationService = {
-  // Communication logs
-  async fetchCommunicationLogs(branchId?: string, limit = 50) {
-    let query = supabase
+  // Communication logs — branchId is REQUIRED (fail-closed scoping).
+  // Owners viewing all branches must call fetchAllCommunicationLogsForOwner().
+  async fetchCommunicationLogs(branchId: string, limit = 50) {
+    if (!branchId) throw new Error('BRANCH_REQUIRED: communication logs must be branch-scoped');
+    const { data, error } = await supabase
+      .from('communication_logs')
+      .select('*')
+      .eq('branch_id', branchId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Owner-only escape hatch — RLS still enforces is_owner/is_admin server-side.
+  async fetchAllCommunicationLogsForOwner(limit = 50) {
+    const { data, error } = await supabase
       .from('communication_logs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
-    
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
-    }
-    
-    const { data, error } = await query;
     if (error) throw error;
     return data;
   },
@@ -44,18 +53,24 @@ export const communicationService = {
     return data;
   },
 
-  // Templates
-  async fetchTemplates(branchId?: string) {
-    let query = supabase
+  // Templates — branchId REQUIRED. Owners may use fetchAllTemplatesForOwner.
+  async fetchTemplates(branchId: string) {
+    if (!branchId) throw new Error('BRANCH_REQUIRED: templates must be branch-scoped');
+    const { data, error } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('branch_id', branchId)
+      .order('name');
+
+    if (error) throw error;
+    return data;
+  },
+
+  async fetchAllTemplatesForOwner() {
+    const { data, error } = await supabase
       .from('templates')
       .select('*')
       .order('name');
-    
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
-    }
-    
-    const { data, error } = await query;
     if (error) throw error;
     return data;
   },
