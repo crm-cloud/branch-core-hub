@@ -16,6 +16,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { exportToCSV } from '@/lib/csvExport';
 import { CommunicationFunnelCard } from '@/components/system/CommunicationFunnelCard';
+import { ReconciliationFindingsCard } from '@/components/system/ReconciliationFindingsCard';
+import { WhatsAppDeliveryHealthCard } from '@/components/system/WhatsAppDeliveryHealthCard';
 
 interface ErrorLog {
   id: string;
@@ -360,6 +362,11 @@ export default function SystemHealth() {
         </div>
 
         <CommunicationFunnelCard />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <ReconciliationFindingsCard />
+          <WhatsAppDeliveryHealthCard />
+        </div>
 
         <Card className="rounded-2xl border-border/50 shadow-lg">
           <CardHeader className="pb-3">

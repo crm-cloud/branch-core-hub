@@ -5706,6 +5706,44 @@ export type Database = {
         }
         Relationships: []
       }
+      member_lifecycle_transitions: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          from_state: string | null
+          id: string
+          member_id: string
+          reason: string | null
+          to_state: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          from_state?: string | null
+          id?: string
+          member_id: string
+          reason?: string | null
+          to_state: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          from_state?: string | null
+          id?: string
+          member_id?: string
+          reason?: string | null
+          to_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_lifecycle_transitions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_meal_completions: {
         Row: {
           completed_at: string
@@ -6537,6 +6575,77 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: true
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mips_sync_attempts: {
+        Row: {
+          attempt_no: number
+          branch_id: string
+          created_at: string
+          device_id: string
+          id: string
+          last_error: string | null
+          member_id: string | null
+          next_retry_at: string | null
+          staff_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_no?: number
+          branch_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          last_error?: string | null
+          member_id?: string | null
+          next_retry_at?: string | null
+          staff_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_no?: number
+          branch_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          last_error?: string | null
+          member_id?: string | null
+          next_retry_at?: string | null
+          staff_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mips_sync_attempts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mips_sync_attempts_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "access_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mips_sync_attempts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mips_sync_attempts_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
@@ -7930,6 +8039,110 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_attempts: {
+        Row: {
+          branch_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          id: string
+          idempotency_key: string
+          member_id: string
+          result: Json | null
+          status: string
+        }
+        Insert: {
+          branch_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key: string
+          member_id: string
+          result?: Json | null
+          status?: string
+        }
+        Update: {
+          branch_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key?: string
+          member_id?: string
+          result?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_attempts_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_attempts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reconciliation_findings: {
+        Row: {
+          branch_id: string | null
+          created_at: string
+          details: Json
+          id: string
+          kind: string
+          reference_id: string | null
+          reference_type: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          run_date: string
+          severity: string
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          kind: string
+          reference_id?: string | null
+          reference_type?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_date?: string
+          severity?: string
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          kind?: string
+          reference_id?: string | null
+          reference_type?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_date?: string
+          severity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliation_findings_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -9796,7 +10009,11 @@ export type Database = {
           contact_name: string | null
           content: string | null
           created_at: string | null
+          delivered_at: string | null
           direction: string
+          failed_at: string | null
+          failure_code: string | null
+          failure_reason: string | null
           id: string
           is_internal_note: boolean
           media_url: string | null
@@ -9805,6 +10022,9 @@ export type Database = {
           phone_number: string
           platform: Database["public"]["Enums"]["messaging_platform"]
           platform_message_id: string | null
+          read_at: string | null
+          retry_count: number
+          sent_at: string | null
           sent_by: string | null
           status: string | null
           updated_at: string | null
@@ -9815,7 +10035,11 @@ export type Database = {
           contact_name?: string | null
           content?: string | null
           created_at?: string | null
+          delivered_at?: string | null
           direction: string
+          failed_at?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
           id?: string
           is_internal_note?: boolean
           media_url?: string | null
@@ -9824,6 +10048,9 @@ export type Database = {
           phone_number: string
           platform?: Database["public"]["Enums"]["messaging_platform"]
           platform_message_id?: string | null
+          read_at?: string | null
+          retry_count?: number
+          sent_at?: string | null
           sent_by?: string | null
           status?: string | null
           updated_at?: string | null
@@ -9834,7 +10061,11 @@ export type Database = {
           contact_name?: string | null
           content?: string | null
           created_at?: string | null
+          delivered_at?: string | null
           direction?: string
+          failed_at?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
           id?: string
           is_internal_note?: boolean
           media_url?: string | null
@@ -9843,6 +10074,9 @@ export type Database = {
           phone_number?: string
           platform?: Database["public"]["Enums"]["messaging_platform"]
           platform_message_id?: string | null
+          read_at?: string | null
+          retry_count?: number
+          sent_at?: string | null
           sent_by?: string | null
           status?: string | null
           updated_at?: string | null
@@ -9861,6 +10095,70 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_send_queue: {
+        Row: {
+          attempts: number
+          branch_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          max_attempts: number
+          message_id: string
+          next_attempt_at: string
+          payload: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          branch_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          message_id: string
+          next_attempt_at?: string
+          payload?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          branch_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          message_id?: string
+          next_attempt_at?: string
+          payload?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_send_queue_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_send_queue_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "crm_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_send_queue_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -10219,6 +10517,28 @@ export type Database = {
           },
         ]
       }
+      notification_dispatch_summary: {
+        Row: {
+          branch_id: string | null
+          category: string | null
+          channel: string | null
+          deduped: number | null
+          failed: number | null
+          queued: number | null
+          sent: number | null
+          suppressed: number | null
+          total: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers_public: {
         Row: {
           avatar_url: string | null
@@ -10267,6 +10587,26 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "templates_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_delivery_health: {
+        Row: {
+          branch_id: string | null
+          delivered: number | null
+          failed: number | null
+          hour: string | null
+          read: number | null
+          sent: number | null
+          stuck_pending: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_branch_id_fkey"
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
@@ -10827,6 +11167,23 @@ export type Database = {
         }
         Returns: Json
       }
+      purchase_membership: {
+        Args: {
+          p_amount_paid?: number
+          p_branch_id: string
+          p_discount_amount?: number
+          p_discount_reason?: string
+          p_end_date: string
+          p_idempotency_key: string
+          p_member_id: string
+          p_notes?: string
+          p_payment_method?: string
+          p_plan_id: string
+          p_price: number
+          p_start_date: string
+        }
+        Returns: Json
+      }
       purchase_pt_package:
         | {
             Args: {
@@ -10852,6 +11209,7 @@ export type Database = {
             }
             Returns: Json
           }
+      reconcile_payments_daily: { Args: never; Returns: Json }
       record_health_ping: {
         Args: {
           p_component: string
@@ -11089,6 +11447,10 @@ export type Database = {
       staff_check_out:
         | { Args: { p_user_id: string }; Returns: Json }
         | { Args: { p_notes?: string; p_user_id: string }; Returns: string }
+      transition_member_lifecycle: {
+        Args: { p_member_id: string; p_reason?: string; p_to_state: string }
+        Returns: Json
+      }
       user_visible_branch_ids: {
         Args: { p_user_id: string }
         Returns: string[]
