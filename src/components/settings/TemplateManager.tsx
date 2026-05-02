@@ -448,14 +448,25 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         );
       }
 
-      const isEdit = !!metaTarget.meta_template_id;
+      // Look up real meta_template_id (the view doesn't expose it; query the canonical table).
+      let metaId: string | null = null;
+      if (metaTarget.meta_template_name) {
+        const { data: row } = await supabase
+          .from('whatsapp_templates')
+          .select('meta_template_id')
+          .eq('name', metaTarget.meta_template_name)
+          .eq('language', metaForm.language)
+          .maybeSingle();
+        metaId = (row as any)?.meta_template_id ?? null;
+      }
+      const isEdit = !!metaId;
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
         body: isEdit
           ? {
               action: 'edit',
               branch_id: branch,
               template_data: {
-                meta_template_id: metaTarget.meta_template_id,
+                meta_template_id: metaId,
                 category: metaForm.category,
                 body_text: metaForm.body_text,
                 local_template_id: metaTarget.id,
