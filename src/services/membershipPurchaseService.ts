@@ -45,5 +45,5 @@ export async function purchaseMembership(
     p_notes: input.notes ?? null,
   });
   if (error) throw error;
-  return data as MembershipPurchaseResult;
+  return data as unknown as MembershipPurchaseResult;
 }

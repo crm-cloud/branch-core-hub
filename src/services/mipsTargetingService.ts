@@ -25,23 +25,20 @@ export async function resolveMipsTargets(
     );
   }
 
-  let query = supabase
+  const baseQuery = supabase
     .from("access_devices")
-    .select("id, branch_id, ip_address, device_name, is_active")
-    .eq("branch_id", input.branchId)
-    .eq("is_active", true);
+    .select("id, branch_id, ip_address, device_name")
+    .eq("branch_id", input.branchId);
 
-  if (input.deviceIds?.length) {
-    query = query.in("id", input.deviceIds);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = input.deviceIds?.length
+    ? await baseQuery.in("id", input.deviceIds)
+    : await baseQuery;
   if (error) throw error;
 
   return (data ?? []).map((d) => ({
     device_id: d.id,
     branch_id: d.branch_id,
-    ip_address: d.ip_address,
+    ip_address: d.ip_address ? String(d.ip_address) : null,
     device_name: d.device_name,
   }));
 }
