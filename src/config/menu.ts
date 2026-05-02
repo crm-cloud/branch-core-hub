@@ -275,7 +275,8 @@ export const managerMenuConfig: MenuSection[] = [
     items: [
       { label: 'Chats', href: '/whatsapp-chat', icon: MessageSquare, roles: ['manager'] },
       { label: 'Communication Hub', href: '/announcements', icon: Megaphone, roles: ['manager'] },
-      { label: 'Equipment', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
+      { label: 'Equipment', href: '/equipment', icon: Wrench, roles: ['manager'] },
+      { label: 'Equipment Maintenance', href: '/equipment-maintenance', icon: Wrench, roles: ['manager'] },
       { label: 'Lockers', href: '/lockers', icon: Lock, roles: ['manager'] },
     ],
   },
