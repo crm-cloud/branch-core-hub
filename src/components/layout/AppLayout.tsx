@@ -236,9 +236,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </header>
 
-        {/* Desktop: full AppHeader on top */}
+        {/* Desktop: full AppHeader on top (with brand, since no sidebar) */}
         <div className="hidden lg:block">
-          <AppHeader />
+          <AppHeader showBrand />
         </div>
 
         {/* Desktop: horizontal modules band directly under header (centered) */}
