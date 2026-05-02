@@ -1,112 +1,54 @@
-# P4 — Application-Layer Scoping & Transaction Semantics
+# Public Website Speed — Audit & Fix
 
-The remaining risk is **not** in RLS primitives — those are solid. It's in three application-layer patterns:
+## Root cause
 
-1. **Branch scoping is client-applied** (`.eq('branch_id', branchFilter)` in 100+ call sites). A bug, missing filter, or compromised client could leak cross-branch data even with RLS passing.
-2. **A few sensitive writes still bypass server RPCs** (e.g. `CancelMembershipDrawer` inserts `payments` directly; refund / cancel paths not all routed through `record_payment` / `reverse_payment`).
-3. **Role gating is ad-hoc** (`hasAnyRole(['owner','admin'])` repeated across pages with slight variations) — easy to drift, hard to audit.
+The public landing (`/`) renders an `<InclineAscent>` page that wraps a Three.js `<Canvas>` from `@react-three/fiber` with `<ScrollControls>` + `<Scroll html>`. **The logo and all marketing copy live inside `ScrollOverlay`, which is a child of `<Scroll html>` — meaning they cannot paint until Three.js + drei (~700–900 KB gzip) finish downloading, parsing, and initializing the WebGL context.**
 
-This wave makes the **server** the source of truth for branch scoping, transaction atomicity, and role policy — not the client.
+That's why the user sees the 3D blob appear before the logo: the logo is literally rendered *by* the 3D bundle.
 
----
+Secondary issues found:
+1. The static SEO hero in `InclineAscent` already paints instantly, but it does **not** include the logo — only the H1.
+2. `ScrollOverlay` uses React's camelCase `fetchPriority` prop on `<img>`. React 18 emits a console warning ("React does not recognize the `fetchPriority` prop") because this DOM attr support varies. Confirmed in current console logs.
+3. `Scene3D` is gated by `requestIdleCallback` + IntersectionObserver, which is good, but the gating is wasted because the visible content (logo) lives inside it.
+4. `index.html` has no `<link rel="preload">` for the logo asset, so the browser only discovers it after JS executes.
 
-## 5.1 Server-enforced branch scoping
+## Fix plan (small, surgical)
 
-**Problem:** RLS today permits a privileged user (owner/admin/manager) to read any branch they have access to. The actual "current branch" filter is applied in the client. Forgetting `.eq('branch_id', X)` silently widens reads.
+### 1. Move the logo OUT of the 3D overlay
+- Remove the logo `<img>` block and the `inclineLogo` import from `src/components/ui/ScrollOverlay.tsx`.
+- Add the same `<img>` block (with proper `loading="eager"` + lowercase `fetchpriority="high"` DOM attribute to silence the React warning) directly inside `src/pages/InclineAscent.tsx`, sitting next to the static SEO hero at the top of the JSX. It uses `position: fixed; z-50` so it sits above both the static hero and the 3D canvas.
+- **Result:** logo paints with the first HTML render, before any JS chunk for Three.js downloads.
 
-**Plan:**
-- Add `app.current_branch_id` GUC support via two new SECURITY DEFINER RPCs:
-  - `set_active_branch(p_branch_id uuid)` — validates membership in `user_branch_assignments` (or owner role), sets a session-local GUC.
-  - `clear_active_branch()` — for owners viewing "All branches".
-- Augment RLS policies on the high-value tables (`members`, `memberships`, `invoices`, `payments`, `member_benefits`, `attendance`, `wallet_transactions`, `whatsapp_messages`, `communication_logs`) with an **additional** branch predicate:
-  ```
-  (current_setting('app.current_branch_id', true) IS NULL
-     OR branch_id::text = current_setting('app.current_branch_id', true))
-  ```
-- Owners can opt out by clearing the GUC; managers/staff cannot — we additionally enforce `branch_id = ANY(get_user_branch_ids(auth.uid()))` for non-owner roles via existing `has_role`.
-- `BranchContext` calls `set_active_branch` whenever the user switches branches; `supabase` client `onAuthStateChange` re-applies on session refresh.
-- Frontend `.eq('branch_id', …)` filters become **defense in depth**, not the only line.
+### 2. Preload the logo from `index.html`
+- Add `<link rel="preload" as="image" href="/src/assets/incline-logo.png" fetchpriority="high">` (Vite will rewrite the path at build) so the browser starts fetching the 11 KB logo during the HTML parse, in parallel with the JS bundle.
 
-**Outcome:** A missing client filter no longer leaks data. Cross-branch access requires explicit GUC clearing by an owner.
+### 3. Static H1 already exists; no change needed
+- Keep the existing `aria-hidden={mountScene}` static hero — it already covers the LCP text.
 
-## 5.2 Eliminate remaining direct financial writes
+### 4. Confirm Scene3D stays lazy
+- No change to `Scene3D.tsx` — it's already `lazy()`-imported with idle/intersection gating. This wave doesn't touch the 3D pipeline itself, just removes the visible content from being trapped inside it.
 
-Audit located one outstanding direct insert and gaps in cancel/refund:
+### 5. Optional micro-wins (low risk)
+- Drop `loading="eager"` (default for above-fold) and rely on the preload link for priority signaling.
+- Add `dns-prefetch` for the social-image CDN (`storage.googleapis.com`) since the OG image fetch sometimes contends with the main bundle on slow networks.
 
-- `src/components/members/CancelMembershipDrawer.tsx:129` writes to `payments` directly — must route through `record_payment` (positive refund leg via `reverse_payment`).
-- New RPC `cancel_membership(p_membership_id, p_reason, p_refund_amount, p_refund_method, p_idempotency_key)`:
-  - Single txn: status → `cancelled`, `cancelled_at = now()`, optional `reverse_payment` for refund leg, lifecycle transition, `pg_notify('membership_cancelled', …)`.
-- New RPC `freeze_membership(p_membership_id, p_freeze_days, p_reason)` to mirror `purchase_membership` semantics; existing client code that mutates `freeze_*` fields directly switches to RPC.
-- CI guard extended (regex in `.github/workflows/ci.yml`): block direct `from('payments').insert` / `from('memberships').update` outside `src/services/membershipService.ts` and edge functions.
-
-## 5.3 Centralize role policy
-
-**Problem:** `hasAnyRole(['owner','admin'])` vs `['owner','admin','manager']` vs raw `roles.includes('staff')` scattered across 60+ files.
-
-**Plan:**
-- New `src/lib/auth/permissions.ts` exporting named capabilities:
-  ```
-  can.viewFinancials, can.manageStaff, can.recordPayment,
-  can.bookFacility, can.approveDiscount, can.crossBranchView, ...
-  ```
-- Each capability is a pure function `(roles, context) => boolean`. Single source of truth; matches an authoritative table in the same file.
-- Mirror table on the server: `public.permissions(role app_role, capability text)` populated by migration; `has_capability(_user_id, _capability)` SECURITY DEFINER function for RLS / RPC use.
-- Codemod existing `hasAnyRole([...])` call sites to `can.X(roles)`. ESLint rule (custom) flags raw role-array checks outside `permissions.ts`.
-
-## 5.4 RLS audit & monotonic policy tests
-
-- Add `supabase/tests/rls/` with pgTAP-style assertions runnable in CI:
-  - For each role × table × operation, assert expected pass/fail with synthetic JWTs.
-  - Specifically cover the cross-branch leak class (manager of branch A trying to SELECT branch B rows).
-- One-off Supabase linter pass + `security--run_security_scan`; document accepted exceptions in `mem://security/security-memory`.
-- Add `policy_audit` view: lists every table, RLS enabled flag, policy count per command — surfaced in `SystemHealth` for owners.
-
-## 5.5 Transaction-semantics regressions catcher
-
-- Postgres `event trigger` on `ddl_command_end` rejects new tables in `public` without RLS enabled (already partially in place — extend to also require at least one SELECT policy).
-- Migration linting script in CI: greps new migrations for `CREATE TABLE public.` and asserts a matching `ENABLE ROW LEVEL SECURITY` + policy block.
-- For service-role edge functions, add a shared `assertBranchScopedQuery(query, branchId)` wrapper used by sensitive functions (`reconcile-payments`, `process-whatsapp-retry-queue`, `notify-booking-event`) so server-side code also can't accidentally run cross-branch.
-
----
-
-## Files / artifacts
+## Files to edit
 
 ```text
-supabase/migrations/<ts>_p4_app_layer_hardening.sql
-  ├─ set_active_branch / clear_active_branch RPCs + app.current_branch_id GUC
-  ├─ RLS additive predicate on 9 high-value tables
-  ├─ permissions table + has_capability() function
-  ├─ cancel_membership() + freeze_membership() RPCs
-  ├─ event trigger: require_rls_on_new_public_tables
-  └─ policy_audit view
-
-supabase/tests/rls/
-  ├─ cross_branch_isolation.sql
-  ├─ role_capability_matrix.sql
-  └─ rpc_idempotency.sql
-
-src/
-  ├─ lib/auth/permissions.ts            (capability registry)
-  ├─ contexts/BranchContext.tsx         (call set_active_branch on switch)
-  ├─ services/membershipService.ts      (cancel_membership / freeze_membership)
-  ├─ components/members/CancelMembershipDrawer.tsx  (use RPC, drop direct insert)
-  └─ pages/SystemHealth.tsx             (+ PolicyAuditCard)
-
-.github/workflows/ci.yml
-  ├─ migration-linter step (RLS required)
-  └─ extended direct-write regex guard (memberships/payments outside services)
-
-mem://security/security-memory          (refresh: branch GUC model + accepted exceptions)
-mem://architecture/p4-app-layer-hardening  (new)
+src/components/ui/ScrollOverlay.tsx    — remove logo block + inclineLogo import
+src/pages/InclineAscent.tsx            — add logo (and import) above the static hero
+index.html                             — add <link rel="preload"> for logo + dns-prefetch
 ```
 
-## Out of scope
-- Rewriting working RLS on tables that already have correct branch + role policies (we only **add** the GUC predicate).
-- Changing the existing `purchase_membership` / `record_payment` / `dispatch-communication` contracts — they are the reference pattern this wave extends to cancel/freeze.
-- New UI surfaces beyond a `PolicyAuditCard` on SystemHealth.
+## Expected impact
 
-## Outcome
-- Cross-branch leakage requires an owner explicitly clearing the active branch GUC; client-side filter omissions are no longer sufficient.
-- Every membership/payment state transition is a single server RPC with idempotency + audit.
-- Role policy lives in **one** TS file and **one** SQL table; drift becomes a compile/CI failure.
-- Readiness target moves from **9.6 → 9.8**, with the remaining 0.2 covering load testing & DR drills (separate wave).
+- **Logo paints simultaneously with the H1**, before the 3D canvas (the user's main complaint).
+- LCP improves on 3G/4G mobile because the logo is no longer blocked behind the ~700–900 KB `three-vendor` chunk.
+- One React DOM-prop warning eliminated.
+- No visual regression — the 3D scene still mounts and covers the static hero exactly as before.
+
+## Out of scope
+
+- Restructuring the 3D scene itself (model size, lighting cost) — current asset budget is reasonable.
+- Splitting `three`/`drei` further — already isolated in their own chunks per `vite.config.ts`.
+- Server-side rendering / static generation — separate, larger initiative.

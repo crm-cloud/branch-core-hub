@@ -1,23 +1,14 @@
 import {
   ChevronDown, Instagram, Dumbbell, Snowflake, Flame, Target, Wind, Car, Clock, Award, Layers, Lock, Coffee
 } from "lucide-react";
-import inclineLogo from "@/assets/incline-logo.png";
+
+// NOTE: The logo + hero copy were lifted out of this overlay into
+// <InclineAscent> so they paint immediately, before the lazy Three.js
+// bundle finishes downloading. Do not re-add the logo here.
 
 const ScrollOverlay = () => {
   return (
     <div className="w-full">
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 z-50">
-        <img
-          src={inclineLogo}
-          alt="INCLINE"
-          width={224}
-          height={128}
-          loading="eager"
-          fetchPriority="high"
-          decoding="async"
-          className="h-16 sm:h-20 md:h-28 w-auto brightness-0"
-        />
-      </div>
 
       {/* Section 1: Hero */}
       <section className="h-[100dvh] flex items-center relative px-4">

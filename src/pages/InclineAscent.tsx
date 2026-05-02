@@ -5,6 +5,7 @@ import LegalModal from '@/components/ui/LegalModal';
 import useSoundEffects from '@/hooks/useSoundEffects';
 import SEO from '@/components/seo/SEO';
 import { PUBLIC_BRANCHES, PUBLIC_FAQS } from '@/config/publicSite';
+import inclineLogo from '@/assets/incline-logo.png';
 
 // Lazy-load Scene3D so the heavy Three.js / drei bundle does not block the
 // main thread during initial paint. This dramatically reduces Max Potential FID.
@@ -98,6 +99,20 @@ const InclineAscent = () => {
         jsonLd={[...branchJsonLd, faqJsonLd]}
       />
       <ScrollProgressBar progress={scrollProgress} />
+
+      {/* Brand logo — lives outside the 3D canvas so it paints with the
+          first HTML render, not after the lazy Three.js bundle finishes. */}
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 md:left-8 md:translate-x-0 z-50 pointer-events-none">
+        <img
+          src={inclineLogo}
+          alt="INCLINE"
+          width={224}
+          height={128}
+          decoding="async"
+          {...({ fetchpriority: 'high' } as Record<string, string>)}
+          className="h-16 sm:h-20 md:h-28 w-auto brightness-0"
+        />
+      </div>
 
       {/*
         Static SEO hero — paints instantly for LCP / crawlers.
