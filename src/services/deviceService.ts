@@ -291,7 +291,7 @@ export const subscribeToCommandStatus = (
   };
 };
 
-export const getDeviceStats = async (branchId?: string) => {
+export const getDeviceStats = async (branchId: string | null) => {
   const devices = await fetchDevices(branchId);
 
   const online = devices.filter((d) => {
