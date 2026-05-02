@@ -1,80 +1,73 @@
-# Plan: True Horizontal Hybrid + Equipment Consolidation
+## Goal
 
-## Part 1 — Hybrid navigation = horizontal only (no sidebar)
+Add a fourth desktop navigation layout that keeps the existing **AppHeader** intact (logo, search, branch selector, theme/appearance, notifications, avatar) and renders a **dedicated horizontal menu band directly below it** — no sidebar.
 
-**Current problem:** In `hybrid` mode we render BOTH the top modules bar AND a left sidebar (with the active module's child items). Reference (Materialize) shows children as **dropdowns from the top bar** with no left rail.
+This is in addition to the three existing modes (Vertical / Collapsed / Horizontal-only). Vertical, Collapsed, and the current top-bar-only Horizontal mode stay exactly as they are. Mobile navigation is untouched.
 
-**New behavior — three clean modes:**
-
-| Mode | Left sidebar | Top bar | Children open from |
-|------|--------------|---------|--------------------|
-| `vertical` | Full (label + icons) | — | Sidebar |
-| `collapsed` | Icon-only rail | — | Sidebar (tooltip/flyout) |
-| `hybrid` (horizontal) | **None** (desktop) | Top modules bar | **Dropdown menu from each top module** |
-
-Mobile is unchanged in all modes (uses the existing `MobileNav` sheet).
-
-### Files to change
-
-1. **`src/components/layout/TopModulesBar.tsx`** — convert each module button into a `DropdownMenu` (shadcn) trigger. Menu content lists that module's child `MenuItem`s as `DropdownMenuItem` rows (icon + label, `Link` to `item.href`, active highlight). Clicking the trigger itself still navigates to the first child (current behavior preserved). Keep horizontal scroll for overflow.
-
-2. **`src/components/layout/AppLayout.tsx`** — in the `navMode === 'hybrid'` branch:
-   - Remove the left brand cell, the "MODULE · {label}" cell, and the `<AppSidebar …>` render.
-   - Render a single full-width top band: brand on the left, `TopModulesBar` in the middle (flex-1), `AppHeader variant="hybrid"` utilities on the right. Sticky.
-   - Main content becomes full-width below the band.
-   - Mobile branch stays as it is (uses `MobileNav` from `AppSidebar`).
-
-3. **`src/components/layout/AppSidebar.tsx`** — drop the now-unused `mode="hybrid"` rendering path and the `hybridItems` / `hybridModuleLabel` / `headerless` / `embedded` props (or leave as no-ops). `MobileNav` export stays untouched so mobile keeps working.
-
-4. **`src/lib/navPreferences.ts`** — no schema change. The three `NavMode` values already match (`vertical`, `collapsed`, `hybrid`); the `NavModeMenu` UI labels can read "Horizontal" for `hybrid` for clarity.
-
-5. **`src/components/layout/NavModeMenu.tsx`** — relabel `hybrid` option as **"Horizontal"** with a horizontal-bars icon, keep `vertical` and `collapsed` as-is, so the picker reads exactly: Vertical / Collapsed / Horizontal.
-
-### Preserved guarantees
-- RBAC unchanged (`groupMenuIntoModules` still filters by role).
-- All existing routes/menu items still reachable (now via top-bar dropdowns).
-- Per-user persistence in `localStorage` (`incline.nav-mode`) unchanged.
-- Mobile navigation untouched.
-
----
-
-## Part 2 — Merge Equipment + Equipment Maintenance into one page
-
-**Findings**
-- `/equipment-maintenance` → `EquipmentMaintenance.tsx` is the **richer** page (KPIs, maintenance tabs, QR, status change, maintenance log, costs).
-- `/equipment` → `Equipment.tsx` is a **simpler duplicate**, and the route **isn't even registered in `App.tsx`** — the menu link is broken.
-- Both menus (admin + manager) currently list both items, which is what the user is seeing twice.
-
-### Changes
-
-1. **Delete `src/pages/Equipment.tsx`** (duplicate, orphan route).
-2. **`src/config/menu.ts`** — remove the **"Equipment Maintenance"** rows in `adminMenuConfig` and `managerMenuConfig`; keep only one entry **labeled "Equipment"** pointing to `/equipment-maintenance`. Staff menu already has only one "Equipment" entry — no change.
-3. **`src/config/navModules.ts`** — drop `/equipment` from the `operations` module hrefs (keep `/equipment-maintenance`).
-4. **`src/App.tsx`** — remove the unused `Equipment` lazy import (no route to remove since `/equipment` was never registered).
-5. **`src/pages/EquipmentMaintenance.tsx`** — rename the page heading from "Equipment & Maintenance" to **"Equipment"** (maintenance remains a tab inside).
-
-### Add search bar (Equipment page)
-
-In `EquipmentMaintenance.tsx`, above the equipment table (inside the "Equipment" tab):
-
-- A shadcn `Input` with a `Search` icon, placeholder **"Search by name, brand, model, serial, category, or location…"**.
-- Local `useState` for `searchQuery`; filter `equipment` client-side (case-insensitive `includes` across `name`, `brand`, `model`, `serial_number`, `category`, `location`).
-- Show a "No results" empty state when the filter yields zero rows.
-- Debouncing not needed (client-side, small list).
-
----
-
-## Out of scope / unchanged
-- No DB / RLS / edge-function changes.
-- No changes to routing for any other page.
-- Vertical and Collapsed modes look exactly as they do today.
+## What changes (visual)
 
 ```text
-HYBRID (new)                    VERTICAL / COLLAPSED (unchanged)
-┌──────────────────────────┐    ┌──────┬─────────────────────┐
-│ Brand  Top modules  Hdr │    │ Side │  Header             │
-├──────────────────────────┤    │ bar  ├─────────────────────┤
-│         Content          │    │      │  Content            │
-└──────────────────────────┘    └──────┴─────────────────────┘
-        (no sidebar)
+┌──────────────────────────────────────────────────────────────────────┐
+│ AppHeader: logo · search · branch · theme · appearance · bell · avatar│  ← existing header, untouched
+├──────────────────────────────────────────────────────────────────────┤
+│  Dashboard   Members ▾   Sales ▾   Finance ▾   Operations ▾   …      │  ← NEW horizontal band
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│                       Page content (full width)                      │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+- Active module gets a subtle pill + a 2px primary underline (Vuexy-style).
+- Modules with children open a clean dropdown of their child links (same as today's TopModulesBar).
+- The band is `sticky` just under the header so it stays visible while scrolling.
+- Horizontal scroll on overflow (already supported by `TopModulesBar` via `ScrollArea`).
+
+## Mode catalog (after change)
+
+| Mode id | Label in menu | Layout |
+|---|---|---|
+| `vertical` | Vertical sidebar | Sidebar + header (current) |
+| `collapsed` | Collapsed sidebar | Icon-only sidebar + header (current) |
+| `hybrid` | Horizontal (compact) | Single-band: brand + modules + header utilities (current) |
+| `horizontal-stacked` | Header + Horizontal menu | **NEW** — full AppHeader on top, horizontal modules band below, no sidebar |
+
+Default behavior and persistence stay identical (localStorage key `incline.nav-mode`).
+
+## Files to change
+
+**`src/lib/navPreferences.ts`**
+- Extend `NavMode` union to include `'horizontal-stacked'`.
+- Update `isValid()` to accept the new value.
+
+**`src/components/layout/NavModeMenu.tsx`**
+- Add a 4th option: **Header + Horizontal** with a `PanelTop` / `Rows3` icon and the description "Header on top, horizontal menu below".
+
+**`src/components/layout/AppLayout.tsx`**
+- Add a new branch: `if (navMode === 'horizontal-stacked') { … }`.
+- Renders, in order:
+  1. Mobile header (same block already used today — unchanged).
+  2. `<AppHeader />` in its **default** variant (logo, search, branch, all utilities — unchanged).
+  3. A `sticky top-[<header height>] z-30` band wrapping `<TopModulesBar groups=… activeModuleId=… onSelect=… />` (non-`bare` so it owns its own subtle border/background).
+  4. `renderContent()` full width (no sidebar).
+- `SessionTimeoutWarning` stays mounted as in other branches.
+- Existing `vertical` / `collapsed` / `hybrid` branches are untouched.
+
+**`src/components/layout/TopModulesBar.tsx`**
+- No structural change needed. Confirm that `bare={false}` (default) renders the band with `border-b` + `bg-card/80 backdrop-blur` so it visually sits as a clean second layer under the header.
+- Optional polish: tighten vertical padding to `py-1.5` so the second band doesn't feel heavy.
+
+## Things explicitly preserved
+
+- Role-based menu filtering — already handled in `AppLayout` via `getMenuForRole(roles)` and per-item `roles` filter; new mode reuses the same `moduleGroups` memo.
+- Branch context, `SessionTimeoutWarning`, mobile header, and all existing routes.
+- The current `hybrid` mode (single-band horizontal) remains available for users who prefer maximum vertical space.
+- `AppHeader` default variant is reused as-is — no new variant needed for this mode.
+
+## Acceptance checks
+
+- Switching to **Header + Horizontal** from the layout menu hides the sidebar, keeps the full AppHeader, and shows the modules band directly under it.
+- Clicking a parent module navigates to its first child and highlights the module; child dropdowns work.
+- Choice persists across reloads (localStorage), and old values (`vertical` / `collapsed` / `hybrid`) keep working.
+- Mobile (<lg) layout is visually identical to today in all four modes.
+- No regressions to RBAC: items the user can't see in vertical mode also don't appear in the horizontal band.
