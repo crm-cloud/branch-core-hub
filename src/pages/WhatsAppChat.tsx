@@ -887,7 +887,7 @@ export default function WhatsAppChatPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-semibold text-sm text-foreground truncate">
-                            {contact.contact_name || contact.phone_number}
+                            {contact.contact_name || formatPhoneDisplay(contact.phone_number)}
                           </span>
                           <Badge variant="outline" className={`text-[9px] h-4 px-1 flex-shrink-0 rounded-md font-medium ${
                             contact.platform === 'instagram'
