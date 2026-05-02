@@ -106,13 +106,13 @@ const HeroDumbbell = ({ scrollProgress, isMobile }: HeroDumbbellProps) => {
   return (
     <group ref={groupRef}>
       <mesh geometry={handleGeometry} material={chromeMaterial} rotation={[0, 0, Math.PI / 2]} />
-      <Text font="/fonts/inter-regular.woff2" position={[0, 0.12, 0]} fontSize={0.045} color="#3b82f6" anchorX="center" anchorY="middle" characters="RISE·REFLECTPA ">
+      <Text font="/fonts/inter-regular.woff" position={[0, 0.12, 0]} fontSize={0.045} color="#3b82f6" anchorX="center" anchorY="middle" characters="RISE·REFLECTPA ">
         RISE · REFLECT · REPEAT
       </Text>
       <group ref={plate1Ref} position={[-0.6, 0, 0]}>
         <mesh geometry={largePlateGeometry} material={obsidianMaterial} rotation={[0, 0, Math.PI / 2]} />
         <mesh geometry={largePlateGeometry} material={glowMaterial} rotation={[0, 0, Math.PI / 2]} scale={[1.02, 0.3, 1.02]} />
-        <Text font="/fonts/inter-regular.woff2" position={[0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, 0, Math.PI / 2]} characters="INCLE">
+        <Text font="/fonts/inter-regular.woff" position={[0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, 0, Math.PI / 2]} characters="INCLE">
           INCLINE
         </Text>
       </group>
@@ -125,7 +125,7 @@ const HeroDumbbell = ({ scrollProgress, isMobile }: HeroDumbbellProps) => {
       <group ref={plate4Ref} position={[0.6, 0, 0]}>
         <mesh geometry={largePlateGeometry} material={obsidianMaterial} rotation={[0, 0, Math.PI / 2]} />
         <mesh geometry={largePlateGeometry} material={glowMaterial} rotation={[0, 0, Math.PI / 2]} scale={[1.02, 0.3, 1.02]} />
-        <Text font="/fonts/inter-regular.woff2" position={[-0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, Math.PI, Math.PI / 2]} characters="INCLE">
+        <Text font="/fonts/inter-regular.woff" position={[-0.05, 0, 0]} fontSize={0.12} color="#3b82f6" anchorX="center" anchorY="middle" rotation={[0, Math.PI, Math.PI / 2]} characters="INCLE">
           INCLINE
         </Text>
       </group>

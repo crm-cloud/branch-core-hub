@@ -55,7 +55,7 @@ const FloatingWords = ({ scrollProgress }: FloatingWordsProps) => {
         <Text
           key={i}
           ref={(el) => { if (el) wordRefs.current[i] = el; }}
-          font="/fonts/inter-regular.woff2"
+          font="/fonts/inter-regular.woff"
           fontSize={0.12 + (i % 3) * 0.03}
           color="#ffffff"
           anchorX="center"
