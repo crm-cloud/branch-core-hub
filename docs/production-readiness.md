@@ -79,3 +79,24 @@ See `docs/dr-runbook.md`. Last drill: not yet completed. Acceptance criteria rec
 | Discoverability | `/equipment` and `/book-benefit` added to menu; intentionally-hidden routes documented | ✅ shipped — `docs/route-topology.md` |
 
 **Score after wave 3:** 8.7 / 10 (target met).
+
+## Wave 4 — P2.1 / P2.2 (delivered 2026-05-02)
+
+| Area | Item | Status |
+|---|---|---|
+| Bundle | Vendor split into 10 focused chunks (react / data / radix / ui / forms / date / charts / motion / docs / three) via `manualChunks` | ✅ shipped |
+| Bundle | CI gzip-aware bundle gate (entry ≤250 KB gzip, any chunk ≤600 KB gzip) | ✅ shipped |
+| Bundle | Unused dep `framer-motion` removed | ✅ shipped |
+| Bundle | Strategy doc | ✅ `docs/bundle-strategy.md` |
+| Comms | `dispatch-communication` edge function (dedupe_key + preference + quiet-hours pipeline) | ✅ shipped |
+| Comms | Schema: `dedupe_key` unique partial index, `category`/`channel` columns, enum extended (`suppressed`/`deduped`/`queued`), `member_communication_preferences` table | ✅ shipped |
+| Comms | RPCs: `should_send_communication`, `is_in_quiet_hours` | ✅ shipped |
+| Comms | Frontend service `preferencesService.ts` + `dispatchCommunication()` wrapper | ✅ shipped |
+| Comms | Member UI: `CommunicationPreferences` card on `/member-profile` | ✅ shipped |
+| Comms | Telemetry: 24h funnel card on `/system-health` | ✅ shipped |
+| Comms | CI guard: blocks new edge functions inserting into `communication_logs` | ✅ shipped |
+| Comms (Wave A) | `request-google-review` refactored onto dispatcher; `notify-booking-event` redundant log removed | ✅ shipped |
+| Comms (Wave B/C) | `notify-lead-created`, `send-reminders`, `run-retention-nudges`, `send-broadcast`, `notify-staff-handoff` | ⏳ pending — incremental migration tracked in `docs/communication-dispatcher.md` |
+
+**Score after wave 4:** 9.2 / 10 (target met).
+
