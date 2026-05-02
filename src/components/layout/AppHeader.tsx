@@ -37,9 +37,11 @@ function mapRoleLabel(role: string): string {
 export interface AppHeaderProps {
   /** 'standalone' (default) draws own border + sticky shell. 'hybrid' is bare — the parent grid owns chrome. */
   variant?: 'standalone' | 'hybrid';
+  /** Render brand/logo on the left. Only true when there is no sidebar (horizontal-stacked mode). */
+  showBrand?: boolean;
 }
 
-export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
+export function AppHeader({ variant = 'standalone', showBrand = false }: AppHeaderProps) {
   const { profile, signOut, roles, user, hasAnyRole } = useAuth();
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
@@ -100,7 +102,7 @@ export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
       return data;
     },
     staleTime: 5 * 60 * 1000,
-    enabled: variant === 'standalone',
+    enabled: variant === 'standalone' && showBrand,
   });
 
   return (
@@ -111,8 +113,8 @@ export function AppHeader({ variant = 'standalone' }: AppHeaderProps) {
           : 'hidden lg:flex h-16 items-center gap-4 px-6 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40'
       }
     >
-      {/* Brand / logo (standalone variant only) */}
-      {variant === 'standalone' && (
+      {/* Brand / logo (only when no sidebar is shown) */}
+      {variant === 'standalone' && showBrand && (
         <div className="shrink-0 flex items-center">
           {org?.logo_url ? (
             <img
