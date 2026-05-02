@@ -186,7 +186,7 @@ export async function createCampaign(input: Omit<Campaign,
 
 export async function sendCampaignNow(
   campaign: Campaign,
-  memberIds: string[]
+  audience: { memberIds?: string[]; recipients?: ResolvedRecipient[] }
 ): Promise<{ sent: number; failed: number; total: number }> {
   await supabase.from('campaigns').update({ status: 'sending' }).eq('id', campaign.id);
 
@@ -196,10 +196,60 @@ export async function sendCampaignNow(
       message: campaign.message,
       subject: campaign.subject,
       branch_id: campaign.branch_id,
-      member_ids: memberIds,
+      member_ids: audience.memberIds,
+      recipients: audience.recipients,
       campaign_id: campaign.id,
     },
   });
   if (error) throw error;
   return data as any;
+}
+
+// ---------- Segments ----------
+export interface ContactSegment {
+  id: string;
+  branch_id: string;
+  name: string;
+  description: string | null;
+  filter: AudienceFilter;
+  audience_count: number;
+  last_refreshed_at: string | null;
+  created_at: string;
+}
+
+export async function listSegments(branchId: string): Promise<ContactSegment[]> {
+  const { data, error } = await supabase
+    .from('contact_segments' as any)
+    .select('*')
+    .eq('branch_id', branchId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data as any) || [];
+}
+
+export async function saveSegment(input: {
+  branch_id: string; name: string; description?: string; filter: AudienceFilter;
+}): Promise<ContactSegment> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const recipients = await resolveCampaignAudience(input.branch_id, input.filter);
+  const { data, error } = await supabase
+    .from('contact_segments' as any)
+    .insert({
+      branch_id: input.branch_id,
+      name: input.name,
+      description: input.description ?? null,
+      filter: input.filter as any,
+      audience_count: recipients.length,
+      last_refreshed_at: new Date().toISOString(),
+      created_by: user?.id,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as any;
+}
+
+export async function deleteSegment(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_segments' as any).delete().eq('id', id);
+  if (error) throw error;
 }
