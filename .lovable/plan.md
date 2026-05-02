@@ -1,102 +1,135 @@
-## Production Hardening — P0.2 / P0.3 / P1.x
+## P2 Optimization & Long-Tail Hardening
 
-Score target after this wave: **8.0 → 8.7 / 10**
-
-Findings reconciled with the codebase before planning:
-
-- `record_payment`, `void_payment`, `reverse_payment`, `purchase_member_membership`, `assign_locker_with_billing`, `release_locker`, `purchase_pt_package` already exist as atomic RPCs and are correctly wired into the main drawers. The remaining non-atomic flows are: legacy `purchaseMembership()` in `membershipService.ts` (still exported, still used by `useMembership.ts`), `createManualInvoice` in `billingService.ts`, `createLockerInvoice` in `lockerService.ts`, and `CreateInvoiceDrawer`.
-- `fetchTemplates(branchId?)`, `fetchCommunicationLogs(branchId?)`, and `fetchDevices(branchId?)` accept an **optional** branch argument and silently return all rows when omitted — this is the over-broadening fallback.
-- `as any` is concentrated in `fitnessService` (12), `ptService` (11), `paymentService` (6), plus `lockerService`, `mipsService`, `storeService`, `billingService`.
-- Six routes have no menu entry: `/admin-roles`, `/book-benefit`, `/employees`, `/equipment`, `/my-plans`, `/my-pt-sessions`.
+Final hardening pass to lift the readiness score from 8.7 to ~9.2. Two independent workstreams:
 
 ---
 
-### P0.2 — Atomicity for the remaining client-side multi-write flows
+### P2.1 — Bundle size & code-splitting
 
-1. **Retire legacy `purchaseMembership()`**
-   - Replace the body in `src/services/membershipService.ts` with a thin wrapper that calls `purchase_member_membership` RPC (same idempotency-key pattern as the drawer).
-   - Update `src/hooks/useMembership.ts` to use the wrapper. Mark the old multi-write code path deleted.
+**Current state**
+- 85 pages, almost all already lazy-loaded in `src/App.tsx` ✓
+- Single `manualChunks` rule only isolates `three`/`@react-three/*`
+- Everything else (recharts, date-fns, lucide-react, framer-motion, radix, supabase-js, tanstack, react-hook-form, zod, html2canvas, jspdf, xlsx, qrcode) lands in one giant vendor chunk → 3.7 MB raw / 866 KB gzip
+- Static + dynamic import overlap warnings indicate some lazy pages are also imported eagerly somewhere (drawers, services, or shared barrels)
 
-2. **`create_manual_invoice` RPC** (new migration)
-   - Accepts `p_branch_id`, `p_member_id`, `p_items jsonb[]`, `p_notes`, `p_due_date`. Inserts invoice + items in one transaction, returns `{ invoice_id, invoice_number }`.
-   - Refactor `billingService.createManualInvoice` and `CreateInvoiceDrawer.tsx` to call it.
+**Plan**
 
-3. **Fold `createLockerInvoice` into `assign_locker_with_billing`**
-   - `assign_locker_with_billing` already creates the GST invoice atomically. Delete `lockerService.createLockerInvoice` and update `useLockers.createInvoice` to call `assignLocker` (or expose a new `bill_locker_period` RPC if billing is for an existing assignment renewal).
+1. **Vendor-aware manual chunks** in `vite.config.ts` — split the vendor bundle into focused groups so each route only pays for what it uses:
+   ```text
+   react-vendor    → react, react-dom, react-router-dom
+   ui-vendor       → @radix-ui/*, lucide-react, sonner, cmdk, vaul
+   data-vendor     → @tanstack/react-query, @supabase/supabase-js, zod, react-hook-form
+   charts-vendor   → recharts, d3-*
+   date-vendor     → date-fns, dayjs (whichever is used)
+   pdf-vendor      → jspdf, html2canvas, qrcode, xlsx
+   motion-vendor   → framer-motion
+   three           → (already isolated)
+   ```
+2. **Audit static/dynamic overlap** with `rg` over `src/` for every `lazy(() => import('./pages/X'))` page — confirm no other module statically imports that page (common offenders: barrel `index.ts`, sidebar/menu components importing page components for icons/labels). Convert offenders to type-only imports or constants.
+3. **Heavy local libs gated to routes that need them**:
+   - `jspdf` / `html2canvas` / `xlsx` → dynamic-import inside the export handler functions, not at module top level
+   - `qrcode` → dynamic-import in QR drawers only
+   - `framer-motion` (if used) → keep on InclineAscent landing only
+4. **Tree-shake lucide-react** — verify all imports are named (`import { X } from 'lucide-react'`), no namespace imports.
+5. **Raise chunk-size warning to 700 KB** after splits land (legitimate ceiling for charts-vendor + data-vendor).
+6. **Add a CI bundle-size guard** in `.github/workflows/ci.yml`:
+   - Run `vite build`
+   - Fail if `dist/assets/index-*.js` (entry) > 250 KB gzip OR any single chunk > 600 KB gzip
+   - Print top-10 chunks for visibility
 
-4. **CI guard tightening**
-   - Extend `.github/workflows/ci.yml` direct-write guard to include `invoice_items`, `locker_assignments`, and `membership_freeze_history` (currently miss invoice_items in some patterns).
-
-### P0.3 — Fail-closed branch scoping
-
-5. **Make `branchId` required on scoped reads**
-   - In `communicationService.fetchTemplates`, `fetchCommunicationLogs`, `fetchMessages`; in `deviceService.fetchDevices`; in `biometricService` device queries — change signature from `(branchId?: string)` to `(branchId: string)` and remove the "no-filter when undefined" branch.
-   - For Owner "All branches" mode, add an explicit `fetchAllTemplatesForOwner()` variant gated by an `is_owner()` SQL check. Non-owner callers that pass `undefined` will be a TypeScript error.
-
-6. **RLS reinforcement (defense-in-depth)**
-   - New migration: ensure RLS on `templates`, `communication_logs`, `messages`, `mips_devices`, `access_devices`, `biometric_sync_queue` enforces `is_branch_member(branch_id)` for non-owner roles (audit each policy and tighten where missing).
-
-7. **UI fail-closed states**
-   - When `currentBranch` is `null` for restricted roles, scoped pages must render the "Select a branch" empty state instead of issuing the unscoped query. Add an assertion helper `useRequiredBranch()` that throws into an ErrorBoundary if a restricted role lands on a scoped page without a branch.
-
-### P1.1 — Route discoverability
-
-8. **Menu topology audit**
-   - Add menu entries: `/admin-roles` (under Settings → Access Control), `/employees` (HR), `/equipment` (Operations), `/book-benefit` + `/my-plans` (Member portal), and redirect `/my-pt-sessions` is already a `Navigate` so document it as intentional in `docs/route-topology.md`.
-   - Generate a CI-checked `routes.json` from `App.tsx` and assert every authenticated route is either in the sidebar config or in an "intentional-hidden" allow-list.
-
-### P1.2 — Reduce `as any` and silent failures (top-impact services)
-
-9. **Type-safe pass on the 4 highest-impact services**
-   - `paymentService`, `billingService`, `lockerService`, `biometricService`: replace `as any` with `Database['public']['Tables'][...]['Row']`/`Insert`/`Update` and the typed RPC return shapes.
-   - Wrap each `console.error` in operational services with `reportError()` (the existing `log_error_event` helper) so silent failures show up in System Health.
-
-### P1.3 — Session/branch context resilience
-
-10. **Explicit fallback states**
-    - Extend `useDrMode`, `useBranch`, and `useAuth` consumers to expose `{ status: 'loading' | 'ready' | 'unavailable', retry }` instead of `null`.
-    - Use the new `<DataState>` component to render `unavailable` with a Retry button. Restricted roles default to "no access" rather than "all data" when context is `unavailable`.
+**Expected outcome**: entry bundle drops from ~866 KB gzip to ~180–220 KB gzip; first paint on `/auth` and `/member-dashboard` ~2× faster on 3G.
 
 ---
 
-### Migrations summary
+### P2.2 — Canonical reminder dispatcher + preference enforcement
 
-```text
-20260502_p02_atomic_writes.sql
-  - create_manual_invoice(p_branch_id, p_member_id, p_items, p_notes, p_due_date)
-  - bill_locker_period(p_assignment_id, p_months) [optional]
-  - drop legacy: noop (purchaseMembership is client-side only)
+**Current state**
+- `notification_preferences` table exists but is only read by `src/services/notificationService.ts` for in-app notifications. No edge function checks it before sending Email/SMS/WhatsApp.
+- `send-reminders` (683 lines) builds its own dedupe logic ad-hoc per reminder type.
+- `send-whatsapp`, `send-sms`, `send-message`, `notify-booking-event`, `notify-lead-created`, `notify-staff-handoff`, `request-google-review`, `run-retention-nudges`, `send-broadcast` all write to `communication_logs` directly with no shared dedupe key or preference gate.
+- No `dedupe_key` column on `communication_logs` → re-runs of cron or duplicate webhook deliveries can double-send.
 
-20260502_p03_branch_rls_tighten.sql
-  - tighten policies on templates, communication_logs, messages,
-    mips_devices, access_devices, biometric_sync_queue using
-    is_branch_member(branch_id)
-```
+**Plan**
 
-### Files to edit (high-level)
+1. **Schema additions** (one migration):
+   - `communication_logs.dedupe_key TEXT` + partial unique index `(dedupe_key) WHERE dedupe_key IS NOT NULL`
+   - Extend `notification_preferences` with channel-level booleans: `whatsapp_enabled`, `sms_enabled`, `email_enabled`, `quiet_hours_start TIME`, `quiet_hours_end TIME`, `timezone TEXT DEFAULT 'Asia/Kolkata'`, plus per-category WhatsApp/SMS toggles mirroring the existing email_* set.
+   - New table `member_communication_preferences` (mirrors notification_preferences but keyed on `member_id` for non-auth members) with the same channel + category fields. Backfill defaults.
+   - RLS: members manage their own row; staff can read for their branch.
 
-```text
-src/services/membershipService.ts        # legacy -> RPC wrapper
-src/services/billingService.ts           # createManualInvoice -> RPC
-src/services/lockerService.ts            # drop createLockerInvoice
-src/services/communicationService.ts     # branchId required
-src/services/deviceService.ts            # branchId required
-src/services/biometricService.ts         # branchId required + types
-src/services/paymentService.ts           # types + telemetry
-src/hooks/useMembership.ts               # wire to wrapper
-src/hooks/useLockers.ts                  # wire to assign_locker
-src/hooks/useRequiredBranch.ts           # NEW assertion hook
-src/components/invoices/CreateInvoiceDrawer.tsx  # RPC
-src/components/layout/Sidebar.tsx        # menu entries (5 routes)
-src/App.tsx                              # no route changes
-docs/route-topology.md                   # NEW intentional-hidden list
-.github/workflows/ci.yml                 # extend guard tables + routes assertion
-```
+2. **Canonical dispatcher edge function** `dispatch-communication`:
+   ```text
+   Input:
+     {
+       member_id | user_id | recipient,
+       branch_id,
+       channel: 'whatsapp' | 'sms' | 'email' | 'in_app',
+       category: 'membership_reminder' | 'payment_receipt' | 'class_notification'
+                | 'announcement' | 'low_stock' | 'new_lead' | 'payment_alert'
+                | 'task_reminder' | 'retention_nudge' | 'review_request' | 'transactional',
+       template_id?,
+       payload: { subject?, body, variables? },
+       dedupe_key: string,           // REQUIRED — caller-provided idempotency key
+       ttl_seconds?: number,         // dedupe window, default 86400
+       force?: boolean,              // bypass preferences (transactional only)
+     }
 
-### Out of scope for this wave
+   Pipeline:
+     1. Validate input (zod)
+     2. SELECT existing communication_logs WHERE dedupe_key = ? AND created_at > now() - ttl
+        → if found, return { status: 'deduped', log_id }
+     3. Resolve recipient + load preferences (auth user OR member row)
+     4. Check category × channel preference (skip if disabled, unless force=true)
+        → if blocked, INSERT log row with delivery_status='suppressed', return { status: 'suppressed' }
+     5. Check quiet hours in member timezone (skip for transactional)
+        → if in quiet hours, schedule for next allowed window via communication_retry_queue
+     6. INSERT log row with delivery_status='sending', dedupe_key
+        (unique index → safe under concurrent cron ticks)
+     7. Route to channel-specific sender (existing send-whatsapp / send-sms / send-email)
+     8. Update log with provider_message_id + delivery_status
+   ```
 
-- `fitnessService` / `ptService` `as any` cleanup (largest counts) — scheduled for the next P1 follow-up to keep this PR reviewable.
-- DR drill execution (operational, not code).
-- Storage bucket policy tightening (separate security pass).
+3. **Refactor existing edge functions** to call `dispatch-communication` instead of writing logs themselves:
+   - `send-reminders` — every reminder loop produces a stable dedupe_key like `membership-expiry:${memberId}:${dueDate}:${channel}`
+   - `notify-booking-event` — `booking-${event}:${bookingId}:${channel}`
+   - `notify-lead-created` — `lead-created:${leadId}:${channel}`
+   - `notify-staff-handoff` — `handoff:${conversationId}:${turn}:${channel}`
+   - `run-retention-nudges` — `retention:${memberId}:${tier}:${YYYYMMDD}`
+   - `request-google-review` — `greview:${visitId}`
+   - `send-broadcast` — `broadcast:${campaignId}:${memberId}:${channel}`
+   - `payment-webhook` receipt — `receipt:${paymentId}`
 
-Ready to implement on approval.
+4. **Preferences UI** — add a "Communication Preferences" section to:
+   - `/profile` (auth users) — channel toggles + quiet hours
+   - `/member-profile` (members) — same, plus per-category opt-outs
+   - Default new members to all-on, transactional always on (force=true)
+
+5. **Telemetry** — add `delivery_status='suppressed'` and `'deduped'` enum values; surface counts in `SystemHealth` page.
+
+6. **Documentation** — `docs/communication-dispatcher.md` with the contract, dedupe-key conventions, and "do not write to `communication_logs` directly" rule. Add a CI guard script that fails if any new edge function imports `communication_logs` insert outside `dispatch-communication`.
+
+**Expected outcome**: zero double-sends across cron retries / webhook replays; member opt-outs enforced for marketing categories while transactional (receipts, OTPs, security) still go through; one auditable funnel for all outbound communication.
+
+---
+
+### Files to be created / modified
+
+**P2.1**
+- `vite.config.ts` (manualChunks, chunkSizeWarningLimit)
+- `.github/workflows/ci.yml` (bundle-size gate)
+- ~6–10 components/services with hoisted heavy imports moved inline
+- `docs/bundle-strategy.md`
+
+**P2.2**
+- `supabase/migrations/<ts>_communication_dispatcher.sql` (schema + RLS + indexes)
+- `supabase/functions/dispatch-communication/index.ts` (new)
+- Refactor: `send-reminders`, `notify-booking-event`, `notify-lead-created`, `notify-staff-handoff`, `run-retention-nudges`, `request-google-review`, `send-broadcast`, `payment-webhook`
+- `src/services/preferencesService.ts` (new)
+- `src/components/profile/CommunicationPreferences.tsx` (new), wired into `/profile` and `/member-profile`
+- `docs/communication-dispatcher.md`
+- CI guard: `scripts/check-direct-comm-writes.sh`
+
+### Out of scope
+- Migrating in-app `notifications` table writes (already deduped via `notifications_dedupe_guard` trigger)
+- Re-architecting the WhatsApp AI agent (separate concern)
+- Mobile push notifications (no mobile shell yet)
