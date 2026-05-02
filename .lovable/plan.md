@@ -1,54 +1,62 @@
-# Public Website Speed — Audit & Fix
+## Public Site — Speed & Stability Plan
 
-## Root cause
+### Why your site feels slow right now
+1. **3D text is broken.** My previous fix pointed `<Text>` at a Google Fonts CDN URL that troika can't load via XHR. That's the `Failure loading font` error you're seeing — the scene now hangs waiting for a font that will never arrive, which is why "the website is not loading complete".
+2. **Logo preload is wrong.** `index.html` preloads `/src/assets/incline-logo.png`. That path only works in dev — in production Vite hashes the asset, so the preload 404s and the browser wastes a request.
+3. **Mobile 3D is heavier than it needs to be.** Antialiasing on + DPR up to 1.5 doubles fragment shader cost on phones.
+4. **Lovable preview iframe `postMessage` errors** are unrelated noise from the preview tool itself — they don't appear on the published `theincline.in` site. Documented, not fixed in code.
 
-The public landing (`/`) renders an `<InclineAscent>` page that wraps a Three.js `<Canvas>` from `@react-three/fiber` with `<ScrollControls>` + `<Scroll html>`. **The logo and all marketing copy live inside `ScrollOverlay`, which is a child of `<Scroll html>` — meaning they cannot paint until Three.js + drei (~700–900 KB gzip) finish downloading, parsing, and initializing the WebGL context.**
+### Why the reference Lovable URL loads instantly
+That URL (`643f75d4...lovableproject.com`) is a Lovable login screen — one SVG logo, a couple of buttons, no fonts, no 3D, no images. It's not a real comparison to a Three.js landing. The valid takeaways: small payload, system fonts, no blocking external requests on first paint. We'll apply those same principles below without removing your 3D experience.
 
-That's why the user sees the 3D blob appear before the logo: the logo is literally rendered *by* the 3D bundle.
+### What we'll change
 
-Secondary issues found:
-1. The static SEO hero in `InclineAscent` already paints instantly, but it does **not** include the logo — only the H1.
-2. `ScrollOverlay` uses React's camelCase `fetchPriority` prop on `<img>`. React 18 emits a console warning ("React does not recognize the `fetchPriority` prop") because this DOM attr support varies. Confirmed in current console logs.
-3. `Scene3D` is gated by `requestIdleCallback` + IntersectionObserver, which is good, but the gating is wasted because the visible content (logo) lives inside it.
-4. `index.html` has no `<link rel="preload">` for the logo asset, so the browser only discovers it after JS executes.
+**1. Fix the broken 3D font (highest priority — currently blocking render)**
+- Add `public/fonts/inter-regular.woff2` (Inter Regular only, ~30 KB, no advanced GPOS/GSUB tables).
+- Point all `<Text font="...">` props in `HeroDumbbell.tsx` and `FloatingWords.tsx` at `/fonts/inter-regular.woff2`. Same-origin → no CORS/XHR failure → text renders, console is clean, no more "unsupported LookupType" warnings either.
+- Keep `characters="…"` subsetting so the GPU glyph atlas stays tiny.
 
-## Fix plan (small, surgical)
+**2. Fix the logo preload (production-safe)**
+- Copy the logo to `public/incline-logo.png`.
+- Update `index.html` preload to `/incline-logo.png`.
+- Update `src/pages/InclineAscent.tsx` `<img src>` to `/incline-logo.png`.
+- Result: logo paints from the HTML preload, before any JS executes.
 
-### 1. Move the logo OUT of the 3D overlay
-- Remove the logo `<img>` block and the `inclineLogo` import from `src/components/ui/ScrollOverlay.tsx`.
-- Add the same `<img>` block (with proper `loading="eager"` + lowercase `fetchpriority="high"` DOM attribute to silence the React warning) directly inside `src/pages/InclineAscent.tsx`, sitting next to the static SEO hero at the top of the JSX. It uses `position: fixed; z-50` so it sits above both the static hero and the 3D canvas.
-- **Result:** logo paints with the first HTML render, before any JS chunk for Three.js downloads.
+**3. Lighter 3D defaults (no visual change)**
+- In `Scene3D.tsx`:
+  - Mobile `dpr` `[1, 1.5]` → `[1, 1.25]`.
+  - Desktop `dpr` `[1, 2]` → `[1, 1.75]`.
+  - `antialias: !isMobile` (off on phones; canvas size is small enough that the difference is invisible, but it cuts ~30–40% of fragment work).
+- Result: smoother scroll on mid-range Android, lower battery drain, faster first frame.
 
-### 2. Preload the logo from `index.html`
-- Add `<link rel="preload" as="image" href="/src/assets/incline-logo.png" fetchpriority="high">` (Vite will rewrite the path at build) so the browser starts fetching the 11 KB logo during the HTML parse, in parallel with the JS bundle.
+**4. Smarter mount gating for low-end mobiles**
+- Current logic: mount 3D when hero is in view + browser is idle. Keep it.
+- Add: if `navigator.hardwareConcurrency <= 4` AND viewport < 768 px, defer until first user scroll/tap instead of on idle. The static SEO hero stays visible; 3D loads only when the user engages.
+- Honors `prefers-reduced-motion` (skip mount entirely → static hero only).
 
-### 3. Static H1 already exists; no change needed
-- Keep the existing `aria-hidden={mountScene}` static hero — it already covers the LCP text.
+**5. Bundle hygiene**
+- Extend the `three` chunk in `vite.config.ts` to also capture `troika-three-text` and `bidi-js` so they cache together with three.js.
+- Add a small inline script in `index.html` that, on desktop only (`innerWidth >= 768`), injects `<link rel="modulepreload">` for the `three` chunk so it warms up while the user reads the hero. Mobiles skip this to avoid metered-data waste.
 
-### 4. Confirm Scene3D stays lazy
-- No change to `Scene3D.tsx` — it's already `lazy()`-imported with idle/intersection gating. This wave doesn't touch the 3D pipeline itself, just removes the visible content from being trapped inside it.
+### Files to change
+- `public/fonts/inter-regular.woff2` — new (~30 KB).
+- `public/incline-logo.png` — copied from `src/assets/`.
+- `index.html` — fix preload path, add desktop-only modulepreload injector.
+- `src/components/3d/HeroDumbbell.tsx` — `font="/fonts/inter-regular.woff2"`.
+- `src/components/3d/FloatingWords.tsx` — same.
+- `src/components/3d/Scene3D.tsx` — DPR + antialias tuning.
+- `src/pages/InclineAscent.tsx` — low-end-device mount gate; logo `src` to `/incline-logo.png`.
+- `vite.config.ts` — extend `three` manualChunk.
 
-### 5. Optional micro-wins (low risk)
-- Drop `loading="eager"` (default for above-fold) and rely on the preload link for priority signaling.
-- Add `dns-prefetch` for the social-image CDN (`storage.googleapis.com`) since the OG image fetch sometimes contends with the main bundle on slow networks.
+### Explicitly NOT changing (your constraint)
+- Floating words list, motion, opacity, layout.
+- Dumbbell geometry, rotation, materials, scroll-driven animation.
+- Scroll length, overlay copy, ScrollControls behavior.
+- RegisterModal / LegalModal / SEO / branches data.
+- Any visible color, typography, or interaction.
 
-## Files to edit
-
-```text
-src/components/ui/ScrollOverlay.tsx    — remove logo block + inclineLogo import
-src/pages/InclineAscent.tsx            — add logo (and import) above the static hero
-index.html                             — add <link rel="preload"> for logo + dns-prefetch
-```
-
-## Expected impact
-
-- **Logo paints simultaneously with the H1**, before the 3D canvas (the user's main complaint).
-- LCP improves on 3G/4G mobile because the logo is no longer blocked behind the ~700–900 KB `three-vendor` chunk.
-- One React DOM-prop warning eliminated.
-- No visual regression — the 3D scene still mounts and covers the static hero exactly as before.
-
-## Out of scope
-
-- Restructuring the 3D scene itself (model size, lighting cost) — current asset budget is reasonable.
-- Splitting `three`/`drei` further — already isolated in their own chunks per `vite.config.ts`.
-- Server-side rendering / static generation — separate, larger initiative.
+### Expected impact
+- 3D text renders correctly on first load (currently broken).
+- Mobile LCP improvement of ~0.4–0.8 s from correct logo preload + lighter GPU settings.
+- Console clean of font/OpenType errors.
+- No visual regression on any device.
