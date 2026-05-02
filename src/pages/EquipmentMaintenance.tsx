@@ -129,16 +129,17 @@ export default function EquipmentMaintenancePage() {
 
   const showQR = async (item: any) => {
     try {
+      const { escapeHtml: e } = await import('@/utils/htmlEscape');
       const payload = `${window.location.origin}/equipment/${item.id}`;
       const url = await QRCode.toDataURL(payload, { width: 320, margin: 1 });
       const w = window.open('', '_blank', 'width=380,height=480');
       if (w) {
-        w.document.write(`<html><head><title>${item.name} QR</title></head>
+        w.document.write(`<html><head><title>${e(item.name)} QR</title></head>
           <body style="font-family:Inter,sans-serif;padding:24px;text-align:center;">
-            <h2 style="margin:0 0 8px;">${item.name}</h2>
-            <p style="color:#64748b;margin:0 0 16px;">${item.model || item.serial_number || ''}</p>
+            <h2 style="margin:0 0 8px;">${e(item.name)}</h2>
+            <p style="color:#64748b;margin:0 0 16px;">${e(item.model || item.serial_number || '')}</p>
             <img src="${url}" style="width:280px;height:280px;" />
-            <p style="font-size:11px;color:#64748b;word-break:break-all;margin-top:12px;">${payload}</p>
+            <p style="font-size:11px;color:#64748b;word-break:break-all;margin-top:12px;">${e(payload)}</p>
             <button onclick="window.print()" style="margin-top:12px;padding:8px 16px;background:#4f46e5;color:#fff;border:0;border-radius:8px;cursor:pointer;">Print</button>
           </body></html>`);
       }

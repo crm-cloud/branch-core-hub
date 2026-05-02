@@ -17,23 +17,25 @@ export default function HowbodyPublicReport({ reportType }: Props) {
   useEffect(() => {
     (async () => {
       if (!token) { setError("Missing token"); setLoading(false); return; }
-      const { data: tokRow } = await supabase
-        .from("howbody_public_report_tokens")
-        .select("data_key, report_type, expires_at")
-        .eq("token", token)
-        .maybeSingle();
-      if (!tokRow || tokRow.report_type !== reportType) {
-        setError("Report link is invalid or has been revoked.");
+      const { data, error: rpcErr } = await supabase.rpc("get_howbody_public_report", {
+        _token: token,
+        _report_type: reportType,
+      });
+      if (rpcErr) {
+        setError("Unable to load report.");
         setLoading(false); return;
       }
-      if (tokRow.expires_at && new Date(tokRow.expires_at) < new Date()) {
-        setError("Report link has expired.");
+      const payload = data as { ok?: boolean; error?: string; report?: any } | null;
+      if (!payload?.ok) {
+        const code = payload?.error;
+        setError(
+          code === "expired" ? "Report link has expired."
+          : code === "invalid_or_revoked" || code === "invalid_token" ? "Report link is invalid or has been revoked."
+          : "Report not found."
+        );
         setLoading(false); return;
       }
-      const table = reportType === "body" ? "howbody_body_reports" : "howbody_posture_reports";
-      const { data: r } = await supabase.from(table).select("*").eq("data_key", tokRow.data_key).maybeSingle();
-      if (!r) { setError("Report not found."); setLoading(false); return; }
-      setReport(r);
+      setReport(payload.report);
       setLoading(false);
     })();
   }, [token, reportType]);
