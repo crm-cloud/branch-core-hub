@@ -80,6 +80,7 @@ interface Message {
   created_at: string;
   message_type: string;
   is_internal_note?: boolean;
+  media_url?: string | null;
 }
 
 interface ChatSettingsRow {
@@ -1104,14 +1105,55 @@ export default function WhatsAppChatPage() {
                                     : 'bg-card border border-border/50 text-foreground rounded-bl-md'
                                 }`}
                               >
-                                {msg.message_type !== 'text' && (
+                                {msg.message_type === 'image' && msg.media_url && (
+                                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2 -mx-1">
+                                    <img
+                                      src={msg.media_url}
+                                      alt={msg.content || 'Photo'}
+                                      className="rounded-lg max-h-64 w-auto object-cover border border-black/5"
+                                      loading="lazy"
+                                    />
+                                  </a>
+                                )}
+                                {msg.message_type === 'document' && msg.media_url && (
+                                  <a
+                                    href={msg.media_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`mb-2 -mx-1 flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
+                                      msg.direction === 'outbound'
+                                        ? 'bg-white/15 hover:bg-white/25 text-white'
+                                        : 'bg-muted/60 hover:bg-muted text-foreground'
+                                    }`}
+                                  >
+                                    <div className={`h-10 w-10 rounded-md flex items-center justify-center flex-shrink-0 ${
+                                      msg.direction === 'outbound' ? 'bg-white/20' : 'bg-rose-500/10 text-rose-600'
+                                    }`}>
+                                      <FileText className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-semibold truncate">
+                                        {decodeURIComponent(msg.media_url.split('/').pop() || 'document.pdf')}
+                                      </div>
+                                      <div className={`text-[10px] ${msg.direction === 'outbound' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                                        Tap to open · PDF
+                                      </div>
+                                    </div>
+                                  </a>
+                                )}
+                                {msg.message_type === 'template' && (
                                   <div className={`flex items-center gap-1 mb-1 text-[10px] ${msg.direction === 'outbound' ? 'text-white/50' : 'text-muted-foreground'}`}>
-                                    {msg.message_type === 'image' && <><Image className="h-3 w-3" /> Photo</>}
-                                    {msg.message_type === 'template' && <><FileText className="h-3 w-3" /> Template</>}
-                                    {!['text','image','template'].includes(msg.message_type) && <><Paperclip className="h-3 w-3" /> {msg.message_type}</>}
+                                    <FileText className="h-3 w-3" /> Template
                                   </div>
                                 )}
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere] w-full">{msg.content}</p>
+                                {!['text','image','template','document'].includes(msg.message_type) && (
+                                  <div className={`flex items-center gap-1 mb-1 text-[10px] ${msg.direction === 'outbound' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                                    <Paperclip className="h-3 w-3" /> {msg.message_type}
+                                  </div>
+                                )}
+                                {msg.content && (
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere] w-full">{msg.content}</p>
+                                )}
                                 <div
                                   className={`flex items-center justify-end gap-1 mt-1 ${
                                     msg.direction === 'outbound' ? 'text-white/60' : 'text-muted-foreground'

@@ -1,5 +1,6 @@
-// dispatch-communication v1.0.0
+// dispatch-communication v1.1.0
 // Canonical outbound communication funnel.
+// v1.1.0: WhatsApp attachment passthrough (PDF / image documents).
 // All other edge functions MUST route through this instead of writing
 // communication_logs directly. Enforces:
 //   1. dedupe_key uniqueness (cron retries / webhook replays cannot double-send)
@@ -33,6 +34,12 @@ interface DispatchInput {
   dedupe_key: string;
   ttl_seconds?: number;          // dedupe lookback window, default 86400
   force?: boolean;               // bypass preferences (transactional)
+  attachment?: {                 // optional file attachment (whatsapp document/image)
+    url: string;
+    filename: string;
+    content_type?: string;       // e.g. application/pdf
+    kind?: 'document' | 'image';
+  };
 }
 
 interface DispatchResult {
@@ -193,6 +200,7 @@ Deno.serve(async (req) => {
         dedupe_key: input.dedupe_key,
         status: 'sending',
         delivery_status: 'sending',
+        delivery_metadata: input.attachment ? { attachment: input.attachment } : {},
       })
       .select('id')
       .single();
@@ -222,6 +230,44 @@ Deno.serve(async (req) => {
     try {
       switch (input.channel) {
         case 'whatsapp': {
+          // For attachments (PDF/image), pre-create the whatsapp_messages row so
+          // send-whatsapp (which requires message_id) can update its delivery
+          // status. The chat thread also relies on this row to render the bubble.
+          if (input.attachment) {
+            const kind = input.attachment.kind ?? 'document';
+            const { data: waRow, error: waErr } = await supabase
+              .from('whatsapp_messages')
+              .insert({
+                branch_id: input.branch_id,
+                phone_number: input.recipient,
+                member_id: input.member_id ?? null,
+                content: input.payload.body,
+                direction: 'outbound',
+                status: 'pending',
+                message_type: kind,
+                media_url: input.attachment.url,
+              })
+              .select('id')
+              .single();
+            if (waErr) throw new Error(waErr.message);
+            const r = await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                message_id: waRow!.id,
+                phone_number: input.recipient,
+                branch_id: input.branch_id,
+                message_type: kind,
+                media_url: input.attachment.url,
+                caption: input.payload.body,
+                filename: input.attachment.filename,
+                skip_log: true,
+              },
+            });
+            if (r.error) throw new Error(r.error.message);
+            const errPayload = (r.data as { error?: unknown })?.error;
+            if (errPayload) throw new Error(typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload));
+            providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
+            break;
+          }
           const r = await supabase.functions.invoke('send-whatsapp', {
             body: {
               branch_id: input.branch_id,

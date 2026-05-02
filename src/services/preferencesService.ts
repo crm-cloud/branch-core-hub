@@ -21,6 +21,13 @@ export interface DispatchInput {
   ttl_seconds?: number;
   /** Bypass member preferences. Use only for transactional categories (receipts, OTPs, security). */
   force?: boolean;
+  /** Optional file attachment (currently WhatsApp document/image). */
+  attachment?: {
+    url: string;
+    filename: string;
+    content_type?: string;
+    kind?: 'document' | 'image';
+  };
 }
 
 export interface DispatchResult {

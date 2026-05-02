@@ -13,6 +13,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { buildPlanPdf } from './pdfBlob';
 import { uploadAttachment, blobToBase64 } from './uploadAttachment';
+import { dispatchCommunication } from '@/services/preferencesService';
 
 export type PlanSendChannel = 'download' | 'whatsapp' | 'email';
 
@@ -107,7 +108,7 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
     }
   }
 
-  // 4. WhatsApp document
+  // 4. WhatsApp document — routed through canonical dispatcher
   if (input.channels.includes('whatsapp') && pdfUrl) {
     if (!input.member.phone) {
       channels.whatsapp = { sent: false, error: 'No phone on file' };
@@ -117,34 +118,22 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
       try {
         const phone = normalisePhone(input.member.phone);
         const caption = `Hi ${input.member.full_name}, here is your new ${input.plan.type} plan: ${input.plan.name}`;
-        const { data: msgRow, error: insertErr } = await supabase
-          .from('whatsapp_messages')
-          .insert({
-            branch_id: input.branchId,
-            phone_number: phone,
-            member_id: input.member.id,
-            content: caption,
-            direction: 'outbound',
-            status: 'pending',
-            message_type: 'document',
-            media_url: pdfUrl,
-          } as never)
-          .select('id')
-          .single();
-        if (insertErr) throw insertErr;
-        const { error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
-          body: {
-            message_id: (msgRow as any).id,
-            phone_number: phone,
-            branch_id: input.branchId,
-            message_type: 'document',
-            media_url: pdfUrl,
-            caption,
-            filename,
-          },
+        const result = await dispatchCommunication({
+          branch_id: input.branchId,
+          channel: 'whatsapp',
+          category: 'transactional',
+          recipient: phone,
+          member_id: input.member.id,
+          payload: { body: caption },
+          dedupe_key: `plan:${input.member.id}:${input.plan.type}:${input.plan.name}:${Date.now()}`,
+          force: true,
+          attachment: { url: pdfUrl, filename, content_type: 'application/pdf', kind: 'document' },
         });
-        if (sendErr) throw sendErr;
-        channels.whatsapp = { sent: true };
+        if (result.status === 'failed' || result.status === 'suppressed') {
+          channels.whatsapp = { sent: false, error: result.reason || result.status };
+        } else {
+          channels.whatsapp = { sent: true };
+        }
       } catch (err: any) {
         channels.whatsapp = { sent: false, error: err?.message || 'WhatsApp failed' };
       }

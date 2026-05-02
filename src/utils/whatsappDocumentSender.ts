@@ -1,8 +1,9 @@
-// Centralized helper to send a WhatsApp document (PDF) message via Meta Cloud API.
-// Falls back to a wa.me text-only link if the branch has no active WhatsApp
-// integration so the share flow never silently fails.
+// Centralized helper to send a WhatsApp document (PDF) message.
+// v2.0: routes through `dispatch-communication` so the send is funnelled
+// through the canonical communication pipeline (dedupe, preferences, quiet
+// hours, communication_logs row, Live Feed, System Health).
 
-import { supabase } from '@/integrations/supabase/client';
+import { dispatchCommunication } from '@/services/preferencesService';
 import { uploadAttachment } from './uploadAttachment';
 
 export interface SendWhatsAppDocumentInput {
@@ -13,6 +14,11 @@ export interface SendWhatsAppDocumentInput {
   filename: string;
   pdf: Blob;
   folder?: string; // storage subfolder, e.g. 'invoices', 'receipts'
+  /** Stable idempotency key — defaults to filename+timestamp; pass an
+   *  invoice/plan-scoped key for true dedupe. */
+  dedupeKey?: string;
+  /** Maps to dispatcher category. Defaults to 'transactional'. */
+  category?: 'payment_receipt' | 'transactional' | 'membership_reminder' | 'announcement';
 }
 
 function normalisePhone(input: string): string {
@@ -22,19 +28,10 @@ function normalisePhone(input: string): string {
   return digits.startsWith('+') ? digits : `+${digits}`;
 }
 
-/**
- * Upload a PDF to the public attachments bucket and dispatch it as a WhatsApp
- * document via the `send-whatsapp` edge function. Returns the public PDF URL
- * and the DB row id so callers can link to it from invoice timelines.
- *
- * If the branch has no active WhatsApp integration the function falls back to
- * opening wa.me with the caption + a link to the uploaded PDF, so the recipient
- * still receives the document.
- */
 export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Promise<{
   url: string;
-  messageId?: string;
   fallback: boolean;
+  status: 'sent' | 'queued' | 'deduped' | 'suppressed' | 'failed';
 }> {
   const phone = normalisePhone(input.phone);
   const { url } = await uploadAttachment(input.pdf, {
@@ -43,53 +40,37 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
     contentType: 'application/pdf',
   });
 
-  // Insert the outbound message row first so send-whatsapp can update its status
-  // and so the chat thread shows it.
-  const { data: row, error: insertErr } = await supabase
-    .from('whatsapp_messages')
-    .insert({
+  try {
+    const result = await dispatchCommunication({
       branch_id: input.branchId,
-      phone_number: phone,
-      member_id: input.memberId || null,
-      content: input.caption,
-      direction: 'outbound',
-      status: 'pending',
-      message_type: 'document',
-      media_url: url,
-    } as never)
-    .select('id')
-    .single();
+      channel: 'whatsapp',
+      category: input.category ?? 'transactional',
+      recipient: phone,
+      member_id: input.memberId ?? null,
+      payload: { body: input.caption },
+      dedupe_key: input.dedupeKey ?? `wa-doc:${input.filename}:${phone}:${Date.now()}`,
+      // Receipts/invoices are transactional; bypass member opt-out.
+      force: (input.category ?? 'transactional') === 'transactional'
+        || input.category === 'payment_receipt',
+      attachment: {
+        url,
+        filename: input.filename,
+        content_type: 'application/pdf',
+        kind: 'document',
+      },
+    });
 
-  if (insertErr) {
-    // If we can't even log it, fall back to wa.me with the link in the caption.
+    if (result.status === 'sent' || result.status === 'queued' || result.status === 'deduped') {
+      return { url, fallback: false, status: result.status };
+    }
+    // failed/suppressed → fall back to wa.me so the recipient still gets the link
     const wa = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(`${input.caption}\n\n${url}`)}`;
     window.open(wa, '_blank');
-    return { url, fallback: true };
-  }
-
-  const messageId = (row as { id: string }).id;
-
-  const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
-    body: {
-      message_id: messageId,
-      phone_number: phone,
-      branch_id: input.branchId,
-      message_type: 'document',
-      media_url: url,
-      caption: input.caption,
-      filename: input.filename,
-    },
-  });
-
-  const failed = !!sendErr || (sendData && typeof sendData === 'object' && 'error' in sendData && (sendData as { error?: unknown }).error);
-  if (failed) {
-    // Mark the row failed and fall back to wa.me so the recipient still gets the link
-    await supabase.from('whatsapp_messages').update({ status: 'failed' }).eq('id', messageId);
+    return { url, fallback: true, status: result.status };
+  } catch (err) {
+    console.error('[sendWhatsAppDocument] dispatcher failed', err);
     const wa = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(`${input.caption}\n\n${url}`)}`;
     window.open(wa, '_blank');
-    return { url, messageId, fallback: true };
+    return { url, fallback: true, status: 'failed' };
   }
-
-  await supabase.from('whatsapp_messages').update({ status: 'sent' }).eq('id', messageId);
-  return { url, messageId, fallback: false };
 }
