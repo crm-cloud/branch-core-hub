@@ -155,17 +155,37 @@ export function PurchaseMembershipDrawer({
     },
   });
 
-  const calculateGstAmount = () => {
-    if (!includeGst || !selectedPlan) return 0;
-    const base = (selectedPlan.discounted_price || selectedPlan.price) + (selectedPlan.admission_fee || 0) - discountAmount;
-    return Math.round(base * (gstRate / 100));
-  };
+  // Plan price + admission is the *gross* (consumer-facing) amount the member pays.
+  // GST inclusive plans (default): tax is extracted out of the gross — total stays the same
+  //   regardless of whether the cashier ticks "Tax invoice".
+  // GST exclusive plans (legacy): tax is added on top.
+  const isPlanGstInclusive = (selectedPlan as any)?.is_gst_inclusive !== false;
 
-  const calculateTotal = () => {
+  const calculateGross = () => {
     if (!selectedPlan) return 0;
     const base = selectedPlan.discounted_price || selectedPlan.price;
     const admission = selectedPlan.admission_fee || 0;
-    return base + admission - discountAmount + calculateGstAmount();
+    return Math.max(base + admission - discountAmount, 0);
+  };
+
+  const calculateGstAmount = () => {
+    if (!includeGst || !selectedPlan || !gstRate) return 0;
+    const gross = calculateGross();
+    if (isPlanGstInclusive) {
+      // Extract: gross = base * (1 + r/100)  =>  tax = gross - gross/(1+r/100)
+      const taxable = Math.round((gross / (1 + gstRate / 100)) * 100) / 100;
+      return Math.round((gross - taxable) * 100) / 100;
+    }
+    return Math.round(gross * (gstRate / 100) * 100) / 100;
+  };
+
+  const calculateTotal = () => {
+    const gross = calculateGross();
+    if (!includeGst || isPlanGstInclusive) {
+      // Inclusive plans: total = gross. Receipt vs tax invoice only changes the breakdown.
+      return gross;
+    }
+    return gross + calculateGstAmount();
   };
 
   const calculateEndDate = () => {
