@@ -177,9 +177,14 @@ export default function ContactBookPage() {
               Save vendors, walk-ins, prospects and other non-member numbers so chats show real names.
             </p>
           </div>
-          <Button onClick={openCreate} className="rounded-xl gap-2">
-            <Plus className="h-4 w-4" /> Add Contact
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setSegmentsOpen(true)} className="rounded-xl gap-2">
+              <Layers className="h-4 w-4" /> Segments
+            </Button>
+            <Button onClick={openCreate} className="rounded-xl gap-2">
+              <Plus className="h-4 w-4" /> Add Contact
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
