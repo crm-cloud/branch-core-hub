@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo } from 'lucide-react';
+import { Plus, Wrench, AlertTriangle, CheckCircle, XCircle, Pencil, Copy, Calendar, ShieldCheck, QrCode, ListTodo, Search } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchEquipment, fetchMaintenanceRecords, createMaintenanceRecord, updateEquipmentStatus, getEquipmentStats, getMaintenanceCostsByMonth } from '@/services/equipmentService';
 import QRCode from 'qrcode';
@@ -23,6 +23,7 @@ export default function EquipmentMaintenancePage() {
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [equipmentToEdit, setEquipmentToEdit] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const queryClient = useQueryClient();
   const { effectiveBranchId = '' } = useBranchContext();
   const currentBranchId = effectiveBranchId || undefined;
@@ -88,6 +89,19 @@ export default function EquipmentMaintenancePage() {
   };
 
   const totalMonthlyCost = monthlyCosts ? Object.values(monthlyCosts).reduce((a, b) => a + b, 0) : 0;
+
+  // Search filter (name, brand, model, serial, category, location)
+  const filteredEquipment = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return equipment as any[];
+    return (equipment as any[]).filter((e) => {
+      const haystack = [e.name, e.brand, e.model, e.serial_number, e.category, e.location]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  })();
 
   // Derived: due / overdue / warranty signals
   const today = new Date();
@@ -158,7 +172,7 @@ export default function EquipmentMaintenancePage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Equipment & Maintenance</h1>
+            <h1 className="text-2xl font-bold">Equipment</h1>
             {branchInfo?.name && (
               <Badge variant="outline" className="rounded-full">
                 Branch: {branchInfo.name}
@@ -248,8 +262,19 @@ export default function EquipmentMaintenancePage() {
 
           <TabsContent value="equipment" className="mt-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>All Equipment</CardTitle>
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name, brand, model, serial, category, or location…"
+                    className="pl-9"
+                    aria-label="Search equipment"
+                  />
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
@@ -271,7 +296,7 @@ export default function EquipmentMaintenancePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {equipment.map((item: any) => (
+                      {filteredEquipment.map((item: any) => (
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
@@ -428,10 +453,12 @@ export default function EquipmentMaintenancePage() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {equipment.length === 0 && (
+                      {filteredEquipment.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No equipment found
+                            {searchQuery.trim()
+                              ? `No equipment matches "${searchQuery}"`
+                              : 'No equipment found'}
                           </TableCell>
                         </TableRow>
                       )}

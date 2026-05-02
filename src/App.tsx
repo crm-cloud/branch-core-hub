@@ -46,7 +46,7 @@ const CreateManualDietPage = lazy(() => import("./pages/fitness/CreateManualDiet
 const PreviewPlanPage = lazy(() => import("./pages/fitness/PreviewPlan"));
 const FitnessTemplatesPage = lazy(() => import("./pages/fitness/Templates"));
 const FitnessMemberPlansPage = lazy(() => import("./pages/fitness/MemberPlans"));
-const EquipmentPage = lazy(() => import("./pages/Equipment"));
+
 const EquipmentMaintenancePage = lazy(() => import("./pages/EquipmentMaintenance"));
 const LockersPage = lazy(() => import("./pages/Lockers"));
 const EmployeesPage = lazy(() => import("./pages/Employees"));
@@ -250,7 +250,7 @@ function RoutedContent() {
           <Route path="/ai-fitness" element={<Navigate to="/fitness/create" replace />} />
           <Route path="/trainer-plan-builder" element={<Navigate to="/fitness/create" replace />} />
           <Route path="/inventory" element={<Navigate to="/products" replace />} />
-          <Route path="/equipment" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><EquipmentPage /></ProtectedRoute>} />
+          <Route path="/equipment" element={<Navigate to="/equipment-maintenance" replace />} />
           <Route path="/equipment-maintenance" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><EquipmentMaintenancePage /></ProtectedRoute>} />
           <Route path="/lockers" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager', 'staff']}><LockersPage /></ProtectedRoute>} />
           <Route path="/hrm" element={<ProtectedRoute requiredRoles={['owner', 'admin', 'manager']}><HRMPage /></ProtectedRoute>} />
