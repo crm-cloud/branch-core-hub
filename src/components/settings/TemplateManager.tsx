@@ -640,10 +640,22 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 size="sm"
                                 className="text-xs gap-1.5"
                                 onClick={() => openMetaDialog(template)}
-                                title="Submit to Meta for approval"
+                                title={
+                                  template.meta_template_status === 'REJECTED'
+                                    ? 'Edit & resubmit this template to Meta'
+                                    : template.meta_template_id
+                                      ? 'Already submitted — opens edit form'
+                                      : 'Submit to Meta for approval'
+                                }
                               >
                                 <Send className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Submit to Meta</span>
+                                <span className="hidden sm:inline">
+                                  {template.meta_template_status === 'REJECTED'
+                                    ? 'Submit for Edit'
+                                    : template.meta_template_id
+                                      ? 'Edit & Resubmit'
+                                      : 'Submit to Meta'}
+                                </span>
                               </Button>
                             )}
                             <Button
