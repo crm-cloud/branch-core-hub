@@ -26,23 +26,25 @@ Owner: Platform / Backend
 
 ## Outstanding (P0 wave 2 — required before go-live)
 
-| Area | Item | Owner | Notes |
+| Area | Item | Owner | Status |
 |---|---|---|---|
-| RLS | `supabase/tests/rls/*.sql` persona suite (owner / branch_manager / member) | Backend | Use pgTAP; assert no cross-branch reads on invoices/payments/attendance |
-| RLS | Manual review of `member_benefits`, `benefit_bookings` for gender-lock enforcement | Backend | Spot-check with seeded fixtures |
-| Atomicity | Audit non-service callers of `from('invoices'/'payments'/...).insert/update/delete` | Frontend | CI direct-write guard now blocks new ones; existing exemptions to be migrated to RPCs |
-| RPC consolidation | Collapse the two remaining `purchase_pt_package` signatures (`p_*` vs `_*`) into one | Backend | Requires call-site migration in 3 files |
-| Branch scoping | Enumerate every table with `branch_id`; verify each has tight RLS | Backend | Add `current_branch()` SQL helper |
+| RLS | `supabase/tests/rls/*.sql` persona suite (cross-branch isolation) | Backend | ✅ scaffolded — `cross_branch_isolation.sql` |
+| Branch scoping | `current_branch()` / `is_branch_member()` / `enforce_branch_match()` SQL helpers | Backend | ✅ shipped |
+| RPC consolidation | Two `purchase_pt_package` overloads | Backend | ✅ kept both — different semantics, documented inline via `COMMENT ON FUNCTION` |
+| RLS | Manual review of `member_benefits`, `benefit_bookings` for gender-lock enforcement | Backend | ⏳ pending |
+| Atomicity | Audit non-service callers of `from('invoices'/'payments'/...).insert/update/delete` | Frontend | ⏳ pending — CI guard blocks new ones |
+| Branch scoping | Add `enforce_branch_match()` calls inside `purchase_*`, `assign_locker_*`, `reverse_payment` RPCs | Backend | ⏳ pending — helper exists, integration TBD |
 
 ## P1 — reliability & posture
 
-| Area | Item |
-|---|---|
-| Observability | Audit `supabase/functions/**/index.ts` `catch` blocks call `log_error_event` |
-| Observability | Add 24h success-rate strip to `SystemHealth.tsx` from `system_health_pings` |
-| Performance | Bundle visualizer snapshot in `docs/perf/`; verify Three.js, jspdf, framer-motion not in main chunk |
-| UX | `<DataState>` shared empty/loading/error component; refactor top-10 tables |
-| UX | Network-offline banner sibling to `DrBanner` |
+| Area | Item | Status |
+|---|---|---|
+| Observability | Audit `supabase/functions/**/index.ts` `catch` blocks call `log_error_event` | ⏳ pending |
+| Observability | 24h success-rate strip on `SystemHealth.tsx` from `system_health_pings` | ⏳ pending |
+| Performance | Bundle visualizer snapshot; verify Three.js, jspdf, framer-motion not in main chunk | ⏳ pending |
+| UX | `<DataState>` shared empty/loading/error component | ✅ shipped at `src/components/common/DataState.tsx` |
+| UX | Refactor top-10 tables to use `<DataState>` | ⏳ incremental |
+| UX | Network-offline banner sibling to `DrBanner` | ⏳ pending |
 
 ## Intentionally accepted warnings (not blockers)
 
