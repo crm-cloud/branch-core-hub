@@ -121,6 +121,9 @@ export function AppHeader() {
           )}
         </Button>
 
+        {/* Navigation layout switcher */}
+        <NavModeMenu />
+
         {/* Notifications */}
         <NotificationBell />
 
