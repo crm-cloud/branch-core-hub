@@ -48,7 +48,7 @@ jobs:
           # owning service module. Atomic RPCs must be used instead.
           set +e
           MATCHES=$(grep -RnoE \
-            "from\\('(invoices|payments|memberships|wallet_transactions|attendance|lockers|benefit_bookings)'\\)\\.(insert|update|delete)" \
+            "from\\('(invoices|invoice_items|payments|memberships|wallet_transactions|attendance|lockers|locker_assignments|benefit_bookings|membership_freeze_history)'\\)\\.(insert|update|delete)" \
             src/components src/pages src/hooks 2>/dev/null)
           if [ -n "$MATCHES" ]; then
             echo "::error::Direct mutating writes to critical tables found outside services/ — use the atomic RPC instead:"
