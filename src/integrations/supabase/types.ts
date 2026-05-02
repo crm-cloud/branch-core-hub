@@ -10181,18 +10181,6 @@ export type Database = {
         }
         Returns: Json
       }
-      assign_locker_with_invoice: {
-        Args: {
-          p_billing_months?: number
-          p_chargeable?: boolean
-          p_end_date: string
-          p_fee_amount?: number
-          p_locker_id: string
-          p_member_id: string
-          p_start_date: string
-        }
-        Returns: Json
-      }
       assign_user_role: {
         Args: {
           p_branch_id: string
@@ -10680,16 +10668,6 @@ export type Database = {
         Returns: Json
       }
       purchase_pt_package:
-        | {
-            Args: {
-              _branch_id: string
-              _member_id: string
-              _package_id: string
-              _price_paid: number
-              _trainer_id: string
-            }
-            Returns: Json
-          }
         | {
             Args: {
               _branch_id: string
