@@ -58,8 +58,8 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
     <div className="fixed inset-0 z-0" style={{ height: '100dvh' }}>
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50 }}
-        dpr={isMobile ? [1, 1.5] : [1, 2]}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        dpr={isMobile ? [1, 1.25] : [1, 1.75]}
+        gl={{ antialias: !isMobile, alpha: true, powerPreference: 'high-performance' }}
         style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%)' }}
       >
         <Suspense fallback={null}>
