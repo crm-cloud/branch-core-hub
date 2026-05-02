@@ -70,7 +70,7 @@ export async function createManualInvoice(invoice: {
       unit_price: i.unitPrice,
       reference_type: i.referenceType ?? null,
       reference_id: i.referenceId ?? null,
-    })) as unknown as object,
+    })) as never,
     p_due_date: invoice.dueDate ?? null,
     p_notes: invoice.notes ?? null,
     p_discount_amount: invoice.discountAmount ?? 0,
