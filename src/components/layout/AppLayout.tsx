@@ -1,6 +1,8 @@
-import { ReactNode, useState, useCallback } from 'react';
+import { ReactNode, useState, useCallback, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppSidebar, MobileNav } from './AppSidebar';
 import { AppHeader } from './AppHeader';
+import { TopModulesBar } from './TopModulesBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -11,36 +13,52 @@ import { supabase } from '@/integrations/supabase/client';
 import { SessionTimeoutWarning } from '@/components/auth/SessionTimeoutWarning';
 import { AlertTriangle, RefreshCw, Building2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed';
-
-function getInitialCollapsed(): boolean {
-  try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
+import { getNavMode, setNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
+import { getMenuForRole } from '@/config/menu';
+import { groupMenuIntoModules, findActiveModuleId } from '@/config/navModules';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { profile } = useAuth();
-  const { branchStatus, retryBranchFetch, currentBranchName } = useBranchContext();
-  const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
+  const { profile, roles } = useAuth();
+  const { branchStatus, retryBranchFetch } = useBranchContext();
+  const location = useLocation();
+
+  const [navMode, setNavModeState] = useState<NavMode>(getNavMode);
+  useEffect(() => subscribeNavMode(setNavModeState), []);
 
   const handleToggleCollapse = useCallback(() => {
-    setCollapsed(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      } catch {
-      }
-      return next;
-    });
-  }, []);
+    const next: NavMode = navMode === 'collapsed' ? 'vertical' : 'collapsed';
+    setNavMode(next);
+  }, [navMode]);
+
+  // Build module groups from the existing role-aware menu (RBAC preserved upstream).
+  const moduleGroups = useMemo(() => {
+    const userRoleSet = new Set(roles.map((r) => r.role));
+    const filtered = getMenuForRole(roles)
+      .map((s) => ({ ...s, items: s.items.filter((i) => i.roles.some((r) => userRoleSet.has(r))) }))
+      .filter((s) => s.items.length > 0);
+    return groupMenuIntoModules(filtered);
+  }, [roles]);
+
+  const routeModuleId = useMemo(
+    () => findActiveModuleId(moduleGroups, location.pathname),
+    [moduleGroups, location.pathname],
+  );
+
+  const [activeModuleId, setActiveModuleId] = useState<string | undefined>(routeModuleId);
+  useEffect(() => { setActiveModuleId(routeModuleId); }, [routeModuleId]);
+
+  const activeItems = useMemo(
+    () => moduleGroups.find((g) => g.module.id === activeModuleId)?.items ?? [],
+    [moduleGroups, activeModuleId],
+  );
+  const activeModuleLabel = useMemo(
+    () => moduleGroups.find((g) => g.module.id === activeModuleId)?.module.label,
+    [moduleGroups, activeModuleId],
+  );
 
   const { data: org } = useQuery({
     queryKey: ['org-branding'],
@@ -57,7 +75,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   const renderContent = () => {
@@ -132,12 +150,26 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar collapsed={collapsed} onToggleCollapse={handleToggleCollapse} />
-      
+      <AppSidebar
+        mode={navMode}
+        onToggleCollapse={handleToggleCollapse}
+        hybridItems={activeItems}
+        hybridModuleLabel={activeModuleLabel}
+      />
+
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Hybrid top modules bar (desktop only) */}
+        {navMode === 'hybrid' && (
+          <TopModulesBar
+            groups={moduleGroups}
+            activeModuleId={activeModuleId}
+            onSelect={setActiveModuleId}
+          />
+        )}
+
         {/* Desktop header */}
         <AppHeader />
-        
+
         {/* Mobile header */}
         <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-card">
           <MobileNav />
