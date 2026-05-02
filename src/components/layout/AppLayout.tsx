@@ -148,7 +148,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     );
   };
 
-  // ===== Hybrid mode: Materialize-style two-band grid (desktop only) =====
+  // ===== Horizontal (hybrid) mode: top bar only, NO sidebar (desktop) =====
   if (navMode === 'hybrid') {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -173,64 +173,37 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </header>
 
-        {/* Desktop hybrid bands */}
-        <div className="hidden lg:block sticky top-0 z-40">
-          {/* Row 1: brand | top modules */}
-          <div className="flex h-14 bg-card border-b border-border">
-            <div className="w-64 shrink-0 flex items-center px-5 border-r border-border">
-              {org?.logo_url ? (
-                <img
-                  src={org.logo_url}
-                  alt={org.name || 'Logo'}
-                  className="max-h-8 object-contain object-left"
-                />
-              ) : (
-                <span className="text-lg font-bold text-foreground">
-                  {org?.name && org.name !== 'Default' ? org.name : 'Incline'}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0 flex items-center">
-              <TopModulesBar
-                groups={moduleGroups}
-                activeModuleId={activeModuleId}
-                onSelect={setActiveModuleId}
-                bare
+        {/* Desktop: single horizontal band — brand + modules + header utilities */}
+        <div className="hidden lg:flex sticky top-0 z-40 h-14 items-center bg-card border-b border-border">
+          <div className="shrink-0 flex items-center pl-5 pr-4">
+            {org?.logo_url ? (
+              <img
+                src={org.logo_url}
+                alt={org.name || 'Logo'}
+                className="max-h-8 object-contain object-left"
               />
-            </div>
+            ) : (
+              <span className="text-lg font-bold text-foreground">
+                {org?.name && org.name !== 'Default' ? org.name : 'Incline'}
+              </span>
+            )}
           </div>
-
-          {/* Row 2: module label | utilities */}
-          <div className="flex bg-card/60 backdrop-blur border-b border-border">
-            <div className="w-64 shrink-0 flex items-center px-5 border-r border-border h-14">
-              <div className="flex flex-col leading-tight">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Module
-                </span>
-                <span className="text-sm font-bold text-foreground">
-                  {activeModuleLabel ?? 'Menu'}
-                </span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <AppHeader variant="hybrid" />
-            </div>
+          <div className="flex-1 min-w-0 flex items-center">
+            <TopModulesBar
+              groups={moduleGroups}
+              activeModuleId={activeModuleId}
+              onSelect={setActiveModuleId}
+              bare
+            />
+          </div>
+          <div className="shrink-0">
+            <AppHeader variant="hybrid" />
           </div>
         </div>
 
-        {/* Row 3: sidebar | content */}
-        <div className="flex flex-1 min-h-0">
-          <AppSidebar
-            mode="hybrid"
-            onToggleCollapse={handleToggleCollapse}
-            hybridItems={activeItems}
-            hybridModuleLabel={activeModuleLabel}
-            headerless
-            embedded
-          />
-          <div className="flex-1 flex flex-col min-w-0">
-            {renderContent()}
-          </div>
+        {/* Full-width content (no sidebar) */}
+        <div className="flex flex-1 flex-col min-w-0">
+          {renderContent()}
         </div>
 
         <SessionTimeoutWarning />
