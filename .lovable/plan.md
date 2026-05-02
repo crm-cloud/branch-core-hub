@@ -1,135 +1,137 @@
-# Audit & Plan — Classes, Lockers, GST, Group Discounts
+## Audit findings
 
-## Audit Findings
-
-### 1. Classes & Class Bookings
-**Current state:** `classes` table has no pricing fields (no `price`, `is_free`, `requires_benefit`). `book_class` RPC only checks capacity — any active member can book any class for free. There is no link between a class and `benefit_types` / `plan_benefits`. So today **every class is implicitly free for every active member** with no entitlement gating, no quota enforcement, and no charging path for paid/special classes.
-
-**Gap:** No way to mark a class as "Group Class included in Plan A" vs "Special Workshop ₹500" vs "Trainer-led HIIT — 4 sessions/month included".
-
-### 2. Lockers
-**Current state:** Two separate paths exist but they don't talk to each other:
-- `membership_plans.includes_free_locker` + `free_locker_size` → handled inside `purchase_member_membership` RPC (assigns a locker on plan purchase).
-- `lockers.monthly_fee` + `assign_locker_with_billing` RPC → standalone paid rental with its own GST invoice.
-
-There is **no `locker_access` benefit_type linkage**, no expiry sync between locker assignment and membership end_date, and no clear UI distinction between "free with plan" vs "paid add-on" in the assignment drawer.
-
-### 3. GST on Memberships
-**Current state:** `membership_plans.is_gst_inclusive = true` and `gst_rate = 18` exist on the plan, but the purchase drawer treats GST as an **opt-in toggle** (`includeGst` defaults to `false`). When unchecked, GST is simply not added — but the plan price already includes GST. So:
-- GST-skip case: invoice shows the inclusive price with no tax breakup → fine for non-GST customers but **the gym still over-collects** because the inclusive 18% is buried in the price with no offset.
-- GST-include case: GST is **added on top** of an already-inclusive price → double tax.
-
-This is a real billing bug, not just a UX gap.
-
-### 4. Group / Couple Discounts
-**Current state:** `discount_codes` + `validate_coupon`/`redeem_coupon` RPCs exist, but they are single-member, single-invoice. There is no concept of a "group", no shared coupon per booking, no auto-split of a bulk discount across N members, and no way to record "these 4 members joined together → 15% off each."
+- **Campaigns** today only target `members` (filtered by status / goal / attendance). Leads, manual contacts, and AI-imported contacts are invisible. There is no concept of a "list" or "segment".
+- **Announcements** are in-app only — they never fan out to WhatsApp / Email / SMS.
+- **Group purchase** RPC (`purchase_group_membership`) creates the group + invoices but does not write to `audit_logs`, and only does shallow validation (≥2 members, valid type). It does not check duplicate membership, duplicate group membership, branch mismatch, or member status.
+- **Rewards**: today `reward_points` accrue per-invoice through the existing `purchase_member_membership` path (each member already gets their own invoice → already gets their own points). There is **no group bonus** and no shared "group leader" concept. Worth deciding intentionally rather than leaving to chance.
 
 ---
 
-## Proposed Plan
+## Phase 1 — Contact-aware Marketing & Campaigns
 
-### Part A — Classes as Benefits (recommended: yes, route through Benefits)
+### Schema additions
+- New table `contact_segments` (saved targeting rules)
+  - fields: `name`, `description`, `filter` (jsonb), `audience_count`, `last_refreshed_at`
+- New table `contact_segment_members` (materialised cache for fast send)
+  - fields: `segment_id`, `contact_id`
+- Extend `campaigns.audience_filter` JSONB to support a richer schema:
+  ```json
+  {
+    "audience_kind": "members" | "leads" | "contacts" | "segment" | "mixed",
+    "segment_id": "uuid?",
+    "source_types": ["member","lead","manual","ai"],
+    "categories": ["prospect","vendor",...],
+    "tags": ["winter-promo"],
+    "member_status": "active|expired|all",
+    "last_attendance_before": "date?",
+    "lead_status": ["new","contacted",...],
+    "lead_temperature": ["hot","warm"]
+  }
+  ```
+- New RPC `resolve_campaign_audience(p_branch_id, p_filter jsonb)` returns a unified set:
+  `{ contact_id, phone, email, full_name, source_type, source_ref_id }`
+  → handles members (via profiles), leads, and contacts in one call so the app and `send-broadcast` agree on the recipient list.
 
-1. **Schema additions to `classes`:**
-   - `is_paid boolean default false`
-   - `price numeric(10,2) default 0`
-   - `gst_rate numeric default 18`, `is_gst_inclusive boolean default true`
-   - `benefit_type_id uuid null` → links class to a bookable benefit (e.g. "Group Classes", "Yoga"); when set and member has quota, booking is free.
-   - `requires_benefit boolean default false` → if true, members without the benefit can't book unless they pay `price`.
+### Edge-function changes
+- `send-broadcast` updated to accept either legacy `member_ids` or the new resolved-contact list (`recipients: [{ phone, email, full_name, contact_id, source_type }]`).
+- All sends route through `dispatch-communication` (already canonical) — adds `audience_source` to dedupe key so the same contact does not get spammed twice from overlapping segments.
+- New `campaign_recipients` table to log per-contact delivery status (queued / sent / failed / suppressed) — enables a Live Feed in Campaigns.
 
-2. **Booking flow (`book_class` RPC v2):**
-   ```text
-   if class.benefit_type_id is set:
-     if member has remaining benefit quota → consume quota, book free
-     elif class.requires_benefit and not class.is_paid → reject
-     else → create unpaid invoice for class.price, then book
-   elif class.is_paid → invoice + book
-   else → free book (legacy behaviour)
-   ```
-
-3. **UI:** Add Class drawer gets three toggles — *Free*, *Included in Benefit*, *Paid Workshop*. Member booking screen shows badge: "Included in your plan", "1 of 4 remaining this month", or "₹500 to book".
-
-### Part B — Lockers: unify free vs paid via Benefits
-
-1. **Create canonical `locker_access` benefit_type** (seeded per branch). Plans that include a free locker get a `plan_benefits` row with `benefit_type_id = locker_access` and a `description` holding the size.
-
-2. **Deprecate `membership_plans.includes_free_locker` / `free_locker_size`** in favour of the benefit row (keep columns for one release as read-only, with a migration that backfills rows).
-
-3. **`assign_locker_with_billing` v2:** accept `p_source: 'plan' | 'addon'`. When `'plan'`, set `p_chargeable=false`, sync `end_date` to membership end, skip invoice. When `'addon'`, current behaviour (monthly fee + GST invoice).
-
-4. **UI:** Locker assignment drawer shows two tabs — "Included with Plan" (auto-picks size, no fee) and "Paid Rental" (monthly fee, billing months, GST). Member profile shows "Locker #12 — included with Premium plan, expires 31 Dec".
-
-### Part C — GST Inclusive / Skip-GST handling (bug fix)
-
-1. **Stop the double-tax.** Treat plan price as the **gross** (consumer-facing) price always. Compute taxable base on the fly:
-   ```text
-   if include_gst (B2B / customer wants tax invoice):
-       taxable_base = price / (1 + gst_rate/100)
-       gst_amount   = price - taxable_base
-       invoice line: base + CGST/SGST split
-       total = price (unchanged)
-   else (skip GST / non-tax invoice):
-       invoice line: lump-sum price, no tax breakup
-       total = price (unchanged)
-   ```
-   Net result: **member pays the same ₹** in both cases; only the invoice presentation and the GSTR-1 reporting differs.
-
-2. **Update `purchase_member_membership` RPC** to accept `p_include_gst` as a *presentation flag*, not a price-modifier. Apply same logic to `assign_locker_with_billing` and `create_manual_invoice`.
-
-3. **Purchase drawer UX:**
-   - Replace "Include GST" toggle with a clearer **"Invoice Type"** radio: *Tax Invoice (with GSTIN)* vs *Receipt (no GST breakup)*.
-   - Total stays identical; only the breakdown card changes.
-   - When *Tax Invoice* selected, require customer GSTIN field (optional for B2C tax invoices).
-
-4. **Reporting:** GST report (GSTR-1 export) only pulls invoices with `gst_breakup_recorded = true`. Skip-GST invoices are excluded — accountant-clean.
-
-### Part D — Group / Couple Discounts
-
-1. **New table `member_groups`:**
-   ```text
-   id, branch_id, group_name, group_type ('couple'|'family'|'corporate'|'friends'),
-   discount_type ('percentage'|'fixed'), discount_value, created_at, created_by, is_active
-   ```
-   With `member_group_members(group_id, member_id, role)` join table.
-
-2. **Group purchase flow:** New "Group Purchase" drawer (Owner/Manager only) that:
-   - Selects 2–N members already in the system (or registers them inline).
-   - Picks a single plan (or per-member plans).
-   - Applies group discount % once → auto-splits across each member's invoice.
-   - Creates one `member_groups` row + one membership + one invoice per member, all sharing a `group_purchase_id` for reporting.
-
-3. **Coupon extension (lighter alternative):** Add `discount_codes.is_group_coupon boolean` and `min_members int`. A code like `COUPLE15` only validates if redeemed with ≥2 member IDs in the same transaction. `redeem_coupon` accepts an array of member_ids and records N redemption rows sharing one `group_redemption_id`.
-
-4. **Reporting:** Group revenue dashboard — total groups, avg group size, group-attributed MRR, retention vs. solo members.
+### UI changes
+- **Marketing → Contact Book** gets a new tab **"Segments"** (saved filters with count and "Use in campaign" button).
+- **Marketing → Campaigns** wizard step 2 ("Audience") rebuilt:
+  - Audience kind toggle: `Members | Leads | Contacts | Saved segment | Mixed`
+  - Filter chips for category/source/tags + member/lead-specific filters
+  - Live "Recipients X (Y reachable on this channel)" counter — calls `resolve_campaign_audience`
+  - Per-contact channel availability badges (no email → email channel grayed out)
+- New "Send broadcast" button on Contact Book selection (multi-select rows → spawn pre-filled campaign)
 
 ---
 
-## Technical Details
+## Phase 2 — Announcements as Multi-channel Promotions
 
-**Migrations:**
-- `classes`: add `is_paid`, `price`, `gst_rate`, `is_gst_inclusive`, `benefit_type_id`, `requires_benefit`.
-- New: `member_groups`, `member_group_members`, `group_purchases`.
-- Backfill: convert `membership_plans.includes_free_locker=true` rows into `plan_benefits(benefit_type_id=locker_access)`.
+- Add columns to `announcements`:
+  - `channels text[]` (any of `inapp,whatsapp,email,sms`) — default `{inapp}`
+  - `audience_filter jsonb` (same shape as campaigns)
+  - `dispatched_at timestamptz`, `dispatch_summary jsonb`
+- New "Promote announcement" action → calls a thin RPC `promote_announcement_to_campaign(p_id)` that creates a hidden campaign per channel using the same audience resolver, so logging / suppression / reporting all flow through the existing pipeline.
+- Announcements UI gains a channels multi-select and an "Also send via" panel; in-app announcements remain the default and free.
 
-**RPC changes:**
-- `book_class` → quota-aware, paid-class-aware.
-- `purchase_member_membership` → fix GST math (inclusive-base), accept `p_invoice_type`.
-- `assign_locker_with_billing` → accept `p_source`, sync to membership end when `'plan'`.
-- New: `purchase_group_membership(p_member_ids[], p_plan_id, p_group_discount, p_group_type, ...)`.
-- `redeem_coupon` → optional `p_member_ids[]` for group coupons.
+---
 
-**UI files:**
-- `src/components/classes/AddClassDrawer.tsx`, `EditClassDrawer.tsx` — pricing/benefit fields.
-- `src/components/lockers/AssignLockerDrawer.tsx` — Plan vs Add-on tabs.
-- `src/components/members/PurchaseMembershipDrawer.tsx` — Invoice Type radio replaces GST toggle.
-- New: `src/components/members/GroupPurchaseDrawer.tsx`.
-- New: `src/pages/MemberGroups.tsx` (under Members menu).
-- Member booking UI shows entitlement badges.
+## Phase 3 — Group Purchase Hardening
 
-**Phasing suggestion (4 separate turns):**
-1. **Phase 1 (critical bug):** Fix GST inclusive double-tax in purchase + locker + manual invoice RPCs and the drawer UX.
-2. **Phase 2:** Classes-as-benefits — schema + book_class v2 + Add/Edit drawer + member booking badges.
-3. **Phase 3:** Lockers unification — `locker_access` benefit + assign drawer tabs + RPC source param.
-4. **Phase 4:** Group/Couple discounts — `member_groups` + group purchase drawer + coupon extension.
+### Validation (added to `purchase_group_membership`)
+- All members must belong to `p_branch_id` (raise `MEMBER_BRANCH_MISMATCH`).
+- All members must be `status='active'` (raise `MEMBER_NOT_ACTIVE`).
+- No duplicate `member_id` in `p_member_ids` (raise `DUPLICATE_MEMBER_IN_GROUP`).
+- No member can already be in another **active** group for the same plan (raise `ALREADY_IN_ACTIVE_GROUP`).
+- Couple type strictly = 2 members.
+- Discount must be 0–100 % or 0 ≤ ₹ ≤ plan-price × N.
+- Plan must be active and belong to the branch.
 
-Approve to start with **Phase 1 (GST fix)** since it's a live billing correctness issue, or tell me a different order.
+### Audit log
+- After group + per-member purchases succeed, insert a single `audit_logs` row:
+  - `action = 'group_membership_purchased'`
+  - `table_name = 'member_groups'`
+  - `record_id = v_group_id`
+  - `new_data = { group_name, group_type, member_count, plan_id, discount_type, discount_value, discount_total, gross_total, net_total, member_ids }`
+  - reuses existing actor-name resolution trigger.
+- Also raise `pg_notify('audit_event', …)` so SystemHealth / live feed picks it up.
+
+### UI
+- GroupPurchaseDrawer surfaces validation errors inline (per-error toast → translated to friendly text).
+- New "Groups" tab on Members page lists active groups with member chips + audit timeline.
+
+---
+
+## Phase 4 — Group Reward Policy
+
+Two intentional choices; we will implement **Option B** as the default (most aligned with current per-invoice points engine):
+
+- **Option A — Pooled reward**: total points credited to a designated "group leader" only. Simpler invoicing but unfair if members split costs.
+- **Option B — Per-member with group bonus** *(default)*:
+  - Each member still earns points for their own invoice (existing behaviour, no change to `record_payment`).
+  - **Plus** a flat group bonus controlled by a new `settings` row `group_reward_bonus_pct` (default 5 %): on group completion, each member gets `bonus_pct × their_invoice_net` extra points credited via `rewards_ledger` with `source='group_bonus'` and `reference_id=group_id`.
+  - Couple groups get an additional "couple multiplier" (default 1.5×) — also a setting.
+- New RPC `award_group_bonus(p_group_id)` invoked at the end of `purchase_group_membership` (idempotent on `(group_id, member_id, 'group_bonus')`).
+- Rewards Wallet UI shows the group-bonus line item with a "Group: <name>" tag.
+
+---
+
+## Technical details
+
+### Files to add / change
+- `supabase/migrations/<ts>_marketing_contacts_segments.sql`
+  - `contact_segments`, `contact_segment_members`, `campaign_recipients`
+  - RPC `resolve_campaign_audience`, RLS policies (owner/admin/manager)
+- `supabase/migrations/<ts>_announcement_channels.sql`
+  - announcements columns + `promote_announcement_to_campaign` RPC
+- `supabase/migrations/<ts>_group_purchase_hardening.sql`
+  - replace `purchase_group_membership` with hardened version (audit + validation + bonus award)
+  - add `award_group_bonus` RPC
+  - seed `settings` row `group_reward_bonus_pct=5`, `couple_multiplier=1.5`
+- `supabase/functions/send-broadcast/index.ts` — accept resolved recipients, write `campaign_recipients` rows, call `dispatch-communication`
+- New components:
+  - `src/components/contacts/SegmentDrawer.tsx`
+  - `src/components/contacts/ContactSegmentsTab.tsx`
+  - `src/components/campaigns/AudienceBuilderV2.tsx` (replaces current step)
+  - `src/components/announcements/AnnouncementChannelsField.tsx`
+  - `src/components/members/MemberGroupsTab.tsx`
+- Updated:
+  - `src/services/campaignService.ts` — new resolver call, mixed audience types
+  - `src/services/contactService.ts` — segment CRUD + bulk select
+  - `src/components/members/GroupPurchaseDrawer.tsx` — friendly error mapping, validation hints
+  - `src/pages/Campaigns.tsx`, `src/pages/Announcements.tsx`, `src/pages/ContactBook.tsx`
+
+### Reward / Audit acceptance criteria
+- Creating a group of 3 members on a ₹10 000 plan with 10 % discount produces:
+  - 3 invoices of ₹9 000 each
+  - 3 `rewards_ledger` rows with normal points + 3 rows with `group_bonus` = 5 % of ₹9 000 = 450 pts
+  - 1 `audit_logs` row `group_membership_purchased`
+- A 4th attempt to add an already-grouped member fails with `ALREADY_IN_ACTIVE_GROUP` and no partial state.
+
+### Out of scope (proposed for a follow-up turn)
+- Drip campaign sequences and A/B testing
+- WhatsApp template-variable mapping in the audience builder (currently freeform text)
+- Lead → contact → member migration UI for bulk operations
