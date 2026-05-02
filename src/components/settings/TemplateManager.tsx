@@ -667,7 +667,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 title={
                                   template.meta_template_status === 'REJECTED'
                                     ? 'Edit & resubmit this template to Meta'
-                                    : template.meta_template_id
+                                    : template.meta_template_name
                                       ? 'Already submitted — opens edit form'
                                       : 'Submit to Meta for approval'
                                 }
@@ -676,7 +676,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 <span className="hidden sm:inline">
                                   {template.meta_template_status === 'REJECTED'
                                     ? 'Submit for Edit'
-                                    : template.meta_template_id
+                                    : template.meta_template_name
                                       ? 'Edit & Resubmit'
                                       : 'Submit to Meta'}
                                 </span>
