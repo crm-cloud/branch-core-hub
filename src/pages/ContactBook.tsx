@@ -26,6 +26,7 @@ import {
   UserCircle2, Sparkles, UserPlus, ExternalLink, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SegmentsManagerDrawer } from '@/components/contacts/SegmentsManagerDrawer';
 import { useNavigate } from 'react-router-dom';
 import {
   CONTACT_CATEGORIES, ContactInput, ContactRow, deleteContact, listContacts,
