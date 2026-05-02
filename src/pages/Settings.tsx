@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
 import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Phone } from 'lucide-react';
 import { WhatsAppRoutingSettings } from '@/components/settings/WhatsAppRoutingSettings';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
@@ -66,21 +69,76 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'organization';
+  const [navMode, setNavModeState] = useState<NavMode>(getNavMode);
+
+  useEffect(() => subscribeNavMode(setNavModeState), []);
 
   const handleTabChange = (value: string) => {
     setSearchParams({ tab: value });
   };
 
+  const isHorizontalStacked = navMode === 'horizontal-stacked';
+
+  const Header = (
+    <div className="flex items-center gap-3">
+      <SettingsIcon className="h-8 w-8 text-primary" />
+      <div>
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <p className="text-muted-foreground">Manage your organization settings</p>
+      </div>
+    </div>
+  );
+
+  const content = SETTINGS_CONTENT[activeTab] || <OrganizationSettings />;
+
+  if (isHorizontalStacked) {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          {/* Horizontal sub-nav matching TopModulesBar style */}
+          <div className="rounded-2xl bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70 shadow-sm">
+            <ScrollArea className="w-full">
+              <nav className="flex items-center gap-1 px-2 py-2 lg:justify-center">
+                {SETTINGS_MENU.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => handleTabChange(item.value)}
+                      className={cn(
+                        'relative inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 whitespace-nowrap',
+                        isActive
+                          ? 'bg-primary/10 text-primary shadow-[0_6px_20px_-10px_hsl(var(--primary)/0.55)]'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                      {isActive && (
+                        <span className="pointer-events-none absolute left-3 right-3 -bottom-[7px] h-[2px] rounded-full bg-primary" />
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+              <ScrollBar orientation="horizontal" className="invisible" />
+            </ScrollArea>
+          </div>
+
+          {Header}
+
+          <div className="min-w-0">{content}</div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold">Settings</h1>
-            <p className="text-muted-foreground">Manage your organization settings</p>
-          </div>
-        </div>
+        {Header}
 
         <div className="flex flex-col md:flex-row gap-6">
           {/* Sidebar Navigation */}
@@ -110,9 +168,7 @@ export default function SettingsPage() {
           </nav>
 
           {/* Content Area */}
-          <div className="flex-1 min-w-0">
-            {SETTINGS_CONTENT[activeTab] || <OrganizationSettings />}
-          </div>
+          <div className="flex-1 min-w-0">{content}</div>
         </div>
       </div>
     </AppLayout>
