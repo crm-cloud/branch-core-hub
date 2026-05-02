@@ -710,6 +710,13 @@ export default function MembersPage() {
             )}
           </>
         )}
+        {effectiveBranchId && (
+          <GroupPurchaseDrawer
+            open={groupPurchaseOpen}
+            onOpenChange={setGroupPurchaseOpen}
+            branchId={effectiveBranchId}
+          />
+        )}
       </div>
     </AppLayout>
   );
