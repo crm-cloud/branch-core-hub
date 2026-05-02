@@ -447,18 +447,30 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         );
       }
 
+      const isEdit = !!metaTarget.meta_template_id;
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-        body: {
-          action: 'create',
-          branch_id: branch,
-          template_data: {
-            name: metaForm.name,
-            category: metaForm.category,
-            language: metaForm.language,
-            body_text: metaForm.body_text,
-            local_template_id: metaTarget.id,
-          },
-        },
+        body: isEdit
+          ? {
+              action: 'edit',
+              branch_id: branch,
+              template_data: {
+                meta_template_id: metaTarget.meta_template_id,
+                category: metaForm.category,
+                body_text: metaForm.body_text,
+                local_template_id: metaTarget.id,
+              },
+            }
+          : {
+              action: 'create',
+              branch_id: branch,
+              template_data: {
+                name: metaForm.name,
+                category: metaForm.category,
+                language: metaForm.language,
+                body_text: metaForm.body_text,
+                local_template_id: metaTarget.id,
+              },
+            },
       });
 
       // supabase-js wraps non-2xx responses; try to extract real body.
