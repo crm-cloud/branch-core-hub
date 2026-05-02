@@ -1,0 +1,60 @@
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import type { ModuleGroup } from '@/config/navModules';
+
+interface TopModulesBarProps {
+  groups: ModuleGroup[];
+  activeModuleId?: string;
+  onSelect?: (moduleId: string) => void;
+}
+
+export function TopModulesBar({ groups, activeModuleId, onSelect }: TopModulesBarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  if (groups.length === 0) return null;
+
+  const handleClick = (g: ModuleGroup) => {
+    onSelect?.(g.module.id);
+    const first = g.items[0];
+    if (first && location.pathname !== first.href) {
+      navigate(first.href);
+    }
+  };
+
+  return (
+    <div className="hidden lg:block border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+      <ScrollArea className="w-full">
+        <nav className="flex items-center gap-1 px-4 py-2">
+          {groups.map((g) => {
+            const Icon = g.module.icon;
+            const isActive = g.module.id === activeModuleId;
+            return (
+              <button
+                key={g.module.id}
+                type="button"
+                onClick={() => handleClick(g)}
+                data-testid={`top-module-${g.module.id}`}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-200 whitespace-nowrap',
+                  isActive
+                    ? 'bg-primary/10 text-primary shadow-[0_6px_20px_-10px_hsl(var(--primary)/0.55)]'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{g.module.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <ScrollBar orientation="horizontal" className="invisible" />
+      </ScrollArea>
+    </div>
+  );
+}
+
+// Re-export Link to silence unused-import lint when callers tree-shake;
+// kept here in case consumers prefer link-based navigation later.
+export { Link };

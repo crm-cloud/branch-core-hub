@@ -100,23 +100,47 @@ function BrandLogo({ collapsed = false, mobile = false }: { collapsed?: boolean;
   );
 }
 
+import type { MenuItem as MenuItemType } from '@/config/menu';
+import type { NavMode } from '@/lib/navPreferences';
+
 interface AppSidebarProps {
-  collapsed: boolean;
+  /** New navigation mode. Falls back to legacy `collapsed` prop when omitted. */
+  mode?: NavMode;
+  /** Legacy boolean prop — kept for back-compat. */
+  collapsed?: boolean;
   onToggleCollapse: () => void;
+  /** Items to show in hybrid mode (already RBAC-filtered, scoped to active module). */
+  hybridItems?: MenuItemType[];
+  /** Active module label shown above the items in hybrid mode. */
+  hybridModuleLabel?: string;
 }
 
-export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
+export function AppSidebar({
+  mode,
+  collapsed: collapsedProp,
+  onToggleCollapse,
+  hybridItems,
+  hybridModuleLabel,
+}: AppSidebarProps) {
   const { signOut, roles } = useAuth();
   const location = useLocation();
   const { data: unreadCount = 0 } = useWhatsAppUnreadCount();
 
+  const resolvedMode: NavMode = mode ?? (collapsedProp ? 'collapsed' : 'vertical');
+  const collapsed = resolvedMode === 'collapsed';
+  const isHybrid = resolvedMode === 'hybrid';
+
   const userRoleSet = new Set(roles.map(r => r.role));
-  const menuSections = getMenuForRole(roles)
+  const fullSections = getMenuForRole(roles)
     .map(section => ({
       ...section,
       items: section.items.filter(item => item.roles.some(r => userRoleSet.has(r))),
     }))
     .filter(section => section.items.length > 0);
+
+  const menuSections = isHybrid
+    ? [{ title: hybridModuleLabel ?? '', items: hybridItems ?? [] }].filter(s => s.items.length > 0)
+    : fullSections;
 
   const renderUnreadBadge = (href: string) => {
     if (href !== '/whatsapp-chat' || unreadCount === 0) return null;
@@ -139,8 +163,19 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
           'border-b border-sidebar-border flex items-center',
           collapsed ? 'p-3 justify-center' : 'p-5 justify-between'
         )}>
-          <BrandLogo collapsed={collapsed} />
-          {!collapsed && (
+          {isHybrid ? (
+            <div className="flex flex-col">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+                Module
+              </span>
+              <span className="text-base font-bold text-sidebar-primary leading-tight">
+                {hybridModuleLabel ?? 'Menu'}
+              </span>
+            </div>
+          ) : (
+            <BrandLogo collapsed={collapsed} />
+          )}
+          {!collapsed && !isHybrid && (
             <Button
               variant="ghost"
               size="icon"
@@ -170,7 +205,7 @@ export function AppSidebar({ collapsed, onToggleCollapse }: AppSidebarProps) {
           <nav className={cn('space-y-6', collapsed ? 'px-1' : 'px-3')}>
             {menuSections.map((section) => (
               <div key={section.title}>
-                {!collapsed && (
+                {!collapsed && !isHybrid && section.title && (
                   <p className="px-3 mb-2 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
                     {section.title}
                   </p>

@@ -27,6 +27,7 @@ import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useGlobalChatSound } from '@/hooks/useChatSound';
+import { NavModeMenu } from './NavModeMenu';
 
 function mapRoleLabel(role: string): string {
   return role === 'owner' ? 'Admin' : role;
@@ -120,6 +121,9 @@ export function AppHeader() {
             <Moon className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
           )}
         </Button>
+
+        {/* Navigation layout switcher */}
+        <NavModeMenu />
 
         {/* Notifications */}
         <NotificationBell />
