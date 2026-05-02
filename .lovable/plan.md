@@ -1,92 +1,77 @@
+## Problem
+
+In Hybrid mode today we render three stacked rows on desktop:
+
+```
+[ sidebar header (MODULE · X) ] [ TopModulesBar          ]
+[ child sidebar items          ] [ AppHeader (search…)   ]
+[                              ] [ page content          ]
+```
+
+The reference (Materialize) uses a single horizontal band where the brand sits above the sidebar column, and the top-modules row + utilities row both start to the right of the brand:
+
+```
+[ BRAND  ] [ Dashboard  Members  Sales …  Finance        ]
+[ MODULE ] [ search ………………………………  branch  theme  bell  👤 ]
+[ items  ] [ page content                                ]
+```
+
 ## Goal
 
-Introduce a Vuexy-style "Navigation Mode" with three options — **Vertical** (current default), **Collapsed** (current icon-only mode), and **Hybrid** (new: top horizontal modules + left sidebar showing only child items of the active module). Existing menu config, role permissions, and routes stay 100% untouched. Mobile nav stays exactly as-is.
+Tighten Hybrid mode so it visually matches Materialize: brand above sidebar, modules + utilities aligned with brand row, sidebar shows only the active module's children with no duplicate "MODULE" chip competing with the top bar. Vertical and Collapsed modes are not changed.
 
 ## What ships
 
-### 1. Navigation mode setting
+### 1. Hybrid layout restructure — `AppLayout.tsx`
 
-- New file `src/lib/navPreferences.ts`
-  - `type NavMode = 'vertical' | 'collapsed' | 'hybrid'`
-  - `getNavMode()` / `setNavMode(mode)` — reads/writes `localStorage` key `incline.nav-mode` (per-browser, per-user since auth is single-session).
-  - Falls back to `'vertical'`. Safe try/catch.
-- Backwards compat: existing `sidebar-collapsed` localStorage key is migrated once → if `true`, seed `nav-mode = 'collapsed'`.
+Switch from "row of [sidebar | column-of-(topbar, header, content)]" to a **two-row grid** when `navMode === 'hybrid'` on `lg+`:
 
-### 2. Module derivation (no menu rewrite)
+- Row 1 (header band, `h-14`): two cells
+  - Left cell `w-64` → brand logo (re-uses `BrandLogo`)
+  - Right cell `flex-1` → `TopModulesBar` (modules pills only, no border-bottom of its own)
+- Row 2 (utility band, `h-14`): two cells
+  - Left cell `w-64` → small "MODULE · {label}" chip (subtle, not the heavy header we have now)
+  - Right cell `flex-1` → existing `AppHeader` content (search, branch, theme, nav-mode, bell, profile)
+- Row 3: `flex-1` content row
+  - Left cell `w-64` → child-only sidebar nav (no header, no logo, no chip)
+  - Right cell `flex-1 overflow-auto` → page content
 
-- New file `src/config/navModules.ts`
-  - Hard-coded ordered list of "top modules" with label + icon + matching section titles in the existing `menuConfig`:
-    ```
-    Dashboard   → ['Main']
-    Members     → ['Members & Leads', 'My Account']
-    Sales       → ['E-Commerce & Sales']
-    Finance     → ['Finance']
-    Operations  → ['Operations & Comm', 'Core']
-    PT/Trainers → ['Training & Bookings', 'Training', 'Earnings']
-    Benefits    → items whose href starts with `/benefit` / `/book-benefit` / `/my-benefits`
-    HRM         → ['Admin & HR', 'Work']
-    Marketing   → ['Communication']  (chats, announcements, campaigns)
-    Reports     → items whose href is `/analytics`, `/reports`, `/audit-logs`, `/system-health`
-    Settings    → items whose href is `/settings`, `/admin-roles`, `/devices`
-    ```
-  - Helper `groupMenuIntoModules(sections)` returns `Array<{ module, items }>`, dropping modules with zero visible items so RBAC continues to gate everything.
-  - A module is considered "active" if `location.pathname` matches any of its child items' `href` (longest-prefix wins). Falls back to first non-empty module.
+Vertical / Collapsed: unchanged (today's render path).
 
-### 3. New components
+### 2. `AppHeader.tsx`
 
-- `src/components/layout/NavModeMenu.tsx`
-  - Small dropdown (icon-only button in `AppHeader`) listing the 3 modes with check marks. Calls `setNavMode` and dispatches a `storage`-like event so `AppLayout` re-reads.
-- `src/components/layout/TopModulesBar.tsx`
-  - Horizontal pill bar rendered only when `navMode === 'hybrid'` and viewport ≥ `lg`.
-  - Shows brand logo on the left, module pills in the middle (icon + label), header utilities (search, notifications, profile) reused via existing `AppHeader` placement.
-  - Active pill: `bg-indigo-50 text-indigo-700 rounded-xl shadow-sm` (Vuexy-flavoured, matches project tokens).
-  - Clicking a pill navigates to the module's first child route AND sets that module as active for the sidebar.
+- Add prop `variant?: 'standalone' | 'hybrid'` (default `standalone`).
+- In `hybrid` variant: drop the left padding/branch-name strip on the left so it sits flush against the modules grid line; keep all utility buttons identical.
 
-### 4. AppLayout / AppSidebar wiring
+### 3. `AppSidebar.tsx`
 
-- `AppLayout.tsx`
-  - Replace `collapsed` boolean state with `navMode` state.
-  - Subscribe to `storage` events to keep multiple tabs in sync.
-  - Render order:
-    - `navMode === 'hybrid'`: render `TopModulesBar` above the content row; pass the active module to `AppSidebar`.
-    - Else: render today's layout unchanged.
-- `AppSidebar.tsx`
-  - Accept new optional props: `mode: NavMode`, `activeModuleId?: string`.
-  - When `mode === 'hybrid'`: filter `menuSections` down to only the items belonging to the active module (no section headers, single flat list). Hide collapse toggle. Width stays `w-64`. Logo hidden in hybrid (it's already in TopModulesBar) — header area becomes the active module title.
-  - When `mode === 'collapsed'`: behave exactly as today's collapsed.
-  - When `mode === 'vertical'`: behave exactly as today's expanded.
-- `MobileNav` is **not modified** — mobile keeps the full grouped sidebar via the existing Sheet.
+- New prop `headerless?: boolean`. When true (passed only in hybrid mode), the sidebar renders **without** the top header block (no logo, no MODULE chip, no collapse button) — it becomes a pure scrollable list flush under the utility band.
+- Remove the duplicated MODULE chip from inside the sidebar in hybrid mode (now lives in the layout grid).
 
-### 5. Header touch-up
+### 4. `TopModulesBar.tsx`
 
-- `AppHeader.tsx`: insert `<NavModeMenu />` next to the theme toggle. No other changes.
+- Remove its own `border-b` and background (the layout band owns the border + bg now).
+- Keep horizontal scroll for overflow.
+- Active pill: keep the soft primary glow, add a subtle bottom indicator bar (`after:` 2px line) for parity with Materialize.
 
-## Visual / UX polish (Vuexy 2026)
+### 5. Small visual polish
 
-- Top bar: `h-14 bg-white/80 backdrop-blur border-b border-slate-200/70 shadow-sm`, pills `rounded-xl px-3 py-1.5 text-sm font-medium`, active pill carries soft indigo glow `shadow-[0_6px_20px_-10px_hsl(var(--primary)/0.55)]`.
-- Sidebar in hybrid mode: subtitle chip at top showing "MODULE · {name}" in `text-[10px] uppercase tracking-widest text-slate-500`.
-- Smooth `transition-all duration-200` when switching modes.
-- Honors existing dark theme tokens (`sidebar-*`, `primary`).
-
-## Safety / non-regression
-
-- Zero changes to `src/config/menu.ts`, role checks, routes, or `getMenuForRole`.
-- All filtering still runs through the existing role-based `menuSections` pipeline before module grouping → RBAC preserved.
-- If module grouping yields zero items for the user (e.g. a Trainer with no Sales module), that pill is simply not rendered.
-- Mobile (`<lg`) always uses the existing `MobileNav` Sheet regardless of `navMode`.
-- Auth pages, member portal pages, and any page not wrapped in `AppLayout` are untouched.
+- Header band background: `bg-card` with `border-b border-border`.
+- Utility band background: `bg-card/60 backdrop-blur` with `border-b border-border`.
+- Brand cell on row 1 gets `border-r border-border` so the column edge reads cleanly.
 
 ## Files
 
-Created:
-- `src/lib/navPreferences.ts`
-- `src/config/navModules.ts`
-- `src/components/layout/TopModulesBar.tsx`
-- `src/components/layout/NavModeMenu.tsx`
-
 Edited:
-- `src/components/layout/AppLayout.tsx` (state → navMode, conditional render)
-- `src/components/layout/AppSidebar.tsx` (accept `mode` + `activeModuleId`, hybrid render branch)
-- `src/components/layout/AppHeader.tsx` (mount `NavModeMenu`)
+- `src/components/layout/AppLayout.tsx` — new hybrid grid render branch
+- `src/components/layout/AppSidebar.tsx` — `headerless` prop
+- `src/components/layout/AppHeader.tsx` — `variant` prop
+- `src/components/layout/TopModulesBar.tsx` — strip own chrome, add active indicator
 
-No DB, no edge functions, no route changes, no menu config changes.
+No new files. No changes to menu config, RBAC, routes, mobile nav, or NavModeMenu.
+
+## Non-goals / safety
+
+- Mobile (`<lg`) untouched — still uses MobileNav sheet.
+- Vertical and Collapsed modes render exactly as today.
+- No changes to `getMenuForRole`, `navModules.ts`, or any business logic.
