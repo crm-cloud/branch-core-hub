@@ -91,7 +91,13 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
       });
 
       if (trigger === 'send_now') {
-        const result = await sendCampaignNow(campaign, { memberIds: resolvedMemberIds });
+        // If a richer audience kind is selected, route through the unified resolver so
+        // members + leads + contacts can all be reached in one broadcast.
+        const useResolver = filter.audience_kind && filter.audience_kind !== 'members';
+        const audience = useResolver
+          ? { recipients: await (await import('@/services/campaignService')).resolveCampaignAudience(branchId, filter) }
+          : { memberIds: resolvedMemberIds };
+        const result = await sendCampaignNow(campaign, audience);
         toast.success(`Campaign sent — ${result.sent} delivered, ${result.failed} failed`);
       } else if (trigger === 'scheduled') {
         toast.success(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
