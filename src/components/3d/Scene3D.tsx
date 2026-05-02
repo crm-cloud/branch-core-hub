@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import HeroDumbbell from './HeroDumbbell';
 import FloatingWords from './FloatingWords';
 import ScrollOverlay from '../ui/ScrollOverlay';
@@ -32,6 +32,7 @@ interface Scene3DProps {
 const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
   const [isMobile, setIsMobile] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const onScrollProgressRef = useRef(onScrollProgress);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -41,13 +42,17 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
   }, []);
 
   useEffect(() => {
+    onScrollProgressRef.current = onScrollProgress;
+  }, [onScrollProgress]);
+
+  useEffect(() => {
     let frame = 0;
     const updateScrollProgress = () => {
       frame = 0;
       const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
       const nextProgress = maxScroll > 0 ? Math.min(Math.max(window.scrollY / maxScroll, 0), 1) : 0;
       setScrollProgress(nextProgress);
-      onScrollProgress(nextProgress);
+      onScrollProgressRef.current(nextProgress);
     };
 
     const requestUpdate = () => {
@@ -63,7 +68,7 @@ const Scene3D = ({ onScrollProgress }: Scene3DProps) => {
       window.removeEventListener('scroll', requestUpdate);
       window.removeEventListener('resize', requestUpdate);
     };
-  }, [onScrollProgress]);
+  }, []);
 
   return (
     <>
