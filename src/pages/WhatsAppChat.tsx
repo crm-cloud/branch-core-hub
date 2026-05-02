@@ -54,6 +54,13 @@ const PlatformIcon = ({ platform, className = "h-3.5 w-3.5" }: { platform?: stri
 import { AddLeadDrawer } from '@/components/leads/AddLeadDrawer';
 import { ContactMemberContext } from '@/components/communications/ContactMemberContext';
 import { useChatSound } from '@/hooks/useChatSound';
+import { resolveIdentities, type ResolvedIdentity } from '@/lib/contacts/resolveIdentity';
+import { upsertContact, CONTACT_CATEGORIES } from '@/services/contactService';
+import { formatPhoneDisplay, normalizePhone as normalizePhoneE164 } from '@/lib/contacts/phone';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 
