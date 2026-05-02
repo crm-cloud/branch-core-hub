@@ -44,7 +44,7 @@ const empty = (branchId: string): ContactInput => ({
 });
 
 export default function ContactBookPage() {
-  const { selectedBranch, activeBranchId } = useBranchContext();
+  const { selectedBranch, effectiveBranchId } = useBranchContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
