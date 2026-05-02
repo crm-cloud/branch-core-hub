@@ -51,7 +51,7 @@ export const NAV_MODULES: NavModule[] = [
     label: 'Operations',
     icon: Wrench,
     sections: ['Core'],
-    hrefs: ['/equipment', '/equipment-maintenance', '/lockers', '/devices', '/follow-up-center', '/all-bookings', '/tasks'],
+    hrefs: ['/equipment-maintenance', '/lockers', '/devices', '/follow-up-center', '/all-bookings', '/tasks'],
   },
   {
     id: 'pt',
