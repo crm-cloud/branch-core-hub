@@ -94,49 +94,28 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
         throw new Error('Please add at least one valid line item');
       }
 
-      const subtotal = calculateSubtotal();
-      const taxAmount = calculateTax();
-      const total = calculateTotal();
+      // Atomic RPC: invoice + items in one transaction.
+      const { data, error } = await supabase.rpc('create_manual_invoice', {
+        p_branch_id: branchId,
+        p_member_id: memberId || null,
+        p_items: validItems.map(it => ({
+          description: it.description,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+        })) as never,
+        p_due_date: dueDate || null,
+        p_notes: notes || null,
+        p_discount_amount: discountAmount,
+        p_include_gst: includeGst,
+        p_gst_rate: includeGst ? gstRate : 0,
+        p_customer_gstin: includeGst ? memberGstin || null : null,
+      });
 
-      // Create invoice
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert({
-          branch_id: branchId,
-          member_id: memberId || null,
-          invoice_number: '', // Auto-generated
-          subtotal,
-          discount_amount: discountAmount,
-          tax_amount: taxAmount,
-          total_amount: total,
-          status: 'pending',
-          due_date: dueDate,
-          notes: notes || null,
-          is_gst_invoice: includeGst,
-          gst_rate: includeGst ? gstRate : 0,
-          customer_gstin: includeGst ? memberGstin || null : null,
-        })
-        .select()
-        .single();
+      if (error) throw error;
+      const result = data as { success: boolean; error?: string; invoice_id?: string };
+      if (!result?.success) throw new Error(result?.error || 'Invoice creation failed');
 
-      if (invoiceError) throw invoiceError;
-
-      // Create invoice items
-      const invoiceItems = validItems.map(item => ({
-        invoice_id: invoice.id,
-        description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_amount: item.quantity * item.unit_price,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(invoiceItems);
-
-      if (itemsError) throw itemsError;
-
-      return invoice;
+      return { id: result.invoice_id };
     },
     onSuccess: () => {
       toast.success('Invoice created successfully');
@@ -144,7 +123,7 @@ export function CreateInvoiceDrawer({ open, onOpenChange, branchId }: CreateInvo
       onOpenChange(false);
       resetForm();
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to create invoice');
     },
   });
