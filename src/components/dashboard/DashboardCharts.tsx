@@ -22,8 +22,8 @@ export function RevenueChart({ data }: RevenueChartProps) {
         <CardTitle className="text-lg">Revenue Overview</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%" minHeight={300} debounce={50}>
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
@@ -69,8 +69,8 @@ export function AttendanceChart({ data }: AttendanceChartProps) {
         <CardTitle className="text-lg">Weekly Attendance</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%" minHeight={300} debounce={50}>
             <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="name" className="text-xs fill-muted-foreground" />
@@ -203,8 +203,8 @@ export function HourlyAttendanceChart({ data }: HourlyAttendanceChartProps) {
             No check-ins recorded today
           </div>
         ) : (
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%" minHeight={200} debounce={50}>
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="hour" className="text-xs fill-muted-foreground" tick={{ fontSize: 10 }} />

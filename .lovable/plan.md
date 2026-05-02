@@ -1,73 +1,55 @@
-## Goal
+## Goals
 
-Add a fourth desktop navigation layout that keeps the existing **AppHeader** intact (logo, search, branch selector, theme/appearance, notifications, avatar) and renders a **dedicated horizontal menu band directly below it** — no sidebar.
+1. **Logo missing in "Header + Horizontal" mode** — `AppHeader` (standalone variant) doesn't render a brand/logo at all; only `GlobalSearch` sits on the left. Add a logo block on the left of the header.
+2. **Horizontal menu not centered** — `TopModulesBar` left-aligns inside a full-width band. Center the nav items so it looks balanced and stays responsive.
+3. **Dashboard widgets blank on refresh** — Recharts `ResponsiveContainer` measures parent height on first paint; in the new stacked layout the initial layout pass yields 0 height for the lower charts (Membership Distribution, Live Access Feed, Revenue, Attendance) until a resize fires.
 
-This is in addition to the three existing modes (Vertical / Collapsed / Horizontal-only). Vertical, Collapsed, and the current top-bar-only Horizontal mode stay exactly as they are. Mobile navigation is untouched.
+## Changes
 
-## What changes (visual)
+### 1. `src/components/layout/AppHeader.tsx` — add logo on the left
+- Fetch `organization_settings` (logo_url, name) via `useQuery` (same pattern as `AppLayout`).
+- Prepend a brand block before the search area:
+  - If `logo_url` → `<img className="max-h-8 object-contain" />`
+  - Else → text "Incline" / org name in `text-lg font-bold`.
+- Keep `variant="hybrid"` unchanged (logo already drawn by `AppLayout` band in compact hybrid mode) — only render the brand block when `variant === 'standalone'`.
+- Adjust container so layout becomes: `[Brand] [Search] ... [Right actions]` using `flex items-center gap-4`.
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│ AppHeader: logo · search · branch · theme · appearance · bell · avatar│  ← existing header, untouched
-├──────────────────────────────────────────────────────────────────────┤
-│  Dashboard   Members ▾   Sales ▾   Finance ▾   Operations ▾   …      │  ← NEW horizontal band
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│                       Page content (full width)                      │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
-```
+### 2. `src/components/layout/AppLayout.tsx` — center the horizontal menu in `horizontal-stacked`
+- Wrap `TopModulesBar` in a centered container:
+  ```tsx
+  <div className="hidden lg:block sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur">
+    <div className="mx-auto max-w-7xl flex justify-center">
+      <TopModulesBar groups={...} bare />
+    </div>
+  </div>
+  ```
+- Pass `bare` so `TopModulesBar` doesn't double-draw border/background.
+- `TopModulesBar` nav already uses `flex items-center gap-1`; with the centered wrapper the buttons collapse to natural width and sit centered. On narrow desktops the inner `ScrollArea` keeps it scrollable.
 
-- Active module gets a subtle pill + a 2px primary underline (Vuexy-style).
-- Modules with children open a clean dropdown of their child links (same as today's TopModulesBar).
-- The band is `sticky` just under the header so it stays visible while scrolling.
-- Horizontal scroll on overflow (already supported by `TopModulesBar` via `ScrollArea`).
+### 3. `src/components/layout/TopModulesBar.tsx` — small responsive tweak
+- Change `nav` to `flex items-center justify-center gap-1` when `bare` so items center within whatever width the parent gives. (Current `gap-1` left-aligned remains fine for the compact `hybrid` band, so apply `justify-center` only in `bare` + center case — simplest: always allow `justify-center` since ScrollArea handles overflow.)
 
-## Mode catalog (after change)
+### 4. Fix dashboard charts not rendering on refresh
+Root cause: `ResponsiveContainer` reads parent height on mount; in stacked layout the first measurement returns 0 because the chart container is inside `overflow-auto` `<main>` whose initial scroll-height isn't settled when Recharts measures.
 
-| Mode id | Label in menu | Layout |
-|---|---|---|
-| `vertical` | Vertical sidebar | Sidebar + header (current) |
-| `collapsed` | Collapsed sidebar | Icon-only sidebar + header (current) |
-| `hybrid` | Horizontal (compact) | Single-band: brand + modules + header utilities (current) |
-| `horizontal-stacked` | Header + Horizontal menu | **NEW** — full AppHeader on top, horizontal modules band below, no sidebar |
+Fix in `src/components/dashboard/DashboardCharts.tsx` (and any other chart card with the same issue):
+- Replace the wrapper `<div className="h-[300px]">` with an explicit fixed-height div AND give `ResponsiveContainer` `minHeight={300}` plus `debounce={50}` so it re-measures after layout settles. Example:
+  ```tsx
+  <div className="h-[300px] w-full">
+    <ResponsiveContainer width="100%" height="100%" minHeight={300} debounce={50}>
+      ...
+    </ResponsiveContainer>
+  </div>
+  ```
+- Apply to: `RevenueChart`, `AttendanceChart`, `MembershipDistribution` pie chart, and any other ResponsiveContainer in the file.
+- For the Live Access Feed (which is a list, not Recharts), check `src/components/devices/LiveAccessLog.tsx` for a `loading` state that may be silently empty on first render — ensure it shows skeleton until data resolves rather than a blank box.
 
-Default behavior and persistence stay identical (localStorage key `incline.nav-mode`).
+## Out of scope
+- No changes to nav modes/preferences storage.
+- No changes to mobile header.
+- No RBAC, data, or RLS changes.
 
-## Files to change
-
-**`src/lib/navPreferences.ts`**
-- Extend `NavMode` union to include `'horizontal-stacked'`.
-- Update `isValid()` to accept the new value.
-
-**`src/components/layout/NavModeMenu.tsx`**
-- Add a 4th option: **Header + Horizontal** with a `PanelTop` / `Rows3` icon and the description "Header on top, horizontal menu below".
-
-**`src/components/layout/AppLayout.tsx`**
-- Add a new branch: `if (navMode === 'horizontal-stacked') { … }`.
-- Renders, in order:
-  1. Mobile header (same block already used today — unchanged).
-  2. `<AppHeader />` in its **default** variant (logo, search, branch, all utilities — unchanged).
-  3. A `sticky top-[<header height>] z-30` band wrapping `<TopModulesBar groups=… activeModuleId=… onSelect=… />` (non-`bare` so it owns its own subtle border/background).
-  4. `renderContent()` full width (no sidebar).
-- `SessionTimeoutWarning` stays mounted as in other branches.
-- Existing `vertical` / `collapsed` / `hybrid` branches are untouched.
-
-**`src/components/layout/TopModulesBar.tsx`**
-- No structural change needed. Confirm that `bare={false}` (default) renders the band with `border-b` + `bg-card/80 backdrop-blur` so it visually sits as a clean second layer under the header.
-- Optional polish: tighten vertical padding to `py-1.5` so the second band doesn't feel heavy.
-
-## Things explicitly preserved
-
-- Role-based menu filtering — already handled in `AppLayout` via `getMenuForRole(roles)` and per-item `roles` filter; new mode reuses the same `moduleGroups` memo.
-- Branch context, `SessionTimeoutWarning`, mobile header, and all existing routes.
-- The current `hybrid` mode (single-band horizontal) remains available for users who prefer maximum vertical space.
-- `AppHeader` default variant is reused as-is — no new variant needed for this mode.
-
-## Acceptance checks
-
-- Switching to **Header + Horizontal** from the layout menu hides the sidebar, keeps the full AppHeader, and shows the modules band directly under it.
-- Clicking a parent module navigates to its first child and highlights the module; child dropdowns work.
-- Choice persists across reloads (localStorage), and old values (`vertical` / `collapsed` / `hybrid`) keep working.
-- Mobile (<lg) layout is visually identical to today in all four modes.
-- No regressions to RBAC: items the user can't see in vertical mode also don't appear in the horizontal band.
+## Verification
+- Switch to "Header + Horizontal": logo visible on left of header; module bar centered; resize from 1024 → 1440 stays centered; narrow widths scroll horizontally.
+- Hard refresh `/` (Dashboard): all four chart/widget cards render content immediately, no empty grey boxes.
+- Other modes (vertical / collapsed / hybrid) unchanged visually.

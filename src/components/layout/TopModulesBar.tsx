@@ -45,7 +45,7 @@ export function TopModulesBar({ groups, activeModuleId, onSelect, bare = false }
       )}
     >
       <ScrollArea className="w-full">
-        <nav className={cn('flex items-center gap-1', bare ? 'px-2 py-2' : 'px-4 py-2')}>
+        <nav className={cn('flex items-center gap-1', bare ? 'px-2 py-2 justify-center' : 'px-4 py-2')}>
           {groups.map((g) => {
             const Icon = g.module.icon;
             const isActive = g.module.id === activeModuleId;

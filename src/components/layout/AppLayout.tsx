@@ -241,13 +241,16 @@ export function AppLayout({ children }: AppLayoutProps) {
           <AppHeader />
         </div>
 
-        {/* Desktop: horizontal modules band directly under header */}
-        <div className="hidden lg:block sticky top-0 z-30">
-          <TopModulesBar
-            groups={moduleGroups}
-            activeModuleId={activeModuleId}
-            onSelect={setActiveModuleId}
-          />
+        {/* Desktop: horizontal modules band directly under header (centered) */}
+        <div className="hidden lg:block sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+          <div className="mx-auto max-w-7xl flex justify-center px-4">
+            <TopModulesBar
+              groups={moduleGroups}
+              activeModuleId={activeModuleId}
+              onSelect={setActiveModuleId}
+              bare
+            />
+          </div>
         </div>
 
         {/* Full-width content (no sidebar) */}
