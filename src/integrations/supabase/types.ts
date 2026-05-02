@@ -10191,6 +10191,10 @@ export type Database = {
         Returns: Json
       }
       auto_expire_memberships: { Args: never; Returns: undefined }
+      bill_locker_period: {
+        Args: { p_amount: number; p_assignment_id: string; p_months?: number }
+        Returns: Json
+      }
       book_class: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
@@ -10363,6 +10367,20 @@ export type Database = {
           p_referred_reward_value?: number
           p_referrer_reward_type?: string
           p_referrer_reward_value?: number
+        }
+        Returns: Json
+      }
+      create_manual_invoice: {
+        Args: {
+          p_branch_id: string
+          p_customer_gstin?: string
+          p_discount_amount?: number
+          p_due_date?: string
+          p_gst_rate?: number
+          p_include_gst?: boolean
+          p_items: Json
+          p_member_id: string
+          p_notes?: string
         }
         Returns: Json
       }
