@@ -1,7 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { reportError } from '@/lib/errorReporter';
 
 interface Props {
   children: ReactNode;
@@ -28,30 +28,17 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ errorInfo });
     console.error('ErrorBoundary caught:', error, errorInfo);
 
-    // Fire-and-forget: log to error_logs table
-    this.logErrorToDatabase(error, errorInfo).catch(() => {
-      // Silently ignore - never cause a secondary crash
+    // Route to the unified log_error_event RPC (fingerprint dedup, single source).
+    reportError(error.message || 'Unknown error', {
+      severity: 'critical',
+      stack: error.stack || null,
+      context: {
+        componentStack: errorInfo.componentStack,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      },
+    }).catch(() => {
+      // Never cause a secondary crash
     });
-  }
-
-  private async logErrorToDatabase(error: Error, errorInfo: ErrorInfo) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return; // Skip DB insert when unauthenticated
-
-      await (supabase.from('error_logs') as any).insert({
-        user_id: session.user?.id || null,
-        error_message: error.message || 'Unknown error',
-        stack_trace: error.stack || null,
-        component_name: errorInfo.componentStack || null,
-        route: window.location.pathname,
-        browser_info: navigator.userAgent,
-        status: 'open',
-        source: 'frontend',
-      });
-    } catch {
-      // Silently fail
-    }
   }
 
   handleReset = () => {
