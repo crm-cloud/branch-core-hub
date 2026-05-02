@@ -1782,8 +1782,11 @@ export type Database = {
         Row: {
           attempt_count: number
           branch_id: string
+          category: string | null
+          channel: string | null
           content: string | null
           created_at: string
+          dedupe_key: string | null
           delivery_metadata: Json
           delivery_status: Database["public"]["Enums"]["reminder_delivery_status"]
           error_message: string | null
@@ -1801,8 +1804,11 @@ export type Database = {
         Insert: {
           attempt_count?: number
           branch_id: string
+          category?: string | null
+          channel?: string | null
           content?: string | null
           created_at?: string
+          dedupe_key?: string | null
           delivery_metadata?: Json
           delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
           error_message?: string | null
@@ -1820,8 +1826,11 @@ export type Database = {
         Update: {
           attempt_count?: number
           branch_id?: string
+          category?: string | null
+          channel?: string | null
           content?: string | null
           created_at?: string
+          dedupe_key?: string | null
           delivery_metadata?: Json
           delivery_status?: Database["public"]["Enums"]["reminder_delivery_status"]
           error_message?: string | null
@@ -5383,6 +5392,84 @@ export type Database = {
         }
         Relationships: []
       }
+      member_communication_preferences: {
+        Row: {
+          announcements: boolean
+          branch_id: string
+          class_notifications: boolean
+          created_at: string
+          email_enabled: boolean
+          id: string
+          marketing: boolean
+          member_id: string
+          membership_reminders: boolean
+          payment_receipts: boolean
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          retention_nudges: boolean
+          review_requests: boolean
+          sms_enabled: boolean
+          timezone: string
+          updated_at: string
+          whatsapp_enabled: boolean
+        }
+        Insert: {
+          announcements?: boolean
+          branch_id: string
+          class_notifications?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          marketing?: boolean
+          member_id: string
+          membership_reminders?: boolean
+          payment_receipts?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          retention_nudges?: boolean
+          review_requests?: boolean
+          sms_enabled?: boolean
+          timezone?: string
+          updated_at?: string
+          whatsapp_enabled?: boolean
+        }
+        Update: {
+          announcements?: boolean
+          branch_id?: string
+          class_notifications?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          id?: string
+          marketing?: boolean
+          member_id?: string
+          membership_reminders?: boolean
+          payment_receipts?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          retention_nudges?: boolean
+          review_requests?: boolean
+          sms_enabled?: boolean
+          timezone?: string
+          updated_at?: string
+          whatsapp_enabled?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_communication_preferences_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_communication_preferences_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_comps: {
         Row: {
           benefit_type_id: string
@@ -6512,6 +6599,7 @@ export type Database = {
           created_at: string | null
           email_announcements: boolean | null
           email_class_notifications: boolean | null
+          email_enabled: boolean
           email_membership_reminders: boolean | null
           email_payment_receipts: boolean | null
           id: string
@@ -6519,13 +6607,29 @@ export type Database = {
           push_new_leads: boolean | null
           push_payment_alerts: boolean | null
           push_task_reminders: boolean | null
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          sms_announcements: boolean
+          sms_class_notifications: boolean
+          sms_enabled: boolean
+          sms_membership_reminders: boolean
+          sms_payment_receipts: boolean
+          sms_retention_nudges: boolean
+          timezone: string
           updated_at: string | null
           user_id: string | null
+          whatsapp_announcements: boolean
+          whatsapp_class_notifications: boolean
+          whatsapp_enabled: boolean
+          whatsapp_membership_reminders: boolean
+          whatsapp_payment_receipts: boolean
+          whatsapp_retention_nudges: boolean
         }
         Insert: {
           created_at?: string | null
           email_announcements?: boolean | null
           email_class_notifications?: boolean | null
+          email_enabled?: boolean
           email_membership_reminders?: boolean | null
           email_payment_receipts?: boolean | null
           id?: string
@@ -6533,13 +6637,29 @@ export type Database = {
           push_new_leads?: boolean | null
           push_payment_alerts?: boolean | null
           push_task_reminders?: boolean | null
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          sms_announcements?: boolean
+          sms_class_notifications?: boolean
+          sms_enabled?: boolean
+          sms_membership_reminders?: boolean
+          sms_payment_receipts?: boolean
+          sms_retention_nudges?: boolean
+          timezone?: string
           updated_at?: string | null
           user_id?: string | null
+          whatsapp_announcements?: boolean
+          whatsapp_class_notifications?: boolean
+          whatsapp_enabled?: boolean
+          whatsapp_membership_reminders?: boolean
+          whatsapp_payment_receipts?: boolean
+          whatsapp_retention_nudges?: boolean
         }
         Update: {
           created_at?: string | null
           email_announcements?: boolean | null
           email_class_notifications?: boolean | null
+          email_enabled?: boolean
           email_membership_reminders?: boolean | null
           email_payment_receipts?: boolean | null
           id?: string
@@ -6547,8 +6667,23 @@ export type Database = {
           push_new_leads?: boolean | null
           push_payment_alerts?: boolean | null
           push_task_reminders?: boolean | null
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          sms_announcements?: boolean
+          sms_class_notifications?: boolean
+          sms_enabled?: boolean
+          sms_membership_reminders?: boolean
+          sms_payment_receipts?: boolean
+          sms_retention_nudges?: boolean
+          timezone?: string
           updated_at?: string | null
           user_id?: string | null
+          whatsapp_announcements?: boolean
+          whatsapp_class_notifications?: boolean
+          whatsapp_enabled?: boolean
+          whatsapp_membership_reminders?: boolean
+          whatsapp_payment_receipts?: boolean
+          whatsapp_retention_nudges?: boolean
         }
         Relationships: []
       }
@@ -10484,6 +10619,7 @@ export type Database = {
       }
       is_branch_member: { Args: { p_branch_id: string }; Returns: boolean }
       is_dr_readonly: { Args: never; Returns: boolean }
+      is_in_quiet_hours: { Args: { p_member_id: string }; Returns: boolean }
       issue_referral_reward: {
         Args: {
           p_actor_user_id?: string
@@ -10929,6 +11065,13 @@ export type Database = {
         }
         Returns: Json
       }
+      should_send_communication: {
+        Args: { p_category: string; p_channel: string; p_member_id: string }
+        Returns: {
+          allowed: boolean
+          reason: string
+        }[]
+      }
       staff_check_in:
         | {
             Args: { p_branch_id: string; p_notes?: string; p_user_id: string }
@@ -11105,6 +11248,9 @@ export type Database = {
         | "sent"
         | "failed"
         | "skipped"
+        | "suppressed"
+        | "deduped"
+        | "queued"
       task_priority: "low" | "medium" | "high" | "urgent"
       task_status: "pending" | "in_progress" | "completed" | "cancelled"
       wallet_txn_type:
@@ -11382,6 +11528,9 @@ export const Constants = {
         "sent",
         "failed",
         "skipped",
+        "suppressed",
+        "deduped",
+        "queued",
       ],
       task_priority: ["low", "medium", "high", "urgent"],
       task_status: ["pending", "in_progress", "completed", "cancelled"],

@@ -34,13 +34,46 @@ jobs:
       - name: Bundle size guard
         run: |
           set -e
-          MAIN_KB=$(du -k dist/assets/index-*.js 2>/dev/null | sort -nr | head -1 | awk '{print $1}')
-          echo "Largest entry chunk: ${MAIN_KB:-0} KB (uncompressed)"
-          # 1.5 MB uncompressed ≈ ~400 KB gzip budget; tune as needed.
-          if [ "${MAIN_KB:-0}" -gt 1500 ]; then
-            echo "::error::Initial JS chunk exceeds 1500 KB uncompressed"
+          ENTRY_LIMIT=256000   # 250 KB gzip — initial entry chunk
+          CHUNK_LIMIT=614400   # 600 KB gzip — any single chunk
+          echo "Top 10 chunks by gzip size:"
+          for f in dist/assets/*.js; do
+            gz=$(gzip -c "$f" | wc -c)
+            printf '%10d  %s\n' "$gz" "$f"
+          done | sort -nr | head -10
+          echo ""
+          fail=0
+          for f in dist/assets/index-*.js; do
+            gz=$(gzip -c "$f" | wc -c)
+            if [ "$gz" -gt "$ENTRY_LIMIT" ]; then
+              echo "::error::Entry chunk $f is $gz bytes gzip (limit $ENTRY_LIMIT)"
+              fail=1
+            fi
+          done
+          for f in dist/assets/*.js; do
+            gz=$(gzip -c "$f" | wc -c)
+            if [ "$gz" -gt "$CHUNK_LIMIT" ]; then
+              echo "::error::Chunk $f is $gz bytes gzip (limit $CHUNK_LIMIT)"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Direct comm-log write guard
+        run: |
+          set +e
+          # Edge functions must call dispatch-communication, never insert into
+          # communication_logs directly (except dispatch-communication itself).
+          MATCHES=$(grep -RnoE \
+            "from\\(['\"]communication_logs['\"]\\)\\.(insert|upsert)" \
+            supabase/functions 2>/dev/null \
+            | grep -v "supabase/functions/dispatch-communication/")
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Edge functions must route through dispatch-communication:"
+            echo "$MATCHES"
             exit 1
           fi
+          echo "Comm-log write guard passed."
 
       - name: Direct-write guard (services-only)
         run: |
