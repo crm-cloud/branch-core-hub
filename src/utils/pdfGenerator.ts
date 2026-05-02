@@ -27,12 +27,13 @@ interface ContractData {
   companyAddress?: string;
 }
 
-function escapeHtml(value: string): string {
-  return value
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;')
+    .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
 
@@ -476,19 +477,19 @@ function generateWorkoutContent(data: any): string {
   if (data.weeks && Array.isArray(data.weeks) && data.weeks.length > 0) {
     data.weeks.forEach((week: any, wIdx: number) => {
       html += '<div class="section">';
-      html += `<h2 class="section-title">Week ${week.week || wIdx + 1}</h2>`;
+      html += `<h2 class="section-title">Week ${escapeHtml(week.week || wIdx + 1)}</h2>`;
       (week.days || []).forEach((day: any, dIdx: number) => {
         html += `
           <div class="day-card">
-            <div class="day-title">${day.day || day.label || `Day ${dIdx + 1}`}${day.focus ? ` — ${day.focus}` : ''}</div>
+            <div class="day-title">${escapeHtml(day.day || day.label || `Day ${dIdx + 1}`)}${day.focus ? ` — ${escapeHtml(day.focus)}` : ''}</div>
             <ul class="exercise-list">
         `;
         (day.exercises || []).forEach((ex: any) => {
           const name = typeof ex === 'string' ? ex : ex.name;
-          const sets = ex.sets ? `${ex.sets} sets` : '';
-          const reps = ex.reps ? ` × ${ex.reps} reps` : '';
-          const rest = ex.rest || (ex.rest_seconds ? `${ex.rest_seconds}s rest` : '');
-          html += `<li><strong>${name}</strong>${sets || reps || rest ? `<div class="exercise-detail">${[sets + reps, rest].filter(Boolean).join(' • ')}</div>` : ''}</li>`;
+          const sets = ex.sets ? `${escapeHtml(ex.sets)} sets` : '';
+          const reps = ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : '';
+          const rest = ex.rest ? escapeHtml(ex.rest) : (ex.rest_seconds ? `${escapeHtml(ex.rest_seconds)}s rest` : '');
+          html += `<li><strong>${escapeHtml(name)}</strong>${sets || reps || rest ? `<div class="exercise-detail">${[sets + reps, rest].filter(Boolean).join(' • ')}</div>` : ''}</li>`;
         });
         html += '</ul></div>';
       });
@@ -504,16 +505,17 @@ function generateWorkoutContent(data: any): string {
     data.days.forEach((day: any, index: number) => {
       html += `
         <div class="day-card">
-          <div class="day-title">${day.name || `Day ${index + 1}`}</div>
+          <div class="day-title">${escapeHtml(day.name || `Day ${index + 1}`)}</div>
           <ul class="exercise-list">
       `;
       
       if (day.exercises && Array.isArray(day.exercises)) {
         day.exercises.forEach((exercise: any) => {
+          const exName = typeof exercise === 'string' ? exercise : exercise.name;
           html += `
             <li>
-              <strong>${exercise.name || exercise}</strong>
-              ${exercise.sets ? `<div class="exercise-detail">${exercise.sets} sets × ${exercise.reps} reps ${exercise.weight ? `@ ${exercise.weight}` : ''}</div>` : ''}
+              <strong>${escapeHtml(exName)}</strong>
+              ${exercise.sets ? `<div class="exercise-detail">${escapeHtml(exercise.sets)} sets × ${escapeHtml(exercise.reps)} reps ${exercise.weight ? `@ ${escapeHtml(exercise.weight)}` : ''}</div>` : ''}
             </li>
           `;
         });
@@ -530,7 +532,7 @@ function generateWorkoutContent(data: any): string {
     
     data.exercises.forEach((exercise: any) => {
       const name = typeof exercise === 'string' ? exercise : exercise.name;
-      html += `<li><strong>${name}</strong></li>`;
+      html += `<li><strong>${escapeHtml(name)}</strong></li>`;
     });
     
     html += '</ul></div></div>';
@@ -564,29 +566,29 @@ function generateDietContent(data: any, caloriesTarget?: number): string {
     meals.forEach((meal: any, idx: number) => {
       html += `
         <div class="day-card">
-          <div class="day-title">${meal.name || `Meal ${idx + 1}`}${meal.time ? ` <span style="font-weight:400;color:#666;font-size:13px;">· ${meal.time}</span>` : ''}${meal.calories ? `<span class="calories-badge">${Math.round(meal.calories)} kcal</span>` : ''}</div>
+          <div class="day-title">${escapeHtml(meal.name || `Meal ${idx + 1}`)}${meal.time ? ` <span style="font-weight:400;color:#666;font-size:13px;">· ${escapeHtml(meal.time)}</span>` : ''}${meal.calories ? `<span class="calories-badge">${Math.round(Number(meal.calories) || 0)} kcal</span>` : ''}</div>
           <ul class="meal-list">
       `;
       const items = Array.isArray(meal.items) ? meal.items : [];
       if (items.length === 0) {
-        html += `<li>${meal.meal || meal.description || '—'}</li>`;
+        html += `<li>${escapeHtml(meal.meal || meal.description || '—')}</li>`;
       } else {
         items.forEach((it: any) => {
           if (typeof it === 'string') {
-            html += `<li>${it}</li>`;
+            html += `<li>${escapeHtml(it)}</li>`;
           } else {
             const food = it.food || it.name || '';
-            const qty = it.quantity ? ` <span style="color:#666;">(${it.quantity})</span>` : '';
-            const cals = it.calories ? `<span class="calories-badge">${Math.round(it.calories)} kcal</span>` : '';
-            html += `<li>${food}${qty}${cals}</li>`;
+            const qty = it.quantity ? ` <span style="color:#666;">(${escapeHtml(it.quantity)})</span>` : '';
+            const cals = it.calories ? `<span class="calories-badge">${Math.round(Number(it.calories) || 0)} kcal</span>` : '';
+            html += `<li>${escapeHtml(food)}${qty}${cals}</li>`;
           }
         });
       }
       html += '</ul></div>';
     });
     html += '</div>';
-    if (data.hydration) html += `<div class="section"><h2 class="section-title">Hydration</h2><div class="day-card"><p>${data.hydration}</p></div></div>`;
-    if (data.notes) html += `<div class="section"><h2 class="section-title">Notes</h2><div class="day-card"><p>${data.notes}</p></div></div>`;
+    if (data.hydration) html += `<div class="section"><h2 class="section-title">Hydration</h2><div class="day-card"><p>${escapeHtml(data.hydration)}</p></div></div>`;
+    if (data.notes) html += `<div class="section"><h2 class="section-title">Notes</h2><div class="day-card"><p>${escapeHtml(data.notes)}</p></div></div>`;
     return html;
   }
 
@@ -601,7 +603,7 @@ function generateDietContent(data: any, caloriesTarget?: number): string {
       if (mealData) {
         html += `
           <div class="day-card">
-            <div class="day-title">${mealType.charAt(0).toUpperCase() + mealType.slice(1)}</div>
+            <div class="day-title">${escapeHtml(mealType.charAt(0).toUpperCase() + mealType.slice(1))}</div>
             <ul class="meal-list">
         `;
         
@@ -609,10 +611,10 @@ function generateDietContent(data: any, caloriesTarget?: number): string {
           mealData.forEach((item: any) => {
             const name = typeof item === 'string' ? item : item.name;
             const calories = typeof item === 'object' ? item.calories : null;
-            html += `<li>${name}${calories ? `<span class="calories-badge">${calories} kcal</span>` : ''}</li>`;
+            html += `<li>${escapeHtml(name)}${calories ? `<span class="calories-badge">${Math.round(Number(calories) || 0)} kcal</span>` : ''}</li>`;
           });
         } else if (typeof mealData === 'string') {
-          html += `<li>${mealData}</li>`;
+          html += `<li>${escapeHtml(mealData)}</li>`;
         }
         
         html += '</ul></div>';

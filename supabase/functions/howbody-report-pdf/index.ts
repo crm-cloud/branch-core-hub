@@ -1,10 +1,21 @@
-// v1.0.0 — Generate a printable HOWBODY report (auth required, returns HTML)
+// v1.0.1 — Generate a printable HOWBODY report (auth required, returns HTML)
+// Escapes member-supplied strings to prevent stored XSS in generated reports.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -15,15 +26,15 @@ function json(body: unknown, status = 200) {
 
 function row(label: string, value: any, suffix = "") {
   if (value === null || value === undefined || value === "") return "";
-  return `<tr><td style="padding:6px 12px;color:#64748b;font-size:12px">${label}</td>
-  <td style="padding:6px 12px;font-weight:600">${value}${suffix ? ` <span style="color:#94a3b8;font-weight:400">${suffix}</span>` : ""}</td></tr>`;
+  return `<tr><td style="padding:6px 12px;color:#64748b;font-size:12px">${escapeHtml(label)}</td>
+  <td style="padding:6px 12px;font-weight:600">${escapeHtml(value)}${suffix ? ` <span style="color:#94a3b8;font-weight:400">${escapeHtml(suffix)}</span>` : ""}</td></tr>`;
 }
 
 function renderBody(r: any, name: string) {
   const dt = new Date(r.test_time || r.created_at).toLocaleString("en-IN");
   return `
   <h2 style="margin:0 0 4px">Body Composition Report</h2>
-  <p style="margin:0 0 16px;color:#64748b">${name} · ${dt}</p>
+  <p style="margin:0 0 16px;color:#64748b">${escapeHtml(name)} · ${escapeHtml(dt)}</p>
   <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
     ${row("Health Score", r.health_score)}
     ${row("Weight", r.weight, "kg")}
@@ -48,7 +59,7 @@ function renderPosture(r: any, name: string) {
   const dt = new Date(r.test_time || r.created_at).toLocaleString("en-IN");
   return `
   <h2 style="margin:0 0 4px">Posture Analysis Report</h2>
-  <p style="margin:0 0 16px;color:#64748b">${name} · ${dt}</p>
+  <p style="margin:0 0 16px;color:#64748b">${escapeHtml(name)} · ${escapeHtml(dt)}</p>
   <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
     ${row("Posture Type", r.posture_type)}
     ${row("Body Shape Profile", r.body_shape_profile)}
