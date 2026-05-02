@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
 import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Phone } from 'lucide-react';
 import { WhatsAppRoutingSettings } from '@/components/settings/WhatsAppRoutingSettings';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
