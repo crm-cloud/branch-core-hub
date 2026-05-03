@@ -1536,6 +1536,9 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          attachment_filename: string | null
+          attachment_kind: string | null
+          attachment_url: string | null
           audience_filter: Json
           branch_id: string
           channel: string
@@ -1557,6 +1560,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          attachment_filename?: string | null
+          attachment_kind?: string | null
+          attachment_url?: string | null
           audience_filter?: Json
           branch_id: string
           channel: string
@@ -1578,6 +1584,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          attachment_filename?: string | null
+          attachment_kind?: string | null
+          attachment_url?: string | null
           audience_filter?: Json
           branch_id?: string
           channel?: string
@@ -10538,6 +10547,7 @@ export type Database = {
           components: Json | null
           created_at: string | null
           id: string
+          is_stale: boolean
           language: string | null
           meta_template_id: string | null
           name: string
@@ -10553,6 +10563,7 @@ export type Database = {
           components?: Json | null
           created_at?: string | null
           id?: string
+          is_stale?: boolean
           language?: string | null
           meta_template_id?: string | null
           name: string
@@ -10568,6 +10579,7 @@ export type Database = {
           components?: Json | null
           created_at?: string | null
           id?: string
+          is_stale?: boolean
           language?: string | null
           meta_template_id?: string | null
           name?: string
