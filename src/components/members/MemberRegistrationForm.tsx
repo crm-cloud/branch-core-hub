@@ -516,7 +516,7 @@ interface BuildPdfArgs {
   fitnessGoals: string;
   medicalConditions: string;
   customTerms: string;
-  terms: string[];
+  terms: TermClause[];
   signatureDataUrl?: string | null;
 }
 
