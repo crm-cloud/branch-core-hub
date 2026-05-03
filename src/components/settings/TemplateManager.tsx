@@ -189,17 +189,20 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
       const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from('communication_logs')
-        .select('template_id, delivery_status, status')
+        .select('template_id, delivery_status, status, delivery_metadata')
         .gte('created_at', since)
         .not('template_id', 'is', null);
-      const map: Record<string, { sent: number; failed: number; queued: number }> = {};
+      const map: Record<string, { sent: number; failed: number; queued: number; delivered: number; read: number }> = {};
       for (const r of (data || []) as any[]) {
         if (!r.template_id) continue;
         const k = r.template_id as string;
-        if (!map[k]) map[k] = { sent: 0, failed: 0, queued: 0 };
+        if (!map[k]) map[k] = { sent: 0, failed: 0, queued: 0, delivered: 0, read: 0 };
         const ds = (r.delivery_status || r.status || '').toString().toLowerCase();
-        if (['sent', 'delivered', 'read'].includes(ds)) map[k].sent++;
-        else if (['failed', 'error', 'bounced', 'rejected'].includes(ds)) map[k].failed++;
+        const wa = (r.delivery_metadata?.wa_status || '').toString().toLowerCase();
+        if (wa === 'read') map[k].read++;
+        else if (wa === 'delivered') map[k].delivered++;
+        if (['sent', 'delivered', 'read'].includes(ds) || ['sent', 'delivered', 'read'].includes(wa)) map[k].sent++;
+        else if (['failed', 'error', 'bounced', 'rejected'].includes(ds) || wa === 'failed') map[k].failed++;
         else map[k].queued++;
       }
       return map;
