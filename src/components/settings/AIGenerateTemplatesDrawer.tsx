@@ -160,8 +160,28 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
       } else {
         toast.success(`Saved "${p.name}"`);
       }
+
+      // Auto-create automation mapping so the event actually fires once approved.
+      if (channel === 'whatsapp' && p.event && p.event !== 'custom') {
+        const { error: trigErr } = await supabase
+          .from('whatsapp_triggers')
+          .upsert(
+            {
+              branch_id: branchId,
+              event_name: p.event,
+              template_id: localRow!.id,
+              delay_minutes: 0,
+              is_active: true,
+            },
+            { onConflict: 'branch_id,event_name' },
+          );
+        if (trigErr) console.warn('whatsapp_triggers upsert failed', trigErr);
+        qc.invalidateQueries({ queryKey: ['whatsapp-triggers'] });
+      }
+
       qc.invalidateQueries({ queryKey: ['communication-templates'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-templates-health'] });
+      qc.invalidateQueries({ queryKey: ['template-coverage'] });
       setProposals((arr) => arr.filter((x) => x.name !== p.name));
     } catch (e: any) {
       toast.error(`${p.name}: ${e.message}`);
