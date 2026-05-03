@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Mail, Phone, Sparkles, Bot, Workflow, PhoneForwarded, FileText, HeartPulse, BadgeCheck } from 'lucide-react';
+import { MessageSquare, Mail, Phone, Sparkles, Bot, Workflow, PhoneForwarded, FileText, BadgeCheck, Wand2 } from 'lucide-react';
 import { TemplateManager } from './TemplateManager';
 import { WhatsAppAutomations } from './WhatsAppAutomations';
-import { WhatsAppTemplatesHealth } from './WhatsAppTemplatesHealth';
+import { TemplateCoverageMatrix } from './TemplateCoverageMatrix';
 import { MetaTemplatesPanel } from './MetaTemplatesPanel';
 import { WhatsAppAISettings } from './WhatsAppAISettings';
 import { WhatsAppRoutingSettings } from './WhatsAppRoutingSettings';
@@ -88,10 +88,10 @@ export function CommunicationTemplatesHub() {
           <Tabs defaultValue="crm" className="w-full">
             <TabsList className="flex flex-wrap gap-1 h-auto bg-muted/50 p-1 rounded-xl">
               <TabsTrigger value="crm" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> CRM Templates</TabsTrigger>
-              <TabsTrigger value="health" className="gap-1.5"><HeartPulse className="h-3.5 w-3.5" /> Templates Health</TabsTrigger>
+              <TabsTrigger value="coverage" className="gap-1.5"><Wand2 className="h-3.5 w-3.5" /> Coverage & AI</TabsTrigger>
               <TabsTrigger value="meta" className="gap-1.5"><BadgeCheck className="h-3.5 w-3.5" /> Meta Approved</TabsTrigger>
               <TabsTrigger value="auto" className="gap-1.5"><Workflow className="h-3.5 w-3.5" /> Automations</TabsTrigger>
-              <TabsTrigger value="ai" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> AI Agent</TabsTrigger>
+              <TabsTrigger value="ai-agent" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> AI Agent</TabsTrigger>
               <TabsTrigger value="routing" className="gap-1.5"><PhoneForwarded className="h-3.5 w-3.5" /> Number Routing</TabsTrigger>
             </TabsList>
 
@@ -108,12 +108,8 @@ export function CommunicationTemplatesHub() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="health" className="mt-4">
-              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-                <CardContent className="pt-6">
-                  <WhatsAppTemplatesHealth onFixClick={(eventName) => { handleMap(eventName); }} />
-                </CardContent>
-              </Card>
+            <TabsContent value="coverage" className="mt-4">
+              <TemplateCoverageMatrix channel="whatsapp" />
             </TabsContent>
 
             <TabsContent value="meta" className="mt-4">
@@ -128,7 +124,7 @@ export function CommunicationTemplatesHub() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="ai" className="mt-4">
+            <TabsContent value="ai-agent" className="mt-4">
               <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
                 <CardContent className="pt-6"><WhatsAppAISettings /></CardContent>
               </Card>
@@ -144,20 +140,38 @@ export function CommunicationTemplatesHub() {
 
         <TabsContent value="sms" className="mt-4 space-y-5">
           <ChannelHero channel="sms" onAi={() => openAi('sms')} />
-          <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-            <CardContent className="pt-6">
-              <TemplateManager filterType="sms" hideHeader />
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="templates" className="w-full">
+            <TabsList className="flex flex-wrap gap-1 h-auto bg-muted/50 p-1 rounded-xl">
+              <TabsTrigger value="templates" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> Templates</TabsTrigger>
+              <TabsTrigger value="coverage" className="gap-1.5"><Wand2 className="h-3.5 w-3.5" /> Coverage & AI</TabsTrigger>
+            </TabsList>
+            <TabsContent value="templates" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><TemplateManager filterType="sms" hideHeader /></CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="coverage" className="mt-4">
+              <TemplateCoverageMatrix channel="sms" />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="email" className="mt-4 space-y-5">
           <ChannelHero channel="email" onAi={() => openAi('email')} />
-          <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-            <CardContent className="pt-6">
-              <TemplateManager filterType="email" hideHeader />
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="templates" className="w-full">
+            <TabsList className="flex flex-wrap gap-1 h-auto bg-muted/50 p-1 rounded-xl">
+              <TabsTrigger value="templates" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> Templates</TabsTrigger>
+              <TabsTrigger value="coverage" className="gap-1.5"><Wand2 className="h-3.5 w-3.5" /> Coverage & AI</TabsTrigger>
+            </TabsList>
+            <TabsContent value="templates" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><TemplateManager filterType="email" hideHeader /></CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="coverage" className="mt-4">
+              <TemplateCoverageMatrix channel="email" />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="ai" className="mt-4 space-y-5">

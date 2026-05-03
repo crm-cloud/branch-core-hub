@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -35,17 +35,24 @@ const STATUS_CONFIG: Record<string, { label: string; icon: any; className: strin
  */
 export function MetaTemplatesPanel() {
   const queryClient = useQueryClient();
-  const { selectedBranch } = useBranchContext();
+  const { selectedBranch, effectiveBranchId } = useBranchContext();
   const [expanded, setExpanded] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [metaApiTemplates, setMetaApiTemplates] = useState<MetaApiTemplate[] | null>(null);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
 
+  // Include both branch-scoped AND global (branch_id IS NULL) integrations.
   const { data: integrations = [] } = useQuery({
-    queryKey: ['integrations', selectedBranch],
+    queryKey: ['integrations', 'whatsapp', selectedBranch],
     queryFn: async () => {
-      let query = supabase.from('integration_settings').select('*');
-      if (selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
+      let query = supabase
+        .from('integration_settings')
+        .select('*')
+        .eq('integration_type', 'whatsapp')
+        .eq('is_active', true);
+      if (selectedBranch !== 'all') {
+        query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
+      }
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
@@ -65,20 +72,30 @@ export function MetaTemplatesPanel() {
     },
   });
 
-  const hasWhatsAppConfig = integrations.some(
-    (i: any) => i.integration_type === 'whatsapp' && i.is_active
-  );
+  // Realtime: refresh on any templates table change.
+  useEffect(() => {
+    const ch = supabase
+      .channel('templates-meta-panel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'templates' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['communication-templates'] });
+        queryClient.invalidateQueries({ queryKey: ['communication-templates', 'whatsapp-meta'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
+
+  const hasWhatsAppConfig = integrations.length > 0;
+  const branchForCall = effectiveBranchId;
 
   const handleSync = async () => {
-    const branch = selectedBranch !== 'all' ? selectedBranch : null;
-    if (!branch) {
-      toast.error('Please select a specific branch to sync Meta templates');
+    if (!branchForCall) {
+      toast.error('No branch available to resolve WhatsApp credentials');
       return;
     }
     setIsSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-        body: { action: 'list', branch_id: branch },
+        body: { action: 'list', branch_id: branchForCall },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -139,11 +156,10 @@ export function MetaTemplatesPanel() {
                 variant="outline"
                 size="sm"
                 onClick={async () => {
-                  const branch = selectedBranch !== 'all' ? selectedBranch : null;
-                  if (!branch) { toast.error('Select a specific branch first'); return; }
+                  if (!branchForCall) { toast.error('No branch available'); return; }
                   try {
                     const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-                      body: { action: 'list', branch_id: branch },
+                      body: { action: 'list', branch_id: branchForCall },
                     });
                     if (error) throw error;
                     if (data?.error) {
@@ -153,12 +169,12 @@ export function MetaTemplatesPanel() {
                       }
                       throw new Error(errStr);
                     }
-                    toast.success(`✅ Connection successful! Found ${data?.templates?.length || 0} templates.`);
+                    toast.success(`Connection successful — found ${data?.templates?.length || 0} templates.`);
                   } catch (err: any) {
-                    toast.error(`❌ Connection failed: ${err.message}`);
+                    toast.error(`Connection failed: ${err.message}`);
                   }
                 }}
-                disabled={!hasWhatsAppConfig}
+                disabled={!hasWhatsAppConfig || !branchForCall}
                 className="gap-1.5"
               >
                 <CheckCircle className="h-3.5 w-3.5" />
@@ -168,7 +184,7 @@ export function MetaTemplatesPanel() {
                 variant="outline"
                 size="sm"
                 onClick={handleSync}
-                disabled={isSyncing || !hasWhatsAppConfig}
+                disabled={isSyncing || !hasWhatsAppConfig || !branchForCall}
                 data-testid="btn-sync-meta-templates"
               >
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
