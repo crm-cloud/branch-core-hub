@@ -310,6 +310,71 @@ export default function BenefitTracking() {
                 )}
               </TabsContent>
 
+              <TabsContent value="gifts">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Gift className="h-5 w-5 text-amber-500" />
+                      Gifts & Complimentary Sessions
+                    </CardTitle>
+                    <CardDescription>
+                      Comp sessions granted to this member. These are consumed before plan benefits.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {comps.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No gifts granted yet
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Granted</TableHead>
+                            <TableHead>Benefit</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Used</TableHead>
+                            <TableHead>Remaining</TableHead>
+                            <TableHead>Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {comps.map((c: any) => {
+                            const remaining = c.comp_sessions - c.used_sessions;
+                            const exhausted = remaining <= 0;
+                            return (
+                              <TableRow key={c.id} className={exhausted ? 'opacity-60' : ''}>
+                                <TableCell>{format(new Date(c.created_at), 'dd MMM yyyy')}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="gap-1">
+                                    <Sparkles className="h-3 w-3 text-amber-500" />
+                                    {c.benefit_types?.name || 'Benefit'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{c.comp_sessions}</TableCell>
+                                <TableCell>{c.used_sessions}</TableCell>
+                                <TableCell>
+                                  {exhausted ? (
+                                    <Badge variant="secondary" className="text-[10px]">Exhausted</Badge>
+                                  ) : (
+                                    <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                      {remaining} left
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground max-w-[240px] truncate">
+                                  {c.reason || '-'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="history">
                 <Card>
                   <CardHeader>
