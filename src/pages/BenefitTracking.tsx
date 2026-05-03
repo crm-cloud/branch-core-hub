@@ -130,9 +130,50 @@ export default function BenefitTracking() {
   const activeComps = comps.filter((c: any) => c.used_sessions < c.comp_sessions);
   const totalGiftSessions = activeComps.reduce((sum: number, c: any) => sum + (c.comp_sessions - c.used_sessions), 0);
 
+  // Aggregate comps by benefit_type_id for merging into balances
+  const compMap: Record<string, { total: number; used: number; remaining: number; name?: string }> = {};
+  comps.forEach((c: any) => {
+    if (!c.benefit_type_id) return;
+    const m = compMap[c.benefit_type_id] || { total: 0, used: 0, remaining: 0, name: c.benefit_types?.name };
+    m.total += c.comp_sessions || 0;
+    m.used += c.used_sessions || 0;
+    m.remaining += Math.max(0, (c.comp_sessions || 0) - (c.used_sessions || 0));
+    m.name = m.name || c.benefit_types?.name;
+    compMap[c.benefit_type_id] = m;
+  });
+
+  // Merge plan balances + comps; append gift-only entries
+  const mergedBalanceIds = new Set<string>();
+  const combinedBalances = balances.map((b) => {
+    if (b.benefit_type_id && compMap[b.benefit_type_id]) {
+      mergedBalanceIds.add(b.benefit_type_id);
+      const c = compMap[b.benefit_type_id];
+      return { ...b, compTotal: c.total, compUsed: c.used, compRemaining: c.remaining };
+    }
+    return b;
+  });
+  Object.entries(compMap).forEach(([btId, c]) => {
+    if (mergedBalanceIds.has(btId)) return;
+    combinedBalances.push({
+      benefit_type: 'other' as any,
+      benefit_type_id: btId,
+      label: c.name || 'Gift Benefit',
+      frequency: 'per_membership' as any,
+      limit_count: 0,
+      description: 'Complimentary sessions',
+      used: 0,
+      remaining: 0,
+      isUnlimited: false,
+      compTotal: c.total,
+      compUsed: c.used,
+      compRemaining: c.remaining,
+      isGiftOnly: true,
+    });
+  });
+
   // Stats — combine plan balance + active gift sessions
-  const totalBenefits = balances.length;
-  const exhaustedBenefits = balances.filter(b => !b.isUnlimited && b.remaining === 0).length;
+  const totalBenefits = combinedBalances.length;
+  const exhaustedBenefits = combinedBalances.filter((b: any) => !b.isUnlimited && (b.remaining || 0) + (b.compRemaining || 0) === 0).length;
   const todayUsage = usageHistory?.filter(u => u.usage_date === new Date().toISOString().split('T')[0]).length || 0;
 
   const handleRecordUsage = (benefitType?: BenefitType, benefitTypeId?: string | null) => {
