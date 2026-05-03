@@ -281,6 +281,14 @@ export default function BenefitTracking() {
             <Tabs defaultValue="benefits" className="space-y-4">
               <TabsList>
                 <TabsTrigger value="benefits">Benefit Balances</TabsTrigger>
+                <TabsTrigger value="gifts" className="gap-1.5">
+                  <Gift className="h-3.5 w-3.5" /> Gifts
+                  {activeComps.length > 0 && (
+                    <Badge className="ml-1 h-4 px-1.5 text-[10px] bg-amber-500/15 text-amber-600 border-amber-500/30">
+                      {activeComps.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="history">Usage History</TabsTrigger>
               </TabsList>
 
