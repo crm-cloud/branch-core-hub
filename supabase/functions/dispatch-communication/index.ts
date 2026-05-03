@@ -1,4 +1,5 @@
-// dispatch-communication v1.3.0
+// dispatch-communication v1.3.1
+// v1.3.1: extract real edge-function error bodies from function invoke failures.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
 //         pass attachments (auto base64-fetched from attachment.url) and
 //         use_branded_template flag; mirror provider_message_id into delivery_metadata.
@@ -70,6 +71,18 @@ function ok(body: DispatchResult): Response {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+async function functionErrorDetail(error: unknown): Promise<string> {
+  const base = error instanceof Error ? error.message : String(error ?? 'edge_function_error');
+  try {
+    const ctx = (error as { context?: unknown })?.context;
+    if (ctx instanceof Response) {
+      const text = await ctx.clone().text();
+      return text || base;
+    }
+  } catch (_) { /* noop */ }
+  return base;
 }
 
 Deno.serve(async (req) => {
