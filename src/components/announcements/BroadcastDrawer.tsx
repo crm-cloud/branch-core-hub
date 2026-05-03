@@ -6,10 +6,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { MessageSquare, Phone, Mail, Send, FileText, Loader2 } from 'lucide-react';
+import { MessageSquare, Phone, Mail, Send, FileText, Loader2, Paperclip, X, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { uploadAttachment } from '@/utils/uploadAttachment';
 
 interface BroadcastDrawerProps {
   open: boolean;
@@ -32,6 +33,24 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleAttachmentPick = async (file: File | null) => {
+    if (!file) return;
+    if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB for WhatsApp attachments'); return; }
+    setIsUploading(true);
+    try {
+      const kind: 'image' | 'document' = file.type.startsWith('image/') ? 'image' : 'document';
+      const { url } = await uploadAttachment(file, { folder: 'broadcasts', filename: file.name, contentType: file.type });
+      setAttachment({ url, filename: file.name, kind });
+      toast.success('Attachment uploaded');
+    } catch (e: any) {
+      toast.error(e.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const templateQueryType = selectedChannels.size === 1 ? Array.from(selectedChannels)[0] : '';
 
@@ -90,6 +109,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
 
     try {
       for (const channel of selectedChannels) {
+        const supportsAttachment = channel === 'whatsapp' || channel === 'email';
         const { data, error } = await supabase.functions.invoke('send-broadcast', {
           body: {
             channel,
@@ -98,6 +118,9 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
             branch_id: branchId,
             subject: channel === 'email' ? subject || undefined : undefined,
             template_id: channel === 'whatsapp' && templateId ? templateId : undefined,
+            attachment_url: supportsAttachment && attachment ? attachment.url : undefined,
+            attachment_kind: supportsAttachment && attachment ? attachment.kind : undefined,
+            attachment_filename: supportsAttachment && attachment ? attachment.filename : undefined,
           },
         });
         if (error) {
@@ -121,6 +144,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
 
       onOpenChange(false);
       setMessage(''); setSubject(''); setTemplateId(''); setAudience('all');
+      setAttachment(null);
       setSelectedChannels(new Set(['whatsapp']));
     } catch (error: any) {
       toast.error(error.message || 'Failed to send broadcast');
@@ -222,6 +246,35 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
             <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Enter your message..." rows={6} />
             <p className="text-xs text-muted-foreground">Use variables like {'{{member_name}}'}, {'{{member_code}}'}</p>
           </div>
+
+          {(selectedChannels.has('whatsapp') || selectedChannels.has('email')) && (
+            <div className="space-y-2">
+              <Label>Attachment (Optional)</Label>
+              {attachment ? (
+                <div className="flex items-center gap-2 p-2 rounded-lg border bg-muted/30">
+                  {attachment.kind === 'image' ? <ImageIcon className="h-4 w-4 text-emerald-500" /> : <FileText className="h-4 w-4 text-amber-500" />}
+                  <span className="text-sm flex-1 truncate">{attachment.filename}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setAttachment(null)} aria-label="Remove attachment">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    disabled={isUploading}
+                    onChange={(e) => handleAttachmentPick(e.target.files?.[0] ?? null)}
+                  />
+                  {isUploading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                <Paperclip className="h-3 w-3 inline mr-1" />
+                Image (jpg/png) or PDF — max 16MB. Attached on WhatsApp + Email; ignored for SMS.
+              </p>
+            </div>
+          )}
 
           <div className="rounded-lg border border-border bg-muted/50 p-3">
             <p className="text-xs text-muted-foreground">

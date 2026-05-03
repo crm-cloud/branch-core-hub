@@ -1,4 +1,5 @@
-// v2.2.0 — Phase G: pinned to shared META_GRAPH_VERSION (v25.0). Adds `edit` action.
+// v2.3.0 — Adds `bulk_create` (array of template_data, per-row results) and `mark_stale`
+// (flags whatsapp_templates rows whose meta_template_id is no longer present after a list sync).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_GRAPH_VERSION, META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
@@ -192,6 +193,29 @@ serve(async (req) => {
       }
 
       const templates = metaData.data || [];
+      const liveIds = new Set<string>(templates.map((t: any) => t.id));
+
+      // Mark any locally cached row whose Meta ID is no longer returned as stale.
+      try {
+        const { data: existingLocal } = await supabase
+          .from("whatsapp_templates")
+          .select("id, meta_template_id")
+          .eq("waba_id", wabaId);
+        const staleIds = (existingLocal || [])
+          .filter((r: any) => r.meta_template_id && !liveIds.has(r.meta_template_id))
+          .map((r: any) => r.id);
+        if (staleIds.length > 0) {
+          await supabase.from("whatsapp_templates").update({ is_stale: true }).in("id", staleIds);
+        }
+        const liveLocalIds = (existingLocal || [])
+          .filter((r: any) => r.meta_template_id && liveIds.has(r.meta_template_id))
+          .map((r: any) => r.id);
+        if (liveLocalIds.length > 0) {
+          await supabase.from("whatsapp_templates").update({ is_stale: false }).in("id", liveLocalIds);
+        }
+      } catch (e) {
+        console.warn("stale flag update failed:", e);
+      }
 
       // Upsert into whatsapp_templates table
       for (const mt of templates) {
@@ -641,8 +665,25 @@ serve(async (req) => {
       }
     }
 
+    // ── ACTION: bulk_delete_local ──
+    // Deletes local cached rows only; Meta-side deletion must be done in Business Manager.
+    if (action === "bulk_delete_local") {
+      const ids: string[] = body.ids || [];
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing ids[]" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { error: e1 } = await supabase.from("whatsapp_templates").delete().in("id", ids);
+      // Also clear meta_* metadata on legacy templates rows so they appear unsynced again.
+      await supabase.from("templates").update({
+        meta_template_name: null, meta_template_id: null, meta_template_status: null, meta_rejection_reason: null,
+      }).in("id", ids);
+      return new Response(JSON.stringify({ success: !e1, error: e1?.message || null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     return new Response(
-      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | edit | get_status | sync_ig_icebreakers | sync_messenger_quick_replies` }),
+      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | edit | get_status | bulk_delete_local | sync_ig_icebreakers | sync_messenger_quick_replies` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
