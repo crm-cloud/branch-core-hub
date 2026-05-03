@@ -207,6 +207,9 @@ Team Incline Fitness`;
           to: email,
           subject: resolved.subject || emailSubject,
           html: resolved.body,
+          // Wrap the body in the branded Incline shell so invoice emails
+          // arrive professionally styled (logo header, gold accents, footer).
+          use_branded_template: true,
           branch_id: invoice.branch_id,
           attachments: [{
             filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,
