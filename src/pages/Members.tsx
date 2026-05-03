@@ -583,9 +583,22 @@ export default function MembersPage() {
                             </TableCell>
                             <TableCell>
                               {daysLeft !== null ? (
-                                <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
-                                  {getDaysLeftIcon(daysLeft)}
-                                  <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
+                                <div className="flex flex-col gap-1">
+                                  <div className={`flex items-center gap-1.5 ${getDaysLeftColor(daysLeft)}`}>
+                                    {getDaysLeftIcon(daysLeft)}
+                                    <span className="font-medium">{daysLeft > 0 ? `${daysLeft}d` : 'Expired'}</span>
+                                  </div>
+                                  {activeMembership?.id && freeDaysByMembership[activeMembership.id] > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] w-fit gap-1">
+                                          <Gift className="h-3 w-3" />
+                                          +{freeDaysByMembership[activeMembership.id]}d gift
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Includes gifted free days</TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </div>
                               ) : (
                                 <span className="text-muted-foreground">--</span>
