@@ -186,10 +186,22 @@ serve(async (req) => {
       to: cleanPhone,
     };
 
+    let uploadedMediaId: string | null = null;
+    if ((message_type === "image" || message_type === "document") && media_url) {
+      uploadedMediaId = await uploadMediaToMeta({
+        phoneNumberId,
+        accessToken,
+        appSecret,
+        proof,
+        mediaUrl: media_url,
+        fallbackType: message_type === "image" ? "image/jpeg" : "application/pdf",
+      });
+    }
+
     if (message_type === "image") {
       metaPayload.type = "image";
       metaPayload.image = {
-        link: media_url,
+        ...(uploadedMediaId ? { id: uploadedMediaId } : { link: media_url }),
         ...(caption ? { caption } : {}),
       };
     } else if (message_type === "document") {
@@ -197,7 +209,7 @@ serve(async (req) => {
       // the recipient sees a named PDF with descriptive text.
       metaPayload.type = "document";
       metaPayload.document = {
-        link: media_url,
+        ...(uploadedMediaId ? { id: uploadedMediaId } : { link: media_url }),
         filename: body.filename || "document.pdf",
         ...(caption ? { caption } : {}),
       };
