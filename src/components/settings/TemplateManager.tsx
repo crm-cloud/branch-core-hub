@@ -603,6 +603,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
 
   return (
     <div className="space-y-6">
+      {!hideHeader && (
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Communication Templates</h3>
