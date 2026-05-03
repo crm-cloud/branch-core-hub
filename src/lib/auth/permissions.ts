@@ -36,6 +36,7 @@ const MATRIX: Record<Capability, AppRole[]> = {
   freeze_membership:   ['owner', 'admin', 'manager'],
   credit_member:       ['owner', 'admin', 'manager'],
   manage_devices:      ['owner', 'admin', 'manager'],
+  manage_automations:  ['owner', 'admin'],
   view_reconciliation: ['owner', 'admin'],
   book_facility:       ['owner', 'admin', 'manager', 'staff', 'trainer', 'member'],
 };
