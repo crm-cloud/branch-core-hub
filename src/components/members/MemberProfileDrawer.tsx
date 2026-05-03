@@ -839,6 +839,22 @@ export function MemberProfileDrawer({
   const activePTPackage = memberDetails?.member_pt_packages?.find((p: any) => p.status === 'active');
   const hasRegistrationForm = !!registrationFormDocument;
 
+  // Gifted free days (membership extensions) for active membership
+  const { data: freeDaysList = [] } = useQuery({
+    queryKey: ['member-profile-free-days', activeMembership?.id],
+    enabled: !!activeMembership?.id && open,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('membership_free_days')
+        .select('id, days_added, reason, created_at')
+        .eq('membership_id', activeMembership!.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const freeDaysTotal = (freeDaysList as any[]).reduce((s, r) => s + Number(r.days_added || 0), 0);
+
   const recentActivity = useMemo<RecentActivityItem[]>(() => {
     const membershipItems = (memberDetails?.memberships || []).map((membership: any) => ({
       id: `membership-${membership.id}`,
