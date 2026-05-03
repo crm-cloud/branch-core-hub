@@ -47,18 +47,28 @@ interface MemberRegistrationFormProps {
   data: RegistrationFormData;
 }
 
-const DEFAULT_TERMS = [
-  'I hereby acknowledge that I am medically fit to exercise and participate in fitness activities.',
-  'I understand that the membership fee is non-refundable and non-transferable unless stated otherwise.',
-  'I agree to follow all gym rules, regulations, and safety guidelines.',
-  'I will use equipment responsibly and report any damage immediately.',
-  'The management reserves the right to revoke membership for misconduct or violation of rules.',
-  'Membership freezing is subject to applicable charges and prior approval.',
-  'Personal belongings must be secured in designated lockers. The facility is not responsible for lost or stolen items.',
-  'I consent to the collection, storage, and use of my personal data for membership management and communication purposes.',
-  'I have disclosed all relevant medical conditions and accept full responsibility for my health during workouts.',
-  'Any disputes shall be subject to the jurisdiction of the courts in the city where the facility is located.',
+interface TermClause { title: string; body: string; }
+
+const DEFAULT_TERMS: TermClause[] = [
+  { title: 'Health Declaration & Assumption of Risk', body: 'I confirm that I am medically fit to participate in physical exercise. I understand that fitness activities involve inherent risks, including injury, illness, or in rare cases, death. I voluntarily assume all such risks and agree that the fitness centre, its owners, staff, and trainers shall not be held liable for any injury, loss, or damage sustained while using the facility.' },
+  { title: 'Medical Disclosure & Responsibility', body: 'I agree to disclose any pre-existing medical conditions. I understand that I should seek medical advice before starting any exercise program. The fitness centre is not responsible for any health complications arising due to undisclosed conditions.' },
+  { title: 'Code of Conduct & Right of Admission', body: 'Management reserves the right of admission and may terminate membership without refund for: abusive, threatening, or inappropriate behavior; misuse of equipment (including dropping weights negligently); or violation of gym rules or safety guidelines.' },
+  { title: 'Membership Usage & Access Control', body: 'Membership allows one entry per day, unless otherwise specified. Sharing membership credentials (ID card, biometrics, etc.) is strictly prohibited. Any misuse will result in immediate termination without refund.' },
+  { title: 'Fees, Taxes & Payment Policy', body: 'All membership fees are non-refundable and non-transferable under any circumstances, including non-usage, relocation, or change of mind. Applicable taxes, including 5% GST, will be charged additionally. Prices and tax rates are subject to change as per government regulations.' },
+  { title: 'Membership Freeze / Pause', body: 'Membership freezing may be allowed only with prior written request, subject to management approval, and applicable fees and conditions.' },
+  { title: 'Personal Training Policy', body: 'Members are strictly prohibited from offering personal training services or receiving unofficial ("under-the-table") training. All training must be booked through authorized gym channels.' },
+  { title: 'Equipment Use & Property Damage', body: 'Members must use equipment responsibly and follow staff instructions. Any damage caused due to negligence or misuse must be compensated fully by the member.' },
+  { title: 'Personal Belongings & Locker Use', body: 'Lockers are provided for temporary use only. All belongings are kept at the member\u2019s own risk. The fitness centre is not liable for any loss, theft, or damage.' },
+  { title: 'Supplements & External Products', body: 'The fitness centre does not endorse or take responsibility for any supplements or products purchased from third parties. Members consume such products at their own risk.' },
+  { title: 'CCTV Surveillance & Privacy', body: 'The premises are under CCTV surveillance for safety and security. Recorded footage may be accessed only by management. Requests for footage retrieval and masking, if approved, will incur an administrative fee of \u20B9200.' },
+  { title: 'Data Protection & Consent', body: 'By enrolling, I consent to the collection and use of my personal data for membership management and communication and updates. Data will be handled in accordance with applicable privacy laws.' },
+  { title: 'Emergency Medical Consent', body: 'In case of an emergency, I authorize the fitness centre staff to arrange medical assistance. All associated costs shall be borne by me.' },
+  { title: 'Indemnity Clause', body: 'I agree to indemnify and hold harmless the fitness centre, its staff, and affiliates from any claims, damages, or liabilities arising out of my use of the facility.' },
+  { title: 'Rules & Amendments', body: 'Management reserves the right to modify rules, timings, fees, and policies at any time. Members are expected to stay informed and comply with updated terms.' },
+  { title: 'Dispute Resolution & Jurisdiction', body: 'Any disputes arising shall be subject to the jurisdiction of courts in the city where the fitness centre is located.' },
 ];
+
+const MEMBER_DECLARATION = 'I have read, understood, and agree to abide by all the terms and conditions stated above.';
 
 export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: MemberRegistrationFormProps) {
   const queryClient = useQueryClient();
@@ -313,7 +323,8 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       </div>
       <div class="terms">
         <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
-        <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}${customTerms ? `<li>${e(customTerms)}</li>` : ''}</ol>
+        <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}${customTerms ? `<li style="margin-bottom:6px"><strong>Custom Terms</strong><br/><span>${e(customTerms)}</span></li>` : ''}</ol>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:11px;color:#334155"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div>
       </div>
       <div class="sig-section">
         <div class="sig-box">
@@ -444,7 +455,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
             <Textarea value={customTerms} onChange={e => setCustomTerms(e.target.value)}
               placeholder="Add any custom terms or conditions specific to this member..."
               className="min-h-[50px]" />
-            <p className="text-xs text-muted-foreground mt-1">{DEFAULT_TERMS.length} standard terms will be included automatically</p>
+            <p className="text-xs text-muted-foreground mt-1">All {DEFAULT_TERMS.length} standard membership terms &amp; conditions are included automatically. Use the field above only for member-specific addendums.</p>
           </div>
 
           <Separator />
@@ -506,7 +517,7 @@ interface BuildPdfArgs {
   fitnessGoals: string;
   medicalConditions: string;
   customTerms: string;
-  terms: string[];
+  terms: TermClause[];
   signatureDataUrl?: string | null;
 }
 
@@ -602,16 +613,44 @@ function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
-  const allTerms = customTerms ? [...terms, customTerms] : terms;
+  const allTerms: TermClause[] = customTerms
+    ? [...terms, { title: 'Custom Terms', body: customTerms }]
+    : terms;
+  const lineH = 3.4;
   allTerms.forEach((t, i) => {
-    const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pageW - margin * 2 - 4);
-    if (y + lines.length * 3.5 > pageH - 60) {
+    const titleStr = `${i + 1}. ${t.title}`;
+    const bodyLines = doc.splitTextToSize(t.body, pageW - margin * 2 - 4);
+    const blockH = lineH + bodyLines.length * lineH + 2;
+    if (y + blockH > pageH - 60) {
       doc.addPage();
       y = 20;
     }
-    doc.text(lines, margin + 2, y);
-    y += lines.length * 3.5 + 1;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(titleStr, margin + 2, y);
+    y += lineH;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.3);
+    doc.setTextColor(30, 41, 59);
+    doc.text(bodyLines, margin + 4, y);
+    y += bodyLines.length * lineH + 2;
   });
+
+  // Member Declaration
+  if (y + 16 > pageH - 60) { doc.addPage(); y = 20; }
+  y += 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(99, 102, 241);
+  doc.text('MEMBER DECLARATION', margin + 2, y);
+  y += lineH + 1;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  const decl = doc.splitTextToSize(MEMBER_DECLARATION, pageW - margin * 2 - 4);
+  doc.text(decl, margin + 2, y);
+  y += decl.length * lineH + 2;
 
   // Signature section
   if (y > pageH - 55) {
@@ -716,7 +755,8 @@ export function printRegistrationForm(data: RegistrationFormData) {
         <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___'}</div></div>
       </div></div>
     <div class="terms"><div class="section-title" style="color:#333">Terms & Conditions</div>
-      <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}</ol></div>
+      <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}</ol>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;font-size:11px"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div></div>
     <div class="signature-section">
       <div class="signature-box"><div class="signature-line">Member Signature<br/><small>Date: ___</small></div></div>
       <div class="signature-box"><div class="signature-line">Staff Signature<br/><small>Date: ___</small></div></div>
