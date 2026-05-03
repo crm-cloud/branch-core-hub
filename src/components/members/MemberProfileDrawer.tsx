@@ -126,10 +126,41 @@ function PendingInvoicesSection({ memberId, branchId }: { memberId: string; bran
 
 // ─── Benefits & Usage Tab ───
 function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
+  const queryClient = useQueryClient();
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
   const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
   const [addOnOpen, setAddOnOpen] = useState(false);
+
+  // Member-level comps (gifts) — independent of plan
+  const { data: comps = [] } = useQuery({
+    queryKey: ['member-comps-profile', memberId],
+    enabled: !!memberId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_comps')
+        .select('id, comp_sessions, used_sessions, benefit_type_id, benefit_types(id, name, code)')
+        .eq('member_id', memberId);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Realtime: keep comps + usage live
+  useEffect(() => {
+    if (!memberId) return;
+    const channel = supabase
+      .channel(`member-profile-benefits-${memberId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_comps', filter: `member_id=eq.${memberId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-comps-profile', memberId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_usage', filter: activeMembership?.id ? `membership_id=eq.${activeMembership.id}` : undefined }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-benefit-usage-summary', activeMembership?.id] });
+        queryClient.invalidateQueries({ queryKey: ['member-benefit-bookings-recent', memberId, activeMembership?.id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [memberId, activeMembership?.id, queryClient]);
 
   const { data: planBenefits = [] } = useQuery({
     queryKey: ['member-plan-benefits', activeMembership?.plan_id],
@@ -237,10 +268,35 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
     return map;
   }, [usageSummary]);
 
-  const availableBenefits = planBenefits.map((b: any) => {
+  // Aggregate active comps by benefit_type_id
+  const compMap = useMemo(() => {
+    const map: Record<string, { total: number; used: number; remaining: number; name?: string }> = {};
+    (comps as any[]).forEach((c) => {
+      if (!c.benefit_type_id) return;
+      const m = map[c.benefit_type_id] || { total: 0, used: 0, remaining: 0, name: c.benefit_types?.name };
+      m.total += c.comp_sessions || 0;
+      m.used += c.used_sessions || 0;
+      m.remaining += Math.max(0, (c.comp_sessions || 0) - (c.used_sessions || 0));
+      m.name = m.name || c.benefit_types?.name;
+      map[c.benefit_type_id] = m;
+    });
+    return map;
+  }, [comps]);
+
+  const planBenefitTypeIds = new Set<string>();
+  const planRows = planBenefits.map((b: any) => {
     const isUnlimited = b.frequency === 'unlimited';
     const used = b.benefit_type_id ? (usageMap[b.benefit_type_id] || 0) : 0;
-    const remaining = isUnlimited ? null : Math.max(0, (b.limit_count || 0) - used);
+    const planLimit = b.limit_count || 0;
+    const planRemaining = isUnlimited ? null : Math.max(0, planLimit - used);
+    if (b.benefit_type_id) planBenefitTypeIds.add(b.benefit_type_id);
+    const comp = b.benefit_type_id ? compMap[b.benefit_type_id] : undefined;
+    const compTotal = comp?.total || 0;
+    const compUsed = comp?.used || 0;
+    const compRemaining = comp?.remaining || 0;
+    const totalLimit = planLimit + compTotal;
+    const totalUsed = used + compUsed;
+    const totalRemaining = isUnlimited ? null : Math.max(0, totalLimit - totalUsed);
     return {
       benefit_type: b.benefit_type,
       benefit_type_id: b.benefit_type_id,
@@ -250,16 +306,47 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
       limit_count: b.limit_count,
       description: b.description,
       used,
-      remaining,
+      remaining: planRemaining,
       isUnlimited,
+      compTotal,
+      compUsed,
+      compRemaining,
+      totalLimit,
+      totalUsed,
+      totalRemaining,
+      isGiftOnly: false,
     };
   }).filter((b: any) => {
-    // Filter out benefits linked to gender-restricted facilities that don't match the member
-    if (!memberGender) return true; // Show all if gender not set
+    if (!memberGender) return true;
     const facility = facilityGenderMap.find((f: any) => f.benefit_type_id === b.benefit_type_id);
-    if (!facility) return true; // No facility link = show
+    if (!facility) return true;
     return facility.gender_access === 'unisex' || facility.gender_access === memberGender;
   });
+
+  // Append gift-only benefits (comps for benefit types not in plan)
+  const giftOnlyRows = Object.entries(compMap)
+    .filter(([btId]) => !planBenefitTypeIds.has(btId))
+    .map(([btId, c]) => ({
+      benefit_type: 'other',
+      benefit_type_id: btId,
+      label: c.name || 'Gift Benefit',
+      name: c.name || 'Gift Benefit',
+      frequency: 'per_membership',
+      limit_count: c.total,
+      description: 'Complimentary sessions',
+      used: c.used,
+      remaining: c.remaining,
+      isUnlimited: false,
+      compTotal: c.total,
+      compUsed: c.used,
+      compRemaining: c.remaining,
+      totalLimit: c.total,
+      totalUsed: c.used,
+      totalRemaining: c.remaining,
+      isGiftOnly: true,
+    }));
+
+  const availableBenefits = [...planRows, ...giftOnlyRows];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -305,39 +392,65 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
               {availableBenefits.length > 0 ? (
                 <div className="space-y-3">
                   {availableBenefits.map((b: any, idx: number) => {
-                    const progressPct = b.isUnlimited ? 100 : b.limit_count ? Math.min(100, (b.used / b.limit_count) * 100) : 0;
-                    const isExhausted = !b.isUnlimited && b.remaining === 0;
+                    const totalLimit = b.totalLimit ?? b.limit_count ?? 0;
+                    const totalUsed = b.totalUsed ?? b.used ?? 0;
+                    const totalRemaining = b.isUnlimited ? null : (b.totalRemaining ?? Math.max(0, totalLimit - totalUsed));
+                    const progressPct = b.isUnlimited ? 100 : totalLimit ? Math.min(100, (totalUsed / totalLimit) * 100) : 0;
+                    const isExhausted = !b.isUnlimited && totalRemaining === 0;
+                    const hasComp = (b.compTotal || 0) > 0;
+                    const isGiftOnly = !!b.isGiftOnly;
                     const barColor = b.isUnlimited
                       ? 'bg-blue-500'
                       : isExhausted
                         ? 'bg-destructive'
-                        : 'bg-emerald-500';
+                        : isGiftOnly
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500';
                     const borderColor = b.isUnlimited
                       ? 'border-l-blue-500'
                       : isExhausted
                         ? 'border-l-destructive'
-                        : 'border-l-emerald-500';
+                        : isGiftOnly
+                          ? 'border-l-amber-500'
+                          : 'border-l-emerald-500';
 
                     return (
                       <div key={idx} className={`p-3 rounded-lg bg-muted/50 border-l-4 ${borderColor}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <Heart className="h-4 w-4 text-primary" />
-                            <span className="font-medium text-sm">{b.name}</span>
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Heart className={`h-4 w-4 ${isGiftOnly ? 'text-amber-600' : 'text-primary'}`} />
+                            <span className="font-medium text-sm truncate">{b.name}</span>
+                            {hasComp && !isGiftOnly && (
+                              <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px] gap-1 shrink-0">
+                                <Gift className="h-3 w-3" /> +{b.compRemaining} gift
+                              </Badge>
+                            )}
+                            {isGiftOnly && (
+                              <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px] gap-1 shrink-0">
+                                <Gift className="h-3 w-3" /> Gift
+                              </Badge>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 shrink-0">
                             {b.isUnlimited ? (
                               <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 text-xs">
-                                ∞ Unlimited
+                                ∞ Unlimited{hasComp ? ` + ${b.compRemaining}` : ''}
                               </Badge>
                             ) : (
-                              <span className={`text-xs font-semibold ${isExhausted ? 'text-destructive' : 'text-foreground'}`}>
-                                {b.used}/{b.limit_count} {getFrequencyLabel(b.frequency)}
-                              </span>
+                              <div className="text-right">
+                                <span className={`text-xs font-semibold ${isExhausted ? 'text-destructive' : 'text-foreground'}`}>
+                                  {totalUsed}/{totalLimit} {getFrequencyLabel(b.frequency)}
+                                </span>
+                                {hasComp && !isGiftOnly && (
+                                  <div className="text-[10px] text-muted-foreground leading-tight">
+                                    {b.limit_count || 0} plan + <span className="text-amber-700 font-medium">{b.compTotal} gift</span>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
-                        {!b.isUnlimited && b.limit_count > 0 && (
+                        {!b.isUnlimited && totalLimit > 0 && (
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all ${barColor}`}
@@ -350,7 +463,7 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
                             <div className="h-full rounded-full bg-blue-500 w-full animate-pulse opacity-40" />
                           </div>
                         )}
-                        {isExhausted && b.benefit_type_id && (
+                        {isExhausted && b.benefit_type_id && !isGiftOnly && (
                           <Button
                             size="sm"
                             variant="outline"

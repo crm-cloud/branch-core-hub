@@ -27,6 +27,11 @@ export interface MemberBenefitBalance {
   used: number;
   remaining: number | null;
   isUnlimited: boolean;
+  // Optional gift / comp augmentation (non-breaking)
+  compTotal?: number;
+  compUsed?: number;
+  compRemaining?: number;
+  isGiftOnly?: boolean;
 }
 
 export interface MembershipWithBenefits {
