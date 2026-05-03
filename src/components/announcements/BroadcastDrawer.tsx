@@ -328,7 +328,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
                 <div className="flex items-center gap-2">
                   <Input
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="image/*,application/pdf,video/mp4"
                     disabled={isUploading}
                     onChange={(e) => handleAttachmentPick(e.target.files?.[0] ?? null)}
                   />
@@ -337,7 +337,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
               )}
               <p className="text-xs text-muted-foreground">
                 <Paperclip className="h-3 w-3 inline mr-1" />
-                Image or PDF — max 16MB. Used on WhatsApp + Email only.
+                Image, PDF or short MP4 — max 16MB. Used on In-App, WhatsApp and Email.
               </p>
             </div>
           )}
