@@ -584,6 +584,7 @@ export function MemberProfileDrawer({
   const [assignTrainerOpen, setAssignTrainerOpen] = useState(false);
   const [measurementOpen, setMeasurementOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<any>(null);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [compGiftOpen, setCompGiftOpen] = useState(false);
