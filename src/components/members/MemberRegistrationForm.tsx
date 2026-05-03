@@ -214,7 +214,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         if (govIdNumber && govIdNumber !== (data.governmentIdNumber || '')) profileUpdates.government_id_number = govIdNumber;
         if (Object.keys(profileUpdates).length) {
           const { data: m } = await supabase.from('members').select('user_id').eq('id', data.memberId).maybeSingle();
-          if (m?.user_id) await supabase.from('profiles').update(profileUpdates).eq('user_id', m.user_id);
+          if (m?.user_id) await (supabase.from('profiles') as any).update(profileUpdates).eq('user_id', m.user_id);
         }
       } catch (syncErr) {
         console.warn('[RegistrationForm] profile sync failed', syncErr);
