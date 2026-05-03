@@ -4,11 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Award, ArrowUp, ArrowDown, Gift, Wallet, History } from 'lucide-react';
+import { Award, ArrowUp, ArrowDown, Gift, Wallet, History, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchWallet } from '@/services/walletService';
 import { format } from 'date-fns';
 import { RedeemPointsDrawer } from './RedeemPointsDrawer';
+import { CreditMemberDrawer } from './CreditMemberDrawer';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasCapability } from '@/lib/auth/permissions';
 
 interface RewardsWalletCardProps {
   memberId: string;
