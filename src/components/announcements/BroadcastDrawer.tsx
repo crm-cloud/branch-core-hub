@@ -144,6 +144,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
 
       onOpenChange(false);
       setMessage(''); setSubject(''); setTemplateId(''); setAudience('all');
+      setAttachment(null);
       setSelectedChannels(new Set(['whatsapp']));
     } catch (error: any) {
       toast.error(error.message || 'Failed to send broadcast');
@@ -245,6 +246,35 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
             <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Enter your message..." rows={6} />
             <p className="text-xs text-muted-foreground">Use variables like {'{{member_name}}'}, {'{{member_code}}'}</p>
           </div>
+
+          {(selectedChannels.has('whatsapp') || selectedChannels.has('email')) && (
+            <div className="space-y-2">
+              <Label>Attachment (Optional)</Label>
+              {attachment ? (
+                <div className="flex items-center gap-2 p-2 rounded-lg border bg-muted/30">
+                  {attachment.kind === 'image' ? <ImageIcon className="h-4 w-4 text-emerald-500" /> : <FileText className="h-4 w-4 text-amber-500" />}
+                  <span className="text-sm flex-1 truncate">{attachment.filename}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setAttachment(null)} aria-label="Remove attachment">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    disabled={isUploading}
+                    onChange={(e) => handleAttachmentPick(e.target.files?.[0] ?? null)}
+                  />
+                  {isUploading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                <Paperclip className="h-3 w-3 inline mr-1" />
+                Image (jpg/png) or PDF — max 16MB. Attached on WhatsApp + Email; ignored for SMS.
+              </p>
+            </div>
+          )}
 
           <div className="rounded-lg border border-border bg-muted/50 p-3">
             <p className="text-xs text-muted-foreground">
