@@ -89,6 +89,9 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
         subject: channel === 'email' ? subject.trim() || null : null,
         trigger_type: trigger,
         scheduled_at: trigger === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
+        attachment_url: attachment?.url ?? null,
+        attachment_kind: attachment?.kind ?? null,
+        attachment_filename: attachment?.filename ?? null,
         status:
           trigger === 'send_now' ? 'sending' :
           trigger === 'scheduled' ? 'scheduled' : 'draft',
