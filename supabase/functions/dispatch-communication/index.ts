@@ -50,7 +50,7 @@ interface DispatchInput {
     url: string;
     filename: string;
     content_type?: string;       // e.g. application/pdf
-    kind?: 'document' | 'image';
+    kind?: 'document' | 'image' | 'video';
   };
 }
 
