@@ -91,7 +91,6 @@ export function CommunicationTemplatesHub() {
               <TabsTrigger value="coverage" className="gap-1.5"><Wand2 className="h-3.5 w-3.5" /> Coverage & AI</TabsTrigger>
               <TabsTrigger value="meta" className="gap-1.5"><BadgeCheck className="h-3.5 w-3.5" /> Meta Approved</TabsTrigger>
               <TabsTrigger value="auto" className="gap-1.5"><Workflow className="h-3.5 w-3.5" /> Automations</TabsTrigger>
-              <TabsTrigger value="ai-agent" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> AI Agent</TabsTrigger>
               <TabsTrigger value="routing" className="gap-1.5"><PhoneForwarded className="h-3.5 w-3.5" /> Number Routing</TabsTrigger>
             </TabsList>
 
