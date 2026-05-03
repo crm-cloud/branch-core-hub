@@ -124,6 +124,19 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
   const memberProfile = (invoice.members as any)?.profiles;
   const dueAmount = invoice.total_amount - (invoice.amount_paid || 0);
 
+  // Derive Wallet Used vs Other Payment from payments table (fallback to notes regex)
+  const walletPaid = payments
+    .filter((p: any) => (p.payment_method || '').toLowerCase() === 'wallet' && (p.status || 'completed') === 'completed')
+    .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+  const otherPaid = payments
+    .filter((p: any) => (p.payment_method || '').toLowerCase() !== 'wallet' && (p.status || 'completed') === 'completed')
+    .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+  const notesWalletMatch = !walletPaid && invoice.notes
+    ? String(invoice.notes).match(/Wallet applied:\s*₹?\s*([\d.,]+)/i)
+    : null;
+  const walletDisplay = walletPaid || (notesWalletMatch ? Number(notesWalletMatch[1].replace(/,/g, '')) : 0);
+  const isRefund = (invoice.total_amount || 0) < 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
