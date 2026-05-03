@@ -26,6 +26,7 @@ import { TaxGstSettings } from '@/components/settings/TaxGstSettings';
 
 const SETTINGS_MENU = [
   { value: 'ai-agent', label: 'AI Agent', icon: Bot },
+  { value: 'automations', label: 'Automation Brain', icon: Zap },
   { value: 'appearance', label: 'Appearance', icon: Palette },
   { value: 'backup', label: 'Backup & Restore', icon: Database },
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
