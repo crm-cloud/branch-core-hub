@@ -724,6 +724,8 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 <div className="flex items-center gap-2 mt-1.5 text-[10px]">
                                   <span className="text-muted-foreground uppercase tracking-wider font-semibold">7d:</span>
                                   <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">{ds.sent} sent</span>
+                                  {ds.delivered > 0 && <span className="px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 font-medium">{ds.delivered} delivered</span>}
+                                  {ds.read > 0 && <span className="px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">{ds.read} read</span>}
                                   {ds.failed > 0 && <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 font-medium">{ds.failed} failed</span>}
                                   {ds.queued > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">{ds.queued} queued</span>}
                                 </div>
