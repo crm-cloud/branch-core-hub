@@ -83,6 +83,9 @@ Deno.serve(async (req) => {
             branch_id: c.branch_id,
             member_ids: memberIds,
             campaign_id: c.id,
+            attachment_url: c.attachment_url ?? undefined,
+            attachment_kind: c.attachment_kind ?? undefined,
+            attachment_filename: c.attachment_filename ?? undefined,
           }),
         });
 
