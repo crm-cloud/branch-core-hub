@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.healthz]
 verify_jwt = false
+
+[functions.automation-brain]
+verify_jwt = false
