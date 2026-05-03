@@ -202,7 +202,7 @@ Team Incline Fitness`;
       }) : null;
       const vars = buildTemplateVars();
       const resolved = resolveTemplate(tpl, vars, {
-        body: `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+        body: emailBody,
         subject: emailSubject,
         filename: `Invoice-${invoice.invoice_number}.pdf`,
       });
