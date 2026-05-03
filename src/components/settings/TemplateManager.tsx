@@ -126,9 +126,13 @@ interface TemplateManagerProps {
   prefill?: TemplatePrefill;
   /** Fired once the editor has consumed the prefill (so parent can clear it). */
   onPrefillConsumed?: () => void;
+  /** When set, only show templates of this channel (hides outer channel tabs). */
+  filterType?: 'whatsapp' | 'sms' | 'email';
+  /** Hide the outer Card chrome (header + description); useful when embedded in a custom hub. */
+  hideHeader?: boolean;
 }
 
-export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
+export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHeader }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
   const { branchFilter, effectiveBranchId } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
