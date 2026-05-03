@@ -139,7 +139,7 @@ function gymClosureDefaultValues(keys: string[]): Record<string, string> {
   const resume = fmt.format(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000));
   return keys.reduce<Record<string, string>>((acc, key, index) => {
     const normalized = key.toLowerCase();
-    acc[key] = normalized.includes('resume') || normalized === '2' || normalized === '3' && index > 0 ? resume : closure;
+    acc[key] = normalized.includes('resume') || index > 0 ? resume : closure;
     return acc;
   }, {});
 }
