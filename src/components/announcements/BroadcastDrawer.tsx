@@ -40,7 +40,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' } | null>(null);
+  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -50,7 +50,11 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
     if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB for attachments'); return; }
     setIsUploading(true);
     try {
-      const kind: 'image' | 'document' = file.type.startsWith('image/') ? 'image' : 'document';
+      const kind: 'image' | 'document' | 'video' = file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+        ? 'video'
+        : 'document';
       const { url } = await uploadAttachment(file, { folder: 'broadcasts', filename: file.name, contentType: file.type });
       setAttachment({ url, filename: file.name, kind });
       toast.success('Attachment uploaded');
@@ -151,7 +155,10 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
           target_audience: audience === 'all' ? 'all' : 'members',
           is_active: true,
           publish_at: scheduledIso ?? new Date().toISOString(),
-        });
+          attachment_url: attachment?.url ?? null,
+          attachment_kind: attachment?.kind ?? null,
+          attachment_filename: attachment?.filename ?? null,
+        } as any);
         if (error) throw error;
         summary.push(scheduledIso ? 'in-app: scheduled' : 'in-app: posted');
       }
@@ -209,7 +216,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
   };
 
   const showSubject = selectedChannels.has('email');
-  const showAttachment = selectedChannels.has('whatsapp') || selectedChannels.has('email');
+  const showAttachment = selectedChannels.has('inapp') || selectedChannels.has('whatsapp') || selectedChannels.has('email');
   const showTitle = selectedChannels.has('inapp');
   const minScheduled = new Date(Date.now() + 60_000).toISOString().slice(0, 16);
 
@@ -321,7 +328,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
                 <div className="flex items-center gap-2">
                   <Input
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="image/*,application/pdf,video/mp4"
                     disabled={isUploading}
                     onChange={(e) => handleAttachmentPick(e.target.files?.[0] ?? null)}
                   />
@@ -330,7 +337,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
               )}
               <p className="text-xs text-muted-foreground">
                 <Paperclip className="h-3 w-3 inline mr-1" />
-                Image or PDF — max 16MB. Used on WhatsApp + Email only.
+                Image, PDF or short MP4 — max 16MB. Used on In-App, WhatsApp and Email.
               </p>
             </div>
           )}

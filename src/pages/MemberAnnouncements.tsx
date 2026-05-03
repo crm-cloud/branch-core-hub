@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { format, formatDistanceToNow } from 'date-fns';
+import { AnnouncementAttachment } from '@/components/announcements/AnnouncementAttachment';
 
 export default function MemberAnnouncements() {
   const { member, isLoading: memberLoading } = useMemberData();
@@ -219,6 +220,11 @@ export default function MemberAnnouncements() {
                     <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/85 md:text-[15px]">
                       {featuredAnnouncement.content}
                     </p>
+                    <AnnouncementAttachment
+                      url={(featuredAnnouncement as any).attachment_url}
+                      kind={(featuredAnnouncement as any).attachment_kind}
+                      filename={(featuredAnnouncement as any).attachment_filename}
+                    />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <ArrowUpRight className="h-4 w-4" />
                       Added {formatDistanceToNow(new Date(featuredAnnouncement.created_at), { addSuffix: true })}
@@ -279,6 +285,12 @@ export default function MemberAnnouncements() {
                           <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/85">
                             {announcement.content}
                           </p>
+                          <AnnouncementAttachment
+                            url={(announcement as any).attachment_url}
+                            kind={(announcement as any).attachment_kind}
+                            filename={(announcement as any).attachment_filename}
+                            compact
+                          />
                           {announcement.expire_at && (
                             <p className="text-xs text-muted-foreground">
                               Valid until {format(new Date(announcement.expire_at), 'dd MMM yyyy')}

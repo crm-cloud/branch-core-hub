@@ -1,4 +1,5 @@
-// dispatch-communication v1.5.0
+// dispatch-communication v1.6.0
+// v1.6.0: accept attachment.kind='video' (mapped to WA document fallback); video forwarded as-is to email base64 path.
 // v1.5.0: send approved Meta WhatsApp templates when template_id is provided; harden IN phone normalization.
 // v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
 // v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
@@ -50,7 +51,7 @@ interface DispatchInput {
     url: string;
     filename: string;
     content_type?: string;       // e.g. application/pdf
-    kind?: 'document' | 'image';
+    kind?: 'document' | 'image' | 'video';
   };
 }
 
@@ -352,7 +353,10 @@ Deno.serve(async (req) => {
           // send-whatsapp (which requires message_id) can update its delivery
           // status. The chat thread also relies on this row to render the bubble.
           if (input.attachment) {
-            const kind = input.attachment.kind ?? 'document';
+            // send-whatsapp v2.4.0 only supports image/document. Map video → document so
+            // members still receive a downloadable file (caption preserved).
+            const rawKind = (input.attachment.kind ?? 'document') as string;
+            const kind = rawKind === 'image' ? 'image' : 'document';
             const { data: waRow, error: waErr } = await supabase
               .from('whatsapp_messages')
               .insert({
@@ -376,12 +380,10 @@ Deno.serve(async (req) => {
                 message_type: kind,
                 media_url: input.attachment.url,
                 caption: input.payload.body,
-                filename: input.attachment.filename,
+                filename: input.attachment.filename || (rawKind === 'video' ? 'video.mp4' : undefined),
                 skip_log: true,
               },
             });
-            // supabase-js wraps non-2xx as `error`; the real Meta reason lives
-            // inside response body. Try to extract it for clearer logs.
             if (r.error) throw new Error(await functionErrorDetail(r.error));
             const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
             const metaErr = (r.data as { meta_error?: string })?.meta_error;
