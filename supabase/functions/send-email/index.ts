@@ -1,3 +1,5 @@
+// v2.1.0 — SMTP path now sends multipart/mixed with base64 PDF attachments;
+//           communication log records attachment metadata for auditability.
 // v2.0.0 — Universal Email Dispatcher with Branded Template Support
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -109,7 +111,7 @@ Deno.serve(async (req) => {
 
     switch (provider) {
       case "smtp":
-        result = await sendViaSMTP(to, subject, finalHtml, fromEmail, fromName, config, credentials);
+        result = await sendViaSMTP(to, subject, finalHtml, fromEmail, fromName, config, credentials, attachments);
         break;
       case "sendgrid":
         result = await sendViaSendGrid(to, subject, finalHtml, fromEmail, fromName, credentials, attachments);
@@ -124,8 +126,12 @@ Deno.serve(async (req) => {
         result = { success: false, error: `Unsupported email provider: ${provider}` };
     }
 
-    // Log to communication_logs
+    // Log to communication_logs (capture attachment metadata for auditability)
     if (branch_id) {
+      const attachmentMeta = (attachments || []).map((a: any) => ({
+        filename: a.filename, content_type: a.content_type,
+        size_b64: (a.content_base64 || '').length,
+      }));
       await supabase.from("communication_logs").insert({
         branch_id,
         type: "email",
@@ -133,7 +139,10 @@ Deno.serve(async (req) => {
         subject,
         content: (html || text || "").slice(0, 500),
         status: result.success ? "sent" : "failed",
+        delivery_status: result.success ? "sent" : "failed",
         sent_at: new Date().toISOString(),
+        delivery_metadata: { provider, attachments: attachmentMeta, attachment_count: attachmentMeta.length },
+        error_message: result.success ? null : (result.error || null),
       });
     }
 
@@ -235,13 +244,60 @@ async function sendViaMailgun(
   }
 }
 
-// === SMTP (via simple HTTPS relay approach — sends raw email via external relay) ===
+// === SMTP (raw socket) — supports HTML body + base64 file attachments ===
+type EmailAttachment = { filename: string; content_base64: string; content_type: string };
+
+function buildMimeMessage(
+  fromName: string, fromEmail: string, to: string, subject: string,
+  html: string, attachments?: EmailAttachment[],
+): string {
+  const headers = [
+    `From: ${fromName} <${fromEmail}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+  ];
+  // Dot-stuffing required for SMTP DATA: any line starting with '.' must be doubled.
+  const stuff = (s: string) => s.split(/\r?\n/).map(l => l.startsWith('.') ? '.' + l : l).join('\r\n');
+
+  if (!attachments || attachments.length === 0) {
+    headers.push(`Content-Type: text/html; charset=UTF-8`);
+    headers.push(`Content-Transfer-Encoding: 8bit`);
+    return [...headers, '', stuff(html), '.'].join('\r\n');
+  }
+
+  const boundary = `=_lov_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+  const lines: string[] = [...headers, '', `This is a multi-part message in MIME format.`, '', `--${boundary}`];
+  // HTML body part
+  lines.push(`Content-Type: text/html; charset=UTF-8`);
+  lines.push(`Content-Transfer-Encoding: 8bit`);
+  lines.push('');
+  lines.push(stuff(html));
+
+  // Attachment parts (base64, wrapped at 76 cols)
+  for (const a of attachments) {
+    const wrapped = a.content_base64.replace(/.{1,76}/g, m => m).match(/.{1,76}/g)?.join('\r\n') || a.content_base64;
+    lines.push('');
+    lines.push(`--${boundary}`);
+    lines.push(`Content-Type: ${a.content_type || 'application/octet-stream'}; name="${a.filename}"`);
+    lines.push(`Content-Transfer-Encoding: base64`);
+    lines.push(`Content-Disposition: attachment; filename="${a.filename}"`);
+    lines.push('');
+    lines.push(wrapped);
+  }
+  lines.push('');
+  lines.push(`--${boundary}--`);
+  lines.push('.');
+  return lines.join('\r\n');
+}
+
 async function sendViaSMTP(
   to: string, subject: string, html: string, fromEmail: string, fromName: string,
-  config: Record<string, string>, credentials: Record<string, string>
+  config: Record<string, string>, credentials: Record<string, string>,
+  attachments?: EmailAttachment[],
 ) {
-  // Deno doesn't have native SMTP; we use a lightweight HTTP-to-SMTP bridge pattern
-  // For production SMTP, users should use SendGrid/Mailgun. This provides basic support.
   const host = config.host;
   const port = config.port || "587";
   const username = credentials.username;
@@ -251,162 +307,94 @@ async function sendViaSMTP(
     return { success: false, error: "SMTP host, username, and password are required" };
   }
 
-  try {
-    const portNum = parseInt(port);
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
+  const portNum = parseInt(port);
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const message = buildMimeMessage(fromName, fromEmail, to, subject, html, attachments);
 
-    // Helper to build email message body
-    const buildMessage = () => [
-      `From: ${fromName} <${fromEmail}>`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: text/html; charset=UTF-8`,
-      ``,
-      html,
-      `.`,
-    ].join("\r\n");
-
-    // Port 465: Implicit TLS — connect with TLS from the start
-    if (port === "465") {
-      const tlsConn = await Deno.connectTls({ hostname: host, port: portNum });
-
-      const read = async () => {
-        const buf = new Uint8Array(4096);
-        const n = await tlsConn.read(buf);
-        return n ? decoder.decode(buf.subarray(0, n)) : "";
-      };
-      const write = async (cmd: string) => {
-        await tlsConn.write(encoder.encode(cmd + "\r\n"));
-        return await read();
-      };
-
-      await read(); // greeting
-      await write(`EHLO inclinefitness.in`);
-      await write("AUTH LOGIN");
-      await write(btoa(username));
-      const authResp = await write(btoa(password));
-
-      if (!authResp.startsWith("235")) {
-        tlsConn.close();
-        return { success: false, error: `SMTP auth failed (port 465): ${authResp}` };
-      }
-
-      await write(`MAIL FROM:<${fromEmail}>`);
-      await write(`RCPT TO:<${to}>`);
-      await write("DATA");
-      const dataResp = await write(buildMessage());
-      await write("QUIT");
-      tlsConn.close();
-
-      return dataResp.startsWith("250")
-        ? { success: true, message_id: `smtp-${Date.now()}` }
-        : { success: false, error: `SMTP DATA error (465): ${dataResp}` };
-    }
-
-    // Port 587 / 25: plain TCP first
-    const conn = await Deno.connect({ hostname: host, port: portNum });
-
+  // Larger reads for big base64 attachments.
+  const makeIO = (conn: Deno.Conn | Deno.TlsConn) => {
     const read = async () => {
-      const buf = new Uint8Array(4096);
+      const buf = new Uint8Array(8192);
       const n = await conn.read(buf);
       return n ? decoder.decode(buf.subarray(0, n)) : "";
     };
-
     const write = async (cmd: string) => {
       await conn.write(encoder.encode(cmd + "\r\n"));
       return await read();
     };
+    const writeRaw = async (raw: string) => {
+      await conn.write(encoder.encode(raw + "\r\n"));
+      return await read();
+    };
+    return { read, write, writeRaw };
+  };
 
-    await read(); // greeting
-    await write(`EHLO inclinefitness.in`);
-
-    // STARTTLS for port 587
-    if (port === "587") {
-      await write("STARTTLS");
-      const tlsConn = await Deno.startTls(conn, { hostname: host });
-      
-      const tlsWrite = async (cmd: string) => {
-        await tlsConn.write(encoder.encode(cmd + "\r\n"));
-        const buf = new Uint8Array(1024);
-        const n = await tlsConn.read(buf);
-        return n ? decoder.decode(buf.subarray(0, n)) : "";
-      };
-
-      await tlsWrite(`EHLO inclinefitness.in`);
-
-      // AUTH LOGIN
-      await tlsWrite("AUTH LOGIN");
-      await tlsWrite(btoa(username));
-      const authResp = await tlsWrite(btoa(password));
-
-      if (!authResp.startsWith("235")) {
-        tlsConn.close();
-        return { success: false, error: "SMTP authentication failed" };
-      }
-
-      await tlsWrite(`MAIL FROM:<${fromEmail}>`);
-      await tlsWrite(`RCPT TO:<${to}>`);
-      await tlsWrite("DATA");
-
-      const message = [
-        `From: ${fromName} <${fromEmail}>`,
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: text/html; charset=UTF-8`,
-        ``,
-        html,
-        `.`,
-      ].join("\r\n");
-
-      const dataResp = await tlsWrite(message);
-      await tlsWrite("QUIT");
+  try {
+    if (port === "465") {
+      const tlsConn = await Deno.connectTls({ hostname: host, port: portNum });
+      const { read, write, writeRaw } = makeIO(tlsConn);
+      await read();
+      await write(`EHLO ${host}`);
+      await write("AUTH LOGIN");
+      await write(btoa(username));
+      const authResp = await write(btoa(password));
+      if (!authResp.startsWith("235")) { tlsConn.close(); return { success: false, error: `SMTP auth failed (465): ${authResp}` }; }
+      await write(`MAIL FROM:<${fromEmail}>`);
+      await write(`RCPT TO:<${to}>`);
+      await write("DATA");
+      const dataResp = await writeRaw(message);
+      await write("QUIT");
       tlsConn.close();
-
-      return dataResp.startsWith("250")
+      return dataResp.includes("250")
         ? { success: true, message_id: `smtp-${Date.now()}` }
-        : { success: false, error: `SMTP DATA error: ${dataResp}` };
+        : { success: false, error: `SMTP DATA error (465): ${dataResp}` };
     }
 
-    // Plain SMTP (port 25/465)
+    const conn = await Deno.connect({ hostname: host, port: portNum });
+    const plainIO = makeIO(conn);
+    await plainIO.read();
+    await plainIO.write(`EHLO ${host}`);
+
+    if (port === "587") {
+      await plainIO.write("STARTTLS");
+      const tlsConn = await Deno.startTls(conn, { hostname: host });
+      const { read, write, writeRaw } = makeIO(tlsConn);
+      await write(`EHLO ${host}`);
+      await write("AUTH LOGIN");
+      await write(btoa(username));
+      const authResp = await write(btoa(password));
+      if (!authResp.startsWith("235")) { tlsConn.close(); return { success: false, error: "SMTP authentication failed" }; }
+      await write(`MAIL FROM:<${fromEmail}>`);
+      await write(`RCPT TO:<${to}>`);
+      await write("DATA");
+      const dataResp = await writeRaw(message);
+      await write("QUIT");
+      tlsConn.close();
+      return dataResp.includes("250")
+        ? { success: true, message_id: `smtp-${Date.now()}` }
+        : { success: false, error: `SMTP DATA error (587): ${dataResp}` };
+    }
+
+    // Plain SMTP fallback (port 25)
+    const { read: _r, write, writeRaw } = plainIO;
     await write("AUTH LOGIN");
     await write(btoa(username));
     const authResp = await write(btoa(password));
-
-    if (!authResp.startsWith("235")) {
-      conn.close();
-      return { success: false, error: "SMTP authentication failed" };
-    }
-
+    if (!authResp.startsWith("235")) { conn.close(); return { success: false, error: "SMTP authentication failed" }; }
     await write(`MAIL FROM:<${fromEmail}>`);
     await write(`RCPT TO:<${to}>`);
     await write("DATA");
-
-    const message = [
-      `From: ${fromName} <${fromEmail}>`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: text/html; charset=UTF-8`,
-      ``,
-      html,
-      `.`,
-    ].join("\r\n");
-
-    const dataResp = await write(message);
+    const dataResp = await writeRaw(message);
     await write("QUIT");
     conn.close();
-
-    return dataResp.startsWith("250")
+    return dataResp.includes("250")
       ? { success: true, message_id: `smtp-${Date.now()}` }
       : { success: false, error: `SMTP error: ${dataResp}` };
   } catch (e) {
     return { success: false, error: `SMTP failed: ${(e as Error).message}` };
   }
 }
-
 // === AWS SES (Simple REST approach) ===
 async function sendViaSES(
   to: string, subject: string, html: string, fromEmail: string, fromName: string,

@@ -1,153 +1,83 @@
-## What I found
+I audited the invoice share flow, email sender, WhatsApp sender, storage, templates, and recent logs for INV-INC-26-0006 / INV-INC-26-0008.
 
-The two URLs you pasted are old-style public storage URLs:
+Findings:
 
-```text
-/storage/v1/object/public/attachments/invoices/...
-```
+1. The old links you pasted are public storage URLs, but the `attachments` bucket is private. That is why these fail with `404 Bucket not found`:
+   `.../storage/v1/object/public/attachments/invoices/...pdf`
 
-But the `attachments` bucket is now private for security. That is why those links return:
+2. New generated PDFs are now being uploaded correctly and signed URLs are reachable. I verified the newer signed URL for INV-INC-26-0006 returns `200 application/pdf`.
 
-```json
-{"statusCode":"404","error":"Bucket not found","message":"Bucket not found"}
-```
+3. Email did send, but the attachment was not included because your active email provider is SMTP. Current `send-email` supports attachments only for SendGrid and Mailgun. SMTP and SES paths ignore the `attachments` array. So the email body says “PDF attached”, but the actual MIME email contains only HTML/text.
 
-The correct approach is:
-- invoice/report PDFs should be generated per send,
-- uploaded to the private `attachments` bucket,
-- shared using a signed URL,
-- and sent as a WhatsApp document / email attachment automatically.
+4. The email is plain because `InvoiceShareDrawer` calls `send-email` without `use_branded_template: true`. The branded wrapper exists in `send-email`, but invoice emails are not enabling it.
 
-The Template Manager already has fields for `Header Type`, `Source`, and `Filename Template`, but it is not complete enough for invoices because:
-1. Invoice templates are not auto-created / auto-populated.
-2. Dynamic PDF templates are not clearly mapped to events like invoice/payment receipt.
-3. Submit-to-Meta currently only sends the body text, not a document header sample.
-4. Sender flows like Invoice Share do not yet pick the saved template configuration automatically.
+5. WhatsApp document sending is still failing after upload. The latest communication log for INV-INC-26-0006 shows a signed PDF URL in `delivery_metadata`, but delivery status is `failed` with `Edge Function returned a non-2xx status code`. The `whatsapp_messages` row remains `pending`, meaning the handoff into `send-whatsapp` is not completing successfully.
 
-## Plan
+6. One likely WhatsApp payload issue is in `send-whatsapp`: for document messages it sends either `caption` or `filename`, but not both. Meta document payloads should include `link`, `filename`, and optional `caption`. This can break PDF delivery or make PDFs appear unnamed.
 
-### 1. Add auto-populated invoice PDF templates
-Create or upsert default branch templates for:
+7. Dedupe is also causing confusion during testing. Invoice WhatsApp sends use `invoice:<invoice_id>:wa`; after one failed attempt, retrying the same invoice may be treated as deduped instead of re-sending unless the failed state is explicitly handled.
 
-- `Invoice PDF — WhatsApp`
-  - type: `whatsapp`
-  - trigger event: `payment_received` / invoice send
-  - header type: `document`
-  - source: `dynamic`
-  - filename template: `Invoice-{{invoice_number}}.pdf`
-  - content similar to: `Hi {{member_name}}, your invoice {{invoice_number}} for {{amount}} is ready. PDF attached.`
+Plan to fix:
 
-- `Invoice PDF — Email`
-  - type: `email`
-  - subject: `Invoice {{invoice_number}} from {{branch_name}}`
-  - header type: `document`
-  - source: `dynamic`
-  - filename template: `Invoice-{{invoice_number}}.pdf`
+1. Fix invoice email PDF attachments for SMTP
+   - Update `supabase/functions/send-email/index.ts` so SMTP sends proper multipart MIME emails when attachments are provided.
+   - Add MIME boundaries, `multipart/mixed`, nested `multipart/alternative`, HTML body, and base64 PDF attachment parts.
+   - Preserve existing SendGrid and Mailgun attachment behavior.
+   - Add attachment support or explicit safe fallback for SES if configured later.
 
-This makes Template Manager show invoice PDF templates automatically instead of expecting you to manually configure every field.
+2. Make invoice emails professional by default
+   - Update `InvoiceShareDrawer.tsx` to call `send-email` with `use_branded_template: true`.
+   - Replace the minimal invoice email body with a polished invoice email section: branded greeting, invoice summary card, paid/due status badge, amount rows, and footer text using “The Incline Life by Incline”.
+   - Keep Template Manager content as the editable core body, but wrap it in the branded email shell so template emails are never plain.
 
-### 2. Improve Template Manager UI for dynamic PDFs
-Update `TemplateManager.tsx` so the Attachment / Header Media block explains the correct behavior:
+3. Add visible proof in logs that email had an attachment
+   - Update `send-email` logging metadata to include attachment count, filenames, and content types.
+   - Avoid direct duplicate client logging where possible, so communication logs reflect actual provider result.
 
-- `Static`: upload one reusable media file, stored in `template-media`.
-- `Dynamic`: no upload needed. The system generates the PDF at send time.
+4. Fix WhatsApp PDF document payload
+   - Update `supabase/functions/send-whatsapp/index.ts` for document messages to send:
+     - `document.link`
+     - `document.filename`
+     - optional `document.caption`
+   - Ensure `dispatch-communication` passes filename through correctly.
+   - Improve the error body returned from `dispatch-communication` so the UI/logs show Meta’s actual reason instead of only “Edge Function returned a non-2xx status code”.
 
-For invoice templates, auto-fill:
-- Header Type = `Document (PDF)`
-- Source = `Dynamic`
-- Filename Template = `Invoice-{{invoice_number}}.pdf`
+5. Make failed invoice WhatsApp retries actually retry
+   - Adjust dispatcher dedupe behavior: if an existing log with the same dedupe key is `failed`, allow a new send attempt instead of returning `deduped`.
+   - Keep dedupe protection for `sent`, `queued`, and `sending` states.
 
-Also add quick-preset buttons or a clear selector for common dynamic PDF types:
-- Invoice PDF
-- Receipt PDF
-- Body Scan Report PDF
-- Posture Report PDF
-- Diet/Workout Plan PDF
+6. Stop exposing broken public URLs in the UI/history
+   - Ensure all new invoice PDF share flows use signed URLs only.
+   - Add a helper to convert existing internal attachment paths to fresh signed URLs when reusing old records.
+   - Add a user-facing note in Template Manager: Dynamic invoice PDFs are generated and signed automatically; users should not paste public storage URLs.
 
-### 3. Submit WhatsApp document templates correctly to Meta
-Update `manage-whatsapp-templates` so when a WhatsApp template has:
+7. Improve Template Manager PDF clarity
+   - For “Attachment / Header Media”, make Dynamic PDF behavior clearer:
+     - “No upload required”
+     - “Invoice/receipt PDFs attach automatically during send”
+     - Show supported dynamic sources: Invoice PDF, Payment Receipt PDF, Body Scan Report, Diet/Workout Plan
+   - Add a preview indicator for seeded Invoice Email and Invoice WhatsApp templates showing they are dynamic PDF templates.
 
-```text
-header_type = document
-attachment_source = dynamic
-```
+8. Verify with the real affected invoices
+   - Re-test INV-INC-26-0006 and INV-INC-26-0008 send paths after code changes.
+   - Confirm email payload includes the PDF attachment for SMTP.
+   - Confirm WhatsApp uses a signed URL and sends as a document message.
+   - Confirm the email renders with the professional branded layout instead of the plain text seen in your screenshot.
 
-it submits a Meta template with a `HEADER` component of format `DOCUMENT`, including an example document handle/sample where required by Meta.
+Files expected to change:
 
-The local template will still store dynamic behavior, but Meta will understand it as a WhatsApp document template.
+- `src/components/invoices/InvoiceShareDrawer.tsx`
+- `src/lib/templates/dynamicAttachment.ts` if needed for improved invoice email HTML defaults
+- `src/components/settings/TemplateManager.tsx`
+- `supabase/functions/send-email/index.ts`
+- `supabase/functions/send-whatsapp/index.ts`
+- `supabase/functions/dispatch-communication/index.ts`
+- Possibly a small migration only if we need to update seeded template text or add better log metadata defaults
 
-### 4. Make invoice sending use saved templates automatically
-Update `InvoiceShareDrawer.tsx` so it:
+Expected result:
 
-1. Looks up the active invoice WhatsApp/email template for the invoice branch.
-2. Renders template variables automatically:
-   - `member_name`
-   - `member_code`
-   - `invoice_number`
-   - `amount`
-   - `date`
-   - `branch_name`
-3. Generates the invoice PDF using the existing PDF builder.
-4. Uploads to `attachments` and creates a signed URL.
-5. Sends via the canonical communication dispatcher with:
-   - body/caption from the saved template,
-   - PDF attachment from the generated invoice,
-   - filename from `attachment_filename_template`.
-
-If no active invoice template exists, it will fall back to the current hardcoded message.
-
-### 5. Centralize dynamic attachment resolution
-Add a small helper for dynamic PDF template handling, for example:
-
-```text
-resolveDynamicTemplateAttachment(template, context)
-```
-
-It will produce:
-- rendered message body,
-- rendered subject,
-- rendered filename,
-- attachment metadata.
-
-This avoids each screen manually guessing how template PDFs work.
-
-### 6. Fix misleading comments and URL behavior
-Clean up comments in `uploadAttachment.ts` that still say the bucket is public. The implementation already uses signed URLs, but the comments are misleading.
-
-Also ensure any newly generated links in the app never use:
-
-```text
-/object/public/attachments/...
-```
-
-for private invoice/report files.
-
-### 7. Add visibility in Template Manager
-In the template list, show a small badge when a template includes media:
-
-- `Dynamic PDF`
-- `Static Image`
-- `Static Video`
-- `Static PDF`
-
-This will make it obvious which templates will attach files.
-
-## Expected result
-
-After implementation:
-
-- You will not need to paste or manage invoice PDF URLs manually.
-- The Invoice template will be auto-populated in Template Manager.
-- Selecting Dynamic PDF means the app generates and attaches the correct invoice/report PDF at send time.
-- The old 404 public links will no longer be generated for new sends.
-- WhatsApp/email invoice sharing will use your saved templates and attach the PDF automatically.
-
-## Important note about existing broken URLs
-
-Existing old links like:
-
-```text
-/storage/v1/object/public/attachments/invoices/...
-```
-
-will remain broken because they point to a private bucket public route. New sends will use signed URLs or direct provider attachments instead. If needed, I can also add a small admin action later to regenerate/resend an invoice PDF for old invoices.
+- Invoice emails will include an actual PDF attachment when using your current SMTP provider.
+- Invoice emails will render in the branded/professional template automatically.
+- WhatsApp invoice PDFs will send as real document messages using signed URLs.
+- Failed WhatsApp attempts will be retryable instead of getting stuck behind dedupe.
+- Template Manager will make Dynamic PDF attachments understandable and auto-populated for invoice/receipt use cases.

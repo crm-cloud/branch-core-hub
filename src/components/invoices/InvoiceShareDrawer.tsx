@@ -77,22 +77,29 @@ Team Incline Fitness`;
   // SMS message template
   const smsMessage = `Incline Fitness: Invoice #${invoice.invoice_number} for ₹${invoice.total_amount.toLocaleString()}. ${invoice.total_amount - (invoice.amount_paid || 0) > 0 ? `Due: ₹${(invoice.total_amount - (invoice.amount_paid || 0)).toLocaleString()}` : 'Paid'}. Thank you!`;
 
-  // Email template
+  // Email template — branded HTML wrapped by send-email's `use_branded_template`.
   const emailSubject = `Invoice #${invoice.invoice_number} from Incline Fitness`;
-  const emailBody = `Dear ${memberName},
-
-Please find your invoice details below (PDF attached):
-
-Invoice Number: ${invoice.invoice_number}
-Date: ${format(new Date(invoice.created_at), 'dd MMMM yyyy')}
-Amount: ₹${invoice.total_amount.toLocaleString()}
-${invoice.amount_paid ? `Amount Paid: ₹${invoice.amount_paid.toLocaleString()}` : ''}
-${invoice.total_amount - (invoice.amount_paid || 0) > 0 ? `Balance Due: ₹${(invoice.total_amount - (invoice.amount_paid || 0)).toLocaleString()}` : 'Status: Paid in Full'}
-
-Thank you for choosing Incline Fitness!
-
-Best regards,
-Team Incline Fitness`;
+  const balance = invoice.total_amount - (invoice.amount_paid || 0);
+  const statusBadge = balance > 0
+    ? `<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#3a2a08;color:#FFD466;font-weight:600;font-size:12px;">Balance Due ₹${balance.toLocaleString()}</span>`
+    : `<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#0e3a23;color:#7CE0A8;font-weight:600;font-size:12px;">Paid in Full</span>`;
+  const emailBody = `
+    <h2 style="margin:0 0 8px;">Hi ${memberName},</h2>
+    <p>Thank you for your payment. Your invoice details are below — the full PDF is attached for your records.</p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0;border-collapse:separate;border-spacing:0;background:#0a0a0a;border:1px solid #ffffff15;border-radius:12px;overflow:hidden;">
+      <tr><td style="padding:14px 18px;border-bottom:1px solid #ffffff10;">
+        <div style="font-size:11px;letter-spacing:2px;color:#EAB30880;text-transform:uppercase;">Invoice</div>
+        <div style="font-size:18px;font-weight:700;color:#fff;margin-top:2px;">#${invoice.invoice_number}</div>
+      </td></tr>
+      <tr><td style="padding:14px 18px;color:#fff;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#ffffff80;">Date</span><strong>${format(new Date(invoice.created_at), 'dd MMMM yyyy')}</strong></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#ffffff80;">Amount</span><strong>₹${invoice.total_amount.toLocaleString()}</strong></div>
+        ${invoice.amount_paid ? `<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="color:#ffffff80;">Amount Paid</span><strong>₹${invoice.amount_paid.toLocaleString()}</strong></div>` : ''}
+        <div style="margin-top:10px;">${statusBadge}</div>
+      </td></tr>
+    </table>
+    <p style="color:#ffffffaa;">If you have any questions about this invoice, just reply to this email — we're here to help.</p>
+    <p style="margin-top:18px;">Warm regards,<br><strong>Team Incline Fitness</strong></p>`;
 
   // Map the invoice row to the PDF builder input. Pulls items, branch, and
   // member contact details so the generated PDF matches the on-screen invoice.
@@ -195,7 +202,7 @@ Team Incline Fitness`;
       }) : null;
       const vars = buildTemplateVars();
       const resolved = resolveTemplate(tpl, vars, {
-        body: `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+        body: emailBody,
         subject: emailSubject,
         filename: `Invoice-${invoice.invoice_number}.pdf`,
       });
@@ -207,6 +214,9 @@ Team Incline Fitness`;
           to: email,
           subject: resolved.subject || emailSubject,
           html: resolved.body,
+          // Wrap the body in the branded Incline shell so invoice emails
+          // arrive professionally styled (logo header, gold accents, footer).
+          use_branded_template: true,
           branch_id: invoice.branch_id,
           attachments: [{
             filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,

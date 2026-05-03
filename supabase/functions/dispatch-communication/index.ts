@@ -1,5 +1,5 @@
-// dispatch-communication v1.1.0
-// Canonical outbound communication funnel.
+// dispatch-communication v1.2.0
+// v1.2.0: re-allow retry of previously failed/suppressed dedupe_key; surface real Meta error body.
 // v1.1.0: WhatsApp attachment passthrough (PDF / image documents).
 // All other edge functions MUST route through this instead of writing
 // communication_logs directly. Enforces:
@@ -102,12 +102,20 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existing) {
-      return ok({
-        status: 'deduped',
-        log_id: existing.id,
-        reason: `existing_log_${existing.delivery_status}`,
-        provider_message_id: existing.provider_message_id ?? undefined,
-      });
+      const prev = String(existing.delivery_status || '').toLowerCase();
+      // Only treat terminal-success or in-flight states as deduped. A previous
+      // `failed` / `suppressed` attempt should be retryable from the UI.
+      const dedupeStates = ['sent', 'delivered', 'read', 'queued', 'sending'];
+      if (dedupeStates.includes(prev)) {
+        return ok({
+          status: 'deduped',
+          log_id: existing.id,
+          reason: `existing_log_${existing.delivery_status}`,
+          provider_message_id: existing.provider_message_id ?? undefined,
+        });
+      }
+      // Clear the old failed row so the unique dedupe_key index allows a fresh attempt.
+      await supabase.from('communication_logs').delete().eq('id', existing.id);
     }
 
     // ── 2) preference enforcement ──
@@ -262,9 +270,22 @@ Deno.serve(async (req) => {
                 skip_log: true,
               },
             });
-            if (r.error) throw new Error(r.error.message);
-            const errPayload = (r.data as { error?: unknown })?.error;
-            if (errPayload) throw new Error(typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload));
+            // supabase-js wraps non-2xx as `error`; the real Meta reason lives
+            // inside response body. Try to extract it for clearer logs.
+            if (r.error) {
+              let detail = r.error.message;
+              try {
+                const ctx: any = (r.error as any).context;
+                if (ctx?.body && typeof ctx.body.text === 'function') {
+                  const t = await ctx.body.text();
+                  if (t) detail = t;
+                }
+              } catch (_) { /* noop */ }
+              throw new Error(detail);
+            }
+            const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
+            const metaErr = (r.data as { meta_error?: string })?.meta_error;
+            if (errPayload) throw new Error(metaErr || (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload)));
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
