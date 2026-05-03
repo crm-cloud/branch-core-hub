@@ -1,4 +1,5 @@
-// dispatch-communication v1.4.0
+// dispatch-communication v1.5.0
+// v1.5.0: send approved Meta WhatsApp templates when template_id is provided; harden IN phone normalization.
 // v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
 // v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
@@ -86,6 +87,39 @@ async function functionErrorDetail(error: unknown): Promise<string> {
   return base;
 }
 
+function normalizePhoneDigits(value: unknown): string | null {
+  let digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.startsWith('0091') && digits.length === 14) digits = digits.slice(2);
+  if (digits.startsWith('091') && digits.length === 13) digits = digits.slice(1);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10) digits = `91${digits}`;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return digits;
+}
+
+function orderedTemplateKeys(content: string, variables: unknown): string[] {
+  const configured = Array.isArray(variables) ? variables.map((v) => String(v).trim()).filter(Boolean) : [];
+  if (configured.length > 0) return configured;
+  const keys: string[] = [];
+  for (const match of content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)) {
+    const key = match[1].trim();
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null {
+  if (keys.length === 0) return undefined as unknown as null;
+  const params = keys.map((key, index) => {
+    const value = values?.[key] ?? values?.[String(index + 1)] ?? values?.[`variable_${index + 1}`];
+    const text = value == null ? '' : String(value).trim();
+    if (!text) return null;
+    return { type: 'text', text };
+  });
+  if (params.some((p) => p === null)) return null;
+  return [{ type: 'body', parameters: params }];
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, { error: 'method_not_allowed' });
@@ -109,10 +143,8 @@ Deno.serve(async (req) => {
   // Normalize phone recipients to E.164 (digits only) for whatsapp/sms.
   // Defaults to India (+91) when no country code is present.
   if (input.channel === 'whatsapp' || input.channel === 'sms') {
-    let digits = String(input.recipient || '').replace(/\D/g, '');
-    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-    if (digits.length === 10) digits = '91' + digits;
-    if (digits.length < 10 || digits.length > 15) {
+    const digits = normalizePhoneDigits(input.recipient);
+    if (!digits) {
       return bad(400, { error: 'invalid_recipient_phone', details: input.recipient });
     }
     input.recipient = digits;
