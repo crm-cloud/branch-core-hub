@@ -188,14 +188,25 @@ serve(async (req) => {
 
     let uploadedMediaId: string | null = null;
     if ((message_type === "image" || message_type === "document") && media_url) {
-      uploadedMediaId = await uploadMediaToMeta({
-        phoneNumberId,
-        accessToken,
-        appSecret,
-        proof,
-        mediaUrl: media_url,
-        fallbackType: message_type === "image" ? "image/jpeg" : "application/pdf",
-      });
+      try {
+        uploadedMediaId = await uploadMediaToMeta({
+          phoneNumberId,
+          accessToken,
+          appSecret,
+          proof,
+          mediaUrl: media_url,
+          fallbackType: message_type === "image" ? "image/jpeg" : "application/pdf",
+        });
+      } catch (mediaErr) {
+        const errMsg = mediaErr instanceof Error ? mediaErr.message : "Media upload failed";
+        console.error("WhatsApp media preparation error:", errMsg);
+        await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
+        await logError(supabase, branch_id, "send-whatsapp", "Media preparation failed", errMsg);
+        return new Response(
+          JSON.stringify({ error: "Failed to prepare WhatsApp media", details: errMsg }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     if (message_type === "image") {
