@@ -40,7 +40,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
   const [templateId, setTemplateId] = useState('');
   const [subject, setSubject] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' } | null>(null);
+  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
@@ -50,7 +50,11 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
     if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB for attachments'); return; }
     setIsUploading(true);
     try {
-      const kind: 'image' | 'document' = file.type.startsWith('image/') ? 'image' : 'document';
+      const kind: 'image' | 'document' | 'video' = file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+        ? 'video'
+        : 'document';
       const { url } = await uploadAttachment(file, { folder: 'broadcasts', filename: file.name, contentType: file.type });
       setAttachment({ url, filename: file.name, kind });
       toast.success('Attachment uploaded');
