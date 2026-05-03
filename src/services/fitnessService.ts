@@ -301,46 +301,24 @@ async function sendOneNotification(
   const subject = `New ${params.plan_type} plan assigned`;
   const body = `Hi ${contact.full_name}, your trainer has assigned a new ${params.plan_type} plan: "${params.plan_name}". Open the gym app to view it.`;
   try {
-    if (channel === 'email') {
-      if (!contact.email) return { sent: false, error: 'No email on file' };
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: {
-          to: contact.email,
-          subject,
-          html: `<p>${body}</p>`,
-          branch_id: params.branch_id,
-        },
-      });
-      if (error) throw error;
-      return { sent: true };
-    }
-    if (channel === 'whatsapp') {
-      if (!contact.phone) return { sent: false, error: 'No phone on file' };
+    if (channel === 'email' || channel === 'whatsapp') {
+      const recipient = channel === 'email' ? contact.email : contact.phone;
+      if (!recipient) return { sent: false, error: `No ${channel === 'email' ? 'email' : 'phone'} on file` };
       if (!params.branch_id) return { sent: false, error: 'No branch context' };
-      // Insert pending message row to obtain message_id (mirrors WhatsAppChat flow).
-      const { data: msg, error: insertErr } = await supabase
-        .from('whatsapp_messages')
-        .insert({
-          branch_id: params.branch_id,
-          phone_number: contact.phone,
-          content: body,
-          message_type: 'text',
-          direction: 'outbound',
-          status: 'pending',
-          member_id: contact.id,
-        } as any)
-        .select('id')
-        .single();
-      if (insertErr) throw insertErr;
-      const { error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
-        body: {
-          message_id: (msg as any).id,
-          phone_number: contact.phone,
-          content: body,
-          branch_id: params.branch_id,
-        },
+      const { dispatchCommunication, buildDedupeKey } = await import('@/lib/comms/dispatch');
+      const result = await dispatchCommunication({
+        branch_id: params.branch_id,
+        channel,
+        category: 'transactional',
+        recipient,
+        member_id: contact.id,
+        payload: { subject, body, use_branded_template: channel === 'email' },
+        dedupe_key: buildDedupeKey(['fitness-plan', params.plan_type, contact.id, channel]),
+        force: true,
       });
-      if (sendErr) throw sendErr;
+      if (result.status === 'failed' || result.status === 'suppressed') {
+        return { sent: false, error: result.reason || result.status };
+      }
       return { sent: true };
     }
     if (channel === 'in_app') {
