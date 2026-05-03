@@ -665,8 +665,25 @@ serve(async (req) => {
       }
     }
 
+    // ── ACTION: bulk_delete_local ──
+    // Deletes local cached rows only; Meta-side deletion must be done in Business Manager.
+    if (action === "bulk_delete_local") {
+      const ids: string[] = body.ids || [];
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing ids[]" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { error: e1 } = await supabase.from("whatsapp_templates").delete().in("id", ids);
+      // Also clear meta_* metadata on legacy templates rows so they appear unsynced again.
+      await supabase.from("templates").update({
+        meta_template_name: null, meta_template_id: null, meta_template_status: null, meta_rejection_reason: null,
+      }).in("id", ids);
+      return new Response(JSON.stringify({ success: !e1, error: e1?.message || null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     return new Response(
-      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | edit | get_status | sync_ig_icebreakers | sync_messenger_quick_replies` }),
+      JSON.stringify({ error: `Unknown action: ${action}. Valid: list | create | edit | get_status | bulk_delete_local | sync_ig_icebreakers | sync_messenger_quick_replies` }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
