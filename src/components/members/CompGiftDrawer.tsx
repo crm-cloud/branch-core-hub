@@ -265,6 +265,34 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
 
   const activeComps = existingComps.filter((c: any) => c.used_sessions < c.comp_sessions);
 
+  // Merge plan + comp totals per benefit so members/staff see one combined number
+  const combinedBenefits = (() => {
+    const map = new Map<string, { name: string; planRemaining: number | null; planLimit: number; planUsed: number; compRemaining: number; unlimited: boolean }>();
+    planBenefits.forEach((b: any) => {
+      const name = b.benefit_types?.name || b.benefit_type;
+      const unlimited = b.frequency === 'unlimited';
+      map.set(name, {
+        name,
+        unlimited,
+        planLimit: b.limit_count || 0,
+        planUsed: b.used || 0,
+        planRemaining: unlimited ? null : (b.remaining ?? 0),
+        compRemaining: 0,
+      });
+    });
+    activeComps.forEach((c: any) => {
+      const name = c.benefit_types?.name || 'Benefit';
+      const remaining = c.comp_sessions - c.used_sessions;
+      const existing = map.get(name);
+      if (existing) {
+        existing.compRemaining += remaining;
+      } else {
+        map.set(name, { name, unlimited: false, planLimit: 0, planUsed: 0, planRemaining: 0, compRemaining: remaining });
+      }
+    });
+    return Array.from(map.values()).filter(b => b.unlimited || (b.planRemaining || 0) + b.compRemaining > 0 || b.planLimit > 0);
+  })();
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
@@ -300,7 +328,7 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
                 All comp/gift requests require <span className="font-semibold text-foreground">Owner/Admin approval</span> before being applied.
               </p>
             </>
-          )}
+              )}
         </div>
 
         {/* Current Status Overview */}
@@ -353,6 +381,30 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
                         <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] h-5">
                           {c.comp_sessions - c.used_sessions} remaining
                         </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {combinedBenefits.some(b => b.compRemaining > 0) && (
+                <>
+                  <Separator className="my-3" />
+                  <p className="text-xs font-medium text-muted-foreground mb-2">TOTAL AVAILABLE (PLAN + COMP)</p>
+                  <div className="space-y-1.5">
+                    {combinedBenefits.filter(b => b.compRemaining > 0 || (!b.unlimited && b.planLimit > 0)).map((b, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="font-medium">{b.name}</span>
+                        {b.unlimited ? (
+                          <Badge variant="secondary" className="text-[10px] h-5">∞ Unlimited + {b.compRemaining} comp</Badge>
+                        ) : (
+                          <span className="text-foreground font-semibold">
+                            {(b.planRemaining || 0) + b.compRemaining} available
+                            <span className="text-muted-foreground font-normal ml-1">
+                              ({b.planRemaining || 0} plan + {b.compRemaining} comp)
+                            </span>
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
