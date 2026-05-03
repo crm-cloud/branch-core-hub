@@ -16,6 +16,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { buildInvoicePdf, type InvoicePdfInput } from '@/utils/pdfBlob';
 import { blobToBase64 } from '@/utils/uploadAttachment';
 import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
+import { findTemplate, resolveTemplate } from '@/lib/templates/dynamicAttachment';
+import { format as fmtDate } from 'date-fns';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
