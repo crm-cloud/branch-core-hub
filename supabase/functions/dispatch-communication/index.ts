@@ -1,4 +1,5 @@
-// dispatch-communication v1.3.1
+// dispatch-communication v1.4.0
+// v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
 // v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
 //         pass attachments (auto base64-fetched from attachment.url) and
