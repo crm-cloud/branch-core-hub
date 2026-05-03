@@ -9,25 +9,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Sparkles, CheckCircle2, AlertCircle, ShieldAlert, ShieldX, Wand2 } from 'lucide-react';
 import { AIGenerateTemplatesDrawer } from './AIGenerateTemplatesDrawer';
+import { getEventsForChannel, type EventChannel } from '@/lib/templates/systemEvents';
 
-type Channel = 'whatsapp' | 'sms' | 'email';
-
-const SYSTEM_EVENTS: { event: string; label: string }[] = [
-  { event: 'member_created', label: 'New Member Created' },
-  { event: 'payment_received', label: 'Payment Received' },
-  { event: 'payment_due', label: 'Payment Due Reminder' },
-  { event: 'class_booked', label: 'Class Booked' },
-  { event: 'facility_booked', label: 'Facility Slot Confirmed' },
-  { event: 'pt_session_booked', label: 'PT Session Booked' },
-  { event: 'membership_expiring_7d', label: 'Membership Expiring (7d)' },
-  { event: 'membership_expiring_1d', label: 'Membership Expiring (1d)' },
-  { event: 'membership_expired', label: 'Membership Expired' },
-  { event: 'missed_workout_3d', label: 'Missed Workout (3d)' },
-  { event: 'birthday', label: 'Birthday Wish' },
-  { event: 'freeze_confirmed', label: 'Membership Frozen' },
-  { event: 'unfreeze_confirmed', label: 'Membership Unfrozen' },
-  { event: 'lead_created', label: 'New Lead (Internal Alert)' },
-];
+type Channel = EventChannel;
 
 type RowState = 'ok' | 'pending' | 'rejected' | 'inactive' | 'missing';
 
@@ -95,7 +79,7 @@ export function TemplateCoverageMatrix({ channel }: Props) {
     for (const t of templates) {
       if (t.trigger_event && !tplByEvent.has(t.trigger_event)) tplByEvent.set(t.trigger_event, t);
     }
-    return SYSTEM_EVENTS.map((e) => {
+    return getEventsForChannel(channel).map((e) => {
       const trig = trigByEvent.get(e.event);
       const tpl = trig?.templates || tplByEvent.get(e.event);
       const meta = (tpl?.meta_template_status || '').toUpperCase();

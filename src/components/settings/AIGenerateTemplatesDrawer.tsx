@@ -13,41 +13,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Sparkles, Send, CheckCircle2, AlertCircle, MessageSquare, Mail, Phone } from 'lucide-react';
 import { toast } from 'sonner';
+import { getEventsForChannel, type EventChannel } from '@/lib/templates/systemEvents';
 
-type Channel = 'whatsapp' | 'sms' | 'email';
+type Channel = EventChannel;
 
-const COMMON_EVENTS = [
-  { event: 'member_created', label: 'Welcome — New Member' },
-  { event: 'payment_received', label: 'Payment Receipt' },
-  { event: 'payment_due', label: 'Payment Due Reminder' },
-  { event: 'class_booked', label: 'Class Booking Confirmation' },
-  { event: 'facility_booked', label: 'Facility Slot Confirmed' },
-  { event: 'pt_session_booked', label: 'PT Session Confirmed' },
-  { event: 'membership_expiring_7d', label: 'Expiring in 7 Days' },
-  { event: 'membership_expiring_1d', label: 'Expiring Tomorrow' },
-  { event: 'membership_expired', label: 'Membership Expired' },
-  { event: 'missed_workout_3d', label: 'Missed Workout Nudge', hint: 'Re-engagement' },
-  { event: 'birthday', label: 'Birthday Wish', hint: 'Marketing, warm greeting' },
-  { event: 'freeze_confirmed', label: 'Membership Frozen' },
-  { event: 'unfreeze_confirmed', label: 'Membership Unfrozen' },
-  { event: 'lead_created', label: 'Lead — Internal Alert', hint: 'For staff' },
-  { event: 'scan_ready', label: 'Body Scan Report Ready', hint: 'Document attachment' },
-  { event: 'class_promo', label: 'New Class Promo', hint: 'Marketing with image header' },
-  { event: 'gym_closure_update', label: 'Gym Closure Notice' },
-  { event: 'referral_reward', label: 'Referral Reward Earned' },
-  { event: 'offer_announcement', label: 'Special Offer / Discount', hint: 'Marketing' },
-];
-
-const EMAIL_EXTRA = [
-  { event: 'monthly_newsletter', label: 'Monthly Newsletter', hint: 'Marketing digest' },
-  { event: 'invoice_email', label: 'Invoice Email', hint: 'PDF attachment' },
-  { event: 'welcome_kit', label: 'Welcome Kit', hint: 'Onboarding multi-section' },
-];
-
-const CANDIDATE_BY_CHANNEL: Record<Channel, typeof COMMON_EVENTS> = {
-  whatsapp: COMMON_EVENTS,
-  sms: COMMON_EVENTS.filter((e) => !['class_promo', 'offer_announcement'].includes(e.event)).concat([]),
-  email: [...COMMON_EVENTS, ...EMAIL_EXTRA],
+const CANDIDATE_BY_CHANNEL: Record<Channel, { event: string; label: string; hint?: string }[]> = {
+  whatsapp: getEventsForChannel('whatsapp').map((e) => ({ event: e.event, label: e.label, hint: e.description })),
+  sms: getEventsForChannel('sms').map((e) => ({ event: e.event, label: e.label, hint: e.description })),
+  email: getEventsForChannel('email').map((e) => ({ event: e.event, label: e.label, hint: e.description })),
 };
 
 interface Proposal {
@@ -187,8 +160,28 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
       } else {
         toast.success(`Saved "${p.name}"`);
       }
+
+      // Auto-create automation mapping so the event actually fires once approved.
+      if (channel === 'whatsapp' && p.event && p.event !== 'custom') {
+        const { error: trigErr } = await supabase
+          .from('whatsapp_triggers')
+          .upsert(
+            {
+              branch_id: branchId,
+              event_name: p.event,
+              template_id: localRow!.id,
+              delay_minutes: 0,
+              is_active: true,
+            },
+            { onConflict: 'branch_id,event_name' },
+          );
+        if (trigErr) console.warn('whatsapp_triggers upsert failed', trigErr);
+        qc.invalidateQueries({ queryKey: ['whatsapp-triggers'] });
+      }
+
       qc.invalidateQueries({ queryKey: ['communication-templates'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-templates-health'] });
+      qc.invalidateQueries({ queryKey: ['template-coverage'] });
       setProposals((arr) => arr.filter((x) => x.name !== p.name));
     } catch (e: any) {
       toast.error(`${p.name}: ${e.message}`);
