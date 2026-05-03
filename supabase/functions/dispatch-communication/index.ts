@@ -105,6 +105,18 @@ Deno.serve(async (req) => {
   if (!validChannels.includes(input.channel)) return bad(400, { error: 'invalid_channel' });
   if (!input.payload?.body) return bad(400, { error: 'missing_payload_body' });
 
+  // Normalize phone recipients to E.164 (digits only) for whatsapp/sms.
+  // Defaults to India (+91) when no country code is present.
+  if (input.channel === 'whatsapp' || input.channel === 'sms') {
+    let digits = String(input.recipient || '').replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+    if (digits.length === 10) digits = '91' + digits;
+    if (digits.length < 10 || digits.length > 15) {
+      return bad(400, { error: 'invalid_recipient_phone', details: input.recipient });
+    }
+    input.recipient = digits;
+  }
+
   const ttl = Math.max(60, Math.min(input.ttl_seconds ?? 86400, 7 * 86400));
 
   const supabase = createClient(
