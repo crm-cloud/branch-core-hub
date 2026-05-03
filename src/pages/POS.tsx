@@ -960,7 +960,10 @@ export default function POSPage() {
                 filename: `Receipt-${lastSale.invoice_id?.slice(0, 8)}.pdf`,
                 pdf, folder: 'receipts',
               });
-              toast.success(r.fallback ? 'WhatsApp opened with PDF link' : 'Receipt PDF sent on WhatsApp');
+              if (r.status === 'failed' || r.status === 'suppressed') {
+                throw new Error(r.status === 'suppressed' ? 'WhatsApp send was suppressed by preferences' : 'WhatsApp failed to send the PDF');
+              }
+              toast.success('Receipt PDF sent on WhatsApp');
             } catch (err: any) { toast.error(err?.message || 'Failed to send'); }
           }}>
             <MessageCircle className="h-4 w-4 mr-2" />Send PDF on WhatsApp
