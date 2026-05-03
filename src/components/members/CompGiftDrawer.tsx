@@ -328,7 +328,31 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
                 All comp/gift requests require <span className="font-semibold text-foreground">Owner/Admin approval</span> before being applied.
               </p>
             </>
-          )}
+              )}
+
+              {combinedBenefits.some(b => b.compRemaining > 0) && (
+                <>
+                  <Separator className="my-3" />
+                  <p className="text-xs font-medium text-muted-foreground mb-2">TOTAL AVAILABLE (PLAN + COMP)</p>
+                  <div className="space-y-1.5">
+                    {combinedBenefits.filter(b => b.compRemaining > 0 || (!b.unlimited && b.planLimit > 0)).map((b, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="font-medium">{b.name}</span>
+                        {b.unlimited ? (
+                          <Badge variant="secondary" className="text-[10px] h-5">∞ Unlimited + {b.compRemaining} comp</Badge>
+                        ) : (
+                          <span className="text-foreground font-semibold">
+                            {(b.planRemaining || 0) + b.compRemaining} available
+                            <span className="text-muted-foreground font-normal ml-1">
+                              ({b.planRemaining || 0} plan + {b.compRemaining} comp)
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
         </div>
 
         {/* Current Status Overview */}
