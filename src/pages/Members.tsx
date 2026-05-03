@@ -302,6 +302,31 @@ export default function MembersPage() {
     return differenceInDays(new Date(membership.end_date), new Date());
   };
 
+  // Fetch gifted free days (extensions) for active memberships on this page
+  const activeMembershipIds = useMemo(() => {
+    return membersWithMemberships
+      .map((m: any) => getActiveMembership(m.memberships)?.id)
+      .filter(Boolean) as string[];
+  }, [membersWithMemberships]);
+
+  const { data: freeDaysByMembership = {} } = useQuery<Record<string, number>>({
+    queryKey: ['member-free-days', activeMembershipIds],
+    queryFn: async () => {
+      if (activeMembershipIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from('membership_free_days')
+        .select('membership_id, days_added')
+        .in('membership_id', activeMembershipIds);
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data || []).forEach((r: any) => {
+        map[r.membership_id] = (map[r.membership_id] || 0) + Number(r.days_added || 0);
+      });
+      return map;
+    },
+    enabled: activeMembershipIds.length > 0,
+  });
+
   const handleViewProfile = (member: any) => {
     setSelectedMember(member);
     setProfileOpen(true);
