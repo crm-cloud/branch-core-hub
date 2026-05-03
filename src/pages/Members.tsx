@@ -146,12 +146,14 @@ export default function MembersPage() {
         const { data, error, count } = await query;
         if (error) throw error;
         
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         const mapped = (data || []).map((m: any) => {
           const activeMembership = m.memberships?.find((ms: any) => {
-            const now = new Date();
-            const start = new Date(ms.start_date);
             const end = new Date(ms.end_date);
-            return ms.status === 'active' && now >= start && now <= end;
+            end.setHours(0, 0, 0, 0);
+            return ms.status === 'active' && end >= today;
           });
           const frozenMembership = m.memberships?.find((ms: any) => ms.status === 'frozen');
           let memberStatus = 'inactive';
@@ -285,7 +287,13 @@ export default function MembersPage() {
 
   const getActiveMembership = (memberships: any[]) => {
     if (!memberships || memberships.length === 0) return null;
-    return memberships.find((m: any) => m.status === 'active')
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return memberships.find((m: any) => {
+      const end = new Date(m.end_date);
+      end.setHours(0, 0, 0, 0);
+      return m.status === 'active' && end >= today;
+    })
       || memberships.find((m: any) => m.status === 'frozen');
   };
 
