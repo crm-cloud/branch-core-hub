@@ -4,7 +4,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine } from 'lucide-react';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Zap } from 'lucide-react';
+import { AutomationsControlRoom } from '@/components/settings/AutomationsControlRoom';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
 import { BackupRestore } from '@/components/settings/BackupRestore';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
@@ -25,6 +26,7 @@ import { TaxGstSettings } from '@/components/settings/TaxGstSettings';
 
 const SETTINGS_MENU = [
   { value: 'ai-agent', label: 'AI Agent', icon: Bot },
+  { value: 'automations', label: 'Automation Brain', icon: Zap },
   { value: 'appearance', label: 'Appearance', icon: Palette },
   { value: 'backup', label: 'Backup & Restore', icon: Database },
   { value: 'benefits', label: 'Benefits', icon: Sparkles },
@@ -48,6 +50,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   branches: <BranchSettings />,
   appearance: <ThemePicker />,
   'ai-agent': <AIAgentControlCenter />,
+  automations: <AutomationsControlRoom />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
   templates: <CommunicationTemplatesHub />,

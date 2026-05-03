@@ -21,6 +21,7 @@ export type Capability =
   | 'freeze_membership'
   | 'credit_member'
   | 'manage_devices'
+  | 'manage_automations'
   | 'view_reconciliation'
   | 'book_facility';
 
@@ -35,6 +36,7 @@ const MATRIX: Record<Capability, AppRole[]> = {
   freeze_membership:   ['owner', 'admin', 'manager'],
   credit_member:       ['owner', 'admin', 'manager'],
   manage_devices:      ['owner', 'admin', 'manager'],
+  manage_automations:  ['owner', 'admin'],
   view_reconciliation: ['owner', 'admin'],
   book_facility:       ['owner', 'admin', 'manager', 'staff', 'trainer', 'member'],
 };
@@ -56,6 +58,7 @@ export const can = {
   freezeMembership:  (r?: string[]) => hasCapability(r, 'freeze_membership'),
   creditMember:      (r?: string[]) => hasCapability(r, 'credit_member'),
   manageDevices:     (r?: string[]) => hasCapability(r, 'manage_devices'),
+  manageAutomations: (r?: string[]) => hasCapability(r, 'manage_automations'),
   viewReconciliation:(r?: string[]) => hasCapability(r, 'view_reconciliation'),
   bookFacility:      (r?: string[]) => hasCapability(r, 'book_facility'),
 };
