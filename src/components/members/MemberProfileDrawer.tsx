@@ -1799,14 +1799,14 @@ export function MemberProfileDrawer({
               membership={activeMembership}
               memberName={profile?.full_name}
             />
-            <CancelMembershipDrawer
-              open={cancelOpen}
-              onOpenChange={setCancelOpen}
-              membership={activeMembership}
-              memberName={profile?.full_name}
-            />
           </>
         )}
+        <CancelMembershipDrawer
+          open={cancelOpen}
+          onOpenChange={(o) => { setCancelOpen(o); if (!o) setCancelTarget(null); }}
+          membership={cancelTarget || activeMembership}
+          memberName={profile?.full_name}
+        />
         <AssignTrainerDrawer
           open={assignTrainerOpen}
           onOpenChange={setAssignTrainerOpen}
