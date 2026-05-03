@@ -4,11 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Award, ArrowUp, ArrowDown, Gift, Wallet, History } from 'lucide-react';
+import { Award, ArrowUp, ArrowDown, Gift, Wallet, History, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchWallet } from '@/services/walletService';
 import { format } from 'date-fns';
 import { RedeemPointsDrawer } from './RedeemPointsDrawer';
+import { CreditMemberDrawer } from './CreditMemberDrawer';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasCapability } from '@/lib/auth/permissions';
 
 interface RewardsWalletCardProps {
   memberId: string;
@@ -19,7 +22,10 @@ interface RewardsWalletCardProps {
 
 export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints }: RewardsWalletCardProps) {
   const [redeemOpen, setRedeemOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('points');
+  const { roles } = useAuth();
+  const canCredit = hasCapability(roles.map((r) => r.role) as any, 'credit_member' as any);
 
   const { data: walletData } = useQuery({
     queryKey: ['member-wallet', memberId],
@@ -103,6 +109,18 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
           </CardContent>
         </Card>
       </div>
+
+      {canCredit && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setCreditOpen(true)}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
+          Credit Member (Wallet / Points)
+        </Button>
+      )}
 
       {/* Combined Transaction History */}
       <Card>
@@ -205,6 +223,14 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
         memberName={memberName}
         branchId={branchId}
         currentPoints={rewardPoints || 0}
+      />
+
+      <CreditMemberDrawer
+        open={creditOpen}
+        onOpenChange={setCreditOpen}
+        memberId={memberId}
+        memberName={memberName}
+        branchId={branchId}
       />
     </>
   );

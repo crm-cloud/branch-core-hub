@@ -11319,6 +11319,17 @@ export type Database = {
         }
         Returns: Json
       }
+      credit_member: {
+        Args: {
+          p_branch_id: string
+          p_idempotency_key?: string
+          p_member_id: string
+          p_reason?: string
+          p_reward_points?: number
+          p_wallet_amount?: number
+        }
+        Returns: Json
+      }
       current_active_branch: { Args: never; Returns: string }
       current_branch: { Args: never; Returns: string }
       decide_role_change_request: {
