@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
 
     switch (provider) {
       case "smtp":
-        result = await sendViaSMTP(to, subject, finalHtml, fromEmail, fromName, config, credentials);
+        result = await sendViaSMTP(to, subject, finalHtml, fromEmail, fromName, config, credentials, attachments);
         break;
       case "sendgrid":
         result = await sendViaSendGrid(to, subject, finalHtml, fromEmail, fromName, credentials, attachments);
