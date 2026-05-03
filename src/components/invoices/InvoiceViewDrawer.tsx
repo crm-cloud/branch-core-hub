@@ -88,10 +88,10 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
         description: i.description, quantity: i.quantity || 1,
         unit_price: i.unit_price, total_amount: i.total_amount,
       })),
-      member_name: memberProfile?.full_name || 'Walk-in',
+      member_name: memberProfile?.full_name || invoice.customer_name || 'Walk-in Customer',
       member_code: invoice.members?.member_code,
-      member_email: memberProfile?.email,
-      member_phone: memberProfile?.phone,
+      member_email: memberProfile?.email || invoice.customer_email,
+      member_phone: memberProfile?.phone || invoice.customer_phone,
       branch_name: invoice.branch?.name || '',
       branch_address: invoice.branch?.address,
       branch_phone: invoice.branch?.phone,
@@ -187,9 +187,9 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
             <Card>
               <CardContent className="pt-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Bill To</p>
-                <p className="font-medium">{memberProfile?.full_name || 'Walk-in'}</p>
-                <p className="text-sm text-muted-foreground">{memberProfile?.email}</p>
-                <p className="text-sm text-muted-foreground">{memberProfile?.phone}</p>
+                <p className="font-medium">{memberProfile?.full_name || invoice.customer_name || 'Walk-in Customer'}</p>
+                <p className="text-sm text-muted-foreground">{memberProfile?.email || invoice.customer_email}</p>
+                <p className="text-sm text-muted-foreground">{memberProfile?.phone || invoice.customer_phone}</p>
                 {invoice.members?.member_code && (
                   <p className="text-xs font-mono text-muted-foreground mt-1">{invoice.members.member_code}</p>
                 )}
