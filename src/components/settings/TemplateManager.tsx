@@ -126,9 +126,13 @@ interface TemplateManagerProps {
   prefill?: TemplatePrefill;
   /** Fired once the editor has consumed the prefill (so parent can clear it). */
   onPrefillConsumed?: () => void;
+  /** When set, only show templates of this channel (hides outer channel tabs). */
+  filterType?: 'whatsapp' | 'sms' | 'email';
+  /** Hide the outer Card chrome (header + description); useful when embedded in a custom hub. */
+  hideHeader?: boolean;
 }
 
-export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerProps = {}) {
+export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHeader }: TemplateManagerProps = {}) {
   const queryClient = useQueryClient();
   const { branchFilter, effectiveBranchId } = useBranchContext();
   const [showEditor, setShowEditor] = useState(false);
@@ -583,6 +587,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
 
   // Apply status filter (only restricts WhatsApp templates; SMS/Email always pass)
   const filteredTemplates = templates.filter((t: any) => {
+    if (filterType && t.type !== filterType) return false;
     if (statusFilter === 'all') return true;
     if (t.type !== 'whatsapp') return false; // status sub-tabs are WhatsApp-specific
     return (t.approval_status || 'draft') === statusFilter;
@@ -594,8 +599,11 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     return acc;
   }, {} as Record<string, Template[]>);
 
+  const visibleTypes = filterType ? TEMPLATE_TYPES.filter((t) => t.value === filterType) : TEMPLATE_TYPES;
+
   return (
     <div className="space-y-6">
+      {!hideHeader && (
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Communication Templates</h3>
@@ -633,6 +641,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
           </Button>
         </div>
       </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
@@ -640,9 +649,10 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
         </div>
       ) : (
         <>
-        <Tabs defaultValue="whatsapp" className="w-full">
+        <Tabs defaultValue={visibleTypes[0]?.value || 'whatsapp'} className="w-full">
+          {visibleTypes.length > 1 && (
           <TabsList className="w-full grid grid-cols-3">
-            {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
+            {visibleTypes.map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} className="flex items-center gap-2">
                 <Icon className="h-4 w-4" />
                 {label}
@@ -654,7 +664,8 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
               </TabsTrigger>
             ))}
           </TabsList>
-          {TEMPLATE_TYPES.map(({ value, label }) => (
+          )}
+          {visibleTypes.map(({ value, label }) => (
             <TabsContent key={value} value={value}>
               {/* WhatsApp-only approval status filter chips */}
               {value === 'whatsapp' && (

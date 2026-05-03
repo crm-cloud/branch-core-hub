@@ -4,8 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { getNavMode, subscribeNavMode, type NavMode } from '@/lib/navPreferences';
-import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine, Phone } from 'lucide-react';
-import { WhatsAppRoutingSettings } from '@/components/settings/WhatsAppRoutingSettings';
+import { Building2, Plug, Bell, Shield, Globe, Settings as SettingsIcon, Gift, Sparkles, MessageSquare, Receipt, FileBox, Palette, Megaphone, Bot, IndianRupee, Database, ScanLine } from 'lucide-react';
 import { HowbodySettings } from '@/components/settings/HowbodySettings';
 import { BackupRestore } from '@/components/settings/BackupRestore';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
@@ -16,7 +15,7 @@ import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { WebsiteSettings } from '@/components/settings/WebsiteSettings';
 import { ReferralSettings } from '@/components/settings/ReferralSettings';
 import { BenefitSettingsComponent } from '@/components/settings/BenefitSettingsComponent';
-import { WhatsAppTemplatesHub } from '@/components/settings/WhatsAppTemplatesHub';
+import { CommunicationTemplatesHub } from '@/components/settings/CommunicationTemplatesHub';
 import { FinanceCategoryManager } from '@/components/settings/FinanceCategoryManager';
 import { PlanBenefitTemplates } from '@/components/settings/PlanBenefitTemplates';
 import { ThemePicker } from '@/components/settings/ThemePicker';
@@ -40,8 +39,7 @@ const SETTINGS_MENU = [
   { value: 'referrals', label: 'Referrals', icon: Gift },
   { value: 'security', label: 'Security', icon: Shield },
   { value: 'tax-gst', label: 'Tax & GST', icon: IndianRupee },
-  { value: 'templates', label: 'Templates Manager', icon: MessageSquare },
-  { value: 'whatsapp-routing', label: 'WhatsApp Routing', icon: Phone },
+  { value: 'templates', label: 'Communication Templates', icon: MessageSquare },
   { value: 'website', label: 'Website', icon: Globe },
 ];
 
@@ -52,7 +50,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   'ai-agent': <AIAgentControlCenter />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
-  templates: <WhatsAppTemplatesHub />,
+  templates: <CommunicationTemplatesHub />,
   'plan-templates': <PlanBenefitTemplates />,
   'finance-categories': <FinanceCategoryManager />,
   'tax-gst': <TaxGstSettings />,
@@ -63,7 +61,6 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   website: <WebsiteSettings />,
   backup: <BackupRestore />,
   howbody: <HowbodySettings />,
-  'whatsapp-routing': <WhatsAppRoutingSettings />,
 };
 
 export default function SettingsPage() {
