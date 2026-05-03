@@ -1,3 +1,4 @@
+// v3.1.0 — Route all broadcast sends through dispatch-communication with Meta template support.
 // v3.0.0 — Unified recipients (members + leads + contacts) via dispatch-communication; per-recipient log to campaign_recipients
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -42,7 +43,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
     }
 
-    const { channel, message, audience, branch_id, subject, member_ids, recipients, campaign_id } = await req.json();
+    const { channel, message, audience, branch_id, subject, member_ids, recipients, campaign_id, template_id, variables } = await req.json();
 
     if (!channel || !message || !branch_id) {
       return new Response(JSON.stringify({ error: "Missing required fields: channel, message, branch_id" }), {
@@ -74,17 +75,18 @@ Deno.serve(async (req) => {
         try {
           const { data: dispatchRes, error: dispatchErr } = await adminClient.functions.invoke('dispatch-communication', {
             body: {
+              branch_id,
               channel,
               recipient: target,
-              subject: subject || null,
-              content: personalized,
-              branch_id,
               category: 'marketing',
+              payload: { subject: subject || undefined, body: personalized, variables: variables || undefined },
+              template_id: template_id || null,
               member_id: r.source_type === 'member' ? r.source_ref_id : null,
-              dedupe_key: campaign_id ? `campaign:${campaign_id}:${r.source_type}:${r.source_ref_id}` : null,
+              dedupe_key: campaign_id ? `campaign:${campaign_id}:${r.source_type}:${r.source_ref_id}` : `broadcast:${Date.now()}:${r.source_type}:${r.source_ref_id}`,
+              force: true,
             },
           });
-          const ok = !dispatchErr && (dispatchRes as any)?.success !== false;
+          const ok = !dispatchErr && ['sent', 'queued', 'deduped'].includes(String((dispatchRes as any)?.status || ''));
           if (ok) sent++; else failed++;
           recipientRows.push({
             campaign_id: campaign_id ?? null,
