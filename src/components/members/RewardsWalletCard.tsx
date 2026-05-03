@@ -110,6 +110,18 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
         </Card>
       </div>
 
+      {canCredit && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setCreditOpen(true)}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
+          Credit Member (Wallet / Points)
+        </Button>
+      )}
+
       {/* Combined Transaction History */}
       <Card>
         <CardHeader className="pb-2">
