@@ -1,4 +1,5 @@
-// dispatch-communication v1.5.0
+// dispatch-communication v1.6.0
+// v1.6.0: accept attachment.kind='video' (mapped to WA document fallback); video forwarded as-is to email base64 path.
 // v1.5.0: send approved Meta WhatsApp templates when template_id is provided; harden IN phone normalization.
 // v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
 // v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
