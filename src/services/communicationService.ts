@@ -123,53 +123,27 @@ export const communicationService = {
     return url;
   },
 
-  // Email — actually send via configured provider edge function (no longer log-only)
+  // Email — routes through unified dispatcher (single source of truth).
   async sendEmail(to: string, subject: string, body: string, branchId: string) {
-    try {
-      const { data, error } = await supabase.functions.invoke('send-email', {
-        body: { to, subject, html: body, branch_id: branchId },
-      });
-      if (error) throw error;
-      // log success
-      await this.logCommunication({
-        branch_id: branchId,
-        type: 'email',
-        recipient: to,
-        subject,
-        content: body,
-        status: 'sent',
-      });
-      return { success: true, ...data };
-    } catch (err: any) {
-      console.error('sendEmail failed:', err);
-      // log failure
-      await this.logCommunication({
-        branch_id: branchId,
-        type: 'email',
-        recipient: to,
-        subject,
-        content: body,
-        status: 'failed',
-      }).catch(() => {});
-      throw err;
+    const { dispatchCommunication, buildDedupeKey } = await import('@/lib/comms/dispatch');
+    const result = await dispatchCommunication({
+      branch_id: branchId,
+      channel: 'email',
+      category: 'transactional',
+      recipient: to,
+      payload: { subject, body, use_branded_template: true },
+      dedupe_key: buildDedupeKey(['adhoc', subject, to, Date.now()]),
+      force: true,
+    });
+    if (result.status === 'failed' || result.status === 'suppressed') {
+      throw new Error(result.reason || 'Email send failed');
     }
+    return { success: true, ...result };
   },
 
-  // Send email via configured provider (Edge Function)
+  // Backwards-compatible alias — also routes through dispatcher.
   async sendEmailViaProvider(to: string, subject: string, html: string, branchId: string) {
-    try {
-      const { data, error } = await supabase.functions.invoke('send-email', {
-        body: { to, subject, html, branch_id: branchId },
-      });
-      if (error) throw error;
-      return data;
-    } catch (err: any) {
-      console.error('Provider email failed, falling back to mailto:', err);
-      // Fallback to mailto: if no provider configured
-      const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(html.replace(/<[^>]+>/g, ''))}`;
-      window.open(mailtoLink, '_blank');
-      return { success: true, fallback: true };
-    }
+    return this.sendEmail(to, subject, html, branchId);
   },
 
   // SMS (opens SMS app with pre-filled message)

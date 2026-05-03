@@ -12,7 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { buildPlanPdf } from './pdfBlob';
-import { uploadAttachment, blobToBase64 } from './uploadAttachment';
+import { uploadAttachment } from './uploadAttachment';
 import { dispatchCommunication } from '@/services/preferencesService';
 
 export type PlanSendChannel = 'download' | 'whatsapp' | 'email';
@@ -140,13 +140,14 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
     }
   }
 
-  // 5. Email attachment
-  if (input.channels.includes('email')) {
+  // 5. Email attachment — routed through canonical dispatcher
+  if (input.channels.includes('email') && pdfUrl) {
     if (!input.member.email) {
       channels.email = { sent: false, error: 'No email on file' };
+    } else if (!input.branchId) {
+      channels.email = { sent: false, error: 'No branch context' };
     } else {
       try {
-        const base64 = await blobToBase64(pdfBlob);
         const subject = `Your new ${input.plan.type} plan: ${input.plan.name}`;
         const html = `
           <p>Hi ${input.member.full_name},</p>
@@ -154,19 +155,22 @@ export async function sendPlanToMember(input: PlanSendInput): Promise<PlanSendRe
           ${input.plan.valid_until ? `<p>Valid until <b>${input.plan.valid_until}</b>.</p>` : ''}
           <p>The full plan is attached as a PDF.</p>
           <p>— Team Incline</p>`;
-        const { error } = await supabase.functions.invoke('send-email', {
-          body: {
-            to: input.member.email,
-            subject,
-            html,
-            branch_id: input.branchId,
-            attachments: [
-              { filename, content_base64: base64, content_type: 'application/pdf' },
-            ],
-          },
+        const result = await dispatchCommunication({
+          branch_id: input.branchId,
+          channel: 'email',
+          category: 'transactional',
+          recipient: input.member.email,
+          member_id: input.member.id,
+          payload: { subject, body: html, use_branded_template: true },
+          dedupe_key: `plan:${input.member.id}:${input.plan.type}:${input.plan.name}:email`,
+          force: true,
+          attachment: { url: pdfUrl, filename, content_type: 'application/pdf', kind: 'document' },
         });
-        if (error) throw error;
-        channels.email = { sent: true };
+        if (result.status === 'failed' || result.status === 'suppressed') {
+          channels.email = { sent: false, error: result.reason || result.status };
+        } else {
+          channels.email = { sent: true };
+        }
       } catch (err: any) {
         channels.email = { sent: false, error: err?.message || 'Email failed' };
       }

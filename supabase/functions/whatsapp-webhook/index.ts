@@ -322,25 +322,55 @@ async function processIncomingMessages(value: any, branchId: string | null): Pro
 }
 
 // ─── Status Updates ────────────────────────────────────────────────────────────
+// Mirrors Meta delivery callbacks (sent → delivered → read → failed) onto BOTH
+// `whatsapp_messages` (CRM inbox) AND `communication_logs` (dispatcher audit
+// trail) so Templates Health and per-template delivery stats stay accurate.
 
 async function processStatusUpdates(value: any, branchId: string | null) {
   const statuses = Array.isArray(value.statuses) ? value.statuses : [];
 
   for (const status of statuses) {
     if (!status?.id) continue;
+    const newStatus = String(status.status ?? "sent").toLowerCase();
+    const errMsg = Array.isArray(status.errors) && status.errors.length
+      ? `${status.errors[0]?.code ?? ''}: ${status.errors[0]?.title ?? status.errors[0]?.message ?? ''}`.trim()
+      : null;
 
+    // 1. WhatsApp inbox row
     let updateQuery = supabase
       .from("whatsapp_messages")
-      .update({ status: status.status ?? "sent", updated_at: new Date().toISOString() })
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("whatsapp_message_id", status.id);
-
-    if (branchId) {
-      updateQuery = updateQuery.eq("branch_id", branchId);
-    }
-
+    if (branchId) updateQuery = updateQuery.eq("branch_id", branchId);
     const { error } = await updateQuery;
-    if (error) {
-      console.error("Failed to update WhatsApp message status", error);
+    if (error) console.error("Failed to update WhatsApp message status", error);
+
+    // 2. Dispatcher audit trail — match by provider_message_id (wamid).
+    //    `delivery_status` enum only has sent/failed; richer WhatsApp
+    //    lifecycle (delivered/read) is stashed under delivery_metadata.
+    try {
+      const { data: log } = await supabase
+        .from("communication_logs")
+        .select("id, delivery_metadata")
+        .eq("provider_message_id", status.id)
+        .maybeSingle();
+      if (log?.id) {
+        const meta = (log.delivery_metadata as Record<string, unknown>) || {};
+        const patch: Record<string, unknown> = {
+          delivery_metadata: {
+            ...meta,
+            wa_status: newStatus,
+            wa_status_at: new Date().toISOString(),
+          },
+        };
+        if (newStatus === "failed") {
+          patch.delivery_status = "failed";
+          if (errMsg) patch.error_message = errMsg;
+        }
+        await supabase.from("communication_logs").update(patch).eq("id", log.id);
+      }
+    } catch (e) {
+      console.warn("[whatsapp-webhook] communication_logs update failed:", e);
     }
   }
 }
