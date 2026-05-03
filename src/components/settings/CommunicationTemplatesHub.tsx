@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Mail, Phone, Sparkles, Settings as SettingsIcon, Bot, Workflow, PhoneForwarded } from 'lucide-react';
+import { MessageSquare, Mail, Phone, Sparkles, Bot, Workflow, PhoneForwarded, FileText, HeartPulse, BadgeCheck } from 'lucide-react';
 import { TemplateManager } from './TemplateManager';
 import { WhatsAppAutomations } from './WhatsAppAutomations';
 import { WhatsAppTemplatesHealth } from './WhatsAppTemplatesHealth';
@@ -85,40 +85,61 @@ export function CommunicationTemplatesHub() {
         <TabsContent value="whatsapp" className="mt-4 space-y-5">
           <ChannelHero channel="whatsapp" onAi={() => openAi('whatsapp')} />
 
-          <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-            <CardContent className="pt-6 space-y-6">
-              <WhatsAppTemplatesHealth onFixClick={handleMap} />
-              <MetaTemplatesPanel />
-              <TemplateManager
-                filterType="whatsapp"
-                hideHeader
-                prefill={prefill ?? undefined}
-                onPrefillConsumed={() => setPrefill(null)}
-              />
-              <WhatsAppAutomations />
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="crm" className="w-full">
+            <TabsList className="flex flex-wrap gap-1 h-auto bg-muted/50 p-1 rounded-xl">
+              <TabsTrigger value="crm" className="gap-1.5"><FileText className="h-3.5 w-3.5" /> CRM Templates</TabsTrigger>
+              <TabsTrigger value="health" className="gap-1.5"><HeartPulse className="h-3.5 w-3.5" /> Templates Health</TabsTrigger>
+              <TabsTrigger value="meta" className="gap-1.5"><BadgeCheck className="h-3.5 w-3.5" /> Meta Approved</TabsTrigger>
+              <TabsTrigger value="auto" className="gap-1.5"><Workflow className="h-3.5 w-3.5" /> Automations</TabsTrigger>
+              <TabsTrigger value="ai" className="gap-1.5"><Bot className="h-3.5 w-3.5" /> AI Agent</TabsTrigger>
+              <TabsTrigger value="routing" className="gap-1.5"><PhoneForwarded className="h-3.5 w-3.5" /> Number Routing</TabsTrigger>
+            </TabsList>
 
-          <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <SettingsIcon className="h-4 w-4 text-primary" /> WhatsApp Settings
-              </CardTitle>
-              <CardDescription>AI agent, automations and number routing — scoped to the selected branch.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Accordion type="multiple" className="w-full">
-                <AccordionItem value="ai">
-                  <AccordionTrigger><span className="flex items-center gap-2"><Bot className="h-4 w-4" /> AI Agent</span></AccordionTrigger>
-                  <AccordionContent><WhatsAppAISettings /></AccordionContent>
-                </AccordionItem>
-                <AccordionItem value="routing">
-                  <AccordionTrigger><span className="flex items-center gap-2"><PhoneForwarded className="h-4 w-4" /> Number Routing</span></AccordionTrigger>
-                  <AccordionContent><WhatsAppRoutingSettings /></AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </CardContent>
-          </Card>
+            <TabsContent value="crm" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6">
+                  <TemplateManager
+                    filterType="whatsapp"
+                    hideHeader
+                    prefill={prefill ?? undefined}
+                    onPrefillConsumed={() => setPrefill(null)}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="health" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6">
+                  <WhatsAppTemplatesHealth onFixClick={(eventName) => { handleMap(eventName); }} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="meta" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><MetaTemplatesPanel /></CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="auto" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><WhatsAppAutomations /></CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="ai" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><WhatsAppAISettings /></CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="routing" className="mt-4">
+              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
+                <CardContent className="pt-6"><WhatsAppRoutingSettings /></CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="sms" className="mt-4 space-y-5">
