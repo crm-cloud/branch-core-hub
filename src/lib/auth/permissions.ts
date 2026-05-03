@@ -58,6 +58,7 @@ export const can = {
   freezeMembership:  (r?: string[]) => hasCapability(r, 'freeze_membership'),
   creditMember:      (r?: string[]) => hasCapability(r, 'credit_member'),
   manageDevices:     (r?: string[]) => hasCapability(r, 'manage_devices'),
+  manageAutomations: (r?: string[]) => hasCapability(r, 'manage_automations'),
   viewReconciliation:(r?: string[]) => hasCapability(r, 'view_reconciliation'),
   bookFacility:      (r?: string[]) => hasCapability(r, 'book_facility'),
 };
