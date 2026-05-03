@@ -1,4 +1,6 @@
-// v2.3.0 — document messages now send link + filename + caption together so PDFs
+// v2.4.0 — document/image media is fetched server-side and uploaded to Meta first;
+//           this avoids signed storage URLs being re-fetched/rewritten by WhatsApp.
+// v2.3.0 — document messages send link + filename + caption together so PDFs
 //           arrive as named, captioned attachments instead of unnamed downloads.
 // v2.2.0 — honor skip_log from dispatcher to avoid duplicate communication_logs rows.
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
@@ -34,6 +36,44 @@ function buildMetaUrl(phoneNumberId: string, accessToken: string, appSecret?: st
   return url;
 }
 
+async function uploadMediaToMeta(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  appSecret?: string | null;
+  proof?: string | null;
+  mediaUrl: string;
+  fallbackType: string;
+}): Promise<string> {
+  const mediaResponse = await fetch(input.mediaUrl);
+  if (!mediaResponse.ok) {
+    const detail = await mediaResponse.text().catch(() => "");
+    throw new Error(`media_fetch_${mediaResponse.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+  }
+
+  const contentType = mediaResponse.headers.get("content-type") || input.fallbackType;
+  const bytes = await mediaResponse.arrayBuffer();
+  if (bytes.byteLength < 1024) throw new Error(`media_too_small_${bytes.byteLength}b`);
+
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", contentType);
+  form.append("file", new Blob([bytes], { type: contentType }), "attachment");
+
+  let uploadUrl = `${META_API_BASE}/${input.phoneNumberId}/media`;
+  if (input.appSecret && input.proof) uploadUrl += `?appsecret_proof=${input.proof}`;
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${input.accessToken}` },
+    body: form,
+  });
+  const uploadData = await uploadResponse.json().catch(() => ({}));
+  if (!uploadResponse.ok || !uploadData?.id) {
+    throw new Error(uploadData?.error?.message || `media_upload_${uploadResponse.status}`);
+  }
+  return uploadData.id;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,8 +82,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const message_id = body.message_id ?? body.messageId;
-    const phone_number = body.phone_number ?? body.phone;
-    const content = body.content ?? body.message;
+    const phone_number = body.phone_number ?? body.phone ?? body.recipient;
+    const content = body.content ?? body.message ?? body.body;
     const branch_id = body.branch_id ?? body.branchId;
     const message_type = body.message_type || "text";
     const media_url = body.media_url;
@@ -146,10 +186,33 @@ serve(async (req) => {
       to: cleanPhone,
     };
 
+    let uploadedMediaId: string | null = null;
+    if ((message_type === "image" || message_type === "document") && media_url) {
+      try {
+        uploadedMediaId = await uploadMediaToMeta({
+          phoneNumberId,
+          accessToken,
+          appSecret,
+          proof,
+          mediaUrl: media_url,
+          fallbackType: message_type === "image" ? "image/jpeg" : "application/pdf",
+        });
+      } catch (mediaErr) {
+        const errMsg = mediaErr instanceof Error ? mediaErr.message : "Media upload failed";
+        console.error("WhatsApp media preparation error:", errMsg);
+        await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
+        await logError(supabase, branch_id, "send-whatsapp", "Media preparation failed", errMsg);
+        return new Response(
+          JSON.stringify({ error: "Failed to prepare WhatsApp media", details: errMsg }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     if (message_type === "image") {
       metaPayload.type = "image";
       metaPayload.image = {
-        link: media_url,
+        ...(uploadedMediaId ? { id: uploadedMediaId } : { link: media_url }),
         ...(caption ? { caption } : {}),
       };
     } else if (message_type === "document") {
@@ -157,7 +220,7 @@ serve(async (req) => {
       // the recipient sees a named PDF with descriptive text.
       metaPayload.type = "document";
       metaPayload.document = {
-        link: media_url,
+        ...(uploadedMediaId ? { id: uploadedMediaId } : { link: media_url }),
         filename: body.filename || "document.pdf",
         ...(caption ? { caption } : {}),
       };

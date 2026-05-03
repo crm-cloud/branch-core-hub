@@ -1,4 +1,5 @@
-// dispatch-communication v1.3.0
+// dispatch-communication v1.3.1
+// v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
 //         pass attachments (auto base64-fetched from attachment.url) and
 //         use_branded_template flag; mirror provider_message_id into delivery_metadata.
@@ -70,6 +71,18 @@ function ok(body: DispatchResult): Response {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+async function functionErrorDetail(error: unknown): Promise<string> {
+  const base = error instanceof Error ? error.message : String(error ?? 'edge_function_error');
+  try {
+    const ctx = (error as { context?: unknown })?.context;
+    if (ctx instanceof Response) {
+      const text = await ctx.clone().text();
+      return text || base;
+    }
+  } catch (_) { /* noop */ }
+  return base;
 }
 
 Deno.serve(async (req) => {
@@ -281,36 +294,43 @@ Deno.serve(async (req) => {
             });
             // supabase-js wraps non-2xx as `error`; the real Meta reason lives
             // inside response body. Try to extract it for clearer logs.
-            if (r.error) {
-              let detail = r.error.message;
-              try {
-                const ctx: any = (r.error as any).context;
-                if (ctx?.body && typeof ctx.body.text === 'function') {
-                  const t = await ctx.body.text();
-                  if (t) detail = t;
-                }
-              } catch (_) { /* noop */ }
-              throw new Error(detail);
-            }
+            if (r.error) throw new Error(await functionErrorDetail(r.error));
             const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
             const metaErr = (r.data as { meta_error?: string })?.meta_error;
             if (errPayload) throw new Error(metaErr || (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload)));
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
+          const messageType = 'text';
+          const { data: waRow, error: waErr } = await supabase
+            .from('whatsapp_messages')
+            .insert({
+              branch_id: input.branch_id,
+              phone_number: input.recipient,
+              member_id: input.member_id ?? null,
+              content: input.payload.body,
+              direction: 'outbound',
+              status: 'pending',
+              message_type: messageType,
+            })
+            .select('id')
+            .single();
+          if (waErr) throw new Error(waErr.message);
           const r = await supabase.functions.invoke('send-whatsapp', {
             body: {
+              message_id: waRow!.id,
+              phone_number: input.recipient,
+              content: input.payload.body,
               branch_id: input.branch_id,
-              recipient: input.recipient,
+              message_type: messageType,
               template_id: input.template_id,
               variables: input.payload.variables,
-              body: input.payload.body,
               member_id: input.member_id,
               skip_log: true,                // dispatcher owns the log
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }
@@ -326,7 +346,7 @@ Deno.serve(async (req) => {
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }
@@ -368,7 +388,7 @@ Deno.serve(async (req) => {
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }

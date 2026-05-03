@@ -184,10 +184,13 @@ Team Incline Fitness`;
         dedupeKey: `invoice:${invoice.id}:wa`,
         category: 'payment_receipt',
       });
+      if (result.status === 'failed' || result.status === 'suppressed') {
+        throw new Error(result.status === 'suppressed' ? 'WhatsApp send was suppressed by preferences' : 'WhatsApp failed to send the PDF');
+      }
       if (result.status === 'deduped') {
         toast.info('This invoice was already sent on WhatsApp.');
       } else {
-        toast.success(result.fallback ? 'WhatsApp opened with PDF link (fallback)' : 'Invoice PDF sent via WhatsApp');
+        toast.success('Invoice PDF sent via WhatsApp');
       }
       onOpenChange(false);
     } catch (err: any) {
