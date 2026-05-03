@@ -48,9 +48,9 @@ Deno.serve(async (req) => {
     const attachment = attachment_url
       ? {
           url: attachment_url,
-          filename: attachment_filename || (attachment_kind === 'image' ? 'image.jpg' : 'document.pdf'),
-          content_type: attachment_kind === 'image' ? 'image/jpeg' : 'application/pdf',
-          kind: (attachment_kind === 'image' ? 'image' : 'document') as 'image' | 'document',
+          filename: attachment_filename || (attachment_kind === 'image' ? 'image.jpg' : attachment_kind === 'video' ? 'video.mp4' : 'document.pdf'),
+          content_type: attachment_kind === 'image' ? 'image/jpeg' : attachment_kind === 'video' ? 'video/mp4' : 'application/pdf',
+          kind: (attachment_kind === 'image' ? 'image' : attachment_kind === 'video' ? 'video' : 'document') as 'image' | 'document' | 'video',
         }
       : undefined;
 
