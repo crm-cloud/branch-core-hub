@@ -50,6 +50,7 @@ const normalizeStatus = (log: any): string => {
   const delivery = (log.delivery_status || '').toLowerCase();
   // Honour terminal statuses first — they are written by the dispatcher
   if (status === 'failed' || status === 'bounced') return status;
+  if (delivery === 'failed' || delivery === 'bounced') return delivery;
   // Honour delivery progressions (delivered/read/replied) when they exist
   if (['delivered', 'read', 'replied'].includes(delivery)) return delivery;
   // status='sent' wins over a stale delivery_status='scheduled'
