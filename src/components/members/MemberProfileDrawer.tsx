@@ -919,9 +919,46 @@ export function MemberProfileDrawer({
 
     return [...attendanceItems, ...membershipItems, ...paymentItems, ...ptPackageItems]
       .filter((item) => !!item.timestamp)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 12);
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [attendance, memberDetails?.member_pt_packages, memberDetails?.memberships, payments]);
+
+  // Group activity by day, then by badge
+  const groupedActivity = useMemo(() => {
+    const byDay = new Map<string, RecentActivityItem[]>();
+    for (const item of recentActivity) {
+      const key = format(new Date(item.timestamp), 'yyyy-MM-dd');
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key)!.push(item);
+    }
+    return Array.from(byDay.entries()).map(([dayKey, items]) => {
+      const groups = new Map<string, RecentActivityItem[]>();
+      for (const it of items) {
+        if (!groups.has(it.badge)) groups.set(it.badge, []);
+        groups.get(it.badge)!.push(it);
+      }
+      return {
+        dayKey,
+        date: new Date(dayKey),
+        items,
+        groups: Array.from(groups.entries()).map(([badge, list]) => ({ badge, items: list })),
+      };
+    });
+  }, [recentActivity]);
+
+  const [activityPage, setActivityPage] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const ACTIVITY_DAYS_PER_PAGE = 5;
+  const totalActivityPages = Math.max(1, Math.ceil(groupedActivity.length / ACTIVITY_DAYS_PER_PAGE));
+  const pagedActivityDays = groupedActivity.slice(
+    activityPage * ACTIVITY_DAYS_PER_PAGE,
+    activityPage * ACTIVITY_DAYS_PER_PAGE + ACTIVITY_DAYS_PER_PAGE,
+  );
+  const toggleGroup = (key: string) =>
+    setExpandedGroups((s) => {
+      const n = new Set(s);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
 
   if (!member) return null;
 
