@@ -268,10 +268,35 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
     return map;
   }, [usageSummary]);
 
-  const availableBenefits = planBenefits.map((b: any) => {
+  // Aggregate active comps by benefit_type_id
+  const compMap = useMemo(() => {
+    const map: Record<string, { total: number; used: number; remaining: number; name?: string }> = {};
+    (comps as any[]).forEach((c) => {
+      if (!c.benefit_type_id) return;
+      const m = map[c.benefit_type_id] || { total: 0, used: 0, remaining: 0, name: c.benefit_types?.name };
+      m.total += c.comp_sessions || 0;
+      m.used += c.used_sessions || 0;
+      m.remaining += Math.max(0, (c.comp_sessions || 0) - (c.used_sessions || 0));
+      m.name = m.name || c.benefit_types?.name;
+      map[c.benefit_type_id] = m;
+    });
+    return map;
+  }, [comps]);
+
+  const planBenefitTypeIds = new Set<string>();
+  const planRows = planBenefits.map((b: any) => {
     const isUnlimited = b.frequency === 'unlimited';
     const used = b.benefit_type_id ? (usageMap[b.benefit_type_id] || 0) : 0;
-    const remaining = isUnlimited ? null : Math.max(0, (b.limit_count || 0) - used);
+    const planLimit = b.limit_count || 0;
+    const planRemaining = isUnlimited ? null : Math.max(0, planLimit - used);
+    if (b.benefit_type_id) planBenefitTypeIds.add(b.benefit_type_id);
+    const comp = b.benefit_type_id ? compMap[b.benefit_type_id] : undefined;
+    const compTotal = comp?.total || 0;
+    const compUsed = comp?.used || 0;
+    const compRemaining = comp?.remaining || 0;
+    const totalLimit = planLimit + compTotal;
+    const totalUsed = used + compUsed;
+    const totalRemaining = isUnlimited ? null : Math.max(0, totalLimit - totalUsed);
     return {
       benefit_type: b.benefit_type,
       benefit_type_id: b.benefit_type_id,
@@ -281,16 +306,47 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
       limit_count: b.limit_count,
       description: b.description,
       used,
-      remaining,
+      remaining: planRemaining,
       isUnlimited,
+      compTotal,
+      compUsed,
+      compRemaining,
+      totalLimit,
+      totalUsed,
+      totalRemaining,
+      isGiftOnly: false,
     };
   }).filter((b: any) => {
-    // Filter out benefits linked to gender-restricted facilities that don't match the member
-    if (!memberGender) return true; // Show all if gender not set
+    if (!memberGender) return true;
     const facility = facilityGenderMap.find((f: any) => f.benefit_type_id === b.benefit_type_id);
-    if (!facility) return true; // No facility link = show
+    if (!facility) return true;
     return facility.gender_access === 'unisex' || facility.gender_access === memberGender;
   });
+
+  // Append gift-only benefits (comps for benefit types not in plan)
+  const giftOnlyRows = Object.entries(compMap)
+    .filter(([btId]) => !planBenefitTypeIds.has(btId))
+    .map(([btId, c]) => ({
+      benefit_type: 'other',
+      benefit_type_id: btId,
+      label: c.name || 'Gift Benefit',
+      name: c.name || 'Gift Benefit',
+      frequency: 'per_membership',
+      limit_count: c.total,
+      description: 'Complimentary sessions',
+      used: c.used,
+      remaining: c.remaining,
+      isUnlimited: false,
+      compTotal: c.total,
+      compUsed: c.used,
+      compRemaining: c.remaining,
+      totalLimit: c.total,
+      totalUsed: c.used,
+      totalRemaining: c.remaining,
+      isGiftOnly: true,
+    }));
+
+  const availableBenefits = [...planRows, ...giftOnlyRows];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
