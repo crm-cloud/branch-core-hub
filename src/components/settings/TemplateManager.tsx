@@ -15,6 +15,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle, Info, AlertCircle, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { TEMPLATE_EVENTS, getEvent, validateTemplate, renderPreview } from '@/lib/templates/eventRegistry';
+import { DYNAMIC_PDF_PRESETS, type TemplatePreset } from '@/lib/templates/dynamicAttachment';
+import { FileText, Image as ImageIcon, Video as VideoIcon, Sparkles } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 const TEMPLATE_TYPES = [
   { value: 'sms', label: 'SMS', icon: Phone },
