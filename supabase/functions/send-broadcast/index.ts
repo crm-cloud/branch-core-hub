@@ -1,4 +1,4 @@
-// v3.2.0 — Attachment passthrough: forwards attachment_url/kind/filename into dispatch-communication.
+// v3.3.0 — Attachment kind 'video' supported (mapped via dispatcher).
 // v3.1.0 — Route all broadcast sends through dispatch-communication with Meta template support.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
