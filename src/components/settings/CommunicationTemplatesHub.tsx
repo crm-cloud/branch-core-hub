@@ -8,7 +8,7 @@ import { TemplateManager } from './TemplateManager';
 import { WhatsAppAutomations } from './WhatsAppAutomations';
 import { TemplateCoverageMatrix } from './TemplateCoverageMatrix';
 import { MetaTemplatesPanel } from './MetaTemplatesPanel';
-import { WhatsAppAISettings } from './WhatsAppAISettings';
+// AI Agent settings live in their own settings entry; not duplicated here.
 import { WhatsAppRoutingSettings } from './WhatsAppRoutingSettings';
 import { AIGenerateTemplatesDrawer } from './AIGenerateTemplatesDrawer';
 
