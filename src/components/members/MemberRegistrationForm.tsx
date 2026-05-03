@@ -323,7 +323,8 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       </div>
       <div class="terms">
         <div class="section-title" style="color:#334155;">📜 Terms & Conditions</div>
-        <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}${customTerms ? `<li>${e(customTerms)}</li>` : ''}</ol>
+        <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}${customTerms ? `<li style="margin-bottom:6px"><strong>Custom Terms</strong><br/><span>${e(customTerms)}</span></li>` : ''}</ol>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:11px;color:#334155"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div>
       </div>
       <div class="sig-section">
         <div class="sig-box">
