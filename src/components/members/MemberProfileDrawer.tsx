@@ -126,10 +126,41 @@ function PendingInvoicesSection({ memberId, branchId }: { memberId: string; bran
 
 // ─── Benefits & Usage Tab ───
 function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }: { memberId: string; activeMembership: any; branchId: string; memberGender?: string | null }) {
+  const queryClient = useQueryClient();
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const [topUpDrawerOpen, setTopUpDrawerOpen] = useState(false);
   const [topUpBenefit, setTopUpBenefit] = useState<any>(null);
   const [addOnOpen, setAddOnOpen] = useState(false);
+
+  // Member-level comps (gifts) — independent of plan
+  const { data: comps = [] } = useQuery({
+    queryKey: ['member-comps-profile', memberId],
+    enabled: !!memberId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_comps')
+        .select('id, comp_sessions, used_sessions, benefit_type_id, benefit_types(id, name, code)')
+        .eq('member_id', memberId);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Realtime: keep comps + usage live
+  useEffect(() => {
+    if (!memberId) return;
+    const channel = supabase
+      .channel(`member-profile-benefits-${memberId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_comps', filter: `member_id=eq.${memberId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-comps-profile', memberId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_usage', filter: activeMembership?.id ? `membership_id=eq.${activeMembership.id}` : undefined }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-benefit-usage-summary', activeMembership?.id] });
+        queryClient.invalidateQueries({ queryKey: ['member-benefit-bookings-recent', memberId, activeMembership?.id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [memberId, activeMembership?.id, queryClient]);
 
   const { data: planBenefits = [] } = useQuery({
     queryKey: ['member-plan-benefits', activeMembership?.plan_id],
