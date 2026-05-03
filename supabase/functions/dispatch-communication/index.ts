@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }
@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }
