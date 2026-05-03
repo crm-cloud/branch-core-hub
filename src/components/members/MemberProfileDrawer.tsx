@@ -392,39 +392,65 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
               {availableBenefits.length > 0 ? (
                 <div className="space-y-3">
                   {availableBenefits.map((b: any, idx: number) => {
-                    const progressPct = b.isUnlimited ? 100 : b.limit_count ? Math.min(100, (b.used / b.limit_count) * 100) : 0;
-                    const isExhausted = !b.isUnlimited && b.remaining === 0;
+                    const totalLimit = b.totalLimit ?? b.limit_count ?? 0;
+                    const totalUsed = b.totalUsed ?? b.used ?? 0;
+                    const totalRemaining = b.isUnlimited ? null : (b.totalRemaining ?? Math.max(0, totalLimit - totalUsed));
+                    const progressPct = b.isUnlimited ? 100 : totalLimit ? Math.min(100, (totalUsed / totalLimit) * 100) : 0;
+                    const isExhausted = !b.isUnlimited && totalRemaining === 0;
+                    const hasComp = (b.compTotal || 0) > 0;
+                    const isGiftOnly = !!b.isGiftOnly;
                     const barColor = b.isUnlimited
                       ? 'bg-blue-500'
                       : isExhausted
                         ? 'bg-destructive'
-                        : 'bg-emerald-500';
+                        : isGiftOnly
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500';
                     const borderColor = b.isUnlimited
                       ? 'border-l-blue-500'
                       : isExhausted
                         ? 'border-l-destructive'
-                        : 'border-l-emerald-500';
+                        : isGiftOnly
+                          ? 'border-l-amber-500'
+                          : 'border-l-emerald-500';
 
                     return (
                       <div key={idx} className={`p-3 rounded-lg bg-muted/50 border-l-4 ${borderColor}`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <Heart className="h-4 w-4 text-primary" />
-                            <span className="font-medium text-sm">{b.name}</span>
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Heart className={`h-4 w-4 ${isGiftOnly ? 'text-amber-600' : 'text-primary'}`} />
+                            <span className="font-medium text-sm truncate">{b.name}</span>
+                            {hasComp && !isGiftOnly && (
+                              <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px] gap-1 shrink-0">
+                                <Gift className="h-3 w-3" /> +{b.compRemaining} gift
+                              </Badge>
+                            )}
+                            {isGiftOnly && (
+                              <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px] gap-1 shrink-0">
+                                <Gift className="h-3 w-3" /> Gift
+                              </Badge>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 shrink-0">
                             {b.isUnlimited ? (
                               <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 text-xs">
-                                ∞ Unlimited
+                                ∞ Unlimited{hasComp ? ` + ${b.compRemaining}` : ''}
                               </Badge>
                             ) : (
-                              <span className={`text-xs font-semibold ${isExhausted ? 'text-destructive' : 'text-foreground'}`}>
-                                {b.used}/{b.limit_count} {getFrequencyLabel(b.frequency)}
-                              </span>
+                              <div className="text-right">
+                                <span className={`text-xs font-semibold ${isExhausted ? 'text-destructive' : 'text-foreground'}`}>
+                                  {totalUsed}/{totalLimit} {getFrequencyLabel(b.frequency)}
+                                </span>
+                                {hasComp && !isGiftOnly && (
+                                  <div className="text-[10px] text-muted-foreground leading-tight">
+                                    {b.limit_count || 0} plan + <span className="text-amber-700 font-medium">{b.compTotal} gift</span>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
-                        {!b.isUnlimited && b.limit_count > 0 && (
+                        {!b.isUnlimited && totalLimit > 0 && (
                           <div className="h-2 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all ${barColor}`}
@@ -437,7 +463,7 @@ function BenefitsUsageTab({ memberId, activeMembership, branchId, memberGender }
                             <div className="h-full rounded-full bg-blue-500 w-full animate-pulse opacity-40" />
                           </div>
                         )}
-                        {isExhausted && b.benefit_type_id && (
+                        {isExhausted && b.benefit_type_id && !isGiftOnly && (
                           <Button
                             size="sm"
                             variant="outline"
