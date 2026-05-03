@@ -224,6 +224,14 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
         branchId={branchId}
         currentPoints={rewardPoints || 0}
       />
+
+      <CreditMemberDrawer
+        open={creditOpen}
+        onOpenChange={setCreditOpen}
+        memberId={memberId}
+        memberName={memberName}
+        branchId={branchId}
+      />
     </>
   );
 }
