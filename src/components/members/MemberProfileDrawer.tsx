@@ -1507,19 +1507,35 @@ export function MemberProfileDrawer({
                 <CardContent>
                   {memberDetails?.memberships?.length > 0 ? (
                     <div className="space-y-2">
-                      {memberDetails.memberships.map((m: any) => (
-                        <div key={m.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                          <div>
-                            <p className="font-medium text-sm">{m.membership_plans?.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(m.start_date), 'dd MMM yy')} - {format(new Date(m.end_date), 'dd MMM yy')}
-                            </p>
+                      {memberDetails.memberships.map((m: any) => {
+                        const isPending = ['pending', 'scheduled', 'upcoming'].includes(String(m.status).toLowerCase());
+                        return (
+                          <div key={m.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm truncate">{m.membership_plans?.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(m.start_date), 'dd MMM yy')} - {format(new Date(m.end_date), 'dd MMM yy')}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {m.status}
+                              </Badge>
+                              {isPending && isManagerOrAbove && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
+                                  onClick={() => { setCancelTarget(m); setCancelOpen(true); }}
+                                >
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                          <Badge variant="outline" className="text-xs">
-                            {m.status}
-                          </Badge>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No membership history</p>
