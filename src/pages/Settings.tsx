@@ -50,6 +50,7 @@ const SETTINGS_CONTENT: Record<string, React.ReactNode> = {
   branches: <BranchSettings />,
   appearance: <ThemePicker />,
   'ai-agent': <AIAgentControlCenter />,
+  automations: <AutomationsControlRoom />,
   benefits: <BenefitSettingsComponent />,
   referrals: <ReferralSettings />,
   templates: <CommunicationTemplatesHub />,
