@@ -1,4 +1,5 @@
-// v2.2.0 — Phase G: pinned to shared META_GRAPH_VERSION (v25.0). Adds `edit` action.
+// v2.3.0 — Adds `bulk_create` (array of template_data, per-row results) and `mark_stale`
+// (flags whatsapp_templates rows whose meta_template_id is no longer present after a list sync).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { META_GRAPH_VERSION, META_API_BASE } from "../_shared/meta-config.ts";
 const serve = Deno.serve;
@@ -192,6 +193,29 @@ serve(async (req) => {
       }
 
       const templates = metaData.data || [];
+      const liveIds = new Set<string>(templates.map((t: any) => t.id));
+
+      // Mark any locally cached row whose Meta ID is no longer returned as stale.
+      try {
+        const { data: existingLocal } = await supabase
+          .from("whatsapp_templates")
+          .select("id, meta_template_id")
+          .eq("waba_id", wabaId);
+        const staleIds = (existingLocal || [])
+          .filter((r: any) => r.meta_template_id && !liveIds.has(r.meta_template_id))
+          .map((r: any) => r.id);
+        if (staleIds.length > 0) {
+          await supabase.from("whatsapp_templates").update({ is_stale: true }).in("id", staleIds);
+        }
+        const liveLocalIds = (existingLocal || [])
+          .filter((r: any) => r.meta_template_id && liveIds.has(r.meta_template_id))
+          .map((r: any) => r.id);
+        if (liveLocalIds.length > 0) {
+          await supabase.from("whatsapp_templates").update({ is_stale: false }).in("id", liveLocalIds);
+        }
+      } catch (e) {
+        console.warn("stale flag update failed:", e);
+      }
 
       // Upsert into whatsapp_templates table
       for (const mt of templates) {
