@@ -25,8 +25,15 @@ export async function uploadAttachment(
     });
   if (error) throw error;
 
-  const { data } = supabase.storage.from('attachments').getPublicUrl(path);
-  return { url: data.publicUrl, path };
+  // Bucket is private — return a long-lived signed URL so WhatsApp/Meta and
+  // email recipients can fetch the file without auth.
+  const { data: signed, error: signErr } = await supabase.storage
+    .from('attachments')
+    .createSignedUrl(path, 60 * 60 * 24 * 30); // 30 days
+  if (signErr || !signed?.signedUrl) {
+    throw signErr ?? new Error('Failed to sign attachment URL');
+  }
+  return { url: signed.signedUrl, path };
 }
 
 /**
