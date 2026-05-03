@@ -755,7 +755,8 @@ export function printRegistrationForm(data: RegistrationFormData) {
         <div class="info-item"><label>End Date</label><div class="value">${data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : '___'}</div></div>
       </div></div>
     <div class="terms"><div class="section-title" style="color:#333">Terms & Conditions</div>
-      <ol>${DEFAULT_TERMS.map(t => `<li>${e(t)}</li>`).join('')}</ol></div>
+      <ol>${DEFAULT_TERMS.map(t => `<li style="margin-bottom:6px"><strong>${e(t.title)}</strong><br/><span>${e(t.body)}</span></li>`).join('')}</ol>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;font-size:11px"><strong>Member Declaration:</strong> ${e(MEMBER_DECLARATION)}</div></div>
     <div class="signature-section">
       <div class="signature-box"><div class="signature-line">Member Signature<br/><small>Date: ___</small></div></div>
       <div class="signature-box"><div class="signature-line">Staff Signature<br/><small>Date: ___</small></div></div>
