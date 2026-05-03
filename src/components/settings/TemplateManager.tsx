@@ -1053,8 +1053,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 )}
 
                 {formData.attachment_source === 'dynamic' && formData.header_type !== 'none' && (
-                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-2 text-[11px] text-amber-800 dark:text-amber-200">
-                    The sender (e.g. Send Invoice / Send Scan Report) must pass <span className="font-mono">attachment_url</span> in the template context.
+                  <div className="rounded-md bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900 p-2 text-[11px] text-violet-800 dark:text-violet-200 space-y-1">
+                    <p><strong>Dynamic mode:</strong> no upload needed. The system generates the PDF at send time
+                      (e.g. Invoice Share builds the invoice PDF, Scan Report builds the scan PDF) and attaches it
+                      automatically using a signed URL.</p>
+                    <p>Filename will be rendered from the template above (e.g.
+                      <span className="font-mono"> Invoice-INV-INC-26-0008.pdf</span>).</p>
                   </div>
                 )}
               </div>
