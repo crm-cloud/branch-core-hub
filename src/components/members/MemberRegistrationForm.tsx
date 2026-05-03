@@ -153,19 +153,27 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         throw new Error('Registration form already uploaded for this member');
       }
 
-      // Convert canvas to blob
+      // Get signature dataURL
       const canvas = canvasRef.current;
       if (!canvas) throw new Error('Canvas not found');
+      const signatureDataUrl = canvas.toDataURL('image/png');
 
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/png');
+      // Build full registration form PDF (form fields + signature)
+      const pdfBlob = buildRegistrationFormPdf({
+        data,
+        govIdType,
+        govIdNumber,
+        fitnessGoals,
+        medicalConditions,
+        customTerms,
+        terms: DEFAULT_TERMS,
+        signatureDataUrl,
       });
 
-      // Upload signature to storage
-      const fileName = `${data.memberId}/registration-form-${Date.now()}.png`;
+      const fileName = `${data.memberId}/registration-form-${Date.now()}.pdf`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(fileName, blob, { contentType: 'image/png' });
+        .upload(fileName, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
 
       // Save document record
@@ -175,7 +183,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         document_type: 'registration_form',
         file_url: '',
         storage_path: fileName,
-        file_name: `Registration-${data.memberCode}-signed.png`,
+        file_name: `Registration-${data.memberCode}-signed.pdf`,
         uploaded_by: user?.id,
       });
       if (insertError) throw insertError;
