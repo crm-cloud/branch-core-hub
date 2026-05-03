@@ -123,11 +123,7 @@ export function CommunicationTemplatesHub() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="ai-agent" className="mt-4">
-              <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
-                <CardContent className="pt-6"><WhatsAppAISettings /></CardContent>
-              </Card>
-            </TabsContent>
+
 
             <TabsContent value="routing" className="mt-4">
               <Card className="rounded-2xl shadow-lg shadow-slate-200/40 border-primary/10">
