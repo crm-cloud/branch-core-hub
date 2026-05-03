@@ -121,7 +121,7 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
             model: "google/gemini-3-flash-preview",
             messages: [
               { role: "system", content: `Compose a short, warm WhatsApp birthday message (under 280 chars) in a ${rule.ai_tone || "friendly"} tone. No emojis overload. Sign off as "Incline Fitness".` },
-              { role: "user", content: `Member name: ${m.name}` },
+              { role: "user", content: `Member name: ${memberName}` },
             ],
           }),
         });
