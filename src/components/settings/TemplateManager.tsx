@@ -641,6 +641,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
           </Button>
         </div>
       </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
