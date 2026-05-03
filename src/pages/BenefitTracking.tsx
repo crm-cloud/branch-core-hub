@@ -92,7 +92,45 @@ export default function BenefitTracking() {
   // Get usage history
   const { data: usageHistory } = useBenefitUsageHistory(membership?.id || '');
 
-  // Stats
+  const queryClient = useQueryClient();
+
+  // Fetch comps (gifts) granted to the member
+  const { data: comps = [] } = useQuery({
+    queryKey: ['member-comps-tracking', selectedMember?.id],
+    enabled: !!selectedMember?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('member_comps')
+        .select('id, comp_sessions, used_sessions, reason, created_at, benefit_type_id, benefit_types(name, code)')
+        .eq('member_id', selectedMember!.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Realtime: keep balances, history, and comps in sync as they change
+  useEffect(() => {
+    if (!selectedMember?.id) return;
+    const channel = supabase
+      .channel(`benefit-tracking-${selectedMember.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_comps', filter: `member_id=eq.${selectedMember.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['member-comps-tracking', selectedMember.id] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_usage' }, () => {
+        if (membership?.id) {
+          queryClient.invalidateQueries({ queryKey: ['benefit-usage', membership.id] });
+          queryClient.invalidateQueries({ queryKey: ['benefit-usage-history', membership.id] });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedMember?.id, membership?.id, queryClient]);
+
+  const activeComps = comps.filter((c: any) => c.used_sessions < c.comp_sessions);
+  const totalGiftSessions = activeComps.reduce((sum: number, c: any) => sum + (c.comp_sessions - c.used_sessions), 0);
+
+  // Stats — combine plan balance + active gift sessions
   const totalBenefits = balances.length;
   const exhaustedBenefits = balances.filter(b => !b.isUnlimited && b.remaining === 0).length;
   const todayUsage = usageHistory?.filter(u => u.usage_date === new Date().toISOString().split('T')[0]).length || 0;
