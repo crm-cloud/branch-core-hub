@@ -17,7 +17,6 @@ import { buildInvoicePdf, type InvoicePdfInput } from '@/utils/pdfBlob';
 import { blobToBase64 } from '@/utils/uploadAttachment';
 import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
 import { findTemplate, resolveTemplate } from '@/lib/templates/dynamicAttachment';
-import { format as fmtDate } from 'date-fns';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
@@ -129,6 +128,16 @@ Team Incline Fitness`;
     gst_number: branch.gstin,
   });
 
+  /** Build a `{{var}}` context for invoice templates. */
+  const buildTemplateVars = () => ({
+    member_name: memberName,
+    member_code: (invoice.members as any)?.member_code || '',
+    invoice_number: invoice.invoice_number,
+    amount: Number(invoice.total_amount || 0).toLocaleString(),
+    date: format(new Date(invoice.created_at), 'dd MMM yyyy'),
+    branch_name: branch.name || 'Incline Fitness',
+  });
+
   const handleWhatsAppShare = async () => {
     if (!invoice.branch_id) {
       toast.error('Branch context missing — cannot send via WhatsApp');
@@ -136,13 +145,26 @@ Team Incline Fitness`;
     }
     setSendingWhatsApp(true);
     try {
+      // Prefer saved WhatsApp Invoice template; fall back to hardcoded copy.
+      const tpl = await findTemplate({
+        branchId: invoice.branch_id,
+        type: 'whatsapp',
+        triggerEvent: 'payment_received',
+        nameContains: 'Invoice',
+      });
+      const vars = buildTemplateVars();
+      const resolved = resolveTemplate(tpl, vars, {
+        body: whatsappMessage,
+        filename: `Invoice-${invoice.invoice_number}.pdf`,
+      });
+
       const pdf = buildInvoicePdf(buildPdfInput());
       const result = await sendWhatsAppDocument({
         branchId: invoice.branch_id,
         phone,
         memberId: invoice.member_id,
-        caption: whatsappMessage,
-        filename: `Invoice-${invoice.invoice_number}.pdf`,
+        caption: resolved.body,
+        filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,
         pdf,
         folder: 'invoices',
         dedupeKey: `invoice:${invoice.id}:wa`,
@@ -165,16 +187,29 @@ Team Incline Fitness`;
   const handleEmailShare = async () => {
     setSendingEmail(true);
     try {
+      const tpl = invoice.branch_id ? await findTemplate({
+        branchId: invoice.branch_id,
+        type: 'email',
+        triggerEvent: 'payment_received',
+        nameContains: 'Invoice',
+      }) : null;
+      const vars = buildTemplateVars();
+      const resolved = resolveTemplate(tpl, vars, {
+        body: `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+        subject: emailSubject,
+        filename: `Invoice-${invoice.invoice_number}.pdf`,
+      });
+
       const pdf = buildInvoicePdf(buildPdfInput());
       const base64 = await blobToBase64(pdf);
       const { error } = await supabase.functions.invoke('send-email', {
         body: {
           to: email,
-          subject: emailSubject,
-          html: `<p>${emailBody.replace(/\n/g, '<br>')}</p>`,
+          subject: resolved.subject || emailSubject,
+          html: resolved.body,
           branch_id: invoice.branch_id,
           attachments: [{
-            filename: `Invoice-${invoice.invoice_number}.pdf`,
+            filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,
             content_base64: base64,
             content_type: 'application/pdf',
           }],
