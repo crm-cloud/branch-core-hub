@@ -649,9 +649,10 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
         </div>
       ) : (
         <>
-        <Tabs defaultValue="whatsapp" className="w-full">
+        <Tabs defaultValue={visibleTypes[0]?.value || 'whatsapp'} className="w-full">
+          {visibleTypes.length > 1 && (
           <TabsList className="w-full grid grid-cols-3">
-            {TEMPLATE_TYPES.map(({ value, label, icon: Icon }) => (
+            {visibleTypes.map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} className="flex items-center gap-2">
                 <Icon className="h-4 w-4" />
                 {label}
@@ -663,7 +664,8 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
               </TabsTrigger>
             ))}
           </TabsList>
-          {TEMPLATE_TYPES.map(({ value, label }) => (
+          )}
+          {visibleTypes.map(({ value, label }) => (
             <TabsContent key={value} value={value}>
               {/* WhatsApp-only approval status filter chips */}
               {value === 'whatsapp' && (
