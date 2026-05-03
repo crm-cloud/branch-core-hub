@@ -1979,6 +1979,10 @@ export function MemberProfileDrawer({
             pricePaid: activeMembership?.price_paid,
             branchName: memberDetails?.branch?.name,
             memberId: member.id,
+            fitnessGoals: (member as any).fitness_goals,
+            medicalConditions: (member as any).health_conditions || (member as any).injuries_limitations,
+            governmentIdType: (profile as any)?.government_id_type,
+            governmentIdNumber: (profile as any)?.government_id_number,
           }}
         />
         <TransferBranchDrawer
