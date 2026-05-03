@@ -157,7 +157,7 @@ export default function StorePage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold tracking-tight">Store Overview</h2>
-              <p className="text-primary-foreground/70 text-sm mt-1">Today's sales & inventory at a glance</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">In-store POS sales and member online store orders at a glance</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               <div className="text-center">
