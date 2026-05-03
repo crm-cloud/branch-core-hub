@@ -79,7 +79,7 @@ export function TemplateCoverageMatrix({ channel }: Props) {
     for (const t of templates) {
       if (t.trigger_event && !tplByEvent.has(t.trigger_event)) tplByEvent.set(t.trigger_event, t);
     }
-    return SYSTEM_EVENTS.map((e) => {
+    return getEventsForChannel(channel).map((e) => {
       const trig = trigByEvent.get(e.event);
       const tpl = trig?.templates || tplByEvent.get(e.event);
       const meta = (tpl?.meta_template_status || '').toUpperCase();
