@@ -285,6 +285,12 @@ export default function MemberAnnouncements() {
                           <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/85">
                             {announcement.content}
                           </p>
+                          <AnnouncementAttachment
+                            url={(announcement as any).attachment_url}
+                            kind={(announcement as any).attachment_kind}
+                            filename={(announcement as any).attachment_filename}
+                            compact
+                          />
                           {announcement.expire_at && (
                             <p className="text-xs text-muted-foreground">
                               Valid until {format(new Date(announcement.expire_at), 'dd MMM yyyy')}
