@@ -1,41 +1,65 @@
-## Goal
-Make plan benefits + gift comps appear as one combined live total on:
-1. **Member Profile → Benefits tab** (`BenefitsUsageTab` in `MemberProfileDrawer.tsx`)
-2. **Benefit Tracking → Benefit Balances tab** (`BenefitBalancesGrid` on `BenefitTracking.tsx`)
+# Fix 4 Member Profile / Search Issues
 
-Both currently show only plan entitlements (e.g. "Ice Bath 0/6") and ignore gifted comps. Goal: show e.g. **Ice Bath: 0/8 used (6 plan + 2 gift)** with a clear visual badge for the gift portion.
+## 1. RPC error: `column reference "branch_id" is ambiguous` in `search_command_trainers`
 
-## Changes
+**Cause:** In the `RETURN QUERY` block, the function's RETURN TABLE column `branch_id` collides with `t.branch_id` inside the subquery `SELECT branch_id FROM public.user_visible_branches(v_uid)`. Postgres can't tell whether `branch_id` in that subquery references the outer OUT param or the function's own column.
 
-### 1. `src/components/members/MemberProfileDrawer.tsx` — `BenefitsUsageTab`
-- Add a `useQuery` for `member_comps` filtered by `member_id` joined with `benefit_types(id, name, code)`, plus realtime subscription on `member_comps` to invalidate.
-- Build a `compMap` keyed by `benefit_type_id` summing `(comp_sessions - used_sessions)` across active comps.
-- In `availableBenefits`, for each plan benefit add `compRemaining`. For unlimited plan benefits, still surface comps separately.
-- Update each benefit row card to display:
-  - Total = `(plan remaining) + (comp remaining)` with breakdown line `"6 plan + 2 gift"` shown as a small muted line under the count.
-  - A small amber "Gift +N" badge next to the benefit name when `compRemaining > 0`.
-  - Progress bar based on combined limit so the bar reflects real availability.
-- Append any pure-gift benefits (comps for benefit_types not in the plan) as additional rows tagged "Gift only".
+**Fix (migration):** Recreate `public.search_command_trainers` qualifying the column inside the subquery:
+```sql
+WHERE t.branch_id IN (
+  SELECT uvb.branch_id FROM public.user_visible_branches(v_uid) uvb
+)
+```
+No signature/grant changes.
 
-### 2. `src/pages/BenefitTracking.tsx` + `BenefitBalanceCard.tsx`
-- In `BenefitTracking.tsx`, compute a merged `combinedBalances` array: for every balance returned by `useBenefitBalances`, add `compTotal`, `compRemaining` from the `comps` query already fetched. Append gift-only benefits not present in `balances`.
-- Pass `combinedBalances` into a new `BenefitBalancesGrid` variant (extend component to accept optional `compRemaining`, `compTotal`, `planRemaining`, `planLimit`, `isGiftOnly`).
-- Update `BenefitBalanceCard.tsx`:
-  - Header: add amber `Gift +N` badge when comp portion > 0.
-  - Body (non-unlimited): show `total used / total limit` as the headline; add a smaller secondary line `"X plan • Y gift"`.
-  - Progress bar uses combined values.
-  - Unlimited plan + comps: show `"Unlimited + N gift"`.
-  - Gift-only: indigo accent + "Complimentary" badge.
-- StatCard "Gift Sessions" already exists; keep as-is.
+---
 
-### 3. Realtime
-- Both pages already subscribe to `member_comps` and `benefit_usage`. Verify the new queries' query keys are invalidated in the existing channels (add the `member-plan-benefits-comps` key in MemberProfileDrawer's invalidation list — currently it has its own subscription; add one for `member_comps` filtered by `member_id`).
+## 2. Registration form download returns only the signature image
 
-## Out of scope
-- Backend logic for consumption order (comp-first vs plan-first) — already handled server-side per memory.
-- No DB migrations required; everything is read-side aggregation.
+**Cause:** `MemberRegistrationForm.handleSaveDigital` saves only the signature canvas (`canvas.toBlob → image/png`) into `member_documents` as the registration form. The actual rendered registration HTML is never captured.
 
-## Files touched
-- `src/components/members/MemberProfileDrawer.tsx`
-- `src/pages/BenefitTracking.tsx`
-- `src/components/benefits/BenefitBalanceCard.tsx`
+**Fix:** In `src/components/members/MemberRegistrationForm.tsx`:
+- Render the full registration form HTML to a canvas using `html2canvas` (already used elsewhere — confirm; otherwise use a lightweight `jspdf` + `html2canvas` flow).
+- Composite the printed registration form + the captured signature into a single PDF (preferred) or PNG.
+- Upload the composite as `Registration-{memberCode}-signed.pdf` with `contentType: 'application/pdf'`.
+- Save `file_name` with `.pdf` extension and matching MIME so download/open serves the full form, not just the sig.
+
+If `html2canvas`/`jspdf` not installed, add them. Fall back to building a printable HTML string and using `html2canvas` on a hidden render container that includes the signature dataURL embedded as `<img>`.
+
+---
+
+## 3. Recent Activity — group + paginate
+
+**File:** `src/components/members/MemberProfileDrawer.tsx` (the `recentActivity` block ~line 858 and render ~line 1732).
+
+**Changes:**
+- Remove the hard `.slice(0, 12)` cap.
+- Group items by date (Today / Yesterday / `dd MMM yyyy`) using `date-fns` `isToday`, `isYesterday`, `format`.
+- Within each day group, also sub-group by `badge` (Check-in/out, Payment, Membership, PT) collapsed by default with a count badge — expand on click.
+- Add client-side pagination: show 5 day-groups per page with Prev/Next + "Showing X–Y of Z" footer.
+- Keep the realtime invalidations already wired.
+
+Render pattern: section header per day → list of grouped activity rows → pagination control at card footer.
+
+---
+
+## 4. Cancel button for pending memberships in Membership History
+
+**Context:** A queued/upcoming membership shows status `pending`. Without a way to cancel it, the member appears to have multiple obligations and may flip to overdue.
+
+**Changes in `MemberProfileDrawer.tsx` Membership History card (~line 1507):**
+- For each row where `m.status === 'pending'` (or `'scheduled'`), show a small destructive ghost `Button` "Cancel" beside the status badge.
+- On click, open the existing `CancelMembershipDrawer` but pass that specific `m` instead of always `activeMembership`. Promote `cancelTarget` state to hold the selected membership; default to `activeMembership` when triggered from the action menu.
+- Pending cancellation should call the same atomic RPC (`cancel_membership`) — already supports any membership_id by contract.
+- After success, invalidate `['member-details', memberId]` and `['memberships']` queries so it disappears immediately.
+
+Add a confirmation note in the drawer when target is pending: "This plan hasn't started yet — no refund will be issued unless a payment was already recorded."
+
+---
+
+## Files Edited
+- `supabase/migrations/<new>.sql` — recreate `search_command_trainers`
+- `src/components/members/MemberRegistrationForm.tsx` — full-form PDF capture
+- `src/components/members/MemberProfileDrawer.tsx` — grouped paginated activity + pending cancel button
+- `src/components/members/CancelMembershipDrawer.tsx` — accept any membership prop, add pending-state copy
+- `package.json` — add `html2canvas`, `jspdf` if missing
