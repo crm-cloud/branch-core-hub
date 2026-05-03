@@ -467,6 +467,170 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   );
 }
 
+interface BuildPdfArgs {
+  data: RegistrationFormData;
+  govIdType: string;
+  govIdNumber: string;
+  fitnessGoals: string;
+  medicalConditions: string;
+  customTerms: string;
+  terms: string[];
+  signatureDataUrl?: string | null;
+}
+
+function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
+  const { data, govIdType, govIdNumber, fitnessGoals, medicalConditions, customTerms, terms, signatureDataUrl } = args;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 14;
+
+  // Header band
+  doc.setFillColor(99, 102, 241);
+  doc.rect(0, 0, pageW, 8, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(99, 102, 241);
+  doc.text((data.branchName || 'FITNESS CENTER').toUpperCase(), margin, 22);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Membership Registration & Agreement Form', margin, 28);
+
+  doc.setFontSize(9);
+  doc.text(`REG-${data.memberCode}`, pageW - margin, 22, { align: 'right' });
+  doc.text(`Date: ${format(new Date(), 'dd MMM yyyy')}`, pageW - margin, 28, { align: 'right' });
+
+  let y = 38;
+
+  const section = (title: string) => {
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, y, pageW - margin * 2, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(99, 102, 241);
+    doc.text(title.toUpperCase(), margin + 2, y + 4.2);
+    y += 8;
+  };
+
+  const fieldsTable = (rows: Array<[string, string]>) => {
+    autoTable(doc, {
+      startY: y,
+      body: rows.map(([k, v]) => [k, v || '—']),
+      theme: 'plain',
+      bodyStyles: { fontSize: 9, textColor: [30, 41, 59], cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 } },
+      columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 116, 139], cellWidth: 45 } },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as any).lastAutoTable.finalY + 4;
+  };
+
+  section('Member Information');
+  fieldsTable([
+    ['Full Name', data.memberName],
+    ['Member Code', data.memberCode],
+    ['Email', data.email || ''],
+    ['Phone', data.phone || ''],
+    ['Gender', data.gender || ''],
+    ['Date of Birth', data.dateOfBirth ? format(new Date(data.dateOfBirth), 'dd MMM yyyy') : ''],
+    ['Address', [data.address, data.city, data.state].filter(Boolean).join(', ')],
+  ]);
+
+  section('Government ID');
+  fieldsTable([
+    ['ID Type', govIdType.toUpperCase()],
+    ['ID Number', govIdNumber],
+  ]);
+
+  section('Emergency Contact');
+  fieldsTable([
+    ['Name', data.emergencyContactName || ''],
+    ['Phone', data.emergencyContactPhone || ''],
+  ]);
+
+  section('Health & Fitness');
+  fieldsTable([
+    ['Fitness Goals', fitnessGoals],
+    ['Medical Conditions', medicalConditions || 'None declared'],
+  ]);
+
+  section('Membership Details');
+  fieldsTable([
+    ['Plan', data.planName || ''],
+    ['Amount', data.pricePaid ? `Rs. ${data.pricePaid.toLocaleString('en-IN')}` : ''],
+    ['Start Date', data.startDate ? format(new Date(data.startDate), 'dd MMM yyyy') : ''],
+    ['End Date', data.endDate ? format(new Date(data.endDate), 'dd MMM yyyy') : ''],
+    ['Branch', data.branchName || ''],
+  ]);
+
+  // Terms
+  section('Terms & Conditions');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  const allTerms = customTerms ? [...terms, customTerms] : terms;
+  allTerms.forEach((t, i) => {
+    const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pageW - margin * 2 - 4);
+    if (y + lines.length * 3.5 > pageH - 60) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.text(lines, margin + 2, y);
+    y += lines.length * 3.5 + 1;
+  });
+
+  // Signature section
+  if (y > pageH - 55) {
+    doc.addPage();
+    y = 20;
+  }
+  y += 8;
+  doc.setDrawColor(203, 213, 225);
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
+  const sigBoxW = (pageW - margin * 2 - 10) / 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text('MEMBER SIGNATURE', margin, y);
+  doc.text('AUTHORIZED STAFF', margin + sigBoxW + 10, y);
+  y += 3;
+
+  if (signatureDataUrl) {
+    try {
+      doc.addImage(signatureDataUrl, 'PNG', margin, y, sigBoxW, 22);
+    } catch {
+      // ignore
+    }
+  }
+
+  const sigLineY = y + 26;
+  doc.setDrawColor(30, 41, 59);
+  doc.line(margin, sigLineY, margin + sigBoxW, sigLineY);
+  doc.line(margin + sigBoxW + 10, sigLineY, pageW - margin, sigLineY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`${data.memberName} • ${format(new Date(), 'dd/MM/yyyy')}`, margin, sigLineY + 4);
+  doc.text('Date: ____________________', margin + sigBoxW + 10, sigLineY + 4);
+
+  // Footer
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Generated ${new Date().toLocaleString('en-IN')}  •  REF: ${data.memberCode}  •  The Incline Life by Incline`,
+    pageW / 2,
+    pageH - 8,
+    { align: 'center' },
+  );
+
+  return doc.output('blob');
+}
+
 // Keep legacy export for backward compat
 export function printRegistrationForm(data: RegistrationFormData) {
   const printWindow = window.open('', '_blank');
