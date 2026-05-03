@@ -156,11 +156,10 @@ export function MetaTemplatesPanel() {
                 variant="outline"
                 size="sm"
                 onClick={async () => {
-                  const branch = selectedBranch !== 'all' ? selectedBranch : null;
-                  if (!branch) { toast.error('Select a specific branch first'); return; }
+                  if (!branchForCall) { toast.error('No branch available'); return; }
                   try {
                     const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-                      body: { action: 'list', branch_id: branch },
+                      body: { action: 'list', branch_id: branchForCall },
                     });
                     if (error) throw error;
                     if (data?.error) {
@@ -170,12 +169,12 @@ export function MetaTemplatesPanel() {
                       }
                       throw new Error(errStr);
                     }
-                    toast.success(`✅ Connection successful! Found ${data?.templates?.length || 0} templates.`);
+                    toast.success(`Connection successful — found ${data?.templates?.length || 0} templates.`);
                   } catch (err: any) {
-                    toast.error(`❌ Connection failed: ${err.message}`);
+                    toast.error(`Connection failed: ${err.message}`);
                   }
                 }}
-                disabled={!hasWhatsAppConfig}
+                disabled={!hasWhatsAppConfig || !branchForCall}
                 className="gap-1.5"
               >
                 <CheckCircle className="h-3.5 w-3.5" />
@@ -185,7 +184,7 @@ export function MetaTemplatesPanel() {
                 variant="outline"
                 size="sm"
                 onClick={handleSync}
-                disabled={isSyncing || !hasWhatsAppConfig}
+                disabled={isSyncing || !hasWhatsAppConfig || !branchForCall}
                 data-testid="btn-sync-meta-templates"
               >
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
