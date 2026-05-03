@@ -171,7 +171,6 @@ Deno.serve(async (req) => {
 
     let sent = 0;
     let failed = 0;
-    const logs: any[] = [];
 
     for (const member of members) {
       const profile = (member as any).profiles;
@@ -181,64 +180,27 @@ Deno.serve(async (req) => {
         .replace(/\{\{member_name\}\}/g, profile.full_name || "Member")
         .replace(/\{\{member_code\}\}/g, member.member_code || "");
 
-      let recipient = "";
-      let status = "logged";
+      let recipient = channel === "email" ? profile.email : profile.phone;
+      let status = "failed";
 
       try {
-        if (channel === "email" && profile.email) {
-          recipient = profile.email;
-          // Dispatch via send-email edge function
-          const emailResp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              to: profile.email,
-              subject: subject || "Message from Incline Fitness",
-              html: personalizedMsg.replace(/\n/g, "<br>"),
-              branch_id,
-            }),
-          });
-          const emailResult = await emailResp.json();
-          status = emailResult.success ? "sent" : "failed";
-        } else if (channel === "sms" && profile.phone) {
-          recipient = profile.phone;
-          const smsResp = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              action: "send",
-              phone: profile.phone,
-              message: personalizedMsg,
-              branch_id,
-            }),
-          });
-          const smsResult = await smsResp.json();
-          status = smsResult.success ? "sent" : "failed";
-        } else if (channel === "whatsapp" && profile.phone) {
-          recipient = profile.phone;
-          const waResp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              phone: profile.phone,
-              message: personalizedMsg,
-              type: "text",
-            }),
-          });
-          const waResult = await waResp.json();
-          status = waResult.success ? "sent" : "failed";
-        } else {
+        if (!recipient) {
           continue;
         }
+        const { data: dispatchRes, error: dispatchErr } = await adminClient.functions.invoke('dispatch-communication', {
+          body: {
+            branch_id,
+            channel,
+            recipient,
+            category: 'marketing',
+            payload: { subject: subject || undefined, body: personalizedMsg, variables: variables || undefined },
+            template_id: template_id || null,
+            member_id: member.id,
+            dedupe_key: campaign_id ? `campaign:${campaign_id}:member:${member.id}` : `broadcast:${Date.now()}:member:${member.id}`,
+            force: true,
+          },
+        });
+        status = !dispatchErr && ['sent', 'queued', 'deduped'].includes(String((dispatchRes as any)?.status || '')) ? "sent" : "failed";
       } catch (e) {
         console.error(`Broadcast dispatch error for ${recipient}:`, e);
         status = "failed";
@@ -247,16 +209,6 @@ Deno.serve(async (req) => {
       if (status === "sent") sent++;
       else failed++;
 
-      logs.push({
-        branch_id, type: channel, recipient,
-        subject: subject || null, content: personalizedMsg,
-        status, delivery_status: status === 'sent' ? 'sent' : 'failed',
-        member_id: member.id, sent_at: new Date().toISOString(),
-      });
-    }
-
-    if (logs.length > 0) {
-      await adminClient.from("communication_logs").insert(logs);
     }
 
     await adminClient.from("notifications").insert({
