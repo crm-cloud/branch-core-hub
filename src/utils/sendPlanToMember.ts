@@ -12,7 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { buildPlanPdf } from './pdfBlob';
-import { uploadAttachment, blobToBase64 } from './uploadAttachment';
+import { uploadAttachment } from './uploadAttachment';
 import { dispatchCommunication } from '@/services/preferencesService';
 
 export type PlanSendChannel = 'download' | 'whatsapp' | 'email';
