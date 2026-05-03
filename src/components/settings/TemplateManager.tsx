@@ -587,6 +587,7 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
 
   // Apply status filter (only restricts WhatsApp templates; SMS/Email always pass)
   const filteredTemplates = templates.filter((t: any) => {
+    if (filterType && t.type !== filterType) return false;
     if (statusFilter === 'all') return true;
     if (t.type !== 'whatsapp') return false; // status sub-tabs are WhatsApp-specific
     return (t.approval_status || 'draft') === statusFilter;
@@ -597,6 +598,8 @@ export function TemplateManager({ prefill, onPrefillConsumed, filterType, hideHe
     acc[t.type].push(t);
     return acc;
   }, {} as Record<string, Template[]>);
+
+  const visibleTypes = filterType ? TEMPLATE_TYPES.filter((t) => t.value === filterType) : TEMPLATE_TYPES;
 
   return (
     <div className="space-y-6">
