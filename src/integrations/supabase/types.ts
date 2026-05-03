@@ -677,6 +677,130 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_rules: {
+        Row: {
+          ai_tone: string | null
+          branch_id: string | null
+          category: string
+          created_at: string
+          cron_expression: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_system: boolean
+          key: string
+          last_dispatched_count: number | null
+          last_error: string | null
+          last_run_at: string | null
+          last_status: string | null
+          name: string
+          next_run_at: string
+          target_filter: Json
+          updated_at: string
+          use_ai: boolean
+          worker: string
+          worker_payload: Json
+        }
+        Insert: {
+          ai_tone?: string | null
+          branch_id?: string | null
+          category?: string
+          created_at?: string
+          cron_expression?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          key: string
+          last_dispatched_count?: number | null
+          last_error?: string | null
+          last_run_at?: string | null
+          last_status?: string | null
+          name: string
+          next_run_at?: string
+          target_filter?: Json
+          updated_at?: string
+          use_ai?: boolean
+          worker: string
+          worker_payload?: Json
+        }
+        Update: {
+          ai_tone?: string | null
+          branch_id?: string | null
+          category?: string
+          created_at?: string
+          cron_expression?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          key?: string
+          last_dispatched_count?: number | null
+          last_error?: string | null
+          last_run_at?: string | null
+          last_status?: string | null
+          name?: string
+          next_run_at?: string
+          target_filter?: Json
+          updated_at?: string
+          use_ai?: boolean
+          worker?: string
+          worker_payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_runs: {
+        Row: {
+          branch_id: string | null
+          dispatched_count: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          payload: Json | null
+          rule_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          branch_id?: string | null
+          dispatched_count?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          payload?: Json | null
+          rule_id: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          branch_id?: string | null
+          dispatched_count?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          payload?: Json | null
+          rule_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "automation_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       benefit_bookings: {
         Row: {
           booked_at: string
@@ -11024,6 +11148,26 @@ export type Database = {
       add_to_waitlist: {
         Args: { _class_id: string; _member_id: string }
         Returns: Json
+      }
+      admin_run_automation_now: {
+        Args: { _rule_id: string }
+        Returns: undefined
+      }
+      admin_toggle_automation_rule: {
+        Args: { _active: boolean; _rule_id: string }
+        Returns: undefined
+      }
+      admin_update_automation_rule: {
+        Args: {
+          _ai_tone: string
+          _cron_expression: string
+          _description?: string
+          _name?: string
+          _rule_id: string
+          _target_filter: Json
+          _use_ai: boolean
+        }
+        Returns: undefined
       }
       advance_referral_lifecycle: {
         Args: {
