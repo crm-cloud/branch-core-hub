@@ -317,6 +317,44 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     setShowEditor(true);
   };
 
+  /** Apply a one-click preset (e.g. Invoice PDF) to the editor form. */
+  const applyPreset = (preset: TemplatePreset) => {
+    setSelectedTemplate(null);
+    setFormData({
+      name: preset.label,
+      type: preset.type,
+      trigger: preset.trigger,
+      subject: preset.subject || '',
+      content: preset.content,
+      is_active: true,
+      header_type: preset.header_type,
+      header_media_url: '',
+      attachment_source: preset.attachment_source,
+      attachment_filename_template: preset.attachment_filename_template || '',
+    });
+    setShowEditor(true);
+    toast.success(`Loaded preset: ${preset.label}`);
+  };
+
+  /** Compact media badge shown next to template names in the list. */
+  const mediaBadge = (t: Template) => {
+    const ht = t.header_type || 'none';
+    const src = t.attachment_source || 'none';
+    if (ht === 'none' || src === 'none') return null;
+    const icon = ht === 'image' ? ImageIcon : ht === 'video' ? VideoIcon : FileText;
+    const Icon = icon;
+    const label = `${src === 'dynamic' ? 'Dynamic' : 'Static'} ${ht === 'document' ? 'PDF' : ht.charAt(0).toUpperCase() + ht.slice(1)}`;
+    const cls = src === 'dynamic'
+      ? 'bg-violet-50 text-violet-700 border-violet-200'
+      : 'bg-sky-50 text-sky-700 border-sky-200';
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cls}`}>
+        <Icon className="h-3 w-3" />
+        {label}
+      </span>
+    );
+  };
+
   const closeEditor = () => {
     setShowEditor(false);
     setSelectedTemplate(null);
