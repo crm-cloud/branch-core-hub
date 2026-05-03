@@ -14,9 +14,10 @@ import { communicationService } from '@/services/communicationService';
 import { e } from '@/utils/htmlEscape';
 import { supabase } from '@/integrations/supabase/client';
 import { buildInvoicePdf, type InvoicePdfInput } from '@/utils/pdfBlob';
-import { blobToBase64 } from '@/utils/uploadAttachment';
+import { uploadAttachment } from '@/utils/uploadAttachment';
 import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
 import { findTemplate, resolveTemplate } from '@/lib/templates/dynamicAttachment';
+import { dispatchCommunication, buildDedupeKey } from '@/lib/comms/dispatch';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
@@ -25,8 +26,12 @@ interface InvoiceShareDrawerProps {
 }
 
 export function InvoiceShareDrawer({ open, onOpenChange, invoice: invoiceProp }: InvoiceShareDrawerProps) {
-  const [email, setEmail] = useState(invoiceProp?.members?.profiles?.email || '');
-  const [phone, setPhone] = useState(invoiceProp?.members?.profiles?.phone || '');
+  const [email, setEmail] = useState(
+    invoiceProp?.members?.profiles?.email || invoiceProp?.customer_email || ''
+  );
+  const [phone, setPhone] = useState(
+    invoiceProp?.members?.profiles?.phone || invoiceProp?.customer_phone || ''
+  );
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
@@ -55,7 +60,9 @@ export function InvoiceShareDrawer({ open, onOpenChange, invoice: invoiceProp }:
   const invoice: any = fullInvoice || invoiceProp;
 
   const memberProfile = (invoice.members as any)?.profiles;
-  const memberName = memberProfile?.full_name || 'Customer';
+  const memberName = memberProfile?.full_name || invoice.customer_name || 'Customer';
+  const guestEmail = memberProfile?.email || invoice.customer_email || null;
+  const guestPhone = memberProfile?.phone || invoice.customer_phone || null;
   const branch = (invoice as any).branch || (invoice as any).branches || {};
 
   // WhatsApp message template
