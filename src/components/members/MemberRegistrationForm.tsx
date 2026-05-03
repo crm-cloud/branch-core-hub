@@ -455,7 +455,7 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
             <Textarea value={customTerms} onChange={e => setCustomTerms(e.target.value)}
               placeholder="Add any custom terms or conditions specific to this member..."
               className="min-h-[50px]" />
-            <p className="text-xs text-muted-foreground mt-1">{DEFAULT_TERMS.length} standard terms will be included automatically</p>
+            <p className="text-xs text-muted-foreground mt-1">All {DEFAULT_TERMS.length} standard membership terms &amp; conditions are included automatically. Use the field above only for member-specific addendums.</p>
           </div>
 
           <Separator />
