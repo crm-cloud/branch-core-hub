@@ -1019,6 +1019,19 @@ export function MemberProfileDrawer({
                       <p className="text-xs text-muted-foreground truncate">
                         {activeMembership.membership_plans?.name || 'Days Left'}
                       </p>
+                      {freeDaysTotal > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="mt-1 bg-amber-100 text-amber-700 border-amber-300 text-[10px] gap-1">
+                              <Gift className="h-3 w-3" />
+                              +{freeDaysTotal}d gift
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Includes {freeDaysTotal} gifted day{freeDaysTotal === 1 ? '' : 's'} added to this plan
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </>
                   ) : (
                     <>
