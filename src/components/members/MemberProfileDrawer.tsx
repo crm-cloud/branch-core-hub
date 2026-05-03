@@ -1119,7 +1119,7 @@ export function MemberProfileDrawer({
               Record Body
             </Button>
             {activeMembership && (
-              <Button variant="outline" size="sm" className="text-destructive justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => setCancelOpen(true)}>
+              <Button variant="outline" size="sm" className="text-destructive justify-start min-h-[44px] h-auto py-2 whitespace-normal text-left" onClick={() => { setCancelTarget(activeMembership); setCancelOpen(true); }}>
                 <XCircle className="h-4 w-4 mr-2 shrink-0" />
                 Cancel Plan
               </Button>
