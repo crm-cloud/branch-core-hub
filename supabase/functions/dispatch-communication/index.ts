@@ -294,17 +294,7 @@ Deno.serve(async (req) => {
             });
             // supabase-js wraps non-2xx as `error`; the real Meta reason lives
             // inside response body. Try to extract it for clearer logs.
-            if (r.error) {
-              let detail = r.error.message;
-              try {
-                const ctx: any = (r.error as any).context;
-                if (ctx?.body && typeof ctx.body.text === 'function') {
-                  const t = await ctx.body.text();
-                  if (t) detail = t;
-                }
-              } catch (_) { /* noop */ }
-              throw new Error(detail);
-            }
+            if (r.error) throw new Error(await functionErrorDetail(r.error));
             const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
             const metaErr = (r.data as { meta_error?: string })?.meta_error;
             if (errPayload) throw new Error(metaErr || (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload)));
@@ -323,7 +313,7 @@ Deno.serve(async (req) => {
               source_log_id: log!.id,
             },
           });
-          if (r.error) throw new Error(r.error.message);
+          if (r.error) throw new Error(await functionErrorDetail(r.error));
           providerMessageId = (r.data as { message_id?: string })?.message_id;
           break;
         }
