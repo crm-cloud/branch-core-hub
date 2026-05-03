@@ -35,6 +35,10 @@ interface RegistrationFormData {
   pricePaid?: number;
   branchName?: string;
   memberId?: string;
+  fitnessGoals?: string;
+  medicalConditions?: string;
+  governmentIdType?: string;
+  governmentIdNumber?: string;
 }
 
 interface MemberRegistrationFormProps {
