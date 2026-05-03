@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatCard } from '@/components/ui/stat-card';
-import { Search, Users, Activity, Clock, BarChart3 } from 'lucide-react';
+import { Search, Users, Activity, Clock, BarChart3, Gift, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBenefitBalances, useBenefitUsageHistory } from '@/hooks/useBenefits';
 import { BenefitBalancesGrid } from '@/components/benefits/BenefitBalanceCard';
 import { RecordBenefitUsageDrawer } from '@/components/benefits/RecordBenefitUsageDrawer';
