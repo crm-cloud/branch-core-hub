@@ -102,12 +102,20 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existing) {
-      return ok({
-        status: 'deduped',
-        log_id: existing.id,
-        reason: `existing_log_${existing.delivery_status}`,
-        provider_message_id: existing.provider_message_id ?? undefined,
-      });
+      const prev = String(existing.delivery_status || '').toLowerCase();
+      // Only treat terminal-success or in-flight states as deduped. A previous
+      // `failed` / `suppressed` attempt should be retryable from the UI.
+      const dedupeStates = ['sent', 'delivered', 'read', 'queued', 'sending'];
+      if (dedupeStates.includes(prev)) {
+        return ok({
+          status: 'deduped',
+          log_id: existing.id,
+          reason: `existing_log_${existing.delivery_status}`,
+          provider_message_id: existing.provider_message_id ?? undefined,
+        });
+      }
+      // Clear the old failed row so the unique dedupe_key index allows a fresh attempt.
+      await supabase.from('communication_logs').delete().eq('id', existing.id);
     }
 
     // ── 2) preference enforcement ──
