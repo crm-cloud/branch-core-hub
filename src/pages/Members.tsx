@@ -567,7 +567,26 @@ export default function MembersPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {member.joined_at && !isNaN(new Date(member.joined_at).getTime()) ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}
+                              <div className="flex flex-col gap-1">
+                                <span>{member.joined_at && !isNaN(new Date(member.joined_at).getTime()) ? format(new Date(member.joined_at), 'dd MMM yy') : '--'}</span>
+                                {(() => {
+                                  if (!activeMembership?.start_date) return null;
+                                  const start = new Date(activeMembership.start_date);
+                                  start.setHours(0, 0, 0, 0);
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  if (start <= today) return null;
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-warning/10 text-warning border-warning/20 text-[10px] w-fit gap-1"
+                                    >
+                                      <Clock className="h-3 w-3" />
+                                      Starts {format(start, 'dd MMM')}
+                                    </Badge>
+                                  );
+                                })()}
+                              </div>
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1">

@@ -11332,6 +11332,7 @@ export type Database = {
       }
       current_active_branch: { Args: never; Returns: string }
       current_branch: { Args: never; Returns: string }
+      daily_reconcile_member_access: { Args: never; Returns: undefined }
       decide_role_change_request: {
         Args: {
           p_approve: boolean
