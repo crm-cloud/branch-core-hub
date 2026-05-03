@@ -215,24 +215,37 @@ Team Incline Fitness`;
       });
 
       const pdf = buildInvoicePdf(buildPdfInput());
-      const base64 = await blobToBase64(pdf);
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: {
-          to: email,
+      if (pdf.size < 1024) {
+        throw new Error('Generated PDF is empty or corrupted — refresh and try again');
+      }
+      const filename = resolved.filename || `Invoice-${invoice.invoice_number}.pdf`;
+      const { url } = await uploadAttachment(pdf, {
+        folder: 'invoices',
+        filename,
+        contentType: 'application/pdf',
+      });
+
+      const result = await dispatchCommunication({
+        branch_id: invoice.branch_id,
+        channel: 'email',
+        category: 'payment_receipt',
+        recipient: email,
+        member_id: invoice.member_id ?? null,
+        payload: {
           subject: resolved.subject || emailSubject,
-          html: resolved.body,
-          // Wrap the body in the branded Incline shell so invoice emails
-          // arrive professionally styled (logo header, gold accents, footer).
+          body: resolved.body,
           use_branded_template: true,
-          branch_id: invoice.branch_id,
-          attachments: [{
-            filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,
-            content_base64: base64,
-            content_type: 'application/pdf',
-          }],
+        },
+        dedupe_key: buildDedupeKey(['invoice', invoice.id, 'email']),
+        force: true, // payment receipts always go out
+        attachment: {
+          url,
+          filename,
+          content_type: 'application/pdf',
+          kind: 'document',
         },
       });
-      if (error) throw error;
+      if (result.status === 'failed') throw new Error(result.reason || 'send_failed');
       toast.success('Invoice email sent with PDF attached');
       onOpenChange(false);
     } catch (err: any) {
