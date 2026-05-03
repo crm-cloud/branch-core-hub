@@ -133,6 +133,17 @@ function inferTemplateValues(templateContent: string, renderedBody: string, keys
   }, {});
 }
 
+function gymClosureDefaultValues(keys: string[]): Record<string, string> {
+  const fmt = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const closure = fmt.format(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const resume = fmt.format(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000));
+  return keys.reduce<Record<string, string>>((acc, key, index) => {
+    const normalized = key.toLowerCase();
+    acc[key] = normalized.includes('resume') || normalized === '2' || normalized === '3' && index > 0 ? resume : closure;
+    return acc;
+  }, {});
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, { error: 'method_not_allowed' });
@@ -331,7 +342,8 @@ Deno.serve(async (req) => {
               templateName = tpl.meta_template_name;
               const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
               const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
-              components = templateComponents(keys, { ...inferred, ...(input.payload.variables ?? {}) });
+              const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
+              components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
               if (components === null) throw new Error('missing_template_variables');
             }
           }
