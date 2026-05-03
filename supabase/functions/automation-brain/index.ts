@@ -109,7 +109,9 @@ async function runBirthdayWish(rule: any): Promise<{ dispatched: number; error?:
 
   let count = 0;
   for (const m of todays) {
-    let body = `Happy birthday, ${m.name}! 🎉 Wishing you an amazing year ahead from all of us at Incline Fitness.`;
+    const profile = Array.isArray((m as any).profiles) ? (m as any).profiles[0] : (m as any).profiles;
+    const memberName = profile?.full_name ?? "there";
+    let body = `Happy birthday, ${memberName}! 🎉 Wishing you an amazing year ahead from all of us at Incline Fitness.`;
     if (rule.use_ai && LOVABLE_API_KEY) {
       try {
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
