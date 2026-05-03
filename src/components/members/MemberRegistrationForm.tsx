@@ -35,6 +35,10 @@ interface RegistrationFormData {
   pricePaid?: number;
   branchName?: string;
   memberId?: string;
+  fitnessGoals?: string;
+  medicalConditions?: string;
+  governmentIdType?: string;
+  governmentIdNumber?: string;
 }
 
 interface MemberRegistrationFormProps {
@@ -61,12 +65,21 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
-  const [govIdType, setGovIdType] = useState('aadhaar');
-  const [govIdNumber, setGovIdNumber] = useState('');
-  const [fitnessGoals, setFitnessGoals] = useState('');
-  const [medicalConditions, setMedicalConditions] = useState('');
+  const [govIdType, setGovIdType] = useState(data.governmentIdType || 'aadhaar');
+  const [govIdNumber, setGovIdNumber] = useState(data.governmentIdNumber || '');
+  const [fitnessGoals, setFitnessGoals] = useState(data.fitnessGoals || '');
+  const [medicalConditions, setMedicalConditions] = useState(data.medicalConditions || '');
   const [customTerms, setCustomTerms] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Re-sync prefilled values when drawer opens or member changes
+  useEffect(() => {
+    if (!open) return;
+    setGovIdType(data.governmentIdType || 'aadhaar');
+    setGovIdNumber(data.governmentIdNumber || '');
+    setFitnessGoals(data.fitnessGoals || '');
+    setMedicalConditions(data.medicalConditions || '');
+  }, [open, data.memberId, data.governmentIdType, data.governmentIdNumber, data.fitnessGoals, data.medicalConditions]);
 
   // Setup canvas for signature
   useEffect(() => {
@@ -187,6 +200,25 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
         uploaded_by: user?.id,
       });
       if (insertError) throw insertError;
+
+      // Sync edits back to canonical records (best-effort, non-blocking)
+      try {
+        const memberUpdates: Record<string, string> = {};
+        if (fitnessGoals && fitnessGoals !== (data.fitnessGoals || '')) memberUpdates.fitness_goals = fitnessGoals;
+        if (medicalConditions && medicalConditions !== (data.medicalConditions || '')) memberUpdates.health_conditions = medicalConditions;
+        if (Object.keys(memberUpdates).length) {
+          await supabase.from('members').update(memberUpdates).eq('id', data.memberId);
+        }
+        const profileUpdates: Record<string, string> = {};
+        if (govIdType && govIdType !== (data.governmentIdType || 'aadhaar')) profileUpdates.government_id_type = govIdType;
+        if (govIdNumber && govIdNumber !== (data.governmentIdNumber || '')) profileUpdates.government_id_number = govIdNumber;
+        if (Object.keys(profileUpdates).length) {
+          const { data: m } = await supabase.from('members').select('user_id').eq('id', data.memberId).maybeSingle();
+          if (m?.user_id) await (supabase.from('profiles') as any).update(profileUpdates).eq('user_id', m.user_id);
+        }
+      } catch (syncErr) {
+        console.warn('[RegistrationForm] profile sync failed', syncErr);
+      }
 
       toast.success('Registration form saved digitally with signature!');
       queryClient.invalidateQueries({ queryKey: ['member-documents', data.memberId] });
