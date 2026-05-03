@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { RedeemPointsDrawer } from './RedeemPointsDrawer';
 import { CreditMemberDrawer } from './CreditMemberDrawer';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasCapability } from '@/lib/auth/permissions';
+import { can } from '@/lib/auth/permissions';
 
 interface RewardsWalletCardProps {
   memberId: string;
@@ -25,7 +25,7 @@ export function RewardsWalletCard({ memberId, memberName, branchId, rewardPoints
   const [creditOpen, setCreditOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('points');
   const { roles } = useAuth();
-  const canCredit = hasCapability(roles.map((r) => r.role) as any, 'credit_member' as any);
+  const canCredit = can.creditMember(roles.map((r) => r.role));
 
   const { data: walletData } = useQuery({
     queryKey: ['member-wallet', memberId],
