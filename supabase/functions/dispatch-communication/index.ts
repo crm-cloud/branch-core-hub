@@ -352,7 +352,10 @@ Deno.serve(async (req) => {
           // send-whatsapp (which requires message_id) can update its delivery
           // status. The chat thread also relies on this row to render the bubble.
           if (input.attachment) {
-            const kind = input.attachment.kind ?? 'document';
+            // send-whatsapp v2.4.0 only supports image/document. Map video → document so
+            // members still receive a downloadable file (caption preserved).
+            const rawKind = (input.attachment.kind ?? 'document') as string;
+            const kind = rawKind === 'image' ? 'image' : 'document';
             const { data: waRow, error: waErr } = await supabase
               .from('whatsapp_messages')
               .insert({
@@ -376,12 +379,10 @@ Deno.serve(async (req) => {
                 message_type: kind,
                 media_url: input.attachment.url,
                 caption: input.payload.body,
-                filename: input.attachment.filename,
+                filename: input.attachment.filename || (rawKind === 'video' ? 'video.mp4' : undefined),
                 skip_log: true,
               },
             });
-            // supabase-js wraps non-2xx as `error`; the real Meta reason lives
-            // inside response body. Try to extract it for clearer logs.
             if (r.error) throw new Error(await functionErrorDetail(r.error));
             const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
             const metaErr = (r.data as { meta_error?: string })?.meta_error;
