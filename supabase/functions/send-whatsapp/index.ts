@@ -177,8 +177,28 @@ serve(async (req) => {
       proof = await computeAppSecretProof(accessToken, appSecret);
     }
 
-    // Clean phone number
-    const cleanPhone = phone_number.replace(/[\s\-\+]/g, "");
+    // Normalize phone number to E.164 digits-only (Meta WhatsApp Cloud API requirement).
+    // Accepts: "+919928910901", "919928910901", "9928910901", "09928910901", "+91 99289-10901".
+    // Defaults to India (+91) when no country code is present.
+    const cleanPhone = (() => {
+      let digits = String(phone_number).replace(/\D/g, "");
+      // Strip Indian trunk-zero prefix if present (e.g. "09928910901")
+      if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+      // Bare 10-digit Indian mobile → prepend country code
+      if (digits.length === 10) digits = "91" + digits;
+      // 12-digit number starting with 91 → already E.164 minus +
+      // Anything else: trust as-is (other country codes)
+      return digits;
+    })();
+
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      await supabase.from("whatsapp_messages").update({ status: "failed" }).eq("id", message_id);
+      await logError(supabase, branch_id, "send-whatsapp", "Invalid phone number", `Could not normalize "${phone_number}" to E.164`);
+      return new Response(
+        JSON.stringify({ error: "Invalid recipient phone number", details: `received "${phone_number}"` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Build Meta payload based on message type
     let metaPayload: any = {
