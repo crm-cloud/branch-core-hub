@@ -11,21 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Zap, Clock, MessageSquare, Plus } from 'lucide-react';
+import { getEventsForChannel } from '@/lib/templates/systemEvents';
 
-const SYSTEM_EVENTS = [
-  { value: 'member_created', label: 'New Member Created', description: 'When a new member is registered' },
-  { value: 'payment_received', label: 'Payment Received', description: 'When a payment is recorded' },
-  { value: 'class_booked', label: 'Class Booked', description: 'When a member books a class' },
-  { value: 'facility_booked', label: 'Facility Booked', description: 'When a facility slot is booked (sauna, ice bath)' },
-  { value: 'pt_session_booked', label: 'PT Session Booked', description: 'When a PT session is scheduled' },
-  { value: 'membership_expiring_7d', label: 'Membership Expiring (7 days)', description: 'Triggered 7 days before membership ends' },
-  { value: 'membership_expiring_1d', label: 'Membership Expiring (1 day)', description: 'Triggered 1 day before membership ends' },
-  { value: 'membership_expired', label: 'Membership Expired', description: 'When membership has expired' },
-  { value: 'missed_workout_3d', label: 'Missed Workout (3 days)', description: 'Member hasn\'t visited in 3+ days' },
-  { value: 'birthday', label: 'Birthday Wish', description: 'On member\'s birthday' },
-  { value: 'freeze_confirmed', label: 'Membership Frozen', description: 'When membership is frozen' },
-  { value: 'unfreeze_confirmed', label: 'Membership Unfrozen', description: 'When membership is unfrozen' },
-];
+const SYSTEM_EVENTS = getEventsForChannel('whatsapp').map((e) => ({
+  value: e.event,
+  label: e.label,
+  description: e.description,
+}));
 
 export function WhatsAppAutomations() {
   const { effectiveBranchId } = useBranchContext();
