@@ -597,10 +597,35 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
             Manage SMS, Email, and WhatsApp message templates
           </p>
         </div>
-        <Button onClick={() => openEditor()}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Template
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Quick Presets
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel>Dynamic PDF Presets</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {DYNAMIC_PDF_PRESETS.map((p) => (
+                <DropdownMenuItem key={p.id} onClick={() => applyPreset(p)} className="flex items-start gap-2 py-2">
+                  <FileText className="h-4 w-4 mt-0.5 text-violet-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{p.label}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {p.attachment_filename_template}
+                    </p>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => openEditor()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Template
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -671,6 +696,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 </Badge>
                               )}
                               {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
+                              {mediaBadge(template)}
                             </div>
                             {value === 'whatsapp' && template.meta_template_name && (
                               <p className="text-xs text-muted-foreground mt-0.5 font-mono">
