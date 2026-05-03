@@ -612,16 +612,44 @@ function buildRegistrationFormPdf(args: BuildPdfArgs): Blob {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
-  const allTerms = customTerms ? [...terms, customTerms] : terms;
+  const allTerms: TermClause[] = customTerms
+    ? [...terms, { title: 'Custom Terms', body: customTerms }]
+    : terms;
+  const lineH = 3.4;
   allTerms.forEach((t, i) => {
-    const lines = doc.splitTextToSize(`${i + 1}. ${t}`, pageW - margin * 2 - 4);
-    if (y + lines.length * 3.5 > pageH - 60) {
+    const titleStr = `${i + 1}. ${t.title}`;
+    const bodyLines = doc.splitTextToSize(t.body, pageW - margin * 2 - 4);
+    const blockH = lineH + bodyLines.length * lineH + 2;
+    if (y + blockH > pageH - 60) {
       doc.addPage();
       y = 20;
     }
-    doc.text(lines, margin + 2, y);
-    y += lines.length * 3.5 + 1;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(titleStr, margin + 2, y);
+    y += lineH;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.3);
+    doc.setTextColor(30, 41, 59);
+    doc.text(bodyLines, margin + 4, y);
+    y += bodyLines.length * lineH + 2;
   });
+
+  // Member Declaration
+  if (y + 16 > pageH - 60) { doc.addPage(); y = 20; }
+  y += 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(99, 102, 241);
+  doc.text('MEMBER DECLARATION', margin + 2, y);
+  y += lineH + 1;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  const decl = doc.splitTextToSize(MEMBER_DECLARATION, pageW - margin * 2 - 4);
+  doc.text(decl, margin + 2, y);
+  y += decl.length * lineH + 2;
 
   // Signature section
   if (y > pageH - 55) {
