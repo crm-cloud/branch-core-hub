@@ -270,9 +270,22 @@ Deno.serve(async (req) => {
                 skip_log: true,
               },
             });
-            if (r.error) throw new Error(r.error.message);
-            const errPayload = (r.data as { error?: unknown })?.error;
-            if (errPayload) throw new Error(typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload));
+            // supabase-js wraps non-2xx as `error`; the real Meta reason lives
+            // inside response body. Try to extract it for clearer logs.
+            if (r.error) {
+              let detail = r.error.message;
+              try {
+                const ctx: any = (r.error as any).context;
+                if (ctx?.body && typeof ctx.body.text === 'function') {
+                  const t = await ctx.body.text();
+                  if (t) detail = t;
+                }
+              } catch (_) { /* noop */ }
+              throw new Error(detail);
+            }
+            const errPayload = (r.data as { error?: unknown; meta_error?: unknown })?.error;
+            const metaErr = (r.data as { meta_error?: string })?.meta_error;
+            if (errPayload) throw new Error(metaErr || (typeof errPayload === 'string' ? errPayload : JSON.stringify(errPayload)));
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
