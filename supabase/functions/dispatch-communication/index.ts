@@ -1,4 +1,5 @@
-// dispatch-communication v1.4.0
+// dispatch-communication v1.5.0
+// v1.5.0: send approved Meta WhatsApp templates when template_id is provided; harden IN phone normalization.
 // v1.4.0: normalize whatsapp/sms recipient to E.164 digits-only (defaults +91 for IN); reject malformed phones early.
 // v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
@@ -86,6 +87,63 @@ async function functionErrorDetail(error: unknown): Promise<string> {
   return base;
 }
 
+function normalizePhoneDigits(value: unknown): string | null {
+  let digits = String(value ?? '').replace(/\D/g, '');
+  if (digits.startsWith('0091') && digits.length === 14) digits = digits.slice(2);
+  if (digits.startsWith('091') && digits.length === 13) digits = digits.slice(1);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10) digits = `91${digits}`;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return digits;
+}
+
+function orderedTemplateKeys(content: string, variables: unknown): string[] {
+  const configured = Array.isArray(variables) ? variables.map((v) => String(v).trim()).filter(Boolean) : [];
+  if (configured.length > 0) return configured;
+  const keys: string[] = [];
+  for (const match of content.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)) {
+    const key = match[1].trim();
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null | undefined {
+  if (keys.length === 0) return undefined;
+  const params = keys.map((key, index) => {
+    const value = values?.[key] ?? values?.[String(index + 1)] ?? values?.[`variable_${index + 1}`];
+    const text = value == null ? '' : String(value).trim();
+    if (!text) return null;
+    return { type: 'text', text };
+  });
+  if (params.some((p) => p === null)) return null;
+  return [{ type: 'body', parameters: params }];
+}
+
+function inferTemplateValues(templateContent: string, renderedBody: string, keys: string[]): Record<string, string> {
+  if (keys.length === 0) return {};
+  const parts = templateContent.split(/\{\{\s*[^}]+?\s*\}\}/g).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(`^${parts.join('(.+?)')}$`, 's');
+  const match = renderedBody.match(regex);
+  if (!match) return {};
+  return keys.reduce<Record<string, string>>((acc, key, index) => {
+    const value = match[index + 1]?.trim();
+    if (value && !/^\{\{.*\}\}$/.test(value)) acc[key] = value;
+    return acc;
+  }, {});
+}
+
+function gymClosureDefaultValues(keys: string[]): Record<string, string> {
+  const fmt = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const closure = fmt.format(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const resume = fmt.format(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000));
+  return keys.reduce<Record<string, string>>((acc, key, index) => {
+    const normalized = key.toLowerCase();
+    acc[key] = normalized.includes('resume') || index > 0 ? resume : closure;
+    return acc;
+  }, {});
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, { error: 'method_not_allowed' });
@@ -109,10 +167,8 @@ Deno.serve(async (req) => {
   // Normalize phone recipients to E.164 (digits only) for whatsapp/sms.
   // Defaults to India (+91) when no country code is present.
   if (input.channel === 'whatsapp' || input.channel === 'sms') {
-    let digits = String(input.recipient || '').replace(/\D/g, '');
-    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-    if (digits.length === 10) digits = '91' + digits;
-    if (digits.length < 10 || digits.length > 15) {
+    const digits = normalizePhoneDigits(input.recipient);
+    if (!digits) {
       return bad(400, { error: 'invalid_recipient_phone', details: input.recipient });
     }
     input.recipient = digits;
@@ -273,6 +329,25 @@ Deno.serve(async (req) => {
     try {
       switch (input.channel) {
         case 'whatsapp': {
+          let templateName: string | null = null;
+          let components: Array<Record<string, unknown>> | null | undefined;
+          if (input.template_id) {
+            const { data: tpl, error: tplError } = await supabase
+              .from('templates')
+              .select('content, variables, meta_template_name')
+              .eq('id', input.template_id)
+              .maybeSingle();
+            if (tplError) throw new Error(tplError.message);
+            if (tpl?.meta_template_name) {
+              templateName = tpl.meta_template_name;
+              const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
+              const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
+              const defaults = templateName === 'gym_closure_update' ? gymClosureDefaultValues(keys) : {};
+              components = templateComponents(keys, { ...defaults, ...inferred, ...(input.payload.variables ?? {}) });
+              if (components === null) throw new Error('missing_template_variables');
+            }
+          }
+
           // For attachments (PDF/image), pre-create the whatsapp_messages row so
           // send-whatsapp (which requires message_id) can update its delivery
           // status. The chat thread also relies on this row to render the bubble.
@@ -335,7 +410,10 @@ Deno.serve(async (req) => {
               phone_number: input.recipient,
               content: input.payload.body,
               branch_id: input.branch_id,
-              message_type: messageType,
+              message_type: templateName ? 'template' : messageType,
+              template_name: templateName ?? undefined,
+              template_language: 'en',
+              template_components: components ?? undefined,
               template_id: input.template_id,
               variables: input.payload.variables,
               member_id: input.member_id,
@@ -344,7 +422,8 @@ Deno.serve(async (req) => {
             },
           });
           if (r.error) throw new Error(await functionErrorDetail(r.error));
-          providerMessageId = (r.data as { message_id?: string })?.message_id;
+          providerMessageId = (r.data as { whatsapp_message_id?: string; message_id?: string })?.whatsapp_message_id
+            ?? (r.data as { message_id?: string })?.message_id;
           break;
         }
         case 'sms': {

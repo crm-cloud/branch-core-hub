@@ -91,7 +91,14 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
     try {
       for (const channel of selectedChannels) {
         const { data, error } = await supabase.functions.invoke('send-broadcast', {
-          body: { channel, message, audience, branch_id: branchId, subject: channel === 'email' ? subject || undefined : undefined },
+          body: {
+            channel,
+            message,
+            audience,
+            branch_id: branchId,
+            subject: channel === 'email' ? subject || undefined : undefined,
+            template_id: channel === 'whatsapp' && templateId ? templateId : undefined,
+          },
         });
         if (error) {
           results.push({ channel, sent: 0, failed: -1 });
