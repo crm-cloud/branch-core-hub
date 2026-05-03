@@ -136,6 +136,16 @@ export default function AnnouncementsPage() {
                             <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">
                               {announcement.content}
                             </p>
+                            {(announcement as any).attachment_url && (
+                              <div className="mt-2 max-w-xs">
+                                <AnnouncementAttachment
+                                  url={(announcement as any).attachment_url}
+                                  kind={(announcement as any).attachment_kind}
+                                  filename={(announcement as any).attachment_filename}
+                                  compact
+                                />
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 mt-3 flex-wrap">
                               <Badge variant="outline" className="rounded-full text-xs">
                                 {announcement.target_audience || 'All'}
