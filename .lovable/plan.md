@@ -1,65 +1,112 @@
-# Fix 4 Member Profile / Search Issues
+## Goals
 
-## 1. RPC error: `column reference "branch_id" is ambiguous` in `search_command_trainers`
+1. Show a richer payment breakdown on every invoice (Subtotal, Wallet Used, Discount, Total, Amount Paid, Remaining Balance).
+2. Clarify Store Management — explain what "Store Orders" means and either populate it from member online purchases or hide if not applicable.
+3. Fix the bug where cancelling a membership leaves its original unpaid invoice in "Pending Dues".
 
-**Cause:** In the `RETURN QUERY` block, the function's RETURN TABLE column `branch_id` collides with `t.branch_id` inside the subquery `SELECT branch_id FROM public.user_visible_branches(v_uid)`. Postgres can't tell whether `branch_id` in that subquery references the outer OUT param or the function's own column.
+---
 
-**Fix (migration):** Recreate `public.search_command_trainers` qualifying the column inside the subquery:
+## 1. Invoice viewer — fuller breakdown
+
+**File:** `src/components/invoices/InvoiceViewDrawer.tsx` (totals section, ~lines 230–275)
+
+Today it shows: Subtotal → Discount → CGST/SGST → Total → Paid → Balance Due.
+
+Add the following derived rows (only when value > 0):
+
+- **Wallet Used** — parsed from `invoice.notes` (regex `/Wallet applied: ?₹?([\d.,]+)/i`). Falls back to a payments-table lookup for `payment_method = 'wallet'`. Show with a small "Wallet" badge.
+- **Other Payment** — sum of non-wallet `payments.amount` for the invoice.
+- **Amount Paid** — keep, relabel as "Total Paid" for clarity.
+- **Remaining Balance** — `total_amount - amount_paid`. Hide when 0; tint red when > 0; show "Refunded" when total is negative.
+- **Status pill** at the top of the totals card (Paid / Partial / Pending / Cancelled / Refunded) with matching color.
+
+Apply the same enriched layout to `src/components/members/InvoiceDetailDrawer.tsx` so the member-facing view matches.
+
+No DB migration needed — all data is already on `invoices`, `payments`, `invoice_items`.
+
+---
+
+## 2. Store Management page — clarity & data
+
+**File:** `src/pages/Store.tsx`
+
+Issues from screenshot:
+- "Store Orders (0)" tab is empty and unexplained.
+- Header "POS, products & online store overview" is vague.
+
+Changes:
+- Update header copy: **"In-store POS sales and member online store orders."**
+- For the **Store Orders** tab:
+  - Show an inline helper: *"Orders placed by members from their member portal/online store. POS counter sales appear in POS History."*
+  - Currently the query filters invoices by `source IN ('member_store','ecommerce')` or notes containing `store purchase`. Verify by also widening the filter to invoices linked to `pos_sales.sale_type = 'online'` if such rows exist; otherwise keep the current filter and just show a clearer empty state with a CTA "Open Member Store".
+- Add two small KPI chips inside the Store Orders tab: **Open Orders / Fulfilled Today**.
+- Make the existing "Open POS" / "Manage Products" buttons in the hero card visually consistent (icon + label, indigo gradient secondary buttons).
+
+No schema changes.
+
+---
+
+## 3. Cancelled membership leaves invoice in Pending Dues (BUG)
+
+**Root cause (verified via DB):**
+Memberships `INV-INC-26-0007` (₹10,800) and `INV-INC-26-0005` (₹4,000) — both linked to cancelled memberships — still have `invoices.status = 'pending'` and `amount_paid = 0`. The `public.cancel_membership` RPC (migration `20260502094706_…`) only writes a *negative refund invoice* when refund > 0; it never touches the original unpaid invoice.
+
+**Fix — new migration** (recreate `cancel_membership`):
+
+Inside the RPC, after marking the membership cancelled, add:
+
 ```sql
-WHERE t.branch_id IN (
-  SELECT uvb.branch_id FROM public.user_visible_branches(v_uid) uvb
-)
+-- Void any unpaid/partially-paid original invoice tied to this membership
+UPDATE public.invoices i
+   SET status = 'cancelled',
+       notes  = COALESCE(i.notes,'') ||
+                E'\nCancelled with membership on ' || now()::date ||
+                '. Reason: ' || p_reason
+ WHERE i.id IN (
+   SELECT ii.invoice_id
+   FROM public.invoice_items ii
+   WHERE ii.reference_id = p_membership_id
+     AND ii.reference_type = 'membership'
+ )
+   AND i.status IN ('pending','partial','overdue')
+   AND COALESCE(i.amount_paid,0) = 0;
 ```
-No signature/grant changes.
+
+For invoices that were already partially paid we **don't** auto-cancel — staff handles via the existing refund flow (`p_refund_amount`).
+
+Also surface this in the UI:
+- `src/components/members/MemberProfileDrawer.tsx` — in the Pay tab "Pending Dues" list, exclude invoices whose `status = 'cancelled'`.
+- Show a small "Cancelled with membership" badge in Membership History → Invoices.
+
+**Backfill** (one-shot, in the same migration):
+
+```sql
+UPDATE public.invoices i
+   SET status = 'cancelled',
+       notes = COALESCE(i.notes,'') || E'\nAuto-cancelled: linked membership cancelled.'
+ WHERE i.status IN ('pending','partial','overdue')
+   AND COALESCE(i.amount_paid,0) = 0
+   AND EXISTS (
+     SELECT 1 FROM public.invoice_items ii
+     JOIN public.memberships m ON m.id = ii.reference_id
+     WHERE ii.invoice_id = i.id
+       AND ii.reference_type = 'membership'
+       AND m.status = 'cancelled'
+   );
+```
+
+This resolves Ryan Lekhari's two stuck pending dues immediately.
 
 ---
 
-## 2. Registration form download returns only the signature image
+## Files to edit / create
 
-**Cause:** `MemberRegistrationForm.handleSaveDigital` saves only the signature canvas (`canvas.toBlob → image/png`) into `member_documents` as the registration form. The actual rendered registration HTML is never captured.
+- `src/components/invoices/InvoiceViewDrawer.tsx` — richer totals section
+- `src/components/members/InvoiceDetailDrawer.tsx` — same breakdown for member view
+- `src/pages/Store.tsx` — copy + helper + empty state + KPI chips
+- `src/components/members/MemberProfileDrawer.tsx` — filter cancelled invoices from Pending Dues; "Cancelled with membership" badge
+- New migration: recreate `public.cancel_membership` (auto-void unpaid invoices) + one-shot backfill
 
-**Fix:** In `src/components/members/MemberRegistrationForm.tsx`:
-- Render the full registration form HTML to a canvas using `html2canvas` (already used elsewhere — confirm; otherwise use a lightweight `jspdf` + `html2canvas` flow).
-- Composite the printed registration form + the captured signature into a single PDF (preferred) or PNG.
-- Upload the composite as `Registration-{memberCode}-signed.pdf` with `contentType: 'application/pdf'`.
-- Save `file_name` with `.pdf` extension and matching MIME so download/open serves the full form, not just the sig.
-
-If `html2canvas`/`jspdf` not installed, add them. Fall back to building a printable HTML string and using `html2canvas` on a hidden render container that includes the signature dataURL embedded as `<img>`.
-
----
-
-## 3. Recent Activity — group + paginate
-
-**File:** `src/components/members/MemberProfileDrawer.tsx` (the `recentActivity` block ~line 858 and render ~line 1732).
-
-**Changes:**
-- Remove the hard `.slice(0, 12)` cap.
-- Group items by date (Today / Yesterday / `dd MMM yyyy`) using `date-fns` `isToday`, `isYesterday`, `format`.
-- Within each day group, also sub-group by `badge` (Check-in/out, Payment, Membership, PT) collapsed by default with a count badge — expand on click.
-- Add client-side pagination: show 5 day-groups per page with Prev/Next + "Showing X–Y of Z" footer.
-- Keep the realtime invalidations already wired.
-
-Render pattern: section header per day → list of grouped activity rows → pagination control at card footer.
-
----
-
-## 4. Cancel button for pending memberships in Membership History
-
-**Context:** A queued/upcoming membership shows status `pending`. Without a way to cancel it, the member appears to have multiple obligations and may flip to overdue.
-
-**Changes in `MemberProfileDrawer.tsx` Membership History card (~line 1507):**
-- For each row where `m.status === 'pending'` (or `'scheduled'`), show a small destructive ghost `Button` "Cancel" beside the status badge.
-- On click, open the existing `CancelMembershipDrawer` but pass that specific `m` instead of always `activeMembership`. Promote `cancelTarget` state to hold the selected membership; default to `activeMembership` when triggered from the action menu.
-- Pending cancellation should call the same atomic RPC (`cancel_membership`) — already supports any membership_id by contract.
-- After success, invalidate `['member-details', memberId]` and `['memberships']` queries so it disappears immediately.
-
-Add a confirmation note in the drawer when target is pending: "This plan hasn't started yet — no refund will be issued unless a payment was already recorded."
-
----
-
-## Files Edited
-- `supabase/migrations/<new>.sql` — recreate `search_command_trainers`
-- `src/components/members/MemberRegistrationForm.tsx` — full-form PDF capture
-- `src/components/members/MemberProfileDrawer.tsx` — grouped paginated activity + pending cancel button
-- `src/components/members/CancelMembershipDrawer.tsx` — accept any membership prop, add pending-state copy
-- `package.json` — add `html2canvas`, `jspdf` if missing
+## Out of scope
+- No payment-engine refactor. The `record_payment` RPC stays the source of truth.
+- No changes to wallet ledger logic.

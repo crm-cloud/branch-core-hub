@@ -157,7 +157,7 @@ export default function StorePage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold tracking-tight">Store Overview</h2>
-              <p className="text-primary-foreground/70 text-sm mt-1">Today's sales & inventory at a glance</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">In-store POS sales and member online store orders at a glance</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
               <div className="text-center">
@@ -383,6 +383,12 @@ export default function StorePage() {
               <TabsContent value="online-orders" className="mt-4">
                 <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardContent className="pt-6">
+                    <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/10 text-xs text-muted-foreground flex items-start gap-2">
+                      <ShoppingBag className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                      <span>
+                        Orders placed by members from their member portal / online store. Walk-in counter sales appear under <strong>POS History</strong>.
+                      </span>
+                    </div>
                     {ordersLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -414,9 +420,10 @@ export default function StorePage() {
                           ))}
                           {memberStoreOrders.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                                <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                No member store orders yet
+                              <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                                <ShoppingBag className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                                <p className="font-medium text-foreground/70">No member online orders yet</p>
+                                <p className="text-xs mt-1">Once members purchase from their portal, orders will show up here.</p>
                               </TableCell>
                             </TableRow>
                           )}
