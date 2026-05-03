@@ -82,8 +82,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const message_id = body.message_id ?? body.messageId;
-    const phone_number = body.phone_number ?? body.phone;
-    const content = body.content ?? body.message;
+    const phone_number = body.phone_number ?? body.phone ?? body.recipient;
+    const content = body.content ?? body.message ?? body.body;
     const branch_id = body.branch_id ?? body.branchId;
     const message_type = body.message_type || "text";
     const media_url = body.media_url;
