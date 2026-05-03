@@ -155,7 +155,10 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
           target_audience: audience === 'all' ? 'all' : 'members',
           is_active: true,
           publish_at: scheduledIso ?? new Date().toISOString(),
-        });
+          attachment_url: attachment?.url ?? null,
+          attachment_kind: attachment?.kind ?? null,
+          attachment_filename: attachment?.filename ?? null,
+        } as any);
         if (error) throw error;
         summary.push(scheduledIso ? 'in-app: scheduled' : 'in-app: posted');
       }
