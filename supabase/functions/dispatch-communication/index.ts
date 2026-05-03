@@ -108,8 +108,8 @@ function orderedTemplateKeys(content: string, variables: unknown): string[] {
   return keys;
 }
 
-function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null {
-  if (keys.length === 0) return undefined as unknown as null;
+function templateComponents(keys: string[], values: Record<string, unknown> | undefined): Array<Record<string, unknown>> | null | undefined {
+  if (keys.length === 0) return undefined;
   const params = keys.map((key, index) => {
     const value = values?.[key] ?? values?.[String(index + 1)] ?? values?.[`variable_${index + 1}`];
     const text = value == null ? '' : String(value).trim();
