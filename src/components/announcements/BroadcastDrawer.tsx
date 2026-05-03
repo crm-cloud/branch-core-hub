@@ -6,28 +6,35 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { MessageSquare, Phone, Mail, Send, FileText, Loader2, Paperclip, X, Image as ImageIcon } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { MessageSquare, Phone, Mail, Bell, Send, FileText, Loader2, Paperclip, X, Image as ImageIcon, Clock, Calendar as CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { uploadAttachment } from '@/utils/uploadAttachment';
+import { createCampaign, type CampaignChannel } from '@/services/campaignService';
 
 interface BroadcastDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId?: string;
-  initialType?: 'sms' | 'email' | 'whatsapp';
+  initialType?: 'sms' | 'email' | 'whatsapp' | 'inapp';
   initialMessage?: string;
 }
 
-const CHANNELS = [
-  { value: 'whatsapp' as const, label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
-  { value: 'sms' as const, label: 'SMS', icon: Phone, color: 'text-sky-500' },
-  { value: 'email' as const, label: 'Email', icon: Mail, color: 'text-amber-500' },
+type Channel = 'inapp' | 'whatsapp' | 'sms' | 'email';
+
+const CHANNELS: { value: Channel; label: string; icon: any; color: string }[] = [
+  { value: 'inapp',    label: 'In-App',   icon: Bell,          color: 'text-violet-600' },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
+  { value: 'sms',      label: 'SMS',      icon: Phone,         color: 'text-sky-500' },
+  { value: 'email',    label: 'Email',    icon: Mail,          color: 'text-amber-500' },
 ];
 
-export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'whatsapp', initialMessage = '' }: BroadcastDrawerProps) {
-  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set([initialType]));
+export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'inapp', initialMessage = '' }: BroadcastDrawerProps) {
+  const qc = useQueryClient();
+  const [selectedChannels, setSelectedChannels] = useState<Set<Channel>>(new Set([initialType]));
+  const [title, setTitle] = useState('');
   const [message, setMessage] = useState(initialMessage);
   const [audience, setAudience] = useState('all');
   const [templateId, setTemplateId] = useState('');
@@ -35,10 +42,12 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
   const [isSending, setIsSending] = useState(false);
   const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<'now' | 'later'>('now');
+  const [scheduledAt, setScheduledAt] = useState('');
 
   const handleAttachmentPick = async (file: File | null) => {
     if (!file) return;
-    if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB for WhatsApp attachments'); return; }
+    if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB for attachments'); return; }
     setIsUploading(true);
     try {
       const kind: 'image' | 'document' = file.type.startsWith('image/') ? 'image' : 'document';
@@ -52,25 +61,29 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
     }
   };
 
-  const templateQueryType = selectedChannels.size === 1 ? Array.from(selectedChannels)[0] : '';
+  // Templates only relevant for a single external channel
+  const externalSingle = (() => {
+    const ext = Array.from(selectedChannels).filter(c => c !== 'inapp');
+    return ext.length === 1 ? ext[0] : '';
+  })();
 
   const { data: savedTemplates = [] } = useQuery({
-    queryKey: ['broadcast-templates', templateQueryType],
+    queryKey: ['broadcast-templates', externalSingle],
     queryFn: async () => {
-      if (!templateQueryType) return [];
+      if (!externalSingle) return [];
       const { data, error } = await supabase
         .from('templates')
         .select('id, name, content, subject')
-        .eq('type', templateQueryType)
+        .eq('type', externalSingle)
         .eq('is_active', true)
         .order('name');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!templateQueryType,
+    enabled: !!externalSingle,
   });
 
-  const toggleChannel = (channel: string) => {
+  const toggleChannel = (channel: Channel) => {
     const next = new Set(selectedChannels);
     if (next.has(channel)) {
       if (next.size > 1) next.delete(channel);
@@ -82,16 +95,16 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
   };
 
   const toggleAll = () => {
-    if (selectedChannels.size === 3) {
-      setSelectedChannels(new Set(['whatsapp']));
+    if (selectedChannels.size === 4) {
+      setSelectedChannels(new Set(['inapp']));
     } else {
-      setSelectedChannels(new Set(['whatsapp', 'sms', 'email']));
+      setSelectedChannels(new Set(['inapp', 'whatsapp', 'sms', 'email']));
     }
     setTemplateId('');
   };
 
   const handleTemplateSelect = (tid: string) => {
-    const template = savedTemplates.find((t: any) => t.id === tid);
+    const template: any = savedTemplates.find((t: any) => t.id === tid);
     if (template) {
       setTemplateId(tid);
       setMessage(template.content);
@@ -99,81 +112,123 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
     }
   };
 
-  const handleBroadcast = async () => {
-    if (!message.trim()) { toast.error('Please enter a message'); return; }
-    if (!branchId) { toast.error('No branch selected'); return; }
+  const audienceToCampaignFilter = (a: string) => {
+    if (a === 'active') return { status: 'active' as const };
+    if (a === 'expired') return { status: 'expired' as const };
+    return { status: 'all' as const };
+  };
+
+  const reset = () => {
+    setTitle(''); setMessage(''); setSubject(''); setTemplateId(''); setAudience('all');
+    setAttachment(null); setSelectedChannels(new Set(['inapp']));
+    setScheduleMode('now'); setScheduledAt('');
+  };
+
+  const handleSend = async () => {
     if (selectedChannels.size === 0) { toast.error('Select at least one channel'); return; }
+    if (!message.trim()) { toast.error('Please enter a message'); return; }
+    if (selectedChannels.has('inapp') && !title.trim()) { toast.error('Title is required for In-App announcements'); return; }
+    if (!branchId) { toast.error('No branch selected'); return; }
+
+    let scheduledIso: string | null = null;
+    if (scheduleMode === 'later') {
+      if (!scheduledAt) { toast.error('Pick a date and time'); return; }
+      const ts = new Date(scheduledAt).getTime();
+      if (isNaN(ts) || ts <= Date.now()) { toast.error('Scheduled time must be in the future'); return; }
+      scheduledIso = new Date(scheduledAt).toISOString();
+    }
 
     setIsSending(true);
-    const results: { channel: string; sent: number; failed: number }[] = [];
+    const summary: string[] = [];
 
     try {
-      for (const channel of selectedChannels) {
-        const supportsAttachment = channel === 'whatsapp' || channel === 'email';
-        const { data, error } = await supabase.functions.invoke('send-broadcast', {
-          body: {
-            channel,
-            message,
-            audience,
-            branch_id: branchId,
-            subject: channel === 'email' ? subject || undefined : undefined,
-            template_id: channel === 'whatsapp' && templateId ? templateId : undefined,
-            attachment_url: supportsAttachment && attachment ? attachment.url : undefined,
-            attachment_kind: supportsAttachment && attachment ? attachment.kind : undefined,
-            attachment_filename: supportsAttachment && attachment ? attachment.filename : undefined,
-          },
+      // 1. In-App → write to announcements (publish_at controls visibility)
+      if (selectedChannels.has('inapp')) {
+        const { error } = await supabase.from('announcements').insert({
+          title: title.trim(),
+          content: message.trim(),
+          branch_id: branchId,
+          target_audience: audience === 'all' ? 'all' : 'members',
+          is_active: true,
+          publish_at: scheduledIso ?? new Date().toISOString(),
         });
-        if (error) {
-          results.push({ channel, sent: 0, failed: -1 });
+        if (error) throw error;
+        summary.push(scheduledIso ? 'in-app: scheduled' : 'in-app: posted');
+      }
+
+      // 2. External channels
+      const externalChannels = Array.from(selectedChannels).filter(c => c !== 'inapp') as CampaignChannel[];
+
+      for (const channel of externalChannels) {
+        const supportsAttachment = channel === 'whatsapp' || channel === 'email';
+
+        if (scheduledIso) {
+          // Scheduled → persist as a campaign; cron picks it up
+          await createCampaign({
+            branch_id: branchId,
+            name: (title.trim() || message.trim().slice(0, 40)) + ` · ${channel}`,
+            channel,
+            audience_filter: audienceToCampaignFilter(audience),
+            message: message.trim(),
+            subject: channel === 'email' ? (subject || null) : null,
+            trigger_type: 'scheduled',
+            scheduled_at: scheduledIso,
+            status: 'scheduled',
+          });
+          summary.push(`${channel}: scheduled`);
         } else {
-          results.push({ channel, sent: data?.sent || 0, failed: data?.failed || 0 });
+          // Send now
+          const { data, error } = await supabase.functions.invoke('send-broadcast', {
+            body: {
+              channel,
+              message,
+              audience,
+              branch_id: branchId,
+              subject: channel === 'email' ? subject || undefined : undefined,
+              template_id: channel === 'whatsapp' && templateId ? templateId : undefined,
+              attachment_url: supportsAttachment && attachment ? attachment.url : undefined,
+              attachment_kind: supportsAttachment && attachment ? attachment.kind : undefined,
+              attachment_filename: supportsAttachment && attachment ? attachment.filename : undefined,
+            },
+          });
+          if (error) summary.push(`${channel}: error`);
+          else summary.push(`${channel}: ${data?.sent ?? 0} sent`);
         }
       }
 
-      const totalSent = results.reduce((s, r) => s + r.sent, 0);
-      const totalFailed = results.filter(r => r.failed === -1).length;
-      const summary = results.map(r => `${r.channel}: ${r.failed === -1 ? 'error' : `${r.sent} sent`}`).join(', ');
-
-      if (totalSent > 0) {
-        toast.success(`Broadcast complete — ${summary}`);
-      } else if (totalFailed === results.length) {
-        toast.error('All channels failed');
-      } else {
-        toast.info(`Broadcast sent — ${summary}`);
-      }
-
+      qc.invalidateQueries({ queryKey: ['announcements'] });
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      toast.success(`Done — ${summary.join(', ')}`);
       onOpenChange(false);
-      setMessage(''); setSubject(''); setTemplateId(''); setAudience('all');
-      setAttachment(null);
-      setSelectedChannels(new Set(['whatsapp']));
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to send broadcast');
+      reset();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send');
     } finally {
       setIsSending(false);
     }
   };
 
   const showSubject = selectedChannels.has('email');
+  const showAttachment = selectedChannels.has('whatsapp') || selectedChannels.has('email');
+  const showTitle = selectedChannels.has('inapp');
+  const minScheduled = new Date(Date.now() + 60_000).toISOString().slice(0, 16);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Broadcast Message</SheetTitle>
-          <SheetDescription>Send a message to multiple members across channels</SheetDescription>
+          <SheetTitle>New Announcement</SheetTitle>
+          <SheetDescription>Compose once · deliver to In-App, WhatsApp, SMS or Email · send now or schedule</SheetDescription>
         </SheetHeader>
 
         <div className="space-y-4 py-4">
-          {/* Channel Multi-Select */}
+          {/* Channels */}
           <div className="space-y-2">
             <Label>Channels</Label>
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={selectedChannels.size === 3}
-                  onCheckedChange={toggleAll}
-                />
-                <span className="text-sm font-medium">All Channels</span>
+                <Checkbox checked={selectedChannels.size === 4} onCheckedChange={toggleAll} />
+                <span className="text-sm font-medium">All</span>
               </label>
               <div className="w-px h-5 bg-border" />
               {CHANNELS.map(ch => {
@@ -192,32 +247,35 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
             </div>
           </div>
 
-          {/* Template Selector (only when single channel) */}
-          {templateQueryType && (
+          {/* Title (in-app) */}
+          {showTitle && (
+            <div className="space-y-2">
+              <Label>Title *</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Gym closure on 5th May" />
+              <p className="text-xs text-muted-foreground">Shown as the headline in the member app feed.</p>
+            </div>
+          )}
+
+          {/* Template (single external channel) */}
+          {externalSingle && (
             <div className="space-y-2">
               <Label>Use Template (Optional)</Label>
               <Select value={templateId} onValueChange={handleTemplateSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a saved template..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select a saved template..." /></SelectTrigger>
                 <SelectContent>
                   {savedTemplates.length === 0 ? (
                     <div className="p-2 text-sm text-muted-foreground text-center">
-                      No templates found for {templateQueryType}
+                      No templates found for {externalSingle}
                     </div>
                   ) : (
                     savedTemplates.map((t: any) => (
                       <SelectItem key={t.id} value={t.id}>
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          {t.name}
-                        </div>
+                        <div className="flex items-center gap-2"><FileText className="h-4 w-4" />{t.name}</div>
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Manage templates in Settings → Templates</p>
             </div>
           )}
 
@@ -232,6 +290,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
                 <SelectItem value="expired">Expired Members</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">For richer targeting (leads, contacts, segments) use Marketing & Campaigns.</p>
           </div>
 
           {showSubject && (
@@ -244,10 +303,10 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
           <div className="space-y-2">
             <Label>Message *</Label>
             <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Enter your message..." rows={6} />
-            <p className="text-xs text-muted-foreground">Use variables like {'{{member_name}}'}, {'{{member_code}}'}</p>
+            <p className="text-xs text-muted-foreground">Variables like {'{{member_name}}'} work on WhatsApp/SMS/Email.</p>
           </div>
 
-          {(selectedChannels.has('whatsapp') || selectedChannels.has('email')) && (
+          {showAttachment && (
             <div className="space-y-2">
               <Label>Attachment (Optional)</Label>
               {attachment ? (
@@ -271,23 +330,47 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'w
               )}
               <p className="text-xs text-muted-foreground">
                 <Paperclip className="h-3 w-3 inline mr-1" />
-                Image (jpg/png) or PDF — max 16MB. Attached on WhatsApp + Email; ignored for SMS.
+                Image or PDF — max 16MB. Used on WhatsApp + Email only.
               </p>
             </div>
           )}
 
-          <div className="rounded-lg border border-border bg-muted/50 p-3">
-            <p className="text-xs text-muted-foreground">
-              <strong>Note:</strong> Messages will be sent to each selected channel. Email requires SMTP configured in Settings → Integrations. SMS and WhatsApp require their respective API keys.
-            </p>
+          {/* Schedule */}
+          <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+            <Label className="flex items-center gap-2"><Clock className="h-4 w-4" />When to send</Label>
+            <RadioGroup value={scheduleMode} onValueChange={(v) => setScheduleMode(v as 'now' | 'later')} className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="now" id="snd-now" />
+                <span className="text-sm">Send now</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <RadioGroupItem value="later" id="snd-later" />
+                <span className="text-sm">Schedule for later</span>
+              </label>
+            </RadioGroup>
+            {scheduleMode === 'later' && (
+              <div className="pt-2 space-y-1">
+                <Label className="text-xs flex items-center gap-1.5"><CalendarIcon className="h-3 w-3" />Send at (Asia/Kolkata)</Label>
+                <Input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  min={minScheduled}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  className="rounded-xl bg-background"
+                />
+                <p className="text-[11px] text-muted-foreground">A background worker dispatches at the chosen time.</p>
+              </div>
+            )}
           </div>
         </div>
 
         <SheetFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSending}>Cancel</Button>
-          <Button onClick={handleBroadcast} disabled={!message.trim() || isSending}>
+          <Button onClick={handleSend} disabled={!message.trim() || isSending}>
             {isSending ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Working…</>
+            ) : scheduleMode === 'later' ? (
+              <><Clock className="mr-2 h-4 w-4" /> Schedule</>
             ) : (
               <><Send className="mr-2 h-4 w-4" /> Send to {selectedChannels.size} Channel{selectedChannels.size > 1 ? 's' : ''}</>
             )}
