@@ -4,12 +4,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Megaphone, Send, Trash2, Radio, Activity, AlertCircle, Sparkles, Rocket } from 'lucide-react';
+import { Plus, Megaphone, Trash2, Radio, Activity, AlertCircle, Sparkles, Rocket } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { communicationService } from '@/services/communicationService';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { AddAnnouncementDrawer } from '@/components/announcements/AddAnnouncementDrawer';
 import { BroadcastDrawer } from '@/components/announcements/BroadcastDrawer';
 import { useBranchContext } from '@/contexts/BranchContext';
 import { LiveFeed } from '@/components/communications/LiveFeed';
@@ -20,7 +19,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
   const { effectiveBranchId: defaultBranchId = '' } = useBranchContext();
-  const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [showBroadcastDrawer, setShowBroadcastDrawer] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'live';
@@ -73,10 +71,7 @@ export default function AnnouncementsPage() {
                 <Sparkles className="h-4 w-4" />Templates
               </Link>
             </Button>
-            <Button variant="outline" onClick={() => setShowBroadcastDrawer(true)} className="gap-2 rounded-xl">
-              <Send className="h-4 w-4" />Broadcast
-            </Button>
-            <Button onClick={() => setShowAddDrawer(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
+            <Button onClick={() => setShowBroadcastDrawer(true)} className="gap-2 rounded-xl shadow-lg shadow-primary/20">
               <Plus className="h-4 w-4" />New Announcement
             </Button>
           </div>
@@ -117,7 +112,7 @@ export default function AnnouncementsPage() {
                   </div>
                   <h3 className="font-semibold text-lg mb-1">No Announcements</h3>
                   <p className="text-sm text-muted-foreground mb-4">Create your first announcement to notify members</p>
-                  <Button onClick={() => setShowAddDrawer(true)} className="gap-2 rounded-xl">
+                  <Button onClick={() => setShowBroadcastDrawer(true)} className="gap-2 rounded-xl">
                     <Plus className="h-4 w-4" />New Announcement
                   </Button>
                 </CardContent>
@@ -177,12 +172,11 @@ export default function AnnouncementsPage() {
         </Tabs>
       </div>
 
-      <AddAnnouncementDrawer open={showAddDrawer} onOpenChange={setShowAddDrawer} />
       <BroadcastDrawer
         open={showBroadcastDrawer}
         onOpenChange={setShowBroadcastDrawer}
         branchId={defaultBranchId}
-        initialType="whatsapp"
+        initialType="inapp"
         initialMessage=""
       />
     </AppLayout>
