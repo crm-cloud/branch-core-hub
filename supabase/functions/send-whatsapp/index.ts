@@ -1,3 +1,5 @@
+// v2.3.0 — document messages now send link + filename + caption together so PDFs
+//           arrive as named, captioned attachments instead of unnamed downloads.
 // v2.2.0 — honor skip_log from dispatcher to avoid duplicate communication_logs rows.
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -151,10 +153,13 @@ serve(async (req) => {
         ...(caption ? { caption } : {}),
       };
     } else if (message_type === "document") {
+      // Meta document payload: include BOTH filename + caption when available so
+      // the recipient sees a named PDF with descriptive text.
       metaPayload.type = "document";
       metaPayload.document = {
         link: media_url,
-        ...(caption ? { caption } : { filename: body.filename || "document" }),
+        filename: body.filename || "document.pdf",
+        ...(caption ? { caption } : {}),
       };
     } else if (message_type === "template") {
       metaPayload.type = "template";
