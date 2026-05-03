@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemberData } from '@/hooks/useMemberData';
 import { format, formatDistanceToNow } from 'date-fns';
+import { AnnouncementAttachment } from '@/components/announcements/AnnouncementAttachment';
 
 export default function MemberAnnouncements() {
   const { member, isLoading: memberLoading } = useMemberData();
