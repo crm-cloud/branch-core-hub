@@ -265,6 +265,34 @@ export function CompGiftDrawer({ open, onOpenChange, memberId, memberName, membe
 
   const activeComps = existingComps.filter((c: any) => c.used_sessions < c.comp_sessions);
 
+  // Merge plan + comp totals per benefit so members/staff see one combined number
+  const combinedBenefits = (() => {
+    const map = new Map<string, { name: string; planRemaining: number | null; planLimit: number; planUsed: number; compRemaining: number; unlimited: boolean }>();
+    planBenefits.forEach((b: any) => {
+      const name = b.benefit_types?.name || b.benefit_type;
+      const unlimited = b.frequency === 'unlimited';
+      map.set(name, {
+        name,
+        unlimited,
+        planLimit: b.limit_count || 0,
+        planUsed: b.used || 0,
+        planRemaining: unlimited ? null : (b.remaining ?? 0),
+        compRemaining: 0,
+      });
+    });
+    activeComps.forEach((c: any) => {
+      const name = c.benefit_types?.name || 'Benefit';
+      const remaining = c.comp_sessions - c.used_sessions;
+      const existing = map.get(name);
+      if (existing) {
+        existing.compRemaining += remaining;
+      } else {
+        map.set(name, { name, unlimited: false, planLimit: 0, planUsed: 0, planRemaining: 0, compRemaining: remaining });
+      }
+    });
+    return Array.from(map.values()).filter(b => b.unlimited || (b.planRemaining || 0) + b.compRemaining > 0 || b.planLimit > 0);
+  })();
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
