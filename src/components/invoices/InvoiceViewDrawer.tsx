@@ -242,24 +242,29 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
           {/* Totals */}
           <Card className="bg-muted/50">
             <CardContent className="pt-4 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>₹{invoice.subtotal.toLocaleString()}</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Payment Summary</span>
+                <Badge className={`${getStatusColor(invoice.status)} border capitalize`}>{invoice.status}</Badge>
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>₹{Number(invoice.subtotal || 0).toLocaleString()}</span>
               </div>
               {invoice.discount_amount > 0 && (
-                <div className="flex justify-between text-success">
+                <div className="flex justify-between text-sm text-success">
                   <span>Discount</span>
-                  <span>-₹{invoice.discount_amount.toLocaleString()}</span>
+                  <span>-₹{Number(invoice.discount_amount).toLocaleString()}</span>
                 </div>
               )}
               {invoice.tax_amount > 0 && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span>CGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
+                    <span className="text-muted-foreground">CGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
                     <span>₹{(invoice.tax_amount / 2).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>SGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
+                    <span className="text-muted-foreground">SGST{invoice.gst_rate ? ` (${invoice.gst_rate / 2}%)` : ''}</span>
                     <span>₹{(invoice.tax_amount / 2).toLocaleString()}</span>
                   </div>
                 </>
@@ -269,21 +274,43 @@ export function InvoiceViewDrawer({ open, onOpenChange, invoiceId, onRecordPayme
                 <span>Total</span>
                 <span className="flex items-center">
                   <IndianRupee className="h-4 w-4" />
-                  {invoice.total_amount.toLocaleString()}
+                  {Math.abs(invoice.total_amount).toLocaleString()}
+                  {isRefund && <span className="ml-2 text-xs text-destructive">(Refund)</span>}
                 </span>
               </div>
-              {invoice.amount_paid > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Paid</span>
-                  <span>₹{invoice.amount_paid.toLocaleString()}</span>
+
+              {walletDisplay > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    Wallet Used
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Wallet</Badge>
+                  </span>
+                  <span className="text-blue-600 dark:text-blue-400">-₹{walletDisplay.toLocaleString()}</span>
                 </div>
               )}
-              {dueAmount > 0 && (
-                <div className="flex justify-between text-destructive font-medium">
-                  <span>Balance Due</span>
+              {otherPaid > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Cash / Card / UPI</span>
+                  <span>₹{otherPaid.toLocaleString()}</span>
+                </div>
+              )}
+              {invoice.amount_paid > 0 && (
+                <div className="flex justify-between text-success font-medium">
+                  <span>Total Paid</span>
+                  <span>₹{Number(invoice.amount_paid).toLocaleString()}</span>
+                </div>
+              )}
+              {dueAmount > 0 ? (
+                <div className="flex justify-between text-destructive font-semibold">
+                  <span>Remaining Balance</span>
                   <span>₹{dueAmount.toLocaleString()}</span>
                 </div>
-              )}
+              ) : !isRefund && invoice.status !== 'cancelled' ? (
+                <div className="flex justify-between text-success text-xs">
+                  <span>Remaining Balance</span>
+                  <span>Settled</span>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
