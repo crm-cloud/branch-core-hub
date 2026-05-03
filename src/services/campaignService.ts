@@ -162,7 +162,12 @@ export async function listCampaigns(branchId: string): Promise<Campaign[]> {
 
 export async function createCampaign(input: Omit<Campaign,
   'id' | 'recipients_count' | 'success_count' | 'failure_count' | 'sent_at' | 'created_at' | 'status'
-> & { status?: CampaignStatus }): Promise<Campaign> {
+> & {
+  status?: CampaignStatus;
+  attachment_url?: string | null;
+  attachment_kind?: 'image' | 'document' | 'video' | null;
+  attachment_filename?: string | null;
+}): Promise<Campaign> {
   const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('campaigns')
@@ -176,8 +181,11 @@ export async function createCampaign(input: Omit<Campaign,
       trigger_type: input.trigger_type,
       status: input.status || 'draft',
       scheduled_at: input.scheduled_at,
+      attachment_url: input.attachment_url ?? null,
+      attachment_kind: input.attachment_kind ?? null,
+      attachment_filename: input.attachment_filename ?? null,
       created_by: user?.id,
-    })
+    } as any)
     .select()
     .single();
   if (error) throw error;
@@ -185,7 +193,7 @@ export async function createCampaign(input: Omit<Campaign,
 }
 
 export async function sendCampaignNow(
-  campaign: Campaign,
+  campaign: Campaign & { attachment_url?: string | null; attachment_kind?: string | null; attachment_filename?: string | null },
   audience: { memberIds?: string[]; recipients?: ResolvedRecipient[] }
 ): Promise<{ sent: number; failed: number; total: number }> {
   await supabase.from('campaigns').update({ status: 'sending' }).eq('id', campaign.id);
@@ -199,6 +207,9 @@ export async function sendCampaignNow(
       member_ids: audience.memberIds,
       recipients: audience.recipients,
       campaign_id: campaign.id,
+      attachment_url: (campaign as any).attachment_url ?? undefined,
+      attachment_kind: (campaign as any).attachment_kind ?? undefined,
+      attachment_filename: (campaign as any).attachment_filename ?? undefined,
     },
   });
   if (error) throw error;
