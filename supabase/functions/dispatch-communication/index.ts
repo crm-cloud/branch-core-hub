@@ -395,7 +395,8 @@ Deno.serve(async (req) => {
             },
           });
           if (r.error) throw new Error(await functionErrorDetail(r.error));
-          providerMessageId = (r.data as { message_id?: string })?.message_id;
+          providerMessageId = (r.data as { whatsapp_message_id?: string; message_id?: string })?.whatsapp_message_id
+            ?? (r.data as { message_id?: string })?.message_id;
           break;
         }
         case 'sms': {
