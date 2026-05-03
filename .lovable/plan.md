@@ -1,83 +1,133 @@
-I audited the invoice share flow, email sender, WhatsApp sender, storage, templates, and recent logs for INV-INC-26-0006 / INV-INC-26-0008.
+# Communications & POS Cleanup Plan
 
-Findings:
+Five fixes, one consistent dispatcher path, no new bloat.
 
-1. The old links you pasted are public storage URLs, but the `attachments` bucket is private. That is why these fail with `404 Bucket not found`:
-   `.../storage/v1/object/public/attachments/invoices/...pdf`
+---
 
-2. New generated PDFs are now being uploaded correctly and signed URLs are reachable. I verified the newer signed URL for INV-INC-26-0006 returns `200 application/pdf`.
+## 1. Template Preview Button (Template Manager)
 
-3. Email did send, but the attachment was not included because your active email provider is SMTP. Current `send-email` supports attachments only for SendGrid and Mailgun. SMTP and SES paths ignore the `attachments` array. So the email body says “PDF attached”, but the actual MIME email contains only HTML/text.
+`TemplateManager.tsx` already has an inline preview text block, but no way to see the **rendered email/WhatsApp message with sample data + attachment**.
 
-4. The email is plain because `InvoiceShareDrawer` calls `send-email` without `use_branded_template: true`. The branded wrapper exists in `send-email`, but invoice emails are not enabling it.
+- Add a **"Preview"** button beside Save in the editor footer.
+- Opens a Sheet showing:
+  - For **email**: rendered HTML in an iframe (using the same branded wrapper `send-email` applies when `use_branded_template=true`), with sample variable values.
+  - For **WhatsApp**: chat-bubble mock with header (image/document name), body, footer, buttons.
+  - For **dynamic PDF templates**: a row "Attachment: `Invoice-INV-XXXX.pdf` (generated at send-time)" with a "Test send to me" button that dispatches the template to the current user via `dispatchCommunication` using the latest invoice in the branch as sample data.
+- Variables panel lets the operator override sample values before previewing.
 
-5. WhatsApp document sending is still failing after upload. The latest communication log for INV-INC-26-0006 shows a signed PDF URL in `delivery_metadata`, but delivery status is `failed` with `Edge Function returned a non-2xx status code`. The `whatsapp_messages` row remains `pending`, meaning the handoff into `send-whatsapp` is not completing successfully.
+No new edge function — preview rendering is client-side using `resolveTemplate()` from `src/lib/templates/dynamicAttachment.ts`.
 
-6. One likely WhatsApp payload issue is in `send-whatsapp`: for document messages it sends either `caption` or `filename`, but not both. Meta document payloads should include `link`, `filename`, and optional `caption`. This can break PDF delivery or make PDFs appear unnamed.
+---
 
-7. Dedupe is also causing confusion during testing. Invoice WhatsApp sends use `invoice:<invoice_id>:wa`; after one failed attempt, retrying the same invoice may be treated as deduped instead of re-sending unless the failed state is explicitly handled.
+## 2. Verify Email Attachment On Send
 
-Plan to fix:
+The recurring "PDF missing" complaints come from silent attachment drops. Harden the path end-to-end.
 
-1. Fix invoice email PDF attachments for SMTP
-   - Update `supabase/functions/send-email/index.ts` so SMTP sends proper multipart MIME emails when attachments are provided.
-   - Add MIME boundaries, `multipart/mixed`, nested `multipart/alternative`, HTML body, and base64 PDF attachment parts.
-   - Preserve existing SendGrid and Mailgun attachment behavior.
-   - Add attachment support or explicit safe fallback for SES if configured later.
+**Client (`InvoiceShareDrawer`, `SendPaymentLinkDrawer`, `sendPlanToMember`, `whatsappDocumentSender`)**
+- Before dispatching, assert PDF Blob size > 1 KB and content-type `application/pdf`. Fail fast with a toast if empty.
+- Upload to `attachments` bucket, then immediately call `createSignedUrl(path, 60*60*24*30)` and HEAD-fetch the URL once to confirm 200 before passing it to the dispatcher. If HEAD fails, retry once, else surface error.
 
-2. Make invoice emails professional by default
-   - Update `InvoiceShareDrawer.tsx` to call `send-email` with `use_branded_template: true`.
-   - Replace the minimal invoice email body with a polished invoice email section: branded greeting, invoice summary card, paid/due status badge, amount rows, and footer text using “The Incline Life by Incline”.
-   - Keep Template Manager content as the editable core body, but wrap it in the branded email shell so template emails are never plain.
+**Edge (`send-email`)**
+- After building MIME, log `attachment_count`, `attachment_bytes_total` into `email_send_log.metadata`.
+- Reject (return 422) if `attachments[]` was provided but resulting MIME has no `Content-Disposition: attachment` part — guards against base64 fetch failures silently dropping the file.
 
-3. Add visible proof in logs that email had an attachment
-   - Update `send-email` logging metadata to include attachment count, filenames, and content types.
-   - Avoid direct duplicate client logging where possible, so communication logs reflect actual provider result.
+**Edge (`send-whatsapp`)**
+- After Meta call, if payload included `document` but Meta returned an error containing "media", mark log `failed` with explicit `attachment_error` reason instead of generic failure.
 
-4. Fix WhatsApp PDF document payload
-   - Update `supabase/functions/send-whatsapp/index.ts` for document messages to send:
-     - `document.link`
-     - `document.filename`
-     - optional `document.caption`
-   - Ensure `dispatch-communication` passes filename through correctly.
-   - Improve the error body returned from `dispatch-communication` so the UI/logs show Meta’s actual reason instead of only “Edge Function returned a non-2xx status code”.
+**Verification UI**
+- In the existing communication log row, add a "📎 PDF" badge whenever `delivery_metadata.attachment` is present, and a tooltip showing filename + signed URL expiry.
 
-5. Make failed invoice WhatsApp retries actually retry
-   - Adjust dispatcher dedupe behavior: if an existing log with the same dedupe key is `failed`, allow a new send attempt instead of returning `deduped`.
-   - Keep dedupe protection for `sent`, `queued`, and `sending` states.
+---
 
-6. Stop exposing broken public URLs in the UI/history
-   - Ensure all new invoice PDF share flows use signed URLs only.
-   - Add a helper to convert existing internal attachment paths to fresh signed URLs when reusing old records.
-   - Add a user-facing note in Template Manager: Dynamic invoice PDFs are generated and signed automatically; users should not paste public storage URLs.
+## 3. Webhook Delivery Tracking — Enhance Dispatcher (No New Function)
 
-7. Improve Template Manager PDF clarity
-   - For “Attachment / Header Media”, make Dynamic PDF behavior clearer:
-     - “No upload required”
-     - “Invoice/receipt PDFs attach automatically during send”
-     - Show supported dynamic sources: Invoice PDF, Payment Receipt PDF, Body Scan Report, Diet/Workout Plan
-   - Add a preview indicator for seeded Invoice Email and Invoice WhatsApp templates showing they are dynamic PDF templates.
+We already have `meta-webhook` ingesting WhatsApp `statuses` and `dispatch-communication` writing rows. Today the link between them is loose.
 
-8. Verify with the real affected invoices
-   - Re-test INV-INC-26-0006 and INV-INC-26-0008 send paths after code changes.
-   - Confirm email payload includes the PDF attachment for SMTP.
-   - Confirm WhatsApp uses a signed URL and sends as a document message.
-   - Confirm the email renders with the professional branded layout instead of the plain text seen in your screenshot.
+Enhance, do not duplicate:
 
-Files expected to change:
+- **`dispatch-communication`**: when WhatsApp/Email send succeeds, persist the `provider_message_id` (wamid for WA, Message-ID for SMTP) onto `communication_logs.provider_message_id` (already wired) AND mirror to `delivery_metadata.provider_message_id` for non-WA channels.
+- **`meta-webhook`**: extend the existing `whatsapp_business_account` branch to handle the `statuses[]` array (sent → delivered → read → failed). Update `communication_logs` by `provider_message_id` setting `delivery_status`, `delivered_at`, `read_at`, `failure_reason`. Already partially scaffolded — finish wiring.
+- **`send-email`**: write `Message-ID` header, parse SMTP server response for it, return it to dispatcher. Add a thin `email-delivery-webhook` *route inside* `dispatch-communication` (POST /webhook) for SMTP bounce/complaint callbacks (Hostinger sends none today, but Mailgun/SendGrid will when used) — same function, new path, no extra deployment surface.
+- **UI**: on the comm log row, render delivery timeline chips (Queued → Sent → Delivered → Read / Failed) sourced from the four timestamp columns — purely additive.
 
-- `src/components/invoices/InvoiceShareDrawer.tsx`
-- `src/lib/templates/dynamicAttachment.ts` if needed for improved invoice email HTML defaults
-- `src/components/settings/TemplateManager.tsx`
-- `supabase/functions/send-email/index.ts`
-- `supabase/functions/send-whatsapp/index.ts`
-- `supabase/functions/dispatch-communication/index.ts`
-- Possibly a small migration only if we need to update seeded template text or add better log metadata defaults
+---
 
-Expected result:
+## 4. POS Walk-In: Persist & Display Customer Name/Email/Phone
 
-- Invoice emails will include an actual PDF attachment when using your current SMTP provider.
-- Invoice emails will render in the branded/professional template automatically.
-- WhatsApp invoice PDFs will send as real document messages using signed URLs.
-- Failed WhatsApp attempts will be retryable instead of getting stuck behind dedupe.
-- Template Manager will make Dynamic PDF attachments understandable and auto-populated for invoice/receipt use cases.
+Database already accepts `p_guest_name/phone/email` and `pos_sales` already stores `customer_name/email/phone`. Two gaps:
+
+**a. Invoice has no customer columns** — name/email/phone live only on `pos_sales`, so non-POS invoice flows and the invoice PDF can't see them.
+- Migration: add `customer_name text`, `customer_email text`, `customer_phone text` to `public.invoices` (nullable).
+- Update `create_pos_sale` to also populate these on the `INSERT INTO invoices` statement (uses already-resolved `v_customer_name/phone/email`).
+- Backfill: `UPDATE invoices i SET customer_* = ps.customer_* FROM pos_sales ps WHERE ps.invoice_id = i.id AND i.customer_name IS NULL`.
+
+**b. Invoice PDF & list don't render guest info**
+- `InvoiceViewDrawer` + `pdfGenerator.ts`: when `member_id` is null, render the `customer_name/email/phone` block in the "Bill To" section. Today it falls back to "Walk-in Customer" with no contact info.
+- Invoices list table: show guest name in the Member column when `member_id` is null.
+- `InvoiceShareDrawer`: pre-fill recipient email/phone from invoice `customer_email`/`customer_phone` for walk-in invoices, so the operator can send the receipt without re-typing.
+
+---
+
+## 5. Single Source of Truth: `dispatchCommunication` Everywhere
+
+Audit found these client paths still calling `send-email` / `send-whatsapp` / `send-sms` directly, bypassing dispatcher (no dedupe, no preference check, no quiet-hours, no unified logging):
+
+- `src/components/invoices/InvoiceShareDrawer.tsx` (line 212)
+- `src/components/invoices/SendPaymentLinkDrawer.tsx` (line 90)
+- `src/components/fitness/member/WhatsAppShareDialog.tsx` (line 75)
+- `src/utils/sendPlanToMember.ts` (line 157)
+- `src/utils/whatsappDocumentSender.ts`
+- `src/pages/WhatsAppChat.tsx` (operator manual sends — keep direct, but log via dispatcher's helper)
+
+**Action**
+- Promote `dispatchCommunication()` (already implied by memory + edge fn) into a real, exported client helper at **`src/lib/comms/dispatch.ts`** wrapping `supabase.functions.invoke('dispatch-communication', …)` with typed args (channel, recipient, template_key OR raw body, attachment, dedupe_key, member_id, branch_id, category).
+- Migrate all 6 call sites above to use it. Delete now-unused inline payload constructions.
+- Add ESLint rule (or extend the existing CI guard mentioned in memory) to forbid `functions.invoke('send-email'|'send-whatsapp'|'send-sms')` outside `src/lib/comms/dispatch.ts` and `supabase/functions/`.
+- `dispatch-communication` becomes the **only** place that:
+  - applies member channel/category preferences
+  - enforces quiet hours
+  - dedupes by `dedupe_key`
+  - writes to `communication_logs`
+  - chooses the underlying provider edge fn
+
+---
+
+## Cleanup (small, safe deletions)
+
+- Remove the now-redundant inline branded HTML builder in `InvoiceShareDrawer` — dispatcher + `send-email` `use_branded_template` already render this.
+- Drop legacy `communicationService.logCommunication()` direct-insert (memory says CI guard already blocks it; remove the dead method).
+- Collapse `whatsappDocumentSender.ts` into a thin re-export of `dispatch.ts` to keep callers compiling, then schedule for deletion.
+
+---
+
+## Technical Detail Section
+
+**New files**
+- `src/lib/comms/dispatch.ts` — typed client wrapper.
+- `supabase/migrations/<ts>_invoice_customer_fields.sql` — add 3 columns + backfill + update `create_pos_sale`.
+
+**Modified files**
+- `src/components/settings/TemplateManager.tsx` — Preview button + Sheet.
+- `src/components/invoices/InvoiceViewDrawer.tsx`, `src/utils/pdfGenerator.ts`, `src/pages/Invoices.tsx`, `src/components/invoices/InvoiceShareDrawer.tsx`, `src/components/invoices/SendPaymentLinkDrawer.tsx` — guest customer rendering & attachment guards.
+- `src/components/fitness/member/WhatsAppShareDialog.tsx`, `src/utils/sendPlanToMember.ts`, `src/utils/whatsappDocumentSender.ts` — switch to `dispatch()`.
+- `supabase/functions/dispatch-communication/index.ts` — provider_message_id mirroring + SMTP bounce webhook route.
+- `supabase/functions/send-email/index.ts` — attachment assertion, Message-ID capture, metadata logging.
+- `supabase/functions/send-whatsapp/index.ts` — explicit attachment_error reason.
+- `supabase/functions/meta-webhook/index.ts` — finish `statuses[]` → `communication_logs` update.
+- `.github/workflows/ci.yml` — extend direct-write guard to also forbid direct provider invokes.
+
+**Schema change**
+```sql
+ALTER TABLE public.invoices
+  ADD COLUMN customer_name  text,
+  ADD COLUMN customer_email text,
+  ADD COLUMN customer_phone text;
+-- + index on customer_phone for walk-in lookup
+-- + backfill from pos_sales
+-- + CREATE OR REPLACE create_pos_sale to populate these
+```
+
+**Out of scope (intentionally not building)**
+- New webhook receiver functions — reuse `dispatch-communication` and `meta-webhook`.
+- New tables for delivery events — `communication_logs` already has `delivery_status`, `delivered_at`, `read_at`, `provider_message_id`.
+- Rewriting `send-email` provider abstraction — current SMTP/SendGrid/Mailgun branch is fine.
