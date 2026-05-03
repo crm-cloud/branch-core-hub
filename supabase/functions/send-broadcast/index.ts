@@ -1,5 +1,5 @@
+// v3.2.0 — Attachment passthrough: forwards attachment_url/kind/filename into dispatch-communication.
 // v3.1.0 — Route all broadcast sends through dispatch-communication with Meta template support.
-// v3.0.0 — Unified recipients (members + leads + contacts) via dispatch-communication; per-recipient log to campaign_recipients
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -43,7 +43,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden: Staff access required" }), { status: 403, headers: corsHeaders });
     }
 
-    const { channel, message, audience, branch_id, subject, member_ids, recipients, campaign_id, template_id, variables } = await req.json();
+    const { channel, message, audience, branch_id, subject, member_ids, recipients, campaign_id, template_id, variables, attachment_url, attachment_kind, attachment_filename } = await req.json();
+
+    const attachment = attachment_url
+      ? {
+          url: attachment_url,
+          filename: attachment_filename || (attachment_kind === 'image' ? 'image.jpg' : 'document.pdf'),
+          content_type: attachment_kind === 'image' ? 'image/jpeg' : 'application/pdf',
+          kind: (attachment_kind === 'image' ? 'image' : 'document') as 'image' | 'document',
+        }
+      : undefined;
 
     if (!channel || !message || !branch_id) {
       return new Response(JSON.stringify({ error: "Missing required fields: channel, message, branch_id" }), {
