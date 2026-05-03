@@ -21,6 +21,7 @@ export type Capability =
   | 'freeze_membership'
   | 'credit_member'
   | 'manage_devices'
+  | 'manage_automations'
   | 'view_reconciliation'
   | 'book_facility';
 
