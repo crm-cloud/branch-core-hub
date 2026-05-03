@@ -1793,22 +1793,107 @@ export function MemberProfileDrawer({
                 </CardHeader>
                 <CardContent>
                   {recentActivity.length > 0 ? (
-                    <div className="space-y-2">
-                      {recentActivity.map((item) => (
-                        <div key={item.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-muted/50">
-                          <div className="min-w-0 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">{item.badge}</Badge>
-                              <p className="text-sm font-medium">{item.title}</p>
+                    <div className="space-y-4">
+                      {pagedActivityDays.map((day) => {
+                        const today = new Date();
+                        const isToday = format(today, 'yyyy-MM-dd') === day.dayKey;
+                        const isYesterday =
+                          format(new Date(today.getTime() - 86400000), 'yyyy-MM-dd') === day.dayKey;
+                        const dayLabel = isToday
+                          ? 'Today'
+                          : isYesterday
+                          ? 'Yesterday'
+                          : format(day.date, 'EEE, dd MMM yyyy');
+                        return (
+                          <div key={day.dayKey} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                {dayLabel}
+                              </p>
+                              <span className="text-[10px] text-muted-foreground">
+                                {day.items.length} {day.items.length === 1 ? 'event' : 'events'}
+                              </span>
                             </div>
-                            <p className="text-xs text-muted-foreground">{format(new Date(item.timestamp), 'dd MMM yyyy, HH:mm')}</p>
-                            {item.subtitle && <p className="text-xs text-muted-foreground">{item.subtitle}</p>}
+                            <div className="space-y-1.5">
+                              {day.groups.map((g) => {
+                                const groupKey = `${day.dayKey}::${g.badge}`;
+                                const isCollapsed = g.items.length > 1 && !expandedGroups.has(groupKey);
+                                const visible = isCollapsed ? g.items.slice(0, 1) : g.items;
+                                return (
+                                  <div key={groupKey} className="space-y-1">
+                                    {visible.map((item) => (
+                                      <div
+                                        key={item.id}
+                                        className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-muted/50"
+                                      >
+                                        <div className="min-w-0 space-y-0.5">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <Badge
+                                              variant="outline"
+                                              className="text-[10px] uppercase tracking-wide"
+                                            >
+                                              {item.badge}
+                                            </Badge>
+                                            <p className="text-sm font-medium truncate">{item.title}</p>
+                                          </div>
+                                          <p className="text-xs text-muted-foreground">
+                                            {format(new Date(item.timestamp), 'HH:mm')}
+                                            {item.subtitle ? ` · ${item.subtitle}` : ''}
+                                          </p>
+                                        </div>
+                                        {typeof item.amount === 'number' && (
+                                          <p className="text-sm font-medium whitespace-nowrap">
+                                            ₹{item.amount.toLocaleString('en-IN')}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {g.items.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleGroup(groupKey)}
+                                        className="text-[11px] text-primary hover:underline pl-1"
+                                      >
+                                        {isCollapsed
+                                          ? `Show ${g.items.length - 1} more ${g.badge.toLowerCase()} event${g.items.length - 1 === 1 ? '' : 's'}`
+                                          : 'Show less'}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          {typeof item.amount === 'number' && (
-                            <p className="text-sm font-medium whitespace-nowrap">₹{item.amount.toLocaleString('en-IN')}</p>
-                          )}
+                        );
+                      })}
+
+                      {totalActivityPages > 1 && (
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <p className="text-xs text-muted-foreground">
+                            Page {activityPage + 1} of {totalActivityPages} · {recentActivity.length} total
+                          </p>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={activityPage === 0}
+                              onClick={() => setActivityPage((p) => Math.max(0, p - 1))}
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={activityPage >= totalActivityPages - 1}
+                              onClick={() => setActivityPage((p) => Math.min(totalActivityPages - 1, p + 1))}
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No recent activity</p>
