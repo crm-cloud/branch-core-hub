@@ -1,109 +1,93 @@
-# Communication Templates Hub — Fixes & Consolidation
+# Communication Hub — Timeline polish + Marketing media campaigns
 
-## 1. Why the buttons are disabled (root cause)
+## Part 1 — Compact, colorful Delivery Timeline
 
-`MetaTemplatesPanel` loads `integration_settings` filtered by the currently selected branch:
+File: `src/components/communications/DeliveryTimeline.tsx`
 
-```
-if (selectedBranch !== 'all') query = query.eq('branch_id', selectedBranch);
-```
+- Reduce overall width and density:
+  - Wrap row in `max-w-md mx-auto` and tighten gaps; smaller stage circles (`h-7 w-7`), labels `text-[10px]`, timestamp `text-[9px]`.
+  - Connector line becomes a multi-segment colored bar (each segment fills as the stage is reached) instead of a single grey line.
+- "Live" colorization rules per stage (only when reached):
+  - queued → amber, sent → sky, delivered → emerald, read → violet, replied → indigo, failed/bounced → rose.
+  - Active (latest reached) stage gets a subtle pulse: `ring-2 ring-current/40 animate-pulse` for ~1.2s after status change.
+  - Future/unreached stages: muted (`bg-muted text-muted-foreground/40`), no color.
+- Add an "active stage" derivation: last entry in `events` (already streamed via realtime) → highlight its circle and its preceding connector segments in the stage color.
+- Keep failure banner but compact (`py-1.5 text-[11px]`).
 
-But the project's WhatsApp integration is stored as a **global row** with `branch_id = NULL` (verified in DB: 1 active global WhatsApp integration). When the user picks the **INCLINE** branch, that global row is excluded → `hasWhatsAppConfig = false` → the warning "Configure a WhatsApp integration in Settings → Integrations…" appears and **Test Connection / Sync from Meta are disabled**.
+Result: the strip becomes ~⅓ narrower, and stages light up as the message progresses (Queued → Sent → Delivered turn amber → sky → emerald in real time).
 
-Same flaw exists in `WhatsAppTemplatesHealth` and `AIGenerateTemplatesDrawer` for the Meta-submit path.
+## Part 2 — In-App attachment (flyer/poster) support
 
-### Fix
-Change the integration query to include both branch-scoped and global rows:
+Currently `BroadcastDrawer` only attaches on WhatsApp/Email. In-App announcements have no media field.
 
-```
-.or(`branch_id.eq.${selectedBranch},branch_id.is.null`)
-```
-
-And invoke edge functions with `branch_id = selectedBranch (or null fallback)` so `manage-whatsapp-templates` resolves the right credentials. Also remove the "Select a specific branch first" toast when a global integration exists.
-
-## 2. True two-way realtime sync with `templates` table
-
-Currently "Sync from Meta" only puts results into local React state — it never writes back to the `templates` table, so the CRM Templates tab and Health audit don't reflect Meta status.
-
-### Edge function `manage-whatsapp-templates` (action `sync`)
-- Accept `action: 'sync'` that lists from Meta and **upserts** into `public.templates` keyed by `(meta_template_name, type='whatsapp')`:
-  - On insert: name, language, category, body content reconstructed from Meta components, `meta_template_status`, `meta_rejection_reason`, `meta_template_name`, `is_active=true`.
-  - On update: refresh status, rejection reason, language, category, body if changed.
-- Returns `{ inserted, updated, total }`.
-
-### Submit path (already partly there)
-Keep the existing "Submit to Meta" in `TemplateManager` and ensure on success it writes `meta_template_name` + `meta_template_status='PENDING'` so the row appears in both panels immediately.
-
-### Realtime
-Add `templates` to `supabase_realtime` publication (migration). Both panels subscribe via:
-
-```
-supabase.channel('templates-meta')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'templates' }, …)
-  .subscribe()
+### DB migration
+Add columns to `public.announcements`:
+```sql
+alter table public.announcements
+  add column if not exists attachment_url text,
+  add column if not exists attachment_kind text check (attachment_kind in ('image','document','video')),
+  add column if not exists attachment_filename text;
 ```
 
-So Meta status changes (sync, webhook, or manual) reflect instantly across CRM Templates / Meta Approved / Templates Health.
+### UI
+- `BroadcastDrawer.tsx`:
+  - Change `showAttachment` to also include `inapp`: `selectedChannels.has('inapp') || …`.
+  - On in-app insert, persist `attachment_url/kind/filename`.
+  - Update helper text: "Image, PDF or short video — used on In-App, WhatsApp and Email."
+  - Accept `image/*,application/pdf,video/mp4` (max 16MB).
+- `AnnouncementCard` (in-app feed): if `attachment_url` exists, render:
+  - image → thumbnail (click → lightbox),
+  - pdf/document → download chip with filename,
+  - video → inline `<video controls>` (mp4 only).
 
-## 3. Move "AI Agent" out of the Templates Hub
+## Part 3 — Marketing media campaigns (events / classes / promos / supplements)
 
-The AI Agent (chat behavior, model, system prompt, handoff) is **not a template concern**. Per request, it lives nested under WhatsApp but as **its own dedicated tab inside the WhatsApp section**, which it already does — keep it where it is. No change needed beyond grouping label.
+Goal: send rich flyers/posters/videos via Email + WhatsApp + In-App from one composer, with reusable Meta-approved media templates.
 
-(If user later wants it removed entirely from Templates Hub and surfaced under a separate WhatsApp Operations card, we can split — flagged but out of scope unless confirmed.)
+### A. Reusable "Marketing Media" WhatsApp templates (Meta)
+The `manage-whatsapp-templates` edge fn already supports `header_type` (image/video/document) + `header_sample_url`. We will expose this in the Templates Hub:
 
-## 4. Merge "Templates Health" + "AI Generate" into one workflow
+- `MetaTemplatesPanel.tsx` → "Create Meta Template" drawer:
+  - Add **Category selector** (UTILITY / MARKETING / AUTHENTICATION) — required by Meta.
+  - Add **Header Media** picker (None / Image / Video / Document) → uploads sample file via `uploadAttachment` to a public bucket and passes `header_sample_url`.
+  - Add **Event Type tag** (`class | event | promo | deal | supplement | generic`) stored in `templates.metadata.event_type` for filtering.
+- Seed 4 starter templates (drafts only, owner submits to Meta):
+  - `marketing_class_announcement` (image header)
+  - `marketing_event_invite` (image header)
+  - `marketing_promo_offer` (image header)
+  - `marketing_supplement_launch` (image or video header)
+  - Bodies use `{{1}}` member name + `{{2}}` headline + `{{3}}` CTA; CTA URL button with `{{1}}`.
 
-Today both partially solve the same problem:
-- **Templates Health** = audits which event triggers (`event_template_mappings` / `eventRegistry`) have a saved template; shows red/green per event with a "Fix" button.
-- **AI Generate** = drawer that lets AI propose templates for chosen events.
+### B. Campaign Wizard — media + multi-channel
 
-### Consolidation
-Replace both with a single sub-tab called **"Coverage & AI Studio"** (icon: `HeartPulse + Sparkles`):
+`src/components/campaigns/CampaignWizard.tsx`:
+- Channel step: replace single-select with **multi-select chips** (WhatsApp / Email / In-App). SMS hidden when media attached (carrier limits).
+- New "Creative" step:
+  - Upload flyer (image), poster (image), or short video (mp4 ≤16MB), or PDF.
+  - Optional headline + CTA URL.
+  - For WhatsApp: dropdown of Meta-approved **Marketing Media** templates filtered by `metadata.event_type`. The uploaded media replaces the template's header at send-time (Meta supports per-message header media URL).
+- Audience + Schedule steps unchanged.
+- On submit, the wizard creates one campaign per channel (existing pattern) and includes `attachment_url/kind/filename` so `send-broadcast` → `dispatch-communication` already routes media correctly.
 
-```text
-┌────────────────────────────────────────────────────────┐
-│ Coverage  ●●●●●○○  73%   [ Auto-fill missing with AI ] │
-├────────────────────────────────────────────────────────┤
-│ ✓ member_created          → Welcome (en) [Edit][Submit]│
-│ ✗ payment_received        →  — Missing —     [AI Draft]│
-│ ⚠ membership_expiring_7d  → Draft (not approved) [Fix] │
-│ …                                                      │
-└────────────────────────────────────────────────────────┘
-```
+### C. Edge function plumbing
+- `send-broadcast` already forwards `attachment_*` to `dispatch-communication` (v3.2.0). For WhatsApp marketing-media template path, ensure the dispatch builds the Meta payload's `header.parameters[0]` with the chosen media URL when the template has a media header — small patch in `dispatch-communication`'s WhatsApp template builder (look up `templates.metadata.header_type` and inject `image`/`video`/`document` link param).
+- For In-App, broadcast writes a row to `announcements` (Part 2) with the attachment.
+- For Email, the existing attachment passthrough already embeds the file.
 
-Behavior:
-- Lists every event from `eventRegistry` for the current channel (WhatsApp/SMS/Email).
-- Per-row status: Missing / Draft / Pending Meta / Approved / Rejected.
-- **Per-row "AI Draft"** opens the AI drawer pre-scoped to that single event.
-- **Header "Auto-fill missing with AI"** runs the bulk generator only for missing events (no duplicate proposals).
-- After generation: save → `templates` row created → if WhatsApp + integration present, auto-submit to Meta.
-- Realtime subscription keeps coverage % live.
+### D. Campaign manager UI
+`CampaignsPanel`: add a "Marketing & Events" filter chip; surface campaigns whose channels include media; show thumbnail of attachment in row.
 
-The standalone "AI Generate" hero button stays as a quick entry point but routes to the same drawer. The separate "Templates Health" sub-tab is removed; coverage view replaces it.
+## Files touched
 
-## 5. Tabs after change
+- `src/components/communications/DeliveryTimeline.tsx` (compact + colorize)
+- `src/components/announcements/BroadcastDrawer.tsx` (in-app attachment, wider accept list)
+- `src/components/announcements/AnnouncementCard.tsx` (render media)
+- `src/components/settings/MetaTemplatesPanel.tsx` (category + media header + event_type)
+- `src/components/campaigns/CampaignWizard.tsx` (multi-channel + creative step + media template picker)
+- `src/components/campaigns/CampaignsPanel.tsx` (thumbnail + filter)
+- `supabase/functions/dispatch-communication/index.ts` (inject media header param for templates with header_type)
+- Migration: `announcements` attachment columns + 4 seed marketing template drafts in `templates`.
 
-Top-level (Settings → Templates):
-- WhatsApp · SMS · Email · AI Studio (channel-agnostic generator)
-
-WhatsApp sub-tabs:
-- CRM Templates · Coverage & AI · Meta Approved · Automations · AI Agent · Number Routing
-
-SMS / Email sub-tabs (new, mirror structure):
-- Templates · Coverage & AI
-
-## 6. Files to change
-
-- `src/components/settings/MetaTemplatesPanel.tsx` — integration `.or()` filter; allow global integration; realtime subscription on `templates`; clearer status banner.
-- `src/components/settings/WhatsAppTemplatesHealth.tsx` — repurpose into reusable `<TemplateCoverageMatrix channel="whatsapp|sms|email" />`; integrate AI draft per row + bulk fill.
-- `src/components/settings/AIGenerateTemplatesDrawer.tsx` — accept `prefilledEvents?: string[]` to seed selection from coverage view; on save, dispatch `manage-whatsapp-templates` submit when WhatsApp.
-- `src/components/settings/CommunicationTemplatesHub.tsx` — drop "Templates Health" sub-tab; replace with "Coverage & AI"; add same coverage tab for SMS/Email.
-- `supabase/functions/manage-whatsapp-templates/index.ts` — add `sync` action that upserts into `public.templates`; fall back to global `branch_id IS NULL` integration when branch row missing.
-- New migration:
-  - `ALTER PUBLICATION supabase_realtime ADD TABLE public.templates;`
-  - Optional unique index `(type, meta_template_name) WHERE meta_template_name IS NOT NULL` to make upsert deterministic.
-
-## 7. Out of scope (call out if needed)
-
-- Webhook receiver for Meta template status updates (push from Meta → DB) — recommended next step but not part of this fix.
-- Migrating existing global WhatsApp integration to per-branch rows.
+## Out of scope
+- SMS media (carrier-restricted; only text links).
+- Auto-translation of marketing copy.

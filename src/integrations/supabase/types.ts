@@ -427,6 +427,9 @@ export type Database = {
       }
       announcements: {
         Row: {
+          attachment_filename: string | null
+          attachment_kind: string | null
+          attachment_url: string | null
           audience_filter: Json
           branch_id: string | null
           channels: string[]
@@ -444,6 +447,9 @@ export type Database = {
           title: string
         }
         Insert: {
+          attachment_filename?: string | null
+          attachment_kind?: string | null
+          attachment_url?: string | null
           audience_filter?: Json
           branch_id?: string | null
           channels?: string[]
@@ -461,6 +467,9 @@ export type Database = {
           title: string
         }
         Update: {
+          attachment_filename?: string | null
+          attachment_kind?: string | null
+          attachment_url?: string | null
           audience_filter?: Json
           branch_id?: string | null
           channels?: string[]
