@@ -1,56 +1,153 @@
-# Fix WhatsApp / Email PDF Attachments
+## What I found
 
-## Problem
-The `attachments` bucket is **private**, but `uploadAttachment()` still returns a **public URL** via `getPublicUrl()`. That URL responds with `404 Bucket not found`, so when WhatsApp Cloud API tries to fetch the `document.link`, it fails and `dispatch-communication` returns a non-2xx — the exact error in your screenshot.
+The two URLs you pasted are old-style public storage URLs:
 
-This breaks every flow that sends a PDF over WhatsApp or Email:
-- Invoice share (`InvoiceShareDrawer`)
-- POS receipt (`POS.tsx`)
-- Plan PDF send (`sendPlanToMember`)
-- WhatsApp chat manual upload (`WhatsAppChat.tsx`)
-
-(Scan reports already work — they use `createSignedUrl` directly.)
-
-## Fix
-
-### 1. `src/utils/uploadAttachment.ts` — return a signed URL
-Replace the `getPublicUrl()` call with a long-lived `createSignedUrl()` (30-day TTL — matches the scan-report pattern). Returned shape stays `{ url, path }` so no caller needs to change.
-
-### 2. Storage RLS — allow staff/owner uploads to shared folders
-Current INSERT policy `Attachments owner can write` only allows `auth.uid()/...` paths, but invoice/receipt/plan uploads write to `invoices/...`, `receipts/...`, `plans/...`. The legacy "Authenticated users can upload attachments" still allows the write today, but it's fragile. Add an explicit policy:
-
-```sql
-CREATE POLICY "Staff can write shared attachments"
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (
-    bucket_id = 'attachments'
-    AND (storage.foldername(name))[1] IN ('invoices','receipts','plans','shared','scans','reports')
-    AND (has_role(auth.uid(),'owner') OR has_role(auth.uid(),'admin')
-         OR has_role(auth.uid(),'manager') OR has_role(auth.uid(),'staff')
-         OR has_role(auth.uid(),'trainer'))
-  );
+```text
+/storage/v1/object/public/attachments/invoices/...
 ```
 
-The existing read policy already covers staff/owner, so signed URLs (which embed a token) work for the WhatsApp/Meta fetcher and for member email recipients.
+But the `attachments` bucket is now private for security. That is why those links return:
 
-### 3. Fix `src/pages/WhatsAppChat.tsx` manual upload
-Same swap: replace `getPublicUrl` with `createSignedUrl(path, 60*60*24*30)` so manually-attached files in chat actually open.
+```json
+{"statusCode":"404","error":"Bucket not found","message":"Bucket not found"}
+```
 
-### 4. Audit / clean up
-- `src/utils/whatsappDocumentSender.ts` and `src/utils/sendPlanToMember.ts` — no code change needed, they consume `{ url }` from `uploadAttachment`.
-- `src/components/invoices/InvoiceShareDrawer.tsx` — no change (uses the helper).
-- `src/components/settings/TemplateManager.tsx` — `attachment_source = 'dynamic'` already documented; just confirm callers pass `attachment.url` (they do).
+The correct approach is:
+- invoice/report PDFs should be generated per send,
+- uploaded to the private `attachments` bucket,
+- shared using a signed URL,
+- and sent as a WhatsApp document / email attachment automatically.
 
-### 5. Verification
-After deploy, re-send invoice INV-INC-26-0008 from the Invoice Share drawer:
-- Live Feed row should turn green (Sent → Delivered)
-- Tap-to-open on the PDF in WhatsApp opens the file (not a 404)
+The Template Manager already has fields for `Header Type`, `Source`, and `Filename Template`, but it is not complete enough for invoices because:
+1. Invoice templates are not auto-created / auto-populated.
+2. Dynamic PDF templates are not clearly mapped to events like invoice/payment receipt.
+3. Submit-to-Meta currently only sends the body text, not a document header sample.
+4. Sender flows like Invoice Share do not yet pick the saved template configuration automatically.
 
-## Files to change
-- `src/utils/uploadAttachment.ts` (signed URL)
-- `src/pages/WhatsAppChat.tsx` (signed URL)
-- `supabase/migrations/<new>.sql` (storage policy for shared folders)
+## Plan
 
-## Out of scope
-- Re-issuing previously-broken WhatsApp messages (URLs in `whatsapp_messages` already point at the dead public URL — they will stay broken unless you resend the invoice).
-- Migrating to a dedicated public `shared-pdfs` bucket — signed URLs are sufficient and safer for member PII.
+### 1. Add auto-populated invoice PDF templates
+Create or upsert default branch templates for:
+
+- `Invoice PDF — WhatsApp`
+  - type: `whatsapp`
+  - trigger event: `payment_received` / invoice send
+  - header type: `document`
+  - source: `dynamic`
+  - filename template: `Invoice-{{invoice_number}}.pdf`
+  - content similar to: `Hi {{member_name}}, your invoice {{invoice_number}} for {{amount}} is ready. PDF attached.`
+
+- `Invoice PDF — Email`
+  - type: `email`
+  - subject: `Invoice {{invoice_number}} from {{branch_name}}`
+  - header type: `document`
+  - source: `dynamic`
+  - filename template: `Invoice-{{invoice_number}}.pdf`
+
+This makes Template Manager show invoice PDF templates automatically instead of expecting you to manually configure every field.
+
+### 2. Improve Template Manager UI for dynamic PDFs
+Update `TemplateManager.tsx` so the Attachment / Header Media block explains the correct behavior:
+
+- `Static`: upload one reusable media file, stored in `template-media`.
+- `Dynamic`: no upload needed. The system generates the PDF at send time.
+
+For invoice templates, auto-fill:
+- Header Type = `Document (PDF)`
+- Source = `Dynamic`
+- Filename Template = `Invoice-{{invoice_number}}.pdf`
+
+Also add quick-preset buttons or a clear selector for common dynamic PDF types:
+- Invoice PDF
+- Receipt PDF
+- Body Scan Report PDF
+- Posture Report PDF
+- Diet/Workout Plan PDF
+
+### 3. Submit WhatsApp document templates correctly to Meta
+Update `manage-whatsapp-templates` so when a WhatsApp template has:
+
+```text
+header_type = document
+attachment_source = dynamic
+```
+
+it submits a Meta template with a `HEADER` component of format `DOCUMENT`, including an example document handle/sample where required by Meta.
+
+The local template will still store dynamic behavior, but Meta will understand it as a WhatsApp document template.
+
+### 4. Make invoice sending use saved templates automatically
+Update `InvoiceShareDrawer.tsx` so it:
+
+1. Looks up the active invoice WhatsApp/email template for the invoice branch.
+2. Renders template variables automatically:
+   - `member_name`
+   - `member_code`
+   - `invoice_number`
+   - `amount`
+   - `date`
+   - `branch_name`
+3. Generates the invoice PDF using the existing PDF builder.
+4. Uploads to `attachments` and creates a signed URL.
+5. Sends via the canonical communication dispatcher with:
+   - body/caption from the saved template,
+   - PDF attachment from the generated invoice,
+   - filename from `attachment_filename_template`.
+
+If no active invoice template exists, it will fall back to the current hardcoded message.
+
+### 5. Centralize dynamic attachment resolution
+Add a small helper for dynamic PDF template handling, for example:
+
+```text
+resolveDynamicTemplateAttachment(template, context)
+```
+
+It will produce:
+- rendered message body,
+- rendered subject,
+- rendered filename,
+- attachment metadata.
+
+This avoids each screen manually guessing how template PDFs work.
+
+### 6. Fix misleading comments and URL behavior
+Clean up comments in `uploadAttachment.ts` that still say the bucket is public. The implementation already uses signed URLs, but the comments are misleading.
+
+Also ensure any newly generated links in the app never use:
+
+```text
+/object/public/attachments/...
+```
+
+for private invoice/report files.
+
+### 7. Add visibility in Template Manager
+In the template list, show a small badge when a template includes media:
+
+- `Dynamic PDF`
+- `Static Image`
+- `Static Video`
+- `Static PDF`
+
+This will make it obvious which templates will attach files.
+
+## Expected result
+
+After implementation:
+
+- You will not need to paste or manage invoice PDF URLs manually.
+- The Invoice template will be auto-populated in Template Manager.
+- Selecting Dynamic PDF means the app generates and attaches the correct invoice/report PDF at send time.
+- The old 404 public links will no longer be generated for new sends.
+- WhatsApp/email invoice sharing will use your saved templates and attach the PDF automatically.
+
+## Important note about existing broken URLs
+
+Existing old links like:
+
+```text
+/storage/v1/object/public/attachments/invoices/...
+```
+
+will remain broken because they point to a private bucket public route. New sends will use signed URLs or direct provider attachments instead. If needed, I can also add a small admin action later to regenerate/resend an invoice PDF for old invoices.

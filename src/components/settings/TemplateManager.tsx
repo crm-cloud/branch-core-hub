@@ -15,6 +15,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { Plus, Edit, Trash2, MessageSquare, Mail, Phone, Copy, Send, CheckCircle, Clock, XCircle, PauseCircle, Info, AlertCircle, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { TEMPLATE_EVENTS, getEvent, validateTemplate, renderPreview } from '@/lib/templates/eventRegistry';
+import { DYNAMIC_PDF_PRESETS, type TemplatePreset } from '@/lib/templates/dynamicAttachment';
+import { FileText, Image as ImageIcon, Video as VideoIcon, Sparkles } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 const TEMPLATE_TYPES = [
   { value: 'sms', label: 'SMS', icon: Phone },
@@ -314,6 +317,44 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
     setShowEditor(true);
   };
 
+  /** Apply a one-click preset (e.g. Invoice PDF) to the editor form. */
+  const applyPreset = (preset: TemplatePreset) => {
+    setSelectedTemplate(null);
+    setFormData({
+      name: preset.label,
+      type: preset.type,
+      trigger: preset.trigger,
+      subject: preset.subject || '',
+      content: preset.content,
+      is_active: true,
+      header_type: preset.header_type,
+      header_media_url: '',
+      attachment_source: preset.attachment_source,
+      attachment_filename_template: preset.attachment_filename_template || '',
+    });
+    setShowEditor(true);
+    toast.success(`Loaded preset: ${preset.label}`);
+  };
+
+  /** Compact media badge shown next to template names in the list. */
+  const mediaBadge = (t: Template) => {
+    const ht = t.header_type || 'none';
+    const src = t.attachment_source || 'none';
+    if (ht === 'none' || src === 'none') return null;
+    const icon = ht === 'image' ? ImageIcon : ht === 'video' ? VideoIcon : FileText;
+    const Icon = icon;
+    const label = `${src === 'dynamic' ? 'Dynamic' : 'Static'} ${ht === 'document' ? 'PDF' : ht.charAt(0).toUpperCase() + ht.slice(1)}`;
+    const cls = src === 'dynamic'
+      ? 'bg-violet-50 text-violet-700 border-violet-200'
+      : 'bg-sky-50 text-sky-700 border-sky-200';
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cls}`}>
+        <Icon className="h-3 w-3" />
+        {label}
+      </span>
+    );
+  };
+
   const closeEditor = () => {
     setShowEditor(false);
     setSelectedTemplate(null);
@@ -481,6 +522,8 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 language: metaForm.language,
                 body_text: metaForm.body_text,
                 local_template_id: metaTarget.id,
+                header_type: metaTarget.header_type && metaTarget.header_type !== 'none' ? metaTarget.header_type : undefined,
+                header_sample_url: metaTarget.attachment_source === 'static' ? metaTarget.header_media_url : undefined,
               },
             },
       });
@@ -556,10 +599,35 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
             Manage SMS, Email, and WhatsApp message templates
           </p>
         </div>
-        <Button onClick={() => openEditor()}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Template
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Quick Presets
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel>Dynamic PDF Presets</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {DYNAMIC_PDF_PRESETS.map((p) => (
+                <DropdownMenuItem key={p.id} onClick={() => applyPreset(p)} className="flex items-start gap-2 py-2">
+                  <FileText className="h-4 w-4 mt-0.5 text-violet-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{p.label}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {p.attachment_filename_template}
+                    </p>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => openEditor()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Template
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -630,6 +698,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                                 </Badge>
                               )}
                               {value === 'whatsapp' && metaStatusBadge(template.meta_template_status)}
+                              {mediaBadge(template)}
                             </div>
                             {value === 'whatsapp' && template.meta_template_name && (
                               <p className="text-xs text-muted-foreground mt-0.5 font-mono">
@@ -986,8 +1055,12 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 )}
 
                 {formData.attachment_source === 'dynamic' && formData.header_type !== 'none' && (
-                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-2 text-[11px] text-amber-800 dark:text-amber-200">
-                    The sender (e.g. Send Invoice / Send Scan Report) must pass <span className="font-mono">attachment_url</span> in the template context.
+                  <div className="rounded-md bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900 p-2 text-[11px] text-violet-800 dark:text-violet-200 space-y-1">
+                    <p><strong>Dynamic mode:</strong> no upload needed. The system generates the PDF at send time
+                      (e.g. Invoice Share builds the invoice PDF, Scan Report builds the scan PDF) and attaches it
+                      automatically using a signed URL.</p>
+                    <p>Filename will be rendered from the template above (e.g.
+                      <span className="font-mono"> Invoice-INV-INC-26-0008.pdf</span>).</p>
                   </div>
                 )}
               </div>

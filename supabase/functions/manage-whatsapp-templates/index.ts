@@ -243,7 +243,7 @@ serve(async (req) => {
         );
       }
 
-      const { name, category, language, body_text, local_template_id } = template_data;
+      const { name, category, language, body_text, local_template_id, header_type, header_sample_url } = template_data;
 
       if (!name || !category || !language || !body_text) {
         return new Response(
@@ -314,12 +314,23 @@ serve(async (req) => {
           bodyComponent.example = { body_text: [exampleValues] };
         }
       }
-      
+
+      // Optional HEADER component for media templates (image / video / document)
+      const components: any[] = [];
+      if (header_type && ['image', 'video', 'document'].includes(header_type) && header_sample_url) {
+        components.push({
+          type: 'HEADER',
+          format: header_type.toUpperCase(),
+          example: { header_handle: [header_sample_url] },
+        });
+      }
+      components.push(bodyComponent);
+
       const metaPayload = {
         name: safeName,
         category,
         language,
-        components: [bodyComponent],
+        components,
       };
 
       const createUrl = appendProof(`${META_API_BASE}/${wabaId}/message_templates`, proof);
