@@ -3,7 +3,7 @@
 // through the canonical communication pipeline (dedupe, preferences, quiet
 // hours, communication_logs row, Live Feed, System Health).
 
-import { dispatchCommunication } from '@/services/preferencesService';
+import { dispatchCommunication } from '@/lib/comms/dispatch';
 import { uploadAttachment } from './uploadAttachment';
 
 export interface SendWhatsAppDocumentInput {
@@ -63,14 +63,11 @@ export async function sendWhatsAppDocument(input: SendWhatsAppDocumentInput): Pr
     if (result.status === 'sent' || result.status === 'queued' || result.status === 'deduped') {
       return { url, fallback: false, status: result.status };
     }
-    // failed/suppressed → fall back to wa.me so the recipient still gets the link
-    const wa = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(`${input.caption}\n\n${url}`)}`;
-    window.open(wa, '_blank');
-    return { url, fallback: true, status: result.status };
+    // Do not fall back to a signed storage link: WhatsApp rewrites/encodes these
+    // links and recipients see InvalidJWT instead of the PDF attachment.
+    return { url, fallback: false, status: result.status };
   } catch (err) {
     console.error('[sendWhatsAppDocument] dispatcher failed', err);
-    const wa = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(`${input.caption}\n\n${url}`)}`;
-    window.open(wa, '_blank');
-    return { url, fallback: true, status: 'failed' };
+    return { url, fallback: false, status: 'failed' };
   }
 }
