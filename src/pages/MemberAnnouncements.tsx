@@ -219,6 +219,11 @@ export default function MemberAnnouncements() {
                     <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/85 md:text-[15px]">
                       {featuredAnnouncement.content}
                     </p>
+                    <AnnouncementAttachment
+                      url={(featuredAnnouncement as any).attachment_url}
+                      kind={(featuredAnnouncement as any).attachment_kind}
+                      filename={(featuredAnnouncement as any).attachment_filename}
+                    />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <ArrowUpRight className="h-4 w-4" />
                       Added {formatDistanceToNow(new Date(featuredAnnouncement.created_at), { addSuffix: true })}
