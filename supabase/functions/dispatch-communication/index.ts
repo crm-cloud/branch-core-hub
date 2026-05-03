@@ -120,6 +120,19 @@ function templateComponents(keys: string[], values: Record<string, unknown> | un
   return [{ type: 'body', parameters: params }];
 }
 
+function inferTemplateValues(templateContent: string, renderedBody: string, keys: string[]): Record<string, string> {
+  if (keys.length === 0) return {};
+  const parts = templateContent.split(/\{\{\s*[^}]+?\s*\}\}/g).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(`^${parts.join('(.+?)')}$`, 's');
+  const match = renderedBody.match(regex);
+  if (!match) return {};
+  return keys.reduce<Record<string, string>>((acc, key, index) => {
+    const value = match[index + 1]?.trim();
+    if (value && !/^\{\{.*\}\}$/.test(value)) acc[key] = value;
+    return acc;
+  }, {});
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return bad(405, { error: 'method_not_allowed' });
@@ -316,7 +329,9 @@ Deno.serve(async (req) => {
             if (tplError) throw new Error(tplError.message);
             if (tpl?.meta_template_name) {
               templateName = tpl.meta_template_name;
-              components = templateComponents(orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables), input.payload.variables);
+              const keys = orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables);
+              const inferred = inferTemplateValues(tpl.content ?? input.payload.body, input.payload.body, keys);
+              components = templateComponents(keys, { ...inferred, ...(input.payload.variables ?? {}) });
               if (components === null) throw new Error('missing_template_variables');
             }
           }
