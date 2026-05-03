@@ -70,6 +70,8 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   channel?: Channel;
+  /** Pre-select these events when the drawer opens (e.g. from a Coverage row). */
+  prefilledEvents?: string[];
 }
 
 const CHANNEL_META: Record<Channel, { label: string; icon: any; color: string }> = {
@@ -78,7 +80,7 @@ const CHANNEL_META: Record<Channel, { label: string; icon: any; color: string }>
   email: { label: 'Email', icon: Mail, color: 'text-amber-500' },
 };
 
-export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channelProp }: Props) {
+export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channelProp, prefilledEvents }: Props) {
   const qc = useQueryClient();
   const { selectedBranch } = useBranchContext();
   const [channel, setChannel] = useState<Channel>(channelProp || 'whatsapp');
@@ -86,8 +88,12 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channel
 
   const candidates = CANDIDATE_BY_CHANNEL[channel];
   const [step, setStep] = useState<'pick' | 'review'>('pick');
-  const [picked, setPicked] = useState<Set<string>>(new Set(candidates.slice(0, 5).map((e) => e.event)));
-  useEffect(() => { setPicked(new Set(candidates.slice(0, 5).map((e) => e.event))); setStep('pick'); setProposals([]); }, [channel]);
+  const initialPick = () =>
+    prefilledEvents && prefilledEvents.length > 0
+      ? new Set(prefilledEvents)
+      : new Set(candidates.slice(0, 5).map((e) => e.event));
+  const [picked, setPicked] = useState<Set<string>>(initialPick);
+  useEffect(() => { setPicked(initialPick()); setStep('pick'); setProposals([]); }, [channel, open, prefilledEvents?.join('|')]);
   const [generating, setGenerating] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
