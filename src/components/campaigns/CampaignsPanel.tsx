@@ -38,7 +38,7 @@ export function CampaignsPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-foreground">Marketing & Campaigns</h2>
-          <p className="text-sm text-muted-foreground">Send targeted WhatsApp, Email, and SMS broadcasts to your members.</p>
+          <p className="text-sm text-muted-foreground">Promotional events, offers, images and PDFs to members, leads and contacts. For quick one-shot announcements use the <strong>New Announcement</strong> button above.</p>
         </div>
         <Button
           onClick={() => setWizardOpen(true)}
