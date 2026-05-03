@@ -1250,6 +1250,97 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* Template Preview Drawer */}
+      <Sheet open={!!previewTemplate} onOpenChange={(open) => !open && setPreviewTemplate(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Eye className="h-4 w-4" /> Template Preview
+            </SheetTitle>
+            <SheetDescription>
+              Rendered with sample data for the "{previewTemplate?.trigger || 'custom'}" event.
+            </SheetDescription>
+          </SheetHeader>
+          {previewTemplate && (() => {
+            const tpl = previewTemplate;
+            const rendered = renderPreview(tpl.content || '', tpl.trigger);
+            const subject = renderPreview(tpl.subject || '', tpl.trigger);
+            const evt = getEvent(tpl.trigger);
+            const isEmail = tpl.type === 'email';
+            const isWa = tpl.type === 'whatsapp';
+            const dyn = tpl.attachment_source === 'dynamic';
+            return (
+              <div className="space-y-4 mt-4">
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="outline" className="capitalize">{tpl.type}</Badge>
+                  {evt && <Badge variant="secondary">{evt.label}</Badge>}
+                  {tpl.attachment_source && tpl.attachment_source !== 'none' && (
+                    <Badge className="bg-indigo-100 text-indigo-700">
+                      <FileText className="h-3 w-3 mr-1" />
+                      {tpl.attachment_source === 'dynamic' ? 'Dynamic PDF' : 'Static media'}
+                    </Badge>
+                  )}
+                </div>
+
+                {isEmail && (
+                  <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+                    <div className="px-4 py-2 bg-slate-50 border-b text-xs">
+                      <div><span className="text-slate-500">From: </span>Incline Fitness &lt;noreply@inclinefitness.in&gt;</div>
+                      <div><span className="text-slate-500">Subject: </span><span className="font-medium">{subject || '(no subject)'}</span></div>
+                    </div>
+                    <div className="p-4 text-sm whitespace-pre-wrap text-slate-800" dangerouslySetInnerHTML={{ __html: rendered.replace(/\n/g, '<br/>') }} />
+                  </div>
+                )}
+
+                {isWa && (
+                  <div className="rounded-2xl bg-[#e7f3df] p-3 max-w-sm ml-auto shadow">
+                    {dyn && (
+                      <div className="rounded-lg bg-white/80 border border-slate-200 p-2 mb-2 flex items-center gap-2 text-xs">
+                        <FileText className="h-4 w-4 text-rose-600" />
+                        <div className="flex-1 min-w-0 truncate">
+                          <div className="font-medium text-slate-800 truncate">
+                            {(tpl.attachment_filename_template || 'document.pdf').replace(/\{\{[^}]+\}\}/g, 'sample')}
+                          </div>
+                          <div className="text-[10px] text-slate-500">PDF · attached at send time</div>
+                        </div>
+                      </div>
+                    )}
+                    {tpl.header_media_url && tpl.header_type === 'image' && (
+                      <img src={tpl.header_media_url} alt="" className="rounded-lg mb-2 max-h-40 object-cover w-full" />
+                    )}
+                    <p className="text-sm text-slate-900 whitespace-pre-wrap">{rendered}</p>
+                  </div>
+                )}
+
+                {tpl.type === 'sms' && (
+                  <div className="rounded-2xl bg-slate-100 p-3 max-w-xs">
+                    <p className="text-sm text-slate-900 whitespace-pre-wrap">{rendered}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{rendered.length} chars</p>
+                  </div>
+                )}
+
+                {evt && (
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Sample variables</p>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      {evt.variables.map((v) => (
+                        <div key={v.key} className="flex justify-between gap-2">
+                          <span className="font-mono text-muted-foreground truncate">{`{{${v.key}}}`}</span>
+                          <span className="text-foreground truncate">{v.sample}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <SheetFooter className="pt-4">
+            <Button variant="outline" onClick={() => setPreviewTemplate(null)}>Close</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
