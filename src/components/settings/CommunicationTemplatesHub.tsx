@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Mail, Phone, Sparkles, Bot, Workflow, PhoneForwarded, FileText, HeartPulse, BadgeCheck } from 'lucide-react';
+import { MessageSquare, Mail, Phone, Sparkles, Bot, Workflow, PhoneForwarded, FileText, BadgeCheck, Wand2 } from 'lucide-react';
 import { TemplateManager } from './TemplateManager';
 import { WhatsAppAutomations } from './WhatsAppAutomations';
-import { WhatsAppTemplatesHealth } from './WhatsAppTemplatesHealth';
+import { TemplateCoverageMatrix } from './TemplateCoverageMatrix';
 import { MetaTemplatesPanel } from './MetaTemplatesPanel';
 import { WhatsAppAISettings } from './WhatsAppAISettings';
 import { WhatsAppRoutingSettings } from './WhatsAppRoutingSettings';
