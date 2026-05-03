@@ -15,7 +15,13 @@ export interface DispatchInput {
   member_id?: string | null;
   user_id?: string | null;
   template_id?: string | null;
-  payload: { subject?: string; body: string; variables?: Record<string, unknown> };
+  payload: {
+    subject?: string;
+    body: string;
+    variables?: Record<string, unknown>;
+    /** When true, send-email wraps the body in the branded HTML shell. */
+    use_branded_template?: boolean;
+  };
   /** Stable idempotency key. Convention: `<topic>:<entity_id>[:<sub>]:<channel>` */
   dedupe_key: string;
   ttl_seconds?: number;

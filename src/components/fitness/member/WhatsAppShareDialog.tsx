@@ -11,8 +11,8 @@ import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { dispatchCommunication, buildDedupeKey } from '@/lib/comms/dispatch';
 
 interface Props {
   open: boolean;
@@ -58,32 +58,17 @@ export function WhatsAppShareDialog({
     const fullPhone = `+91${digits}`;
     setSending(true);
     try {
-      const { data: msg, error: insertErr } = await supabase
-        .from('whatsapp_messages')
-        .insert({
-          branch_id: branchId,
-          phone_number: fullPhone,
-          content,
-          message_type: 'text',
-          direction: 'outbound',
-          status: 'pending',
-          member_id: memberId || null,
-        } as never)
-        .select('id')
-        .single();
-      if (insertErr) throw insertErr;
-      const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-whatsapp', {
-        body: {
-          message_id: (msg as { id: string }).id,
-          phone_number: fullPhone,
-          content,
-          branch_id: branchId,
-        },
+      const result = await dispatchCommunication({
+        branch_id: branchId,
+        channel: 'whatsapp',
+        category: 'transactional',
+        recipient: fullPhone,
+        member_id: memberId || null,
+        payload: { body: content },
+        dedupe_key: buildDedupeKey(['wa-share', memberId || fullPhone, Date.now()]),
+        force: true,
       });
-      if (sendErr) throw sendErr;
-      if (sendData && typeof sendData === 'object' && 'error' in sendData && sendData.error) {
-        throw new Error(String((sendData as { error: unknown }).error));
-      }
+      if (result.status === 'failed') throw new Error(result.reason || 'send_failed');
       toast.success('WhatsApp message sent');
       onOpenChange(false);
     } catch (e) {

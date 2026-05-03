@@ -14,9 +14,10 @@ import { communicationService } from '@/services/communicationService';
 import { e } from '@/utils/htmlEscape';
 import { supabase } from '@/integrations/supabase/client';
 import { buildInvoicePdf, type InvoicePdfInput } from '@/utils/pdfBlob';
-import { blobToBase64 } from '@/utils/uploadAttachment';
+import { uploadAttachment } from '@/utils/uploadAttachment';
 import { sendWhatsAppDocument } from '@/utils/whatsappDocumentSender';
 import { findTemplate, resolveTemplate } from '@/lib/templates/dynamicAttachment';
+import { dispatchCommunication, buildDedupeKey } from '@/lib/comms/dispatch';
 
 interface InvoiceShareDrawerProps {
   open: boolean;
@@ -25,8 +26,12 @@ interface InvoiceShareDrawerProps {
 }
 
 export function InvoiceShareDrawer({ open, onOpenChange, invoice: invoiceProp }: InvoiceShareDrawerProps) {
-  const [email, setEmail] = useState(invoiceProp?.members?.profiles?.email || '');
-  const [phone, setPhone] = useState(invoiceProp?.members?.profiles?.phone || '');
+  const [email, setEmail] = useState(
+    invoiceProp?.members?.profiles?.email || invoiceProp?.customer_email || ''
+  );
+  const [phone, setPhone] = useState(
+    invoiceProp?.members?.profiles?.phone || invoiceProp?.customer_phone || ''
+  );
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
@@ -55,7 +60,9 @@ export function InvoiceShareDrawer({ open, onOpenChange, invoice: invoiceProp }:
   const invoice: any = fullInvoice || invoiceProp;
 
   const memberProfile = (invoice.members as any)?.profiles;
-  const memberName = memberProfile?.full_name || 'Customer';
+  const memberName = memberProfile?.full_name || invoice.customer_name || 'Customer';
+  const guestEmail = memberProfile?.email || invoice.customer_email || null;
+  const guestPhone = memberProfile?.phone || invoice.customer_phone || null;
   const branch = (invoice as any).branch || (invoice as any).branches || {};
 
   // WhatsApp message template
@@ -126,8 +133,8 @@ Team Incline Fitness`;
     })),
     member_name: memberName,
     member_code: (invoice.members as any)?.member_code,
-    member_email: memberProfile?.email,
-    member_phone: memberProfile?.phone,
+    member_email: guestEmail || undefined,
+    member_phone: guestPhone || undefined,
     branch_name: branch.name || 'Incline Fitness',
     branch_address: branch.address,
     branch_phone: branch.phone,
@@ -208,24 +215,37 @@ Team Incline Fitness`;
       });
 
       const pdf = buildInvoicePdf(buildPdfInput());
-      const base64 = await blobToBase64(pdf);
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: {
-          to: email,
+      if (pdf.size < 1024) {
+        throw new Error('Generated PDF is empty or corrupted — refresh and try again');
+      }
+      const filename = resolved.filename || `Invoice-${invoice.invoice_number}.pdf`;
+      const { url } = await uploadAttachment(pdf, {
+        folder: 'invoices',
+        filename,
+        contentType: 'application/pdf',
+      });
+
+      const result = await dispatchCommunication({
+        branch_id: invoice.branch_id,
+        channel: 'email',
+        category: 'payment_receipt',
+        recipient: email,
+        member_id: invoice.member_id ?? null,
+        payload: {
           subject: resolved.subject || emailSubject,
-          html: resolved.body,
-          // Wrap the body in the branded Incline shell so invoice emails
-          // arrive professionally styled (logo header, gold accents, footer).
+          body: resolved.body,
           use_branded_template: true,
-          branch_id: invoice.branch_id,
-          attachments: [{
-            filename: resolved.filename || `Invoice-${invoice.invoice_number}.pdf`,
-            content_base64: base64,
-            content_type: 'application/pdf',
-          }],
+        },
+        dedupe_key: buildDedupeKey(['invoice', invoice.id, 'email']),
+        force: true, // payment receipts always go out
+        attachment: {
+          url,
+          filename,
+          content_type: 'application/pdf',
+          kind: 'document',
         },
       });
-      if (error) throw error;
+      if (result.status === 'failed') throw new Error(result.reason || 'send_failed');
       toast.success('Invoice email sent with PDF attached');
       onOpenChange(false);
     } catch (err: any) {
@@ -294,8 +314,8 @@ Team Incline Fitness`;
           <div>
             <h3>Bill To:</h3>
             <p><strong>${e(memberName)}</strong></p>
-            <p>${e(memberProfile?.email || '')}</p>
-            <p>${e(memberProfile?.phone || '')}</p>
+            <p>${e(guestEmail || '')}</p>
+            <p>${e(guestPhone || '')}</p>
           </div>
           <div style="text-align: right;">
             <h3>Invoice Details:</h3>

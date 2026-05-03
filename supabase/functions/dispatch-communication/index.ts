@@ -1,4 +1,7 @@
-// dispatch-communication v1.2.0
+// dispatch-communication v1.3.0
+// v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
+//         pass attachments (auto base64-fetched from attachment.url) and
+//         use_branded_template flag; mirror provider_message_id into delivery_metadata.
 // v1.2.0: re-allow retry of previously failed/suppressed dedupe_key; surface real Meta error body.
 // v1.1.0: WhatsApp attachment passthrough (PDF / image documents).
 // All other edge functions MUST route through this instead of writing
@@ -30,11 +33,17 @@ interface DispatchInput {
   member_id?: string | null;
   user_id?: string | null;
   template_id?: string | null;
-  payload: { subject?: string; body: string; variables?: Record<string, unknown> };
+  payload: {
+    subject?: string;
+    body: string;
+    variables?: Record<string, unknown>;
+    /** When true, send-email wraps the body in the branded HTML shell. */
+    use_branded_template?: boolean;
+  };
   dedupe_key: string;
   ttl_seconds?: number;          // dedupe lookback window, default 86400
   force?: boolean;               // bypass preferences (transactional)
-  attachment?: {                 // optional file attachment (whatsapp document/image)
+  attachment?: {                 // optional file attachment (whatsapp document/image, or email PDF)
     url: string;
     filename: string;
     content_type?: string;       // e.g. application/pdf
@@ -322,15 +331,39 @@ Deno.serve(async (req) => {
           break;
         }
         case 'email': {
-          const r = await supabase.functions.invoke('send-message', {
+          // Build email attachments by fetching the attachment.url and base64-encoding.
+          let emailAttachments: Array<{ filename: string; content_base64: string; content_type: string }> | undefined;
+          if (input.attachment?.url) {
+            try {
+              const res = await fetch(input.attachment.url);
+              if (!res.ok) throw new Error(`attachment_fetch_${res.status}`);
+              const buf = new Uint8Array(await res.arrayBuffer());
+              if (buf.byteLength < 1024) {
+                throw new Error(`attachment_too_small_${buf.byteLength}b`);
+              }
+              // Chunked base64 to avoid stack overflow on large PDFs
+              let bin = '';
+              for (let i = 0; i < buf.length; i += 0x8000) {
+                bin += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + 0x8000)));
+              }
+              emailAttachments = [{
+                filename: input.attachment.filename,
+                content_base64: btoa(bin),
+                content_type: input.attachment.content_type ?? 'application/pdf',
+              }];
+            } catch (e) {
+              throw new Error(`attachment_error: ${(e as Error).message}`);
+            }
+          }
+          const r = await supabase.functions.invoke('send-email', {
             body: {
-              branch_id: input.branch_id,
-              recipient: input.recipient,
+              to: input.recipient,
               subject: input.payload.subject,
-              body: input.payload.body,
-              template_id: input.template_id,
-              member_id: input.member_id,
-              channel: 'email',
+              html: input.payload.body,
+              branch_id: input.branch_id,
+              use_branded_template: input.payload.use_branded_template ?? false,
+              variables: input.payload.variables,
+              attachments: emailAttachments,
               skip_log: true,
               source_log_id: log!.id,
             },
@@ -358,12 +391,17 @@ Deno.serve(async (req) => {
     }
 
     // ── 6) finalize log ──
+    const finalMeta: Record<string, unknown> = {};
+    if (input.attachment) finalMeta.attachment = input.attachment;
+    if (providerMessageId) finalMeta.provider_message_id = providerMessageId;
+
     await supabase
       .from('communication_logs')
       .update({
         delivery_status: sendError ? 'failed' : 'sent',
         status: sendError ? 'failed' : 'sent',
         provider_message_id: providerMessageId ?? null,
+        delivery_metadata: Object.keys(finalMeta).length ? finalMeta : null,
         error_message: sendError ?? null,
         sent_at: new Date().toISOString(),
         attempt_count: 1,

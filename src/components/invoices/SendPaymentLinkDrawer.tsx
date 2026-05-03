@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { IndianRupee, MessageSquare, Link2, Copy, CheckCircle, Loader2, ExternalLink, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { dispatchCommunication, buildDedupeKey } from '@/lib/comms/dispatch';
 
 interface SendPaymentLinkDrawerProps {
   open: boolean;
@@ -73,27 +74,36 @@ export function SendPaymentLinkDrawer({ open, onOpenChange, invoice }: SendPayme
       toast.success('Razorpay payment link generated. Razorpay also sent SMS + email automatically.');
 
       // Best-effort: also send via configured WhatsApp / Email integrations
-      if (invoice.member_phone) {
+      // (routed through the canonical dispatcher — dedupe + preferences applied).
+      if (invoice.member_phone && invoice.branch_id) {
         try {
-          await supabase.functions.invoke('send-message', {
-            body: {
-              channel: 'whatsapp',
-              to: invoice.member_phone,
-              message: `Hi ${invoice.member_name || 'Member'}, your invoice ${invoice.invoice_number} has a balance of ₹${paymentAmount.toLocaleString()}. Pay securely here: ${data.short_url}`,
-              branch_id: invoice.branch_id,
+          await dispatchCommunication({
+            branch_id: invoice.branch_id,
+            channel: 'whatsapp',
+            category: 'payment_alert',
+            recipient: invoice.member_phone,
+            payload: {
+              body: `Hi ${invoice.member_name || 'Member'}, your invoice ${invoice.invoice_number} has a balance of ₹${paymentAmount.toLocaleString()}. Pay securely here: ${data.short_url}`,
             },
+            dedupe_key: buildDedupeKey(['paylink', invoice.id, paymentAmount, 'wa']),
+            force: true,
           });
         } catch (e) { console.warn('WhatsApp dispatch skipped:', e); }
       }
-      if (invoice.member_email) {
+      if (invoice.member_email && invoice.branch_id) {
         try {
-          await supabase.functions.invoke('send-email', {
-            body: {
-              to: invoice.member_email,
+          await dispatchCommunication({
+            branch_id: invoice.branch_id,
+            channel: 'email',
+            category: 'payment_alert',
+            recipient: invoice.member_email,
+            payload: {
               subject: `Payment link for invoice ${invoice.invoice_number}`,
-              html: `<p>Hi ${invoice.member_name || 'Member'},</p><p>Your invoice <b>${invoice.invoice_number}</b> has a balance of <b>₹${paymentAmount.toLocaleString()}</b>.</p><p><a href="${data.short_url}">Click here to pay securely</a></p><p>Thank you.</p>`,
-              branch_id: invoice.branch_id,
+              body: `<p>Hi ${invoice.member_name || 'Member'},</p><p>Your invoice <b>${invoice.invoice_number}</b> has a balance of <b>₹${paymentAmount.toLocaleString()}</b>.</p><p><a href="${data.short_url}">Click here to pay securely</a></p><p>Thank you.</p>`,
+              use_branded_template: true,
             },
+            dedupe_key: buildDedupeKey(['paylink', invoice.id, paymentAmount, 'email']),
+            force: true,
           });
         } catch (e) { console.warn('Email dispatch skipped:', e); }
       }

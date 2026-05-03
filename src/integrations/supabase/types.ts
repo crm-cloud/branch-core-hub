@@ -4693,7 +4693,10 @@ export type Database = {
           branch_id: string
           created_at: string
           created_by: string | null
+          customer_email: string | null
           customer_gstin: string | null
+          customer_name: string | null
+          customer_phone: string | null
           discount_amount: number | null
           due_date: string | null
           gst_rate: number | null
@@ -4723,7 +4726,10 @@ export type Database = {
           branch_id: string
           created_at?: string
           created_by?: string | null
+          customer_email?: string | null
           customer_gstin?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
           discount_amount?: number | null
           due_date?: string | null
           gst_rate?: number | null
@@ -4753,7 +4759,10 @@ export type Database = {
           branch_id?: string
           created_at?: string
           created_by?: string | null
+          customer_email?: string | null
           customer_gstin?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
           discount_amount?: number | null
           due_date?: string | null
           gst_rate?: number | null

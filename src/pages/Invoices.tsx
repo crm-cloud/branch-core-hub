@@ -191,7 +191,7 @@ export default function InvoicesPage() {
       const t = getInvoiceType(inv);
       return [
         inv.invoice_number,
-        inv.members?.profiles?.full_name || 'Walk-in',
+        inv.members?.profiles?.full_name || inv.customer_name || 'Walk-in',
         t.label,
         inv.total_amount,
         inv.amount_paid || 0,
@@ -348,7 +348,7 @@ export default function InvoicesPage() {
                     </TableHeader>
                     <TableBody>
                       {filteredInvoices.map((invoice: any) => {
-                        const memberName = invoice.members?.profiles?.full_name || 'Walk-in Customer';
+                        const memberName = invoice.members?.profiles?.full_name || invoice.customer_name || 'Walk-in Customer';
                         const balance = invoice.total_amount - (invoice.amount_paid || 0);
                         
                         return (
