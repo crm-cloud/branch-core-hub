@@ -522,6 +522,8 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                 language: metaForm.language,
                 body_text: metaForm.body_text,
                 local_template_id: metaTarget.id,
+                header_type: metaTarget.header_type && metaTarget.header_type !== 'none' ? metaTarget.header_type : undefined,
+                header_sample_url: metaTarget.attachment_source === 'static' ? metaTarget.header_media_url : undefined,
               },
             },
       });
