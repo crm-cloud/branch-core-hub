@@ -167,6 +167,7 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all');
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['communication-templates'],
@@ -754,7 +755,17 @@ export function TemplateManager({ prefill, onPrefillConsumed }: TemplateManagerP
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => setPreviewTemplate(template)}
+                              aria-label="Preview template"
+                              title="Preview"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => openEditor(template)}
+                              aria-label="Edit template"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
