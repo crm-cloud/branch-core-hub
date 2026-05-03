@@ -383,6 +383,12 @@ export default function StorePage() {
               <TabsContent value="online-orders" className="mt-4">
                 <Card className="rounded-2xl border-none shadow-lg shadow-primary/10">
                   <CardContent className="pt-6">
+                    <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/10 text-xs text-muted-foreground flex items-start gap-2">
+                      <ShoppingBag className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                      <span>
+                        Orders placed by members from their member portal / online store. Walk-in counter sales appear under <strong>POS History</strong>.
+                      </span>
+                    </div>
                     {ordersLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
