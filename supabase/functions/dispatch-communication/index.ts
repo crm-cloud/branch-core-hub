@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
-          const messageType = input.template_id ? 'template' : 'text';
+          const messageType = 'text';
           const { data: waRow, error: waErr } = await supabase
             .from('whatsapp_messages')
             .insert({
