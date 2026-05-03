@@ -508,8 +508,11 @@ export default function WhatsAppChatPage() {
       const path = `whatsapp-attachments/${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file);
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(path);
-      const mediaUrl = urlData.publicUrl;
+      const { data: signed, error: signErr } = await supabase.storage
+        .from('attachments')
+        .createSignedUrl(path, 60 * 60 * 24 * 30); // 30 days
+      if (signErr || !signed?.signedUrl) throw signErr ?? new Error('Failed to sign attachment URL');
+      const mediaUrl = signed.signedUrl;
 
       const { data: msgData, error: msgError } = await supabase
         .from('whatsapp_messages')
