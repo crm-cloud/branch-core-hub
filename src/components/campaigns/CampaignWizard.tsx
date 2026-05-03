@@ -201,6 +201,52 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
               />
               <p className="text-xs text-muted-foreground mt-1.5">{message.length} chars · {resolvedMemberIds.length} recipients</p>
             </div>
+
+            {(channel === 'whatsapp' || channel === 'email') && (
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Flyer / Poster / Video (optional)
+                </Label>
+                {attachment ? (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl border bg-muted/30">
+                    {attachment.kind === 'image' ? <ImageIcon className="h-4 w-4 text-emerald-500" /> :
+                     attachment.kind === 'video' ? <Film className="h-4 w-4 text-violet-500" /> :
+                     <FileText className="h-4 w-4 text-amber-500" />}
+                    <span className="text-sm flex-1 truncate">{attachment.filename}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setAttachment(null)} aria-label="Remove">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      className="rounded-xl"
+                      accept="image/*,application/pdf,video/mp4"
+                      disabled={isUploading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 16 * 1024 * 1024) { toast.error('Max 16MB'); return; }
+                        setIsUploading(true);
+                        try {
+                          const kind: 'image' | 'document' | 'video' = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document';
+                          const { url } = await uploadAttachment(file, { folder: 'campaigns', filename: file.name, contentType: file.type });
+                          setAttachment({ url, filename: file.name, kind });
+                          toast.success('Uploaded');
+                        } catch (err: any) {
+                          toast.error(err.message || 'Upload failed');
+                        } finally { setIsUploading(false); }
+                      }}
+                    />
+                    {isUploading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Image, PDF or short MP4 (≤16MB). Used for class/event flyers, promo posters, supplement deals.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
