@@ -126,8 +126,12 @@ Deno.serve(async (req) => {
         result = { success: false, error: `Unsupported email provider: ${provider}` };
     }
 
-    // Log to communication_logs
+    // Log to communication_logs (capture attachment metadata for auditability)
     if (branch_id) {
+      const attachmentMeta = (attachments || []).map((a: any) => ({
+        filename: a.filename, content_type: a.content_type,
+        size_b64: (a.content_base64 || '').length,
+      }));
       await supabase.from("communication_logs").insert({
         branch_id,
         type: "email",
@@ -135,7 +139,10 @@ Deno.serve(async (req) => {
         subject,
         content: (html || text || "").slice(0, 500),
         status: result.success ? "sent" : "failed",
+        delivery_status: result.success ? "sent" : "failed",
         sent_at: new Date().toISOString(),
+        delivery_metadata: { provider, attachments: attachmentMeta, attachment_count: attachmentMeta.length },
+        error_message: result.success ? null : (result.error || null),
       });
     }
 
