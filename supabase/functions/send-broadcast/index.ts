@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
               member_id: r.source_type === 'member' ? r.source_ref_id : null,
               dedupe_key: campaign_id ? `campaign:${campaign_id}:${r.source_type}:${r.source_ref_id}` : `broadcast:${Date.now()}:${r.source_type}:${r.source_ref_id}`,
               force: true,
+              ...(attachment ? { attachment } : {}),
             },
           });
           const ok = !dispatchErr && ['sent', 'queued', 'deduped'].includes(String((dispatchRes as any)?.status || ''));
@@ -207,6 +208,7 @@ Deno.serve(async (req) => {
             member_id: member.id,
             dedupe_key: campaign_id ? `campaign:${campaign_id}:member:${member.id}` : `broadcast:${Date.now()}:member:${member.id}`,
             force: true,
+            ...(attachment ? { attachment } : {}),
           },
         });
         status = !dispatchErr && ['sent', 'queued', 'deduped'].includes(String((dispatchRes as any)?.status || '')) ? "sent" : "failed";
