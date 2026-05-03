@@ -270,9 +270,10 @@ export default function BenefitTracking() {
                 icon={Clock}
               />
               <StatCard
-                title="Total Usage"
-                value={usageHistory?.length || 0}
-                icon={Activity}
+                title="Gift Sessions"
+                value={totalGiftSessions}
+                icon={Gift}
+                className={totalGiftSessions > 0 ? 'border-amber-500/50' : ''}
               />
             </div>
 
