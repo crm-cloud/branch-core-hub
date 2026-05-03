@@ -305,6 +305,22 @@ Deno.serve(async (req) => {
     try {
       switch (input.channel) {
         case 'whatsapp': {
+          let templateName: string | null = null;
+          let components: Array<Record<string, unknown>> | null | undefined;
+          if (input.template_id) {
+            const { data: tpl, error: tplError } = await supabase
+              .from('templates')
+              .select('content, variables, meta_template_name')
+              .eq('id', input.template_id)
+              .maybeSingle();
+            if (tplError) throw new Error(tplError.message);
+            if (tpl?.meta_template_name) {
+              templateName = tpl.meta_template_name;
+              components = templateComponents(orderedTemplateKeys(tpl.content ?? input.payload.body, tpl.variables), input.payload.variables);
+              if (components === null) throw new Error('missing_template_variables');
+            }
+          }
+
           // For attachments (PDF/image), pre-create the whatsapp_messages row so
           // send-whatsapp (which requires message_id) can update its delivery
           // status. The chat thread also relies on this row to render the bubble.
@@ -367,7 +383,10 @@ Deno.serve(async (req) => {
               phone_number: input.recipient,
               content: input.payload.body,
               branch_id: input.branch_id,
-              message_type: messageType,
+              message_type: templateName ? 'template' : messageType,
+              template_name: templateName ?? undefined,
+              template_language: 'en',
+              template_components: components ?? undefined,
               template_id: input.template_id,
               variables: input.payload.variables,
               member_id: input.member_id,
