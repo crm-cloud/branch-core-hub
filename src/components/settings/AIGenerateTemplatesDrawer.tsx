@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranchContext } from '@/contexts/BranchContext';
@@ -11,10 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Sparkles, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Sparkles, Send, CheckCircle2, AlertCircle, MessageSquare, Mail, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
-const CANDIDATE_EVENTS: Array<{ event: string; label: string; hint?: string }> = [
+type Channel = 'whatsapp' | 'sms' | 'email';
+
+const COMMON_EVENTS = [
   { event: 'member_created', label: 'Welcome — New Member' },
   { event: 'payment_received', label: 'Payment Receipt' },
   { event: 'payment_due', label: 'Payment Due Reminder' },
@@ -24,48 +26,76 @@ const CANDIDATE_EVENTS: Array<{ event: string; label: string; hint?: string }> =
   { event: 'membership_expiring_7d', label: 'Expiring in 7 Days' },
   { event: 'membership_expiring_1d', label: 'Expiring Tomorrow' },
   { event: 'membership_expired', label: 'Membership Expired' },
-  { event: 'missed_workout_3d', label: 'Missed Workout Nudge', hint: 'Re-engagement, marketing tone' },
+  { event: 'missed_workout_3d', label: 'Missed Workout Nudge', hint: 'Re-engagement' },
   { event: 'birthday', label: 'Birthday Wish', hint: 'Marketing, warm greeting' },
   { event: 'freeze_confirmed', label: 'Membership Frozen' },
   { event: 'unfreeze_confirmed', label: 'Membership Unfrozen' },
-  { event: 'lead_created', label: 'Lead — Internal Alert', hint: 'For staff WhatsApp' },
+  { event: 'lead_created', label: 'Lead — Internal Alert', hint: 'For staff' },
   { event: 'scan_ready', label: 'Body Scan Report Ready', hint: 'Document attachment' },
   { event: 'class_promo', label: 'New Class Promo', hint: 'Marketing with image header' },
   { event: 'gym_closure_update', label: 'Gym Closure Notice' },
   { event: 'referral_reward', label: 'Referral Reward Earned' },
-  { event: 'offer_announcement', label: 'Special Offer / Discount', hint: 'Marketing with image header' },
+  { event: 'offer_announcement', label: 'Special Offer / Discount', hint: 'Marketing' },
 ];
+
+const EMAIL_EXTRA = [
+  { event: 'monthly_newsletter', label: 'Monthly Newsletter', hint: 'Marketing digest' },
+  { event: 'invoice_email', label: 'Invoice Email', hint: 'PDF attachment' },
+  { event: 'welcome_kit', label: 'Welcome Kit', hint: 'Onboarding multi-section' },
+];
+
+const CANDIDATE_BY_CHANNEL: Record<Channel, typeof COMMON_EVENTS> = {
+  whatsapp: COMMON_EVENTS,
+  sms: COMMON_EVENTS.filter((e) => !['class_promo', 'offer_announcement'].includes(e.event)).concat([]),
+  email: [...COMMON_EVENTS, ...EMAIL_EXTRA],
+};
 
 interface Proposal {
   event: string;
   name: string;
-  category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
-  language: string;
+  category: string;
+  language?: string;
   body_text: string;
+  body_html?: string;
+  subject?: string;
+  preheader?: string;
   variables: string[];
   header_type?: 'none' | 'image' | 'document' | 'video';
   header_sample_url?: string;
   rationale?: string;
+  dlt_category?: string;
 }
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  channel?: Channel;
 }
 
-export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
+const CHANNEL_META: Record<Channel, { label: string; icon: any; color: string }> = {
+  whatsapp: { label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
+  sms: { label: 'SMS', icon: Phone, color: 'text-blue-500' },
+  email: { label: 'Email', icon: Mail, color: 'text-amber-500' },
+};
+
+export function AIGenerateTemplatesDrawer({ open, onOpenChange, channel: channelProp }: Props) {
   const qc = useQueryClient();
   const { selectedBranch } = useBranchContext();
+  const [channel, setChannel] = useState<Channel>(channelProp || 'whatsapp');
+  useEffect(() => { if (channelProp) setChannel(channelProp); }, [channelProp]);
+
+  const candidates = CANDIDATE_BY_CHANNEL[channel];
   const [step, setStep] = useState<'pick' | 'review'>('pick');
-  const [picked, setPicked] = useState<Set<string>>(new Set(CANDIDATE_EVENTS.slice(0, 5).map((e) => e.event)));
+  const [picked, setPicked] = useState<Set<string>>(new Set(candidates.slice(0, 5).map((e) => e.event)));
+  useEffect(() => { setPicked(new Set(candidates.slice(0, 5).map((e) => e.event))); setStep('pick'); setProposals([]); }, [channel]);
   const [generating, setGenerating] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   const { data: existing = [] } = useQuery({
-    queryKey: ['ai-templates-existing', selectedBranch],
+    queryKey: ['ai-templates-existing', selectedBranch, channel],
     queryFn: async () => {
-      const q = supabase.from('templates').select('name, content').eq('type', 'whatsapp');
+      const q = supabase.from('templates').select('name, content').eq('type', channel);
       const { data } = selectedBranch && selectedBranch !== 'all' ? await q.eq('branch_id', selectedBranch) : await q;
       return (data || []).map((t: any) => ({ name: t.name, body: t.content || '' }));
     },
@@ -73,15 +103,16 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
   });
 
   const branchId = selectedBranch && selectedBranch !== 'all' ? selectedBranch : null;
+  const Meta = CHANNEL_META[channel];
 
   const generate = async () => {
     if (!branchId) { toast.error('Select a specific branch first'); return; }
     if (picked.size === 0) { toast.error('Pick at least one event'); return; }
     setGenerating(true);
     try {
-      const events = CANDIDATE_EVENTS.filter((e) => picked.has(e.event));
+      const events = candidates.filter((e) => picked.has(e.event));
       const { data, error } = await supabase.functions.invoke('ai-generate-whatsapp-templates', {
-        body: { branch_id: branchId, events, existing },
+        body: { branch_id: branchId, channel, events, existing },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -89,7 +120,7 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
       if (list.length === 0) throw new Error('AI returned no proposals');
       setProposals(list);
       setStep('review');
-      toast.success(`Generated ${list.length} template proposals`);
+      toast.success(`Generated ${list.length} ${Meta.label} proposals`);
     } catch (e: any) {
       toast.error(e.message || 'Generation failed');
     } finally {
@@ -105,44 +136,51 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
     if (!branchId) return;
     setSubmitting(p.name);
     try {
-      // 1) create local CRM template row
+      const insertRow: any = {
+        branch_id: branchId,
+        type: channel,
+        name: p.name,
+        trigger_event: p.event,
+        content: channel === 'email' ? (p.body_html || p.body_text) : p.body_text,
+        variables: p.variables,
+        is_active: true,
+      };
+      if (channel === 'email') insertRow.subject = p.subject || null;
+      if (channel === 'whatsapp') {
+        insertRow.header_type = p.header_type && p.header_type !== 'none' ? p.header_type : null;
+        insertRow.header_media_url = p.header_sample_url || null;
+      }
       const { data: localRow, error: localErr } = await supabase
         .from('templates')
-        .insert({
-          branch_id: branchId,
-          type: 'whatsapp',
-          name: p.name,
-          trigger_event: p.event,
-          content: p.body_text,
-          variables: p.variables,
-          is_active: true,
-          header_type: p.header_type && p.header_type !== 'none' ? p.header_type : null,
-          header_media_url: p.header_sample_url || null,
-        } as any)
+        .insert(insertRow)
         .select('id')
         .single();
       if (localErr) throw localErr;
 
-      // 2) submit to Meta
-      const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
-        body: {
-          action: 'create',
-          branch_id: branchId,
-          template_data: {
-            name: p.name,
-            category: p.category,
-            language: p.language || 'en',
-            body_text: p.body_text,
-            local_template_id: localRow!.id,
-            variables: p.variables,
-            header_type: p.header_type && p.header_type !== 'none' ? p.header_type : undefined,
-            header_sample_url: p.header_sample_url,
+      // For WhatsApp, also submit to Meta
+      if (channel === 'whatsapp') {
+        const { data, error } = await supabase.functions.invoke('manage-whatsapp-templates', {
+          body: {
+            action: 'create',
+            branch_id: branchId,
+            template_data: {
+              name: p.name,
+              category: p.category,
+              language: p.language || 'en',
+              body_text: p.body_text,
+              local_template_id: localRow!.id,
+              variables: p.variables,
+              header_type: p.header_type && p.header_type !== 'none' ? p.header_type : undefined,
+              header_sample_url: p.header_sample_url,
+            },
           },
-        },
-      });
-      if (error) throw error;
-      if (data?.success === false) throw new Error(data.meta_error?.user_msg || data.error || 'Meta rejected');
-      toast.success(`Submitted "${p.name}" — Meta status: ${data.status}`);
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.meta_error?.user_msg || data.error || 'Meta rejected');
+        toast.success(`Submitted "${p.name}" — Meta status: ${data.status}`);
+      } else {
+        toast.success(`Saved "${p.name}"`);
+      }
       qc.invalidateQueries({ queryKey: ['communication-templates'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-templates-health'] });
       setProposals((arr) => arr.filter((x) => x.name !== p.name));
@@ -160,6 +198,8 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
     }
   };
 
+  const Icon = Meta.icon;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
@@ -170,15 +210,37 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
           </SheetTitle>
           <SheetDescription>
             {step === 'pick'
-              ? 'Pick the events you want clean, Meta-compliant templates for. The AI will avoid duplicates of what you already have.'
-              : 'Review and edit each proposal, then submit to Meta individually or in bulk.'}
+              ? 'Pick a channel and the events you want polished, brand-safe templates for. The AI avoids duplicating existing ones.'
+              : `Review and edit each ${Meta.label} proposal, then save individually or in bulk.`}
           </SheetDescription>
         </SheetHeader>
 
         {step === 'pick' && (
-          <div className="py-4 space-y-3">
+          <div className="py-4 space-y-4">
+            {!channelProp && (
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Channel</Label>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(['whatsapp', 'sms', 'email'] as Channel[]).map((c) => {
+                    const M = CHANNEL_META[c];
+                    const I = M.icon;
+                    const active = channel === c;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setChannel(c)}
+                        className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${active ? 'border-primary bg-primary/5 text-primary font-semibold' : 'border-border hover:bg-muted/40'}`}
+                      >
+                        <I className={`h-4 w-4 ${active ? '' : M.color}`} /> {M.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {CANDIDATE_EVENTS.map((e) => (
+              {candidates.map((e) => (
                 <label key={e.event} className="flex items-start gap-2 p-3 rounded-lg border hover:bg-muted/40 cursor-pointer">
                   <Checkbox
                     checked={picked.has(e.event)}
@@ -204,20 +266,21 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
             {proposals.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500" />
-                All proposals submitted.
+                All proposals saved.
               </div>
             )}
             {proposals.map((p, i) => (
               <div key={`${p.event}-${i}`} className="rounded-xl border p-3 space-y-2 bg-card">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Icon className={`h-4 w-4 ${Meta.color}`} />
                     <Input
                       value={p.name}
                       onChange={(e) => updateProposal(i, { name: e.target.value })}
                       className="h-8 w-56 font-mono text-xs"
                     />
                     <Badge variant="outline" className="text-[10px]">{p.category}</Badge>
-                    <Badge variant="outline" className="text-[10px]">{p.language}</Badge>
+                    {p.dlt_category && <Badge variant="outline" className="text-[10px]">{p.dlt_category}</Badge>}
                     {p.header_type && p.header_type !== 'none' && (
                       <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600">
                         {p.header_type} header
@@ -229,15 +292,30 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">Event: {p.event}</p>
+                {channel === 'email' && (
+                  <Input
+                    value={p.subject || ''}
+                    onChange={(e) => updateProposal(i, { subject: e.target.value })}
+                    placeholder="Subject"
+                    className="h-9 text-sm"
+                  />
+                )}
                 <Textarea
                   value={p.body_text}
                   onChange={(e) => updateProposal(i, { body_text: e.target.value })}
-                  rows={4}
+                  rows={channel === 'sms' ? 2 : 4}
                   className="text-sm"
                 />
-                {p.rationale && (
-                  <p className="text-xs text-muted-foreground italic">{p.rationale}</p>
+                {channel === 'sms' && (
+                  <p className="text-[10px] text-muted-foreground">{p.body_text.length} chars · {Math.ceil(p.body_text.length / 160)} segment(s)</p>
                 )}
+                {channel === 'email' && p.body_html && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">HTML preview</summary>
+                    <div className="mt-2 rounded border bg-white p-2 max-h-60 overflow-auto" dangerouslySetInnerHTML={{ __html: p.body_html }} />
+                  </details>
+                )}
+                {p.rationale && <p className="text-xs text-muted-foreground italic">{p.rationale}</p>}
                 <div className="flex flex-wrap gap-1">
                   {p.variables.map((v) => (
                     <Badge key={v} variant="secondary" className="text-[10px] font-mono">{`{{${v}}}`}</Badge>
@@ -260,7 +338,7 @@ export function AIGenerateTemplatesDrawer({ open, onOpenChange }: Props) {
                 <AlertCircle className="h-4 w-4 mr-1" /> Re-pick
               </Button>
               <Button onClick={submitAll} disabled={proposals.length === 0 || !!submitting}>
-                <Send className="h-4 w-4 mr-2" /> Submit All to Meta
+                <Send className="h-4 w-4 mr-2" /> {channel === 'whatsapp' ? 'Submit All to Meta' : 'Save All'}
               </Button>
             </>
           )}
