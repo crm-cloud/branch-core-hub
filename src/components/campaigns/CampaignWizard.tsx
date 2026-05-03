@@ -55,11 +55,14 @@ export function CampaignWizard({ open, onOpenChange, branchId }: Props) {
   const [trigger, setTrigger] = useState<CampaignTriggerType>('send_now');
   const [scheduledAt, setScheduledAt] = useState<string>(''); // datetime-local value
   const [submitting, setSubmitting] = useState(false);
+  const [attachment, setAttachment] = useState<{ url: string; filename: string; kind: 'image' | 'document' | 'video' } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const reset = () => {
     setStep(1); setName(''); setChannel('whatsapp');
     setFilter({ status: 'active' }); setResolvedMemberIds([]);
     setMessage(''); setSubject(''); setTrigger('send_now'); setScheduledAt('');
+    setAttachment(null);
   };
 
   const close = () => { reset(); onOpenChange(false); };
