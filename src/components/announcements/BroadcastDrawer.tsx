@@ -216,7 +216,7 @@ export function BroadcastDrawer({ open, onOpenChange, branchId, initialType = 'i
   };
 
   const showSubject = selectedChannels.has('email');
-  const showAttachment = selectedChannels.has('whatsapp') || selectedChannels.has('email');
+  const showAttachment = selectedChannels.has('inapp') || selectedChannels.has('whatsapp') || selectedChannels.has('email');
   const showTitle = selectedChannels.has('inapp');
   const minScheduled = new Date(Date.now() + 60_000).toISOString().slice(0, 16);
 
