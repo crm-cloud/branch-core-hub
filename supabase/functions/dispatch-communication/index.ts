@@ -391,12 +391,17 @@ Deno.serve(async (req) => {
     }
 
     // ── 6) finalize log ──
+    const finalMeta: Record<string, unknown> = {};
+    if (input.attachment) finalMeta.attachment = input.attachment;
+    if (providerMessageId) finalMeta.provider_message_id = providerMessageId;
+
     await supabase
       .from('communication_logs')
       .update({
         delivery_status: sendError ? 'failed' : 'sent',
         status: sendError ? 'failed' : 'sent',
         provider_message_id: providerMessageId ?? null,
+        delivery_metadata: Object.keys(finalMeta).length ? finalMeta : null,
         error_message: sendError ?? null,
         sent_at: new Date().toISOString(),
         attempt_count: 1,
