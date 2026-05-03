@@ -344,7 +344,7 @@ export default function BenefitTracking() {
                   </Card>
                 ) : (
                   <BenefitBalancesGrid
-                    balances={balances}
+                    balances={combinedBalances}
                     showRecordButtons
                     onRecordUsage={handleRecordUsage}
                   />
