@@ -1,5 +1,5 @@
-// dispatch-communication v1.1.0
-// Canonical outbound communication funnel.
+// dispatch-communication v1.2.0
+// v1.2.0: re-allow retry of previously failed/suppressed dedupe_key; surface real Meta error body.
 // v1.1.0: WhatsApp attachment passthrough (PDF / image documents).
 // All other edge functions MUST route through this instead of writing
 // communication_logs directly. Enforces:
