@@ -1,5 +1,5 @@
 // dispatch-communication v1.3.1
-// v1.3.1: extract real edge-function error bodies from function invoke failures.
+// v1.3.1: extract real edge-function error bodies and pre-create WA rows for all WhatsApp sends.
 // v1.3.0: route channel=email to send-email (was incorrectly hitting send-message);
 //         pass attachments (auto base64-fetched from attachment.url) and
 //         use_branded_template flag; mirror provider_message_id into delivery_metadata.
@@ -301,13 +301,30 @@ Deno.serve(async (req) => {
             providerMessageId = (r.data as { whatsapp_message_id?: string })?.whatsapp_message_id;
             break;
           }
+          const messageType = input.template_id ? 'template' : 'text';
+          const { data: waRow, error: waErr } = await supabase
+            .from('whatsapp_messages')
+            .insert({
+              branch_id: input.branch_id,
+              phone_number: input.recipient,
+              member_id: input.member_id ?? null,
+              content: input.payload.body,
+              direction: 'outbound',
+              status: 'pending',
+              message_type: messageType,
+            })
+            .select('id')
+            .single();
+          if (waErr) throw new Error(waErr.message);
           const r = await supabase.functions.invoke('send-whatsapp', {
             body: {
+              message_id: waRow!.id,
+              phone_number: input.recipient,
+              content: input.payload.body,
               branch_id: input.branch_id,
-              recipient: input.recipient,
+              message_type: messageType,
               template_id: input.template_id,
               variables: input.payload.variables,
-              body: input.payload.body,
               member_id: input.member_id,
               skip_log: true,                // dispatcher owns the log
               source_log_id: log!.id,
