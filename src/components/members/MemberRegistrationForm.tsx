@@ -65,12 +65,21 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
-  const [govIdType, setGovIdType] = useState('aadhaar');
-  const [govIdNumber, setGovIdNumber] = useState('');
-  const [fitnessGoals, setFitnessGoals] = useState('');
-  const [medicalConditions, setMedicalConditions] = useState('');
+  const [govIdType, setGovIdType] = useState(data.governmentIdType || 'aadhaar');
+  const [govIdNumber, setGovIdNumber] = useState(data.governmentIdNumber || '');
+  const [fitnessGoals, setFitnessGoals] = useState(data.fitnessGoals || '');
+  const [medicalConditions, setMedicalConditions] = useState(data.medicalConditions || '');
   const [customTerms, setCustomTerms] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Re-sync prefilled values when drawer opens or member changes
+  useEffect(() => {
+    if (!open) return;
+    setGovIdType(data.governmentIdType || 'aadhaar');
+    setGovIdNumber(data.governmentIdNumber || '');
+    setFitnessGoals(data.fitnessGoals || '');
+    setMedicalConditions(data.medicalConditions || '');
+  }, [open, data.memberId, data.governmentIdType, data.governmentIdNumber, data.fitnessGoals, data.medicalConditions]);
 
   // Setup canvas for signature
   useEffect(() => {
