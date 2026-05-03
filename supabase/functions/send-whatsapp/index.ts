@@ -1,4 +1,6 @@
-// v2.3.0 — document messages now send link + filename + caption together so PDFs
+// v2.4.0 — document/image media is fetched server-side and uploaded to Meta first;
+//           this avoids signed storage URLs being re-fetched/rewritten by WhatsApp.
+// v2.3.0 — document messages send link + filename + caption together so PDFs
 //           arrive as named, captioned attachments instead of unnamed downloads.
 // v2.2.0 — honor skip_log from dispatcher to avoid duplicate communication_logs rows.
 import { captureEdgeError } from "../_shared/capture-edge-error.ts";
@@ -32,6 +34,44 @@ function buildMetaUrl(phoneNumberId: string, accessToken: string, appSecret?: st
     url += `?appsecret_proof=${proof}`;
   }
   return url;
+}
+
+async function uploadMediaToMeta(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  appSecret?: string | null;
+  proof?: string | null;
+  mediaUrl: string;
+  fallbackType: string;
+}): Promise<string> {
+  const mediaResponse = await fetch(input.mediaUrl);
+  if (!mediaResponse.ok) {
+    const detail = await mediaResponse.text().catch(() => "");
+    throw new Error(`media_fetch_${mediaResponse.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+  }
+
+  const contentType = mediaResponse.headers.get("content-type") || input.fallbackType;
+  const bytes = await mediaResponse.arrayBuffer();
+  if (bytes.byteLength < 1024) throw new Error(`media_too_small_${bytes.byteLength}b`);
+
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", contentType);
+  form.append("file", new Blob([bytes], { type: contentType }), "attachment");
+
+  let uploadUrl = `${META_API_BASE}/${input.phoneNumberId}/media`;
+  if (input.appSecret && input.proof) uploadUrl += `?appsecret_proof=${input.proof}`;
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${input.accessToken}` },
+    body: form,
+  });
+  const uploadData = await uploadResponse.json().catch(() => ({}));
+  if (!uploadResponse.ok || !uploadData?.id) {
+    throw new Error(uploadData?.error?.message || `media_upload_${uploadResponse.status}`);
+  }
+  return uploadData.id;
 }
 
 serve(async (req) => {
