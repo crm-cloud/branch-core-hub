@@ -201,6 +201,25 @@ export function MemberRegistrationFormDrawer({ open, onOpenChange, data }: Membe
       });
       if (insertError) throw insertError;
 
+      // Sync edits back to canonical records (best-effort, non-blocking)
+      try {
+        const memberUpdates: Record<string, string> = {};
+        if (fitnessGoals && fitnessGoals !== (data.fitnessGoals || '')) memberUpdates.fitness_goals = fitnessGoals;
+        if (medicalConditions && medicalConditions !== (data.medicalConditions || '')) memberUpdates.health_conditions = medicalConditions;
+        if (Object.keys(memberUpdates).length) {
+          await supabase.from('members').update(memberUpdates).eq('id', data.memberId);
+        }
+        const profileUpdates: Record<string, string> = {};
+        if (govIdType && govIdType !== (data.governmentIdType || 'aadhaar')) profileUpdates.government_id_type = govIdType;
+        if (govIdNumber && govIdNumber !== (data.governmentIdNumber || '')) profileUpdates.government_id_number = govIdNumber;
+        if (Object.keys(profileUpdates).length) {
+          const { data: m } = await supabase.from('members').select('user_id').eq('id', data.memberId).maybeSingle();
+          if (m?.user_id) await supabase.from('profiles').update(profileUpdates).eq('user_id', m.user_id);
+        }
+      } catch (syncErr) {
+        console.warn('[RegistrationForm] profile sync failed', syncErr);
+      }
+
       toast.success('Registration form saved digitally with signature!');
       queryClient.invalidateQueries({ queryKey: ['member-documents', data.memberId] });
       onOpenChange(false);
